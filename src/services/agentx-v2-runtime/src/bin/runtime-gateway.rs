@@ -234,6 +234,19 @@ async fn main() -> Result<()> {
         )
         .nest("/gateway/v1", public_gateway)
         .with_state(state);
+    let admission_metrics = metrics.clone();
+    let router = router.layer(axum::middleware::from_fn(
+        move |request: axum::http::Request<axum::body::Body>, next: axum::middleware::Next| {
+            let metrics = admission_metrics.clone();
+            async move {
+                let count = agentx_v2_runtime::admission::rejection_count();
+                metrics
+                    .set("agentx_admission_rejections_total", count as f64)
+                    .await;
+                next.run(request).await
+            }
+        },
+    ));
     agentx_service_kit::serve_with_lifecycle("runtime-gateway", router, health, lifecycle, metrics)
         .await
 }

@@ -220,6 +220,10 @@ async fn invoke(
     headers: &HeaderMap,
     request: InvocationRequestV1,
 ) -> RuntimeResult<(StatusCode, Json<InvocationResponseV1>)> {
+    if let Err(reject) = crate::admission::check(&state.pool, caller.tenant_id).await {
+        crate::admission::record_rejection();
+        return Err(crate::admission::to_error(&reject));
+    }
     let idempotency_key = idempotency_key(headers)?;
     let mode = request.response_mode.as_deref().unwrap_or("async");
     if !matches!(mode, "sync" | "async") {
