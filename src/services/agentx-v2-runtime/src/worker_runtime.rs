@@ -621,12 +621,16 @@ impl RuntimeWorker {
                     .and_then(Value::as_str)
                     .unwrap_or("query");
                 let payload = claim.node_parameters.get("input").cloned().unwrap_or(input);
-                let (path, body, secret_header) =
-                    match rag_query_request(&provider, operation, namespace, index_version, &payload)
-                    {
-                        Ok(built) => built,
-                        Err(failed) => return failed,
-                    };
+                let (path, body, secret_header) = match rag_query_request(
+                    provider,
+                    operation,
+                    namespace,
+                    index_version,
+                    &payload,
+                ) {
+                    Ok(built) => built,
+                    Err(failed) => return failed,
+                };
                 (
                     "rag",
                     format!("{}/{}", endpoint.trim_end_matches('/'), path),

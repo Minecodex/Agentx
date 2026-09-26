@@ -121,6 +121,18 @@ async fn main() -> Result<()> {
             post(agentx_v2_runtime::query::search_invocations),
         )
         .route(
+            "/internal/runtime/v1/query/deliveries:search",
+            post(agentx_v2_runtime::delivery_query::search_deliveries),
+        )
+        .route(
+            "/internal/runtime/v1/query/deliveries/{id}",
+            get(agentx_v2_runtime::delivery_query::get_delivery),
+        )
+        .route(
+            "/internal/runtime/v1/query/deliveries/{id}:retry",
+            post(agentx_v2_runtime::delivery_query::retry_delivery),
+        )
+        .route(
             "/internal/runtime/v1/query/invocations/{id}",
             get(agentx_v2_runtime::query::get_invocation),
         )

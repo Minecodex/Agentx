@@ -23,6 +23,7 @@ pub(crate) struct WebhookResponse {
     pub(crate) provider_type: String,
     pub(crate) channel_mode: String,
     pub(crate) config_fields: Value,
+    pub(crate) reply: Option<agentx_runtime_contracts::WebhookReplyConfigV1>,
     pub(crate) connection_status: Option<String>,
     pub(crate) connection_error: Option<String>,
     pub(crate) last_connected_at: Option<String>,
@@ -43,6 +44,8 @@ pub(crate) struct CreateWebhookRequest {
     #[serde(default)]
     pub(crate) channel_config: Option<Value>,
     #[serde(default)]
+    pub(crate) reply: Option<agentx_runtime_contracts::WebhookReplyConfigV1>,
+    #[serde(default)]
     pub(crate) input_mappings: Vec<WebhookInputMappingV1>,
     #[serde(default)]
     pub(crate) fixed_inputs: Value,
@@ -60,6 +63,8 @@ pub(crate) struct UpdateWebhookRequest {
     pub(crate) channel_mode: String,
     #[serde(default)]
     pub(crate) channel_config: Option<Value>,
+    #[serde(default)]
+    pub(crate) reply: Option<agentx_runtime_contracts::WebhookReplyConfigV1>,
     #[serde(default)]
     pub(crate) input_mappings: Vec<WebhookInputMappingV1>,
     #[serde(default)]
@@ -108,6 +113,7 @@ pub(crate) async fn validate(
     provider_type: &str,
     channel_mode: &str,
     channel_config: Option<&Value>,
+    reply: Option<&agentx_runtime_contracts::WebhookReplyConfigV1>,
     mappings: &[WebhookInputMappingV1],
     fixed_inputs: &Value,
 ) -> ApiResult<()> {
@@ -138,6 +144,24 @@ pub(crate) async fn validate(
             "INVALID_WEBHOOK_FIXED_INPUTS",
             "Fixed inputs must be an object",
         ));
+    }
+    if let Some(reply) = reply {
+        if reply.enabled {
+            if reply.output_field.trim().is_empty() {
+                return Err(ApiError::bad_request(
+                    "INVALID_WEBHOOK_REPLY_OUTPUT_FIELD",
+                    "Reply output field is required when the reply is enabled",
+                ));
+            }
+            if let Some(template) = reply.template.as_deref() {
+                if template.len() > 1000 {
+                    return Err(ApiError::bad_request(
+                        "INVALID_WEBHOOK_REPLY_TEMPLATE",
+                        "Reply template must be at most 1000 characters",
+                    ));
+                }
+            }
+        }
     }
     let deployment: Option<Value> = sqlx::query_scalar("SELECT input_schema_json FROM application_deployments WHERE tenant_id=? AND application_id=? AND status='active' ORDER BY sequence_number DESC LIMIT 1")
         .bind(actor.tenant_id).bind(application_id).fetch_optional(&state.pool).await?;
@@ -195,6 +219,27 @@ pub(crate) async fn validate(
                 return Err(ApiError::unprocessable(
                     "WEBHOOK_MAPPING_TYPE_MISMATCH",
                     "Webhook source values are strings and require a string Workflow input",
+                ));
+            }
+        }
+    }
+    if let Some(reply) = reply.filter(|reply| reply.enabled) {
+        let output_schema: Option<Value> = sqlx::query_scalar(
+            "SELECT output_schema_json FROM application_deployments WHERE tenant_id=? AND application_id=? AND status='active' ORDER BY sequence_number DESC LIMIT 1",
+        )
+        .bind(actor.tenant_id)
+        .bind(application_id)
+        .fetch_optional(&state.pool)
+        .await?;
+        if let Some(properties) = output_schema
+            .as_ref()
+            .and_then(|schema| schema.get("properties"))
+            .and_then(Value::as_object)
+        {
+            if !properties.contains_key(&reply.output_field) {
+                return Err(ApiError::unprocessable(
+                    "WEBHOOK_REPLY_OUTPUT_FIELD_UNKNOWN",
+                    "Reply output field is not in the active Deployment output schema",
                 ));
             }
         }
@@ -300,6 +345,11 @@ pub(crate) fn response_from_row(row: sqlx::mysql::MySqlRow) -> ApiResult<Webhook
         config_fields: row
             .try_get::<Option<Value>, _>("channel_config_json")?
             .unwrap_or_else(|| json!({})),
+        reply: row
+            .try_get::<Option<Value>, _>("reply_config_json")?
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(ApiError::internal)?,
         connection_status: None,
         connection_error: None,
         last_connected_at: None,
@@ -320,7 +370,7 @@ pub(crate) async fn load(
     application_id: Uuid,
     id: Uuid,
 ) -> ApiResult<WebhookResponse> {
-    let row = sqlx::query("SELECT id,name,public_id,status,version,provider_type,channel_mode,channel_config_json,input_mapping_json,fixed_inputs_json,configuration_revision FROM application_webhooks WHERE tenant_id=? AND application_id=? AND id=?")
+    let row = sqlx::query("SELECT id,name,public_id,status,version,provider_type,channel_mode,channel_config_json,reply_config_json,input_mapping_json,fixed_inputs_json,configuration_revision FROM application_webhooks WHERE tenant_id=? AND application_id=? AND id=?")
         .bind(tenant_id).bind(application_id).bind(id).fetch_optional(&state.pool).await?.ok_or_else(|| ApiError::not_found("Webhook"))?;
     response_from_row(row)
 }

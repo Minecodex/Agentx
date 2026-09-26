@@ -1506,6 +1506,7 @@ mod attachment_registry_tests {
                 state_epoch: 1,
                 content_hash: hash(),
                 configuration: RuntimeResourceConfigurationV1::Rag {
+                    provider: "lightrag".into(),
                     endpoint: "https://rag.example/search".into(),
                     namespace: "knowledge".into(),
                     index_version: rag_version.to_string(),

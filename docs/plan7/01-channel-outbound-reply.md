@@ -20,9 +20,13 @@ Execution 终态 / 回复节点触发
 
 - 入站已全部落地：HTTP 回调验签/Challenge/幂等（`src/services/agentx-v2-runtime/src/webhook.rs`）、钉钉 Stream（`stream/dingtalk_stream.rs`）、飞书 WS 长连接（`stream/feishu_ws.rs`）；企微仅回调。normalize/map_input 已从 webhook.rs 拆出供 stream 复用。
 - `sessionWebhook` 已进入 Trigger Context 快照（plan4 P4-06）， expressly 留作出站投递；渠道凭证已内置化（`channel_config_json` + Vault，plan4 §15）。
-- 无任何出站代码：webhook.rs 无 reply 发送逻辑；`egress.rs` HTTP provider 白名单默认 `echo-mcp,echo-node,lightrag,mem0`（`src/services/agentx-v2-runtime/src/egress.rs:560-563`），平台 API 域名未放行。
+- 无任何出站代码：webhook.rs 无 reply 发送逻辑。egress 现状（勘察修正）：`egress.rs` 的 `http_provider_services()`（:561-570，默认 `echo-mcp,echo-node,lightrag,mem0`）只约束**集群内明文 HTTP fixture 服务**；公网 HTTPS 走 CONNECT 隧道（`client_for_url` :372-412 签发单次 token，egress-gateway 校验 CONNECT-only/JWT/端口 443/非私网段），**没有主机名白名单机制**——平台 API 域名今天已能出网（钉钉/飞书 Stream bootstrap 就在用同一通道）。「为平台 API 域名单独放行」实际是新增机制：在 delivery Send Client 内做 per-provider 域名后缀校验（见 §3.4）。
 - Invocation 快照保存 Trigger Context（会话 ID、发送者、sessionWebhook 等），是出站寻址的数据源（`execution.rs` project_chat_message_input 同源）。
-- Runtime 已有成熟 outbox 模式可复制：`execution_outbox`/`trace_outbox` + claim/lease + Redis Stream 派发（`bin/workflow-runtime.rs` 的 outbox/event 循环）。
+- Runtime 已有成熟 outbox 模式可复制：`execution_outbox`/`trace_outbox` + claim/lease + Redis Stream 派发（`bin/workflow-runtime.rs` 的 outbox/event 循环）。claim/lease/fencing 具体写法范本：`execution.rs:107-162`（SKIP LOCKED + fencing_token + 条件写全部带 owner+fencing+lease 未过期）、`trace_delivery.rs:337-435`（含 available_at 退避与 Redis Stream 丢失重建）。
+- 渠道凭证模板缺口（勘察新增）：`webhook_provider_templates.rs:40-91` 现只覆盖验签/长连接凭证（企微 token/encodingAESKey、钉钉 stream clientId/secret、飞书 appId/appSecret）；**出站所需的企微 corpid/corpsecret/agentid、钉钉正式 API robotCode 均不在模板中**，P7-A1 契约阶段必须补充（敏感值走 Vault，非敏感进 channel_config_json）。
+- builtin 原生节点是**纯函数无 IO**（`worker_runtime_builtin.rs:11-18`，拿不到 pool/Vault/HTTP）；worker 结果统一在 `engine.rs submit_worker_result_resolved` 的 MySQL 事务里结算——L2/L3「与 attempt 结算同事务入队」必须是两段式（见 §3.5）。
+- BFF 查询有完整先例：`runtime_bff.rs search_executions`（:381-520）权限过滤 → 请求 content_hash → delegation token → POST runtime 内部 query API → 回填名称；deliveries API 照抄该三件套。
+- `AGENTX_RUNTIME_ROLES` 白名单（`bin/workflow-runtime.rs:377-392`）与 helm values `runtime.services.workflowRuntime.roles` 均需新增 `delivery`。
 
 ## 3. 设计
 
@@ -60,6 +64,8 @@ delivery_dead_letters       -- 死信归档（超过 max attempts 的记录迁�
 - 投递记录是 Runtime 权威状态，与 `invocation_events` 同域；状态机由新的 delivery 投递循环推进；
 - `credential_ref_json` 与 target 均为投递时刻冻结快照，渠道配置后续修改不影响已入队投递（与 Bundle 冻结语义一致）；
 - 入队与 Execution 终态同事务提交（L1），或与回复节点 attempt 结算同事务（L2/L3），不依赖进程内存。
+- 幂等键的 origin 维度必须区分 L1 终态入队与 L2/L3 节点入队（同一 Execution 可能既有终态回复又有节点回复），键空间形如 `execution_id:{origin}:{seq}`，origin ∈ {terminal, node:{node_id}}；
+- `sessionWebhookExpiredTime` 为**毫秒**时间戳，投递循环判过期需毫秒→秒换算；`application_invocations.trigger_context_json` 即出站寻址权威数据源（webhook.rs `dispatch_event` :562-609 写入，含会话/发送者/sessionWebhook/过期时间）。
 
 ### 3.3 投递循环
 
@@ -73,7 +79,7 @@ claim (SKIP LOCKED, next_attempt_at <= now, status pending/retry)
   → 不可重试失败（4xx 凭证失效/目标不存在/内容超限）：直接 failed/dead
 ```
 
-投递事件写入 `invocation_events`（`delivery.completed` / `delivery.failed`），复用 SSE 游标流与 sse_wakeup，前端执行详情可见回复投递状态。
+投递事件写入 `invocation_events`（`delivery.completed` / `delivery.failed`），复用 SSE 游标流与 sse_wakeup，前端执行详情可见回复投递状态。注意（勘察新增）：gateway SSE 的唤醒由 sequencer 循环在处理 `execution_outbox` 的 `runtime_event` 行后触发——delivery 循环完成时必须**同时入队 runtime_event 类型的 execution_outbox 行**（携带 invocation_id）才能借既有链路触发 sse_wakeup，仅写 invocation_events 不够。
 
 ### 3.4 Provider Send Client
 
@@ -83,7 +89,7 @@ claim (SKIP LOCKED, next_attempt_at <= now, status pending/retry)
 | 飞书 | `POST /im/v1/messages`（chat_id + 渠道凭证换 tenant_access_token，token 短缓存） | receive_id_type=chat_id |
 | 企微 | 主动消息 API（userid/touser + 应用凭证换 access_token） | 不做被动同步回复 |
 
-- 出站全部经 egress-gateway：`egress.rs` 白名单机制为平台 API 域名单独放行（按 provider 服务分组的网络策略目标），Stream 模式建立的长连接本身在集群内，出站发消息仍走受控出口；
+- 出站全部经 egress-gateway（HTTPS CONNECT 隧道，复用 `ProviderHttpClient::from_env(EgressRole::WorkflowRuntime)`，`stream/mod.rs:45-77` 已示范）；因 gateway 无主机名白名单（见 §2），**域名管控在 Send Client 内实现**：目标 host 必须命中该 provider 的允许后缀（钉钉 `oapi.dingtalk.com`、飞书 `open.feishu.cn`、企微 `qyapi.weixin.qq.com`；sessionWebhook 的 host 单独校验钉钉域），不命中报 `DELIVERY_PROVIDER_REJECTED`；
 - 自研 client（与 plan4 §16.3 同一决策）：所需 API 面为单条消息发送 + token 刷新，预估每平台 100–300 行，`reqwest` 已有；
 - 回复内容首期只支持纯文本（Markdown 按平台能力可选），文件/图片回复明确不做（artifact 下载链接拼接属于模板能力，后续评估）。
 
@@ -104,6 +110,12 @@ send_message（L3）
 
 两者输出契约：`{ deliveryId, status: "queued" }`。节点执行不等待平台投递结果（与"Runtime 只返回快速 ACK"一致）；需要投递结果的场景由后续分支读 `delivery.completed` 事件或执行详情。
 
+实现形态（勘察新增，关键设计）：builtin 节点无 IO，采用**两段式**——
+
+1. 节点执行（纯函数）只渲染 content、产出结构化投递 intent（provider 无关），输出 `{ deliveryId, status: "queued" }`，其中 `deliveryId = deterministic_uuid(attempt_id, b"delivery:{node_key}")` **确定性派生**，保证节点输出与结算事务写入的 delivery_outbox 行 id 一致；
+2. `engine.rs submit_worker_result_resolved` 结算事务识别 node_type 为 `reply_message`/`send_message` 时，从 intent INSERT `delivery_outbox`（同事务，满足"入队与结算同事务"）；`reply_message` 的目标解析（ExecutionOrigin → invocation trigger_context）也在此处做，数据库 IO 只发生在结算侧；
+3. 非 IM 来源的 `reply_message`：结算侧解析不到目标时不产生 delivery 行，attempt 直接置失败 `REPLY_TARGET_UNRESOLVED`。
+
 ### 3.6 渠道配置扩展（L1）
 
 `application_webhooks.channel_config_json` 增加：
@@ -114,7 +126,7 @@ send_message（L3）
 ```
 
 - Control 校验 `outputField` 必须存在于当前 Workflow Start/输出 Schema 映射；`template` 只允许引用输出字段的变量模板；
-- 发布 Deployment 时随 trigger 清单一起冻结（复用 plan4 §15.1 的 revision 机制），Runtime 用冻结快照投递。
+- 发布 Deployment 时随 trigger 清单一起冻结（复用 plan4 §15.1 的 revision 机制），Runtime 用冻结快照投递。注意（勘察新增）：`RuntimeTriggerConfigurationV1` 是 `deny_unknown_fields`（contracts gateway.rs:121-141），`reply` 段落需要**三处联动**——契约 Webhook 变体加 `#[serde(default)] reply: Option<WebhookReplyConfigV1>`、`webhook_bindings` 迁移加 `reply_config_json` 列、`publish.rs apply_trigger_bindings`（:1076-1082 的快照列 upsert）写入该列；configuration_hash 自动覆盖新字段，revision 机制无需改。
 
 ### 3.7 API 与前端
 
@@ -137,6 +149,8 @@ POST /api/v1/deliveries/{deliveryId}:retry           -- 死信重放（权限 ap
 - [ ] 冻结 DeliveryOutboxV1、ProviderSendRequestV1、Trigger Context 出站字段（sessionWebhook/过期时间/conversation/sender）DTO；
 - [ ] 冻结 `reply_message`/`send_message` 节点 Manifest（参数 Schema、输出契约、错误码 `REPLY_TARGET_UNRESOLVED`/`SEND_CHANNEL_UNRESOLVED`/`DELIVERY_PROVIDER_REJECTED`）；
 - [ ] 更新 `contracts/openapi`（渠道 reply 配置、deliveries 查询/重试 API）与 Runtime Internal API 契约；
+- [ ] 出站凭证字段进 provider 模板（企微 corpid/corpsecret/agentid、钉钉 robotCode，敏感走 Vault、非敏感进 channel_config_json，见 §2 勘察新增）；
+- [ ] `docs/planv2/contracts/v2-schema-table-ownership.json` 登记 `delivery_outbox`/`delivery_dead_letters`（boundary check 对增量迁移 CREATE TABLE 强制校验，漏登记 `cargo xtask check` 失败）；
 - [ ] 更新 `docs/03-workflow-engine.md` 节点清单与 `docs/05-platform-business.md` 渠道章节。
 
 门禁：契约测试、Schema 测试、boundary check、OpenAPI diff 通过。
@@ -146,7 +160,7 @@ POST /api/v1/deliveries/{deliveryId}:retry           -- 死信重放（权限 ap
 - [ ] Runtime 新迁移：`delivery_outbox` + `delivery_dead_letters`；
 - [ ] delivery 投递循环 Role（lease + fencing + 退避重试 + 死信迁移）；
 - [ ] 三平台 Send Client（钉钉 sessionWebhook→API 回退、飞书 token+im/v1/messages、企微主动消息）；
-- [ ] egress-gateway 平台 API 域名白名单与网络策略目标；egress-smoke 覆盖三平台路径。
+- [ ] Send Client per-provider 域名后缀校验（gateway 无主机白名单，见 §3.4）；`AGENTX_RUNTIME_ROLES` 与 helm values 增加 `delivery` Role；egress-smoke 覆盖三平台路径。
 
 门禁：fixture 回放契约测试（平台 API mock：成功、限流、凭证失效、目标不存在）、投递重试与幂等测试、多副本投递循环测试（双副本无重复投递）。
 
@@ -158,8 +172,8 @@ POST /api/v1/deliveries/{deliveryId}:retry           -- 死信重放（权限 ap
 
 ### P7-A4 L2 回复消息节点
 
-- [ ] builtin manifest + 原生执行（ExecutionOrigin → Invocation Trigger Context 解析目标）；
-- [ ] 节点入队 delivery 同事务；非 IM 来源执行失败路径测试。
+- [ ] builtin manifest + 纯函数 intent 渲染（deliveryId 确定性派生，见 §3.5 两段式设计）；
+- [ ] `submit_worker_result_resolved` 结算事务入队 delivery（目标解析在结算侧）；非 IM 来源执行失败路径测试。
 
 ### P7-A5 L3 发送节点与发布门禁
 

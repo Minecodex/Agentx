@@ -138,14 +138,14 @@ pub(super) fn compile_agent_node(
             // compile and publish paths derive the same synthetic version id
             // so attachment descriptors still match runtime bindings.
             let resource_version_id = match reference.resource_type {
-                ResourceType::Rag | ResourceType::Memory => reference
-                    .resource_version_id
-                    .unwrap_or_else(|| {
+                ResourceType::Rag | ResourceType::Memory => {
+                    reference.resource_version_id.unwrap_or_else(|| {
                         agentx_runtime_contracts::deterministic_uuid(
                             reference.resource_id,
                             b"external-current",
                         )
-                    }),
+                    })
+                }
                 _ => reference
                     .resource_version_id
                     .expect("Agent attachment version validated"),

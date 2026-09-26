@@ -497,6 +497,8 @@ fn every_studio_manifest_parameter_has_an_explicit_runtime_consumer() {
                 "networkPolicy",
             ],
         ),
+        ("reply_message", &["content"]),
+        ("send_message", &["content", "channelId", "targetConversationId", "senderId"]),
     ]);
     let registry = agentx_runtime::NodeRegistry::m5_defaults();
     assert_eq!(registry.studio_manifests().count(), runtime_consumers.len());

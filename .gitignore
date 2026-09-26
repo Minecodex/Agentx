@@ -36,3 +36,4 @@ platform-api-test.err
 src/web/src/assets/hero.png
 /.commandcode/
 /.zcode/
+.zcodeignore

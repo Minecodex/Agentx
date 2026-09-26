@@ -1,0 +1,317 @@
+# RAGFlow fixture stack for cluster E2E, mirroring the official v0.20.0
+# docker-compose topology (server + elasticsearch + mysql + valkey + minio).
+# Ports and credentials follow docker/.env defaults so the in-image
+# service_conf.yaml.template substitutes without any mounted overrides.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ragflow
+  labels:
+    app.kubernetes.io/name: ragflow
+spec:
+  selector:
+    app.kubernetes.io/name: ragflow
+  ports:
+    - { name: http, port: 9380, targetPort: 9380 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ragflow
+  labels:
+    app.kubernetes.io/name: ragflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ragflow
+  template:
+    metadata:
+      labels:
+    app.kubernetes.io/name: ragflow
+    spec:
+      containers:
+        - name: ragflow
+          image: infiniflow/ragflow:v0.20.0-slim
+          ports:
+            - { name: http, containerPort: 9380 }
+          env:
+            - { name: TZ, value: UTC }
+            - { name: DOC_ENGINE, value: elasticsearch }
+            - { name: SVR_HTTP_PORT, value: "9380" }
+            - { name: REGISTER_ENABLED, value: "1" }
+            - { name: MYSQL_HOST, value: ragflow-mysql }
+            - { name: MYSQL_PORT, value: "3306" }
+            - { name: MYSQL_USER, value: root }
+            - { name: MYSQL_PASSWORD, value: infini_rag_flow }
+            - { name: MYSQL_DBNAME, value: rag_flow }
+            - { name: REDIS_HOST, value: ragflow-redis }
+            - { name: REDIS_PORT, value: "6379" }
+            - { name: REDIS_PASSWORD, value: infini_rag_flow }
+            - { name: ES_HOST, value: ragflow-es }
+            - { name: ES_USER, value: elastic }
+            - { name: ELASTIC_PASSWORD, value: infini_rag_flow }
+            - { name: MINIO_HOST, value: ragflow-minio }
+            - { name: MINIO_USER, value: rag_flow }
+            - { name: MINIO_PASSWORD, value: infini_rag_flow }
+          readinessProbe:
+            httpGet: { path: /v1/system/config, port: 9380 }
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            failureThreshold: 90
+          livenessProbe:
+            httpGet: { path: /v1/system/config, port: 9380 }
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            failureThreshold: 10
+          resources:
+            requests: { cpu: 250m, memory: 1Gi }
+            limits: { cpu: "2", memory: 3Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ragflow-es
+  labels:
+    app.kubernetes.io/name: ragflow-es
+spec:
+  selector:
+    app.kubernetes.io/name: ragflow-es
+  ports:
+    - { name: http, port: 9200, targetPort: 9200 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ragflow-es
+  labels:
+    app.kubernetes.io/name: ragflow-es
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ragflow-es
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ragflow-es
+    spec:
+      containers:
+        - name: es
+          image: elasticsearch:8.11.3
+          ports:
+            - { name: http, containerPort: 9200 }
+          env:
+            - { name: node.name, value: es01 }
+            - { name: ELASTIC_PASSWORD, value: infini_rag_flow }
+            - { name: bootstrap.memory_lock, value: "false" }
+            - { name: discovery.type, value: single-node }
+            - { name: xpack.security.enabled, value: "true" }
+            - { name: xpack.security.http.ssl.enabled, value: "false" }
+            - { name: xpack.security.transport.ssl.enabled, value: "false" }
+            - { name: cluster.routing.allocation.disk.watermark.low, value: 2gb }
+            - { name: cluster.routing.allocation.disk.watermark.high, value: 1gb }
+            - { name: cluster.routing.allocation.disk.watermark.flood_stage, value: 512mb }
+            - { name: ES_JAVA_OPTS, value: -Xms512m -Xmx512m }
+          readinessProbe:
+            exec:
+              command: ["/bin/bash", "-c", "curl -fs -u elastic:infini_rag_flow http://localhost:9200 >/dev/null"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+            requests: { cpu: 250m, memory: 768Mi }
+            limits: { cpu: "1", memory: 1536Mi }
+          volumeMounts:
+            - { name: data, mountPath: /usr/share/elasticsearch/data }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: ragflow-es-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ragflow-es-data
+  labels:
+    app.kubernetes.io/name: ragflow-es
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 4Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ragflow-mysql
+  labels:
+    app.kubernetes.io/name: ragflow-mysql
+spec:
+  selector:
+    app.kubernetes.io/name: ragflow-mysql
+  ports:
+    - { name: mysql, port: 3306, targetPort: 3306 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ragflow-mysql
+  labels:
+    app.kubernetes.io/name: ragflow-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ragflow-mysql
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ragflow-mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0.39
+          ports:
+            - { name: mysql, containerPort: 3306 }
+          env:
+            - { name: MYSQL_ROOT_PASSWORD, value: infini_rag_flow }
+            - { name: MYSQL_DATABASE, value: rag_flow }
+            - { name: TZ, value: UTC }
+          args:
+            - --max_connections=600
+            - --character-set-server=utf8mb4
+            - --collation-server=utf8mb4_unicode_ci
+            - --default-authentication-plugin=mysql_native_password
+          readinessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-uroot", "-pinfini_rag_flow"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 768Mi }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/mysql }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: ragflow-mysql-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ragflow-mysql-data
+  labels:
+    app.kubernetes.io/name: ragflow-mysql
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 4Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ragflow-redis
+  labels:
+    app.kubernetes.io/name: ragflow-redis
+spec:
+  selector:
+    app.kubernetes.io/name: ragflow-redis
+  ports:
+    - { name: redis, port: 6379, targetPort: 6379 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ragflow-redis
+  labels:
+    app.kubernetes.io/name: ragflow-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ragflow-redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ragflow-redis
+    spec:
+      containers:
+        - name: redis
+          image: valkey/valkey:8
+          ports:
+            - { name: redis, containerPort: 6379 }
+          args: ["redis-server", "--requirepass", "infini_rag_flow", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "-a", "infini_rag_flow", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 192Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ragflow-minio
+  labels:
+    app.kubernetes.io/name: ragflow-minio
+spec:
+  selector:
+    app.kubernetes.io/name: ragflow-minio
+  ports:
+    - { name: http, port: 9000, targetPort: 9000 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ragflow-minio
+  labels:
+    app.kubernetes.io/name: ragflow-minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ragflow-minio
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ragflow-minio
+    spec:
+      containers:
+        - name: minio
+          image: quay.io/minio/minio:RELEASE.2025-06-13T11-33-47Z
+          ports:
+            - { name: http, containerPort: 9000 }
+          env:
+            - { name: MINIO_ROOT_USER, value: rag_flow }
+            - { name: MINIO_ROOT_PASSWORD, value: infini_rag_flow }
+          args: ["server", "--console-address", ":9001", "/data"]
+          readinessProbe:
+            httpGet: { path: /minio/health/live, port: 9000 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 12
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: ragflow-minio-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ragflow-minio-data
+  labels:
+    app.kubernetes.io/name: ragflow-minio
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 4Gi

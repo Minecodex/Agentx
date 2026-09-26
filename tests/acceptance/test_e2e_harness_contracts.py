@@ -32,15 +32,16 @@ def test_scale_down_keeps_the_ingress_admission_controller_available() -> None:
 
 def test_playwright_harness_uses_the_windows_executable_shim_and_new_stage_name() -> None:
     source = Path("tests/e2e/product/test_playwright.py").read_text(encoding="utf-8")
+    harness = Path("tests/e2e/support.py").read_text(encoding="utf-8")
 
-    assert '("corepack.cmd", "pnpm") if os.name == "nt" else ("corepack", "pnpm")' in source
+    assert '("corepack.cmd", "pnpm") if os.name == "nt" else ("corepack", "pnpm")' in harness
     assert 'environment["AGENTX_E2E_STAGE"] = "helm-agentxctl"' in source
     assert 'environment["AGENTX_V2_08_CONTEXT_OUTPUT"]' in source
     assert '"tests/v2-08-api-first.spec.ts"' in source
     assert '"tests/m2.1-control-plane.spec.ts"' in source
     assert '"tests/m6-workflow-studio.spec.ts"' in source
-    assert '[*pnpm, "--filter", "@agentx/e2e", "exec", "playwright", "test", *tests]' in source
-    assert '[pnpm, "--filter", "@agentx/e2e", "test"]' not in source
+    assert '[*pnpm, "--filter", "@agentx/e2e", "exec", "playwright", "test", *tests, *snapshot_args]' in harness
+    assert '[pnpm, "--filter", "@agentx/e2e", "test"]' not in harness
 
 
 def test_control_plane_selects_its_scoped_echo_mcp_fixture() -> None:

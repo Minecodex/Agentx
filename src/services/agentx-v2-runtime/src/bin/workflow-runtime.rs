@@ -221,6 +221,23 @@ async fn main() -> Result<()> {
             },
         ));
     }
+    if roles.contains("delivery") {
+        let delivery_pool = pool.clone();
+        let delivery_state = state.clone();
+        let role_lifecycle = lifecycle.clone();
+        tasks.spawn(supervise_role(
+            "delivery",
+            lifecycle.clone(),
+            health.clone(),
+            metrics.clone(),
+            move |progress| {
+                let pool = delivery_pool.clone();
+                let state = delivery_state.clone();
+                let lifecycle = role_lifecycle.clone();
+                async move { delivery_loop(pool, state, owner, lifecycle, progress).await }
+            },
+        ));
+    }
     anyhow::ensure!(!tasks.is_empty(), "AGENTX_RUNTIME_ROLES selected no role");
     let service_lifecycle = lifecycle.clone();
     let service_metrics = metrics.clone();
@@ -386,6 +403,7 @@ fn runtime_roles() -> Result<std::collections::BTreeSet<String>> {
                 | "artifact"
                 | "quota"
                 | "trace-relay"
+                | "delivery"
         )),
         "AGENTX_RUNTIME_ROLES contains an unsupported role"
     );
@@ -597,6 +615,164 @@ async fn trace_relay_loop(
             }
         }
         progress.processed_since(started).await;
+    }
+}
+
+/// Delivery loop (plan7 P7-A): claims delivery_outbox rows, sends through the
+/// provider clients and records the delivery outcome on the invocation event
+/// stream so the SSE consumers see reply state transitions. Wakeup rides the
+/// existing sequencer: the runtime_event row enqueued with the outcome is
+/// processed by the event-sequencer role which publishes sse_wakeup.
+async fn delivery_loop(
+    pool: sqlx::MySqlPool,
+    state: agentx_v2_runtime::RuntimeState,
+    owner: Uuid,
+    lifecycle: agentx_service_kit::ServiceLifecycle,
+    progress: agentx_service_kit::RoleProgressWatchdog,
+) -> Result<()> {
+    let http = agentx_v2_runtime::egress::ProviderHttpClient::from_env(
+        agentx_runtime_contracts::EgressRole::WorkflowRuntime,
+    )?;
+    let Some(vault) = state.vault.clone() else {
+        anyhow::bail!("delivery role requires the runtime vault");
+    };
+    loop {
+        if lifecycle.is_draining() {
+            return Ok(());
+        }
+        let started = std::time::Instant::now();
+        let Some(claim) = agentx_v2_runtime::delivery::claim(&pool, owner).await? else {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            progress.processed_since(started).await;
+            continue;
+        };
+        let outcome = agentx_v2_runtime::delivery_send::send(&vault, &http, &claim).await;
+        let event_payload = match &outcome {
+            Ok(provider_message_id) => {
+                if let Err(error) = agentx_v2_runtime::delivery::complete(
+                    &pool,
+                    &claim,
+                    provider_message_id.as_deref(),
+                )
+                .await
+                {
+                    tracing::warn!(%error, delivery_id = %claim.id, "Delivery complete lost lease");
+                }
+                serde_json::json!({
+                    "deliveryId": claim.id,
+                    "status": "delivered",
+                    "provider": claim.provider,
+                    "providerMessageId": provider_message_id,
+                })
+            }
+            Err(error) => {
+                let result = if error.retryable {
+                    agentx_v2_runtime::delivery::fail_retryable(
+                        &pool,
+                        &claim,
+                        error.code,
+                        &error.message,
+                    )
+                    .await
+                } else {
+                    agentx_v2_runtime::delivery::dead(&pool, &claim, error.code, &error.message)
+                        .await
+                };
+                if let Err(failure) = result {
+                    tracing::warn!(%failure, delivery_id = %claim.id, "Delivery failure update lost lease");
+                }
+                serde_json::json!({
+                    "deliveryId": claim.id,
+                    "status": if error.retryable { "retry_scheduled" } else { "dead" },
+                    "provider": claim.provider,
+                    "errorCode": error.code,
+                    "errorMessage": error.message,
+                })
+            }
+        };
+        record_delivery_event(&pool, &claim, event_payload).await;
+        progress.processed_since(started).await;
+    }
+}
+
+async fn record_delivery_event(
+    pool: &sqlx::MySqlPool,
+    claim: &agentx_v2_runtime::delivery::DeliveryClaim,
+    payload: serde_json::Value,
+) {
+    // invocation_events is keyed by invocation; send_message deliveries that
+    // run outside an invocation only publish the runtime_event row.
+    if claim.invocation_id.is_none() {
+        let inserted = sqlx::query(
+            "INSERT INTO execution_outbox(id,tenant_id,execution_id,message_type,payload_json,status) VALUES(?,?,?,'runtime_event',?,'pending')",
+        )
+        .bind(Uuid::now_v7())
+        .bind(claim.tenant_id)
+        .bind(claim.execution_id)
+        .bind(serde_json::json!({"type": "delivery.completed", "deliveryId": claim.id}))
+        .execute(pool)
+        .await;
+        if let Err(error) = inserted {
+            tracing::warn!(%error, delivery_id = %claim.id, "Delivery outbox event insert failed");
+        }
+        return;
+    }
+    let Ok(mut tx) = pool.begin().await else {
+        tracing::warn!(delivery_id = %claim.id, "Delivery event transaction failed to start");
+        return;
+    };
+    let event_type =
+        if payload.get("status").and_then(serde_json::Value::as_str) == Some("delivered") {
+            "delivery.completed"
+        } else {
+            "delivery.failed"
+        };
+    let next: Option<u64> = sqlx::query_scalar(
+        "SELECT CAST(COALESCE(MAX(sequence_number),0)+1 AS UNSIGNED) FROM invocation_events WHERE tenant_id=? AND invocation_id=? FOR UPDATE",
+    )
+    .bind(claim.tenant_id)
+    .bind(claim.invocation_id)
+    .fetch_one(&mut *tx)
+    .await
+    .ok();
+    let Some(next) = next else {
+        return;
+    };
+    let inserted = sqlx::query(
+        "INSERT INTO invocation_events(tenant_id,invocation_id,event_id,sequence_number,event_type,payload_json) VALUES(?,?,?,?,?,?)",
+    )
+    .bind(claim.tenant_id)
+    .bind(claim.invocation_id)
+    .bind(Uuid::now_v7())
+    .bind(next)
+    .bind(event_type)
+    .bind(&payload)
+    .execute(&mut *tx)
+    .await;
+    let outboxed = sqlx::query(
+        "INSERT INTO execution_outbox(id,tenant_id,execution_id,message_type,payload_json,status) VALUES(?,?,?,'runtime_event',?,'pending')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(claim.tenant_id)
+    .bind(claim.execution_id)
+    .bind(serde_json::json!({"type": event_type, "deliveryId": claim.id}))
+    .execute(&mut *tx)
+    .await;
+    match (inserted, outboxed) {
+        (Ok(_), Ok(_)) => {
+            if let Err(error) = tx.commit().await {
+                tracing::warn!(%error, delivery_id = %claim.id, "Delivery event commit failed");
+            }
+        }
+        (error_insert, error_outbox) => {
+            let _ = tx.rollback().await;
+            tracing::warn!(
+                ?error_insert,
+                ?error_outbox,
+                delivery_id = %claim.id,
+                "Delivery event insert failed"
+            );
+        }
     }
 }
 

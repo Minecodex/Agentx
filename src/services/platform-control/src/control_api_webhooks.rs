@@ -7,7 +7,7 @@ pub(super) async fn list_webhooks(
 ) -> ApiResult<Json<Vec<WebhookResponse>>> {
     actor.require("application:view")?;
     require_application(&state, &actor, application_id).await?;
-    let rows = sqlx::query("SELECT id,name,public_id,status,version,provider_type,channel_mode,channel_config_json,input_mapping_json,fixed_inputs_json,configuration_revision FROM application_webhooks WHERE tenant_id=? AND application_id=? ORDER BY created_at DESC")
+    let rows = sqlx::query("SELECT id,name,public_id,status,version,provider_type,channel_mode,channel_config_json,reply_config_json,input_mapping_json,fixed_inputs_json,configuration_revision FROM application_webhooks WHERE tenant_id=? AND application_id=? ORDER BY created_at DESC")
         .bind(actor.tenant_id).bind(application_id).fetch_all(&state.pool).await?;
     let mut responses = rows
         .into_iter()
@@ -105,6 +105,7 @@ pub(super) async fn create_webhook(
         &input.provider_type,
         &input.channel_mode,
         input.channel_config.as_ref(),
+        input.reply.as_ref(),
         &input.input_mappings,
         &input.fixed_inputs,
     )
@@ -134,13 +135,20 @@ pub(super) async fn create_webhook(
         (None, reference, Value::Object(public))
     };
     let mut tx = state.pool.begin().await?;
-    sqlx::query("INSERT INTO application_webhooks(id,tenant_id,application_id,name,public_id,secret_ref_json,provider_type,channel_mode,channel_config_json,input_mapping_json,fixed_inputs_json,status,configuration_revision,configuration_hash,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,'active',1,?,?)")
+    let reply_json = input
+        .reply
+        .as_ref()
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(ApiError::internal)?;
+    sqlx::query("INSERT INTO application_webhooks(id,tenant_id,application_id,name,public_id,secret_ref_json,provider_type,channel_mode,channel_config_json,reply_config_json,input_mapping_json,fixed_inputs_json,status,configuration_revision,configuration_hash,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'active',1,?,?)")
         .bind(webhook_id).bind(actor.tenant_id).bind(application_id).bind(name).bind(&public_id)
         .bind(serde_json::to_value(&secret_reference).map_err(ApiError::internal)?)
         .bind(&input.provider_type).bind(&input.channel_mode).bind(&channel_config_json)
+        .bind(&reply_json)
         .bind(serde_json::to_value(&input.input_mappings).map_err(ApiError::internal)?)
         .bind(if input.fixed_inputs.is_null() { json!({}) } else { input.fixed_inputs.clone() })
-        .bind(agentx_runtime_contracts::content_hash(&json!({"publicId":public_id,"secret":secret_reference,"provider":input.provider_type,"mode":input.channel_mode,"mapping":input.input_mappings,"fixed":input.fixed_inputs,"enabled":true})).map_err(ApiError::internal)?.as_str())
+        .bind(agentx_runtime_contracts::content_hash(&json!({"publicId":public_id,"secret":secret_reference,"provider":input.provider_type,"mode":input.channel_mode,"reply":reply_json,"mapping":input.input_mappings,"fixed":input.fixed_inputs,"enabled":true})).map_err(ApiError::internal)?.as_str())
         .bind(actor.user_id).execute(&mut *tx).await?;
     rebuild_trigger_revision(&mut tx, &actor, application_id).await?;
     tx.commit().await?;
@@ -190,6 +198,7 @@ pub(super) async fn update_webhook(
         &input.provider_type,
         &input.channel_mode,
         input.channel_config.as_ref(),
+        input.reply.as_ref(),
         &input.input_mappings,
         &input.fixed_inputs,
     )
@@ -235,8 +244,14 @@ pub(super) async fn update_webhook(
         (None, reference, Value::Object(public))
     };
     let mut tx = state.pool.begin().await?;
-    let changed = sqlx::query("UPDATE application_webhooks SET name=?,status=?,provider_type=?,channel_mode=?,channel_config_json=?,input_mapping_json=?,fixed_inputs_json=?,secret_ref_json=?,version=version+1,configuration_revision=configuration_revision+1 WHERE tenant_id=? AND application_id=? AND id=? AND version=?")
-        .bind(required_name(&input.name)?).bind(&input.status).bind(&input.provider_type).bind(&input.channel_mode).bind(&channel_config_json).bind(serde_json::to_value(&input.input_mappings).map_err(ApiError::internal)?)
+    let reply_json = input
+        .reply
+        .as_ref()
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(ApiError::internal)?;
+    let changed = sqlx::query("UPDATE application_webhooks SET name=?,status=?,provider_type=?,channel_mode=?,channel_config_json=?,reply_config_json=?,input_mapping_json=?,fixed_inputs_json=?,secret_ref_json=?,version=version+1,configuration_revision=configuration_revision+1 WHERE tenant_id=? AND application_id=? AND id=? AND version=?")
+        .bind(required_name(&input.name)?).bind(&input.status).bind(&input.provider_type).bind(&input.channel_mode).bind(&channel_config_json).bind(&reply_json).bind(serde_json::to_value(&input.input_mappings).map_err(ApiError::internal)?)
         .bind(if input.fixed_inputs.is_null() { json!({}) } else { input.fixed_inputs.clone() }).bind(serde_json::to_value(&secret_reference).map_err(ApiError::internal)?).bind(actor.tenant_id).bind(application_id).bind(webhook_id).bind(input.version).execute(&mut *tx).await?;
     if changed.rows_affected() != 1 {
         return Err(ApiError::conflict(
@@ -244,9 +259,9 @@ pub(super) async fn update_webhook(
             "Webhook changed on the server",
         ));
     }
-    let row = sqlx::query("SELECT public_id,secret_ref_json,configuration_revision,status,provider_type,channel_mode,input_mapping_json,fixed_inputs_json FROM application_webhooks WHERE tenant_id=? AND id=?")
+    let row = sqlx::query("SELECT public_id,secret_ref_json,configuration_revision,status,provider_type,channel_mode,input_mapping_json,fixed_inputs_json,reply_config_json FROM application_webhooks WHERE tenant_id=? AND id=?")
         .bind(actor.tenant_id).bind(webhook_id).fetch_one(&mut *tx).await?;
-    let hash = agentx_runtime_contracts::content_hash(&json!({"publicId":row.try_get::<String,_>("public_id")?,"secret":row.try_get::<Value,_>("secret_ref_json")?,"provider":row.try_get::<String,_>("provider_type")?,"mode":row.try_get::<Option<String>,_>("channel_mode")?,"mapping":row.try_get::<Option<Value>,_>("input_mapping_json")?,"fixed":row.try_get::<Option<Value>,_>("fixed_inputs_json")?,"revision":row.try_get::<u64,_>("configuration_revision")?,"enabled":row.try_get::<String,_>("status")? == "active"})).map_err(ApiError::internal)?;
+    let hash = agentx_runtime_contracts::content_hash(&json!({"publicId":row.try_get::<String,_>("public_id")?,"secret":row.try_get::<Value,_>("secret_ref_json")?,"provider":row.try_get::<String,_>("provider_type")?,"mode":row.try_get::<Option<String>,_>("channel_mode")?,"mapping":row.try_get::<Option<Value>,_>("input_mapping_json")?,"fixed":row.try_get::<Option<Value>,_>("fixed_inputs_json")?,"reply":row.try_get::<Option<Value>,_>("reply_config_json")?,"revision":row.try_get::<u64,_>("configuration_revision")?,"enabled":row.try_get::<String,_>("status")? == "active"})).map_err(ApiError::internal)?;
     sqlx::query("UPDATE application_webhooks SET configuration_hash=? WHERE tenant_id=? AND id=?")
         .bind(hash.as_str())
         .bind(actor.tenant_id)
@@ -396,7 +411,7 @@ pub(super) async fn rebuild_trigger_revision(
     .ok_or_else(|| ApiError::not_found("Application"))?;
     let revision = current + 1;
     let mut triggers = Vec::new();
-    let webhooks = sqlx::query("SELECT id,name,public_id,secret_ref_json,status,configuration_revision,provider_type,channel_mode,input_mapping_json,fixed_inputs_json FROM application_webhooks WHERE tenant_id=? AND application_id=? ORDER BY id")
+    let webhooks = sqlx::query("SELECT id,name,public_id,secret_ref_json,status,configuration_revision,provider_type,channel_mode,input_mapping_json,fixed_inputs_json,reply_config_json FROM application_webhooks WHERE tenant_id=? AND application_id=? ORDER BY id")
         .bind(actor.tenant_id).bind(application_id).fetch_all(&mut **tx).await?;
     for row in webhooks {
         let provider_type: Option<String> = row.try_get("provider_type")?;
@@ -407,6 +422,11 @@ pub(super) async fn rebuild_trigger_revision(
             .transpose()
             .map_err(ApiError::internal)?
             .unwrap_or_default();
+        let reply = row
+            .try_get::<Option<Value>, _>("reply_config_json")?
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(ApiError::internal)?;
         let configuration = RuntimeTriggerConfigurationV1::Webhook {
             public_id: row.try_get("public_id")?,
             secret: serde_json::from_value(row.try_get("secret_ref_json")?)
@@ -417,6 +437,7 @@ pub(super) async fn rebuild_trigger_revision(
             fixed_inputs: row
                 .try_get::<Option<Value>, _>("fixed_inputs_json")?
                 .unwrap_or_else(|| json!({})),
+            reply,
         };
         let hash =
             agentx_runtime_contracts::content_hash(&configuration).map_err(ApiError::internal)?;

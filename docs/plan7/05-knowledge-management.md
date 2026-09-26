@@ -21,7 +21,8 @@
 - API：`/api/v1/knowledge/connections`（含 test-connection 落 `resource_health_checks`）与 `/api/v1/knowledge/resources`（`external_resource_api.rs:22-58`，权限 knowledge:view/manage）；六态授权覆盖 rag（`resource_api.rs:86`）；快照与 Runtime binding 已通（`workflow_resources.rs:603-639`、`runtime_resource_binding.rs:181-191`）；
 - Runtime RAG 协议私有于 runtime crate：`rag_query_request`/`finalize_rag_response`（`worker_runtime_output.rs:487-616`，LightRAG query + `documents/text` insert、RAGFlow `api/v1/retrieval`）；Agent 附件槽复用同一套（`worker_runtime_agent_core.rs:1596-1636`）；
 - 前端仅两个小文件：`knowledge-page.tsx`（33 行，连接+资源创建）与 `knowledge-detail-page.tsx`（24 行，键值详情 + 测试连接按钮）——无文档列表、上传、检索测试；
-- egress 白名单默认含 lightrag，ragflow 需显式加入（`egress.rs:560-563`）；
+- egress 白名单默认含 lightrag，ragflow 需显式加入（`egress.rs:561-570`）；该白名单只在 runtime/egress-gateway 生效，与 Control 无关；
+- 勘察新增（E3 的真实成本，先决定案 5）：Control **从不读 Vault secret**（唯一直连外部依赖是 Vault 写/销毁，`credential_api.rs:261-303`），NetworkPolicy 也**没有**到 dependencies 里 LightRAG/RAGFlow 的规则（`networkpolicy-control-egress.yaml` 只放行 control-mysql / runtime与observability internal-api / object-storage / vault / kube-dns）——「Control 直连」需补三件事：NetworkPolicy 规则（dependencies Namespace + `agentx.io/runtime-provider: allowed` 标签 + 9621/9380 端口）、Vault 读 helper（`GET /v1/{mount}/data/{path}?version=n`，token 已有 `state.vault_token`）、endpoint 安全校验（`external_resource_api.rs:363-370` 已有 http/https 校验先例）。另注意 test-connection 现状也是**委托 Runtime** 执行（`execute_runtime_resource_check` → runtime `resource_check.rs`），并非 Control 直连先例；Control 的 HTTP client（`state.http`）已有 runtime internal + Vault 写两个使用点，可复用；
 - 可复用模式：Skill 上传（multipart + artifacts 表 + `MySqlControlArtifactStore`，`skill_api.rs:645-727、1022-1070`，20MiB/文件上限先例）；MCP 受控调试（`debug-invoke` 确认语义，`mcp_api.rs:561-619`）；Dataset 版本化导入（`dataset_api.rs:409-523`）；e2e fixture `e2e_providers`（LightRAG 集群内实例）。
 
 ## 3. 设计
@@ -44,26 +45,28 @@ rag_resources.sync_status 语义激活：有文档在 indexing 时 syncing，全
 
 不建本地 chunks 表——分段预览以 hit-testing 返回的 chunk 为准（外部服务是分段事实源，本地缓存会双源漂移）。
 
+勘察新增（建表硬门禁与引用注册）：新表必须登记 `docs/planv2/contracts/v2-schema-table-ownership.json`（boundary check 对增量迁移的 CREATE TABLE 强制校验五字段非空，漏登记 `cargo xtask check` 失败）；`knowledge_documents.artifact_id` 需写 `artifact_references` 表注册引用（retention 依赖 `artifact_reference_reason`，不注册的 artifact 会被误判可清理）；`rag_resources` 删除时需先检查 knowledge_documents 存在性（现 `delete_resource` 只查 workflow 引用，:646-672）。
+
 ### 3.2 文档上传与索引（LightRAG）
 
 - `POST /api/v1/knowledge/resources/{id}/documents`（multipart，仿 skill 上传）：校验 content_type 白名单与大小上限（首期 8MiB/文件，单资源 200 文档/256MiB 总量）→ 原件入 artifacts → 行 status=uploading → 触发索引；
-- 索引执行：Control 侧调用 LightRAG `POST {endpoint}/documents/text`（协议已有：workspace=external_resource_id、indexVersion 注入、`x-api-key`，凭证经 Vault 快照）→ 成功 status=indexed + external_document_id + indexed_at；失败 status=failed + 错误码；
+- 索引执行：Control 侧调用 LightRAG `POST {endpoint}/documents/text`（协议已有：workspace=external_resource_id、indexVersion 注入、`x-api-key`，凭证经 Vault 快照）→ 成功 status=indexed + external_document_id + indexed_at；失败 status=failed + 错误码。勘察新增两个注意：`documents/text` 的响应结构**仓库内从未被消费过**（只有 e2e 经 runtime insert 间接覆盖），external_document_id 的实际取值需对 LightRAG 实测确定后冻结；管理面上传的 indexVersion 必须与 runtime worker insert 同源——都从 `rag_resources.version` 派生，否则同 workspace 出现不同 indexVersion、破坏验收 7 的同源验证；
 - 索引为同步小任务还是后台任务：**首期同步执行**（文本直传 HTTP，秒级），超时 60s；失败不阻塞其他文档；
-- 删除：`DELETE .../documents/{docId}` —— LightRAG 无标准删除协议的边界：首期只删平台记录与 artifact，不回撤外部索引（文档明示"外部索引需在外部服务清理"）；如 LightRAG 提供 `documents/delete` 则调用并以响应为准；
+- 删除：`DELETE .../documents/{docId}` —— LightRAG 无标准删除协议的边界：首期只删平台记录与 artifact，不回撤外部索引（文档明示"外部索引需在外部服务清理"）；如 LightRAG 提供 `documents/delete` 则调用并以响应为准。勘察新增：现有 `rag_query_request` 对未知 operation **静默落到 `/query`**（LightRAG 分支只区分 insert/非 insert，`worker_runtime_output.rs` 内）——共享协议抽取时必须显式拦截 delete 等未支持 operation，否则删除语义会被误发成查询；
 - 列表：`GET .../documents`（分页、状态筛选）。
 
 ### 3.3 RAG 协议抽取共享
 
 `rag_query_request`/`finalize_rag_response` 从 runtime crate 抽到共享 crate（`agentx-runtime-contracts` 或 `agentx-node-protocol`，按边界检查工具裁定；倾向 contracts——它是纯协议无执行依赖）：
 
-- Runtime worker 与 Agent 附件槽改为引用共享实现（行为不变，既有协议测试随迁）；
-- Control hit-testing 与文档索引复用同一协议构造，避免两处协议漂移。
+- Runtime worker 与 Agent 附件槽改为引用共享实现（行为不变，既有协议测试随迁）。勘察新增（E2 主要工作量）：`rag_query_request`/`finalize_rag_response` 是 `pub(super)` 且返回 runtime 私有类型 `WorkerExecution`——抽取必须先在 contracts 定义纯结果类型（如 `RagProtocolOutcome { status, value | error_code, error_message, retryable }`），runtime 侧做两侧适配；4 组既有协议测试（`worker_runtime_output.rs:665-770`）随迁。协议本身不依赖 reqwest/egress（HTTP 在 `call_http`），纯函数可下沉；boundary check 禁止 contracts 依赖 sqlx/redis/axum，serde/serde_json 无碍；建议放 contracts 新 `rag.rs`（与 `RuntimeResourceConfigurationV1::Rag` 同 crate 自洽）；
+- Control hit-testing 与文档索引复用同一协议构造，避免两处协议漂移；hit-testing 的 chunk 展示复用 `knowledge_result_from_execution` 的字段兼容清单（documentId/document_id/document/id、chunkId/chunk_id/chunk、score/similarity/distance，`worker_runtime_agent_attachments.rs:192-280`），一并下沉共享。
 
 ### 3.4 hit-testing（检索调试）
 
 - `POST /api/v1/knowledge/resources/{id}/retrieval-test`，body `{ query, topK? }`（topK 1..=20）；
 - 语义仿 MCP debug-invoke：权限 `knowledge:manage`、记录历史（复用 `resource_health_checks` 模式新表或轻量 `rag_retrieval_tests`：query、topK、命中数、耗时、created_by/created_at——首期直接复用 health 表加 kind 字段亦可，按简单原则定）；
-- 执行：Control 直连外部服务（query 协议走共享实现）；结果复用 `rag_execution_output` 归一（documents/citations/recordIds/score），脱敏规则与执行链一致（不记录完整请求体）；
+- 执行：Control 直连外部服务（query 协议走共享实现）；结果复用 `rag_execution_output` 归一（documents/citations/recordIds/score），脱敏规则与执行链一致（不记录完整请求体）。勘察新增：凭证 header 统一走共享协议的 `x-api-key`（lightrag）/`authorization`（ragflow）——现状 test-connection 的 Runtime HttpGet 探针用 `bearer_auth`，与真实调用的 `x-api-key` 存在分叉（LightRAG 两者都接受所以测试通过），语义应统一；
 - RAGFlow 同样支持（retrieval 协议已有，external_resource_id 即 dataset_ids）；
 - 失败映射：`PROVIDER_UNAVAILABLE`/`PROVIDER_REJECTED` 透出，前端展示原始错误。
 
@@ -86,7 +89,7 @@ rag_resources.sync_status 语义激活：有文档在 indexing 时 syncing，全
 
 ### P7-E1 契约冻结
 
-- [ ] `knowledge_documents` DDL 与文档 API、retrieval-test API 契约（OpenAPI 再生成）；
+- [ ] `knowledge_documents` DDL（control 迁移 0011）与文档 API、retrieval-test API 契约（OpenAPI 再生成）；`v2-schema-table-ownership.json` 登记新表 + `artifact_references` 引用注册设计（见 §3.1 勘察新增）；
 - [ ] content_type 白名单、大小/数量上限、错误码冻结（`KNOWLEDGE_DOCUMENT_TYPE_UNSUPPORTED`、`KNOWLEDGE_DOCUMENT_TOO_LARGE`、`KNOWLEDGE_DOCUMENT_DUPLICATED`、`KNOWLEDGE_INDEX_FAILED`）；
 - [ ] 更新 `docs/05-platform-business.md` 知识库章节与 `docs/13-architecture-service-data-map.md` 表目录。
 
@@ -101,7 +104,7 @@ rag_resources.sync_status 语义激活：有文档在 indexing 时 syncing，全
 
 - [ ] 文档 API（上传/列表/删除）+ artifacts 存储 + 上限校验；
 - [ ] LightRAG 索引调用 + 状态回写 + `rag_resources.sync_status` 激活；
-- [ ] 凭证与 egress：Control 出网访问 LightRAG 的网络路径确认（Control 面访问 dependencies 命名空间，NetworkPolicy 白名单补规则）。
+- [ ] 凭证与 egress：Control 出网三件套——NetworkPolicy 补 dependencies 规则（9621/9380 + provider 标签选择器）、Vault 读 helper、endpoint 安全校验（见 §2 勘察新增）。
 
 ### P7-E4 hit-testing
 
@@ -110,7 +113,7 @@ rag_resources.sync_status 语义激活：有文档在 indexing 时 syncing，全
 
 ### P7-E5 前端
 
-- [ ] 详情页三区重构 + 上传交互 + 状态轮询 + hit-testing 面板；
+- [ ] 详情页三区重构 + 上传交互（dropzone 抽共享组件，skill 页有同需求）+ 状态轮询 + hit-testing 面板；后端文档/检索 API 独立模块（如 `knowledge_document_api.rs`——external_resource_api.rs 已 840 行，不再往里加）；顺带统一 `knowledge:delete`（前端在用）与后端 `knowledge:manage` 的权限口径；
 - [ ] i18n 双语、深浅主题、空态/错误态；
 - [ ] vitest + Playwright knowledge 域用例。
 

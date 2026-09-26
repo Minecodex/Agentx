@@ -20,3 +20,4 @@ spec:
         - { protocol: TCP, port: 8090 }
         - { protocol: TCP, port: 9621 }
         - { protocol: TCP, port: 8000 }
+        - { protocol: TCP, port: 9380 }

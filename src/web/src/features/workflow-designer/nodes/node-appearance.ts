@@ -20,7 +20,7 @@ const VISUAL_GROUPS: Record<string, NodeVisualGroup> = {
   agent: 'ai', model: 'ai',
   if: 'logic', merge: 'logic', loop_over_items: 'logic', approval: 'logic',
   code: 'transform', set: 'transform', list: 'transform',
-  declarative_http: 'integrate', sub_workflow: 'integrate',
+  declarative_http: 'integrate', sub_workflow: 'integrate', reply_message: 'integrate', send_message: 'integrate',
   exit: 'output',
 }
 

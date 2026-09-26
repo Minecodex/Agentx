@@ -1595,6 +1595,9 @@
               "agentx"
             ],
             "type": "string"
+          },
+          "reply": {
+            "$ref": "#/components/schemas/WebhookReplyConfig"
           }
         },
         "required": [
@@ -7421,6 +7424,9 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "reply": {
+            "$ref": "#/components/schemas/WebhookReplyConfig"
           }
         },
         "required": [
@@ -7764,6 +7770,9 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "reply": {
+            "$ref": "#/components/schemas/WebhookReplyConfig"
           }
         },
         "required": [
@@ -8588,6 +8597,211 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "WebhookReplyConfig": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "outputField"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "outputField": {
+            "type": "string"
+          },
+          "template": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliverySummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "executionId",
+          "channelBindingId",
+          "provider",
+          "origin",
+          "status",
+          "attemptCount",
+          "payload",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "applicationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "invocationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "executionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "channelBindingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "delivering",
+              "delivered",
+              "failed",
+              "dead"
+            ]
+          },
+          "attemptCount": {
+            "type": "integer"
+          },
+          "lastErrorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastErrorMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "providerMessageId": {
+            "type": "string",
+            "nullable": true
+          },
+          "payload": {
+            "type": "object"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliveryDetail": {
+        "type": "object",
+        "required": [
+          "id",
+          "executionId",
+          "channelBindingId",
+          "provider",
+          "origin",
+          "status",
+          "attemptCount",
+          "payload",
+          "target",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "applicationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "invocationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "executionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "channelBindingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "delivering",
+              "delivered",
+              "failed",
+              "dead"
+            ]
+          },
+          "attemptCount": {
+            "type": "integer"
+          },
+          "lastErrorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastErrorMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "providerMessageId": {
+            "type": "string",
+            "nullable": true
+          },
+          "payload": {
+            "type": "object"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "target": {
+            "type": "object"
+          },
+          "hasCredentialSnapshot": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliveryPage": {
+        "type": "object",
+        "required": [
+          "apiVersion",
+          "items"
+        ],
+        "properties": {
+          "apiVersion": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeliverySummary"
+            }
           }
         }
       }
@@ -14836,6 +15050,157 @@
         "tags": [
           "Workflows"
         ]
+      }
+    },
+    "/api/v1/deliveries": {
+      "get": {
+        "operationId": "listDeliveries",
+        "tags": [
+          "applications"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "applicationId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "invocationId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "delivering",
+                "delivered",
+                "failed",
+                "dead"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Delivery page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/api/v1/deliveries/{delivery_id}": {
+      "get": {
+        "operationId": "getDelivery",
+        "tags": [
+          "applications"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "delivery_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Delivery detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/api/v1/deliveries/{delivery_id}/retry": {
+      "post": {
+        "operationId": "retryDelivery",
+        "tags": [
+          "applications"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "delivery_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Replayed delivery"
+          },
+          "404": {
+            "description": "Dead letter not found"
+          }
+        }
       }
     }
   },

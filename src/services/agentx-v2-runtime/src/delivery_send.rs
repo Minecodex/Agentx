@@ -1,0 +1,469 @@
+//! Provider send clients for outbound delivery (plan7 P7-A). Each platform
+//! gets the minimal single-message-send API surface; credentials come from the
+//! frozen Vault snapshot on the delivery row and all traffic goes through the
+//! egress provider client. Domain control lives here because the egress
+//! gateway has no hostname allowlist: every destination must match the
+//! provider's allowed suffixes.
+
+use std::time::Duration;
+
+use serde_json::{Value, json};
+use uuid::Uuid;
+
+use crate::delivery::DeliveryClaim;
+use crate::egress::{EgressRequestContext, ProviderHttpClient};
+use crate::vault::RuntimeVault;
+
+pub struct DeliverySendError {
+    pub code: &'static str,
+    pub message: String,
+    pub retryable: bool,
+}
+
+impl DeliverySendError {
+    fn rejected(message: String) -> Self {
+        Self {
+            code: "DELIVERY_PROVIDER_REJECTED",
+            message,
+            retryable: false,
+        }
+    }
+
+    fn unavailable(message: String) -> Self {
+        Self {
+            code: "PROVIDER_UNAVAILABLE",
+            message,
+            retryable: true,
+        }
+    }
+
+    fn rate_limited(message: String) -> Self {
+        Self {
+            code: "PROVIDER_RATE_LIMITED",
+            message,
+            retryable: true,
+        }
+    }
+}
+
+fn allowed_host(url: &str, suffixes: &[&str]) -> Result<(), DeliverySendError> {
+    let host = reqwest::Url::parse(url)
+        .ok()
+        .and_then(|parsed| parsed.host_str().map(str::to_owned))
+        .ok_or_else(|| DeliverySendError::rejected("invalid delivery url".into()))?;
+    if suffixes
+        .iter()
+        .any(|suffix| host == *suffix || host.ends_with(&format!(".{suffix}")))
+    {
+        Ok(())
+    } else {
+        Err(DeliverySendError::rejected(format!(
+            "delivery host {host} is outside the provider allowlist"
+        )))
+    }
+}
+
+fn text_of(payload: &Value) -> Result<String, DeliverySendError> {
+    payload
+        .get("text")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .filter(|text| !text.trim().is_empty())
+        .ok_or_else(|| DeliverySendError::rejected("delivery payload has no text".into()))
+}
+
+async fn send_json(
+    http: &ProviderHttpClient,
+    url: &str,
+    suffixes: &[&str],
+    tenant_id: Uuid,
+    request_id: Uuid,
+    bearer: Option<&str>,
+    body: Value,
+) -> Result<(u16, Value), DeliverySendError> {
+    allowed_host(url, suffixes)?;
+    let mut builder = http
+        .post(
+            url,
+            EgressRequestContext::request(tenant_id, request_id),
+            Duration::from_secs(15),
+        )
+        .map_err(|error| DeliverySendError::unavailable(error.to_string()))?
+        .json(&body);
+    if let Some(token) = bearer {
+        builder = builder.bearer_auth(token);
+    }
+    let response = builder.send().await.map_err(|error| {
+        if error.is_connect() || error.is_timeout() {
+            DeliverySendError::unavailable(error.to_string())
+        } else {
+            DeliverySendError::rejected(error.to_string())
+        }
+    })?;
+    let status = response.status().as_u16();
+    let parsed = response.json::<Value>().await.map_err(|error| {
+        DeliverySendError::unavailable(format!("unreadable provider response: {error}"))
+    })?;
+    Ok((status, parsed))
+}
+
+/// Reads the credential JSON from the frozen Vault snapshot on the claim.
+pub async fn credential_json(
+    vault: &RuntimeVault,
+    claim: &DeliveryClaim,
+) -> Result<Value, DeliverySendError> {
+    let reference = claim
+        .credential_ref
+        .clone()
+        .ok_or_else(|| DeliverySendError::rejected("delivery has no credential snapshot".into()))?;
+    let parsed: agentx_runtime_contracts::VaultSecretReferenceV1 =
+        serde_json::from_value(reference).map_err(|error| {
+            DeliverySendError::rejected(format!("invalid credential reference: {error}"))
+        })?;
+    let raw = vault
+        .read(&parsed)
+        .await
+        .map_err(|error| DeliverySendError::unavailable(format!("vault read failed: {error}")))?;
+    serde_json::from_slice(&raw).map_err(|error| {
+        DeliverySendError::rejected(format!("channel credential is not JSON: {error}"))
+    })
+}
+
+/// Sends one delivery and returns the provider message id when the platform
+/// reports one.
+pub async fn send(
+    vault: &RuntimeVault,
+    http: &ProviderHttpClient,
+    claim: &DeliveryClaim,
+) -> Result<Option<String>, DeliverySendError> {
+    let text = text_of(&claim.payload)?;
+    match claim.provider.as_str() {
+        "dingtalk" => send_dingtalk(vault, http, claim, &text).await,
+        "feishu" => send_feishu(vault, http, claim, &text).await,
+        "wecom" => send_wecom(vault, http, claim, &text).await,
+        other => Err(DeliverySendError::rejected(format!(
+            "unsupported delivery provider: {other}"
+        ))),
+    }
+}
+
+const DINGTALK_SUFFIXES: &[&str] = &["oapi.dingtalk.com", "api.dingtalk.com"];
+const FEISHU_SUFFIXES: &[&str] = &["open.feishu.cn", "open.larksuite.com"];
+const WECOM_SUFFIXES: &[&str] = &["qyapi.weixin.qq.com"];
+
+async fn send_dingtalk(
+    vault: &RuntimeVault,
+    http: &ProviderHttpClient,
+    claim: &DeliveryClaim,
+    text: &str,
+) -> Result<Option<String>, DeliverySendError> {
+    let credential = credential_json(vault, claim).await?;
+    let session_webhook = claim.target.get("sessionWebhook").and_then(Value::as_str);
+    let expires_at_ms = claim
+        .target
+        .get("sessionWebhookExpiresAt")
+        .and_then(Value::as_i64);
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or_default();
+    let session_usable = session_webhook.is_some_and(|_| {
+        expires_at_ms
+            .map(|expires| expires > now_ms + 60_000)
+            .unwrap_or(true)
+    });
+    if session_usable {
+        let url = session_webhook.unwrap_or_default();
+        let (status, body) = send_json(
+            http,
+            url,
+            DINGTALK_SUFFIXES,
+            claim.tenant_id,
+            claim.id,
+            None,
+            json!({"msgtype": "text", "text": {"content": text}}),
+        )
+        .await?;
+        return classify_platform_response(status, &body, "errcode", &["0"]);
+    }
+    // Official robot API fallback: access token then batch (direct) or group
+    // send keyed by the conversation type from the trigger context.
+    let app_key = credential.get("clientId").and_then(Value::as_str);
+    let app_secret = credential.get("clientSecret").and_then(Value::as_str);
+    let robot_code = credential.get("robotCode").and_then(Value::as_str);
+    let (app_key, app_secret, robot_code) = match (app_key, app_secret, robot_code) {
+        (Some(a), Some(s), Some(r)) => (a, s, r),
+        _ => {
+            return Err(DeliverySendError::rejected(
+                "dingtalk channel lacks robot API credentials".into(),
+            ));
+        }
+    };
+    let (status, body) = send_json(
+        http,
+        "https://api.dingtalk.com/v1.0/oauth2/accessToken",
+        DINGTALK_SUFFIXES,
+        claim.tenant_id,
+        claim.id,
+        None,
+        json!({"appKey": app_key, "appSecret": app_secret}),
+    )
+    .await?;
+    if status != 200 {
+        return classify_platform_response(status, &body, "code", &["0"]);
+    }
+    let token = body
+        .get("accessToken")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            DeliverySendError::rejected("dingtalk token response missed accessToken".into())
+        })?
+        .to_owned();
+    let conversation_type = claim
+        .target
+        .get("conversationType")
+        .and_then(Value::as_str)
+        .unwrap_or("direct");
+    let request = if conversation_type == "group" {
+        let conversation_id = claim
+            .target
+            .get("conversationId")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                DeliverySendError::rejected("group delivery has no conversationId".into())
+            })?;
+        (
+            "https://api.dingtalk.com/v1.0/robot/groupMessages/send",
+            json!({"robotCode": robot_code, "openConversationId": conversation_id, "msgKey": "sampleText", "msgParam": {"content": text}}),
+        )
+    } else {
+        let sender_id = claim
+            .target
+            .get("senderId")
+            .and_then(Value::as_str)
+            .ok_or_else(|| DeliverySendError::rejected("direct delivery has no senderId".into()))?;
+        (
+            "https://api.dingtalk.com/v1.0/robot/oToMessages/batchSend",
+            json!({"robotCode": robot_code, "userIds": [sender_id], "msgKey": "sampleText", "msgParam": {"content": text}}),
+        )
+    };
+    let (status, body) = send_json(
+        http,
+        request.0,
+        DINGTALK_SUFFIXES,
+        claim.tenant_id,
+        claim.id,
+        Some(&token),
+        request.1,
+    )
+    .await?;
+    let message_id = body
+        .get("messageId")
+        .or_else(|| body.get("processQueryKey"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    classify_platform_response(status, &body, "code", &["0"])?;
+    Ok(message_id)
+}
+
+async fn send_feishu(
+    vault: &RuntimeVault,
+    http: &ProviderHttpClient,
+    claim: &DeliveryClaim,
+    text: &str,
+) -> Result<Option<String>, DeliverySendError> {
+    let credential = credential_json(vault, claim).await?;
+    let app_id = credential.get("appId").and_then(Value::as_str);
+    let app_secret = credential.get("appSecret").and_then(Value::as_str);
+    let (app_id, app_secret) = match (app_id, app_secret) {
+        (Some(a), Some(s)) => (a, s),
+        _ => {
+            return Err(DeliverySendError::rejected(
+                "feishu channel lacks app credentials".into(),
+            ));
+        }
+    };
+    let (status, body) = send_json(
+        http,
+        "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+        FEISHU_SUFFIXES,
+        claim.tenant_id,
+        claim.id,
+        None,
+        json!({"app_id": app_id, "app_secret": app_secret}),
+    )
+    .await?;
+    if status != 200 || body.get("code").and_then(Value::as_i64) != Some(0) {
+        return classify_platform_response(status, &body, "code", &["0"]);
+    }
+    let token = body
+        .get("tenant_access_token")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            DeliverySendError::rejected("feishu token response missed tenant_access_token".into())
+        })?
+        .to_owned();
+    let conversation_id = claim
+        .target
+        .get("conversationId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            DeliverySendError::rejected("feishu delivery has no conversationId".into())
+        })?;
+    let (status, body) = send_json(
+        http,
+        "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
+        FEISHU_SUFFIXES,
+        claim.tenant_id,
+        claim.id,
+        Some(&token),
+        json!({"receive_id": conversation_id, "msg_type": "text", "content": {"text": text}}),
+    )
+    .await?;
+    let message_id = body
+        .pointer("/data/message_id")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    classify_platform_response(status, &body, "code", &["0"])?;
+    Ok(message_id)
+}
+
+async fn send_wecom(
+    vault: &RuntimeVault,
+    http: &ProviderHttpClient,
+    claim: &DeliveryClaim,
+    text: &str,
+) -> Result<Option<String>, DeliverySendError> {
+    let credential = credential_json(vault, claim).await?;
+    let corp_id = credential.get("corpId").and_then(Value::as_str);
+    let corp_secret = credential.get("corpSecret").and_then(Value::as_str);
+    let agent_id = credential.get("agentId").and_then(Value::as_i64);
+    let (corp_id, corp_secret, agent_id) = match (corp_id, corp_secret, agent_id) {
+        (Some(c), Some(s), Some(a)) => (c, s, a),
+        _ => {
+            return Err(DeliverySendError::rejected(
+                "wecom channel lacks corp credentials".into(),
+            ));
+        }
+    };
+    let token_url = format!(
+        "https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={corp_id}&corpsecret={corp_secret}"
+    );
+    let (status, body) = send_json(
+        http,
+        &token_url,
+        WECOM_SUFFIXES,
+        claim.tenant_id,
+        claim.id,
+        None,
+        json!({}),
+    )
+    .await?;
+    if status != 200 || body.get("errcode").and_then(Value::as_i64) != Some(0) {
+        return classify_platform_response(status, &body, "errcode", &["0"]);
+    }
+    let token = body
+        .get("access_token")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            DeliverySendError::rejected("wecom token response missed access_token".into())
+        })?
+        .to_owned();
+    let to_user = claim
+        .target
+        .get("senderId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| DeliverySendError::rejected("wecom delivery has no senderId".into()))?;
+    let (status, body) = send_json(
+        http,
+        &format!("https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={token}"),
+        WECOM_SUFFIXES,
+        claim.tenant_id,
+        claim.id,
+        None,
+        json!({"touser": to_user, "msgtype": "text", "agentid": agent_id, "text": {"content": text}}),
+    )
+    .await?;
+    classify_platform_response(status, &body, "errcode", &["0"])?;
+    Ok(None)
+}
+
+/// Maps a platform response to success/retryable/permanent using the HTTP
+/// status and the platform's own code field. Rate limits are retryable, 5xx
+/// are retryable, other non-success codes are permanent.
+fn classify_platform_response(
+    status: u16,
+    body: &Value,
+    code_field: &str,
+    success_codes: &[&str],
+) -> Result<Option<String>, DeliverySendError> {
+    if status == 429 {
+        return Err(DeliverySendError::rate_limited(format!(
+            "provider rate limited: {status}"
+        )));
+    }
+    if status >= 500 {
+        return Err(DeliverySendError::unavailable(format!(
+            "provider server error: {status}"
+        )));
+    }
+    let code = body.get(code_field).map(|value| match value {
+        Value::Number(number) => number.to_string(),
+        Value::String(text) => text.clone(),
+        _ => String::new(),
+    });
+    let code = code.unwrap_or_default();
+    if status < 300 && (code.is_empty() || success_codes.contains(&code.as_str())) {
+        return Ok(body
+            .get("message_id")
+            .or_else(|| body.pointer("/data/message_id"))
+            .and_then(Value::as_str)
+            .map(str::to_owned));
+    }
+    if code == "429" {
+        return Err(DeliverySendError::rate_limited(format!(
+            "provider rate limited: {body}"
+        )));
+    }
+    Err(DeliverySendError::rejected(format!(
+        "provider rejected delivery: {status} {body}"
+    )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_allowlist_rejects_unknown_hosts() {
+        assert!(allowed_host("https://oapi.dingtalk.com/x", DINGTALK_SUFFIXES).is_ok());
+        assert!(allowed_host("https://evil.example.com/x", DINGTALK_SUFFIXES).is_err());
+        assert!(
+            allowed_host(
+                "https://api.dingtalk.com.attacker.example/x",
+                DINGTALK_SUFFIXES
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn platform_classification_buckets() {
+        assert!(classify_platform_response(200, &json!({"errcode": 0}), "errcode", &["0"]).is_ok());
+        assert!(
+            classify_platform_response(429, &json!({}), "errcode", &["0"])
+                .unwrap_err()
+                .retryable
+        );
+        assert!(
+            classify_platform_response(503, &json!({}), "errcode", &["0"])
+                .unwrap_err()
+                .retryable
+        );
+        assert!(
+            !classify_platform_response(401, &json!({}), "errcode", &["0"])
+                .unwrap_err()
+                .retryable
+        );
+    }
+}

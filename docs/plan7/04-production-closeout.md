@@ -16,8 +16,8 @@
 ### 2.1 provider 对接测试
 
 - `tests/e2e/product/test_provider_integration.py`（93 行）：fail-fast 要求主机 `127.0.0.1:18080` OpenSandbox 健康，拉取 `opensandbox/code-interpreter:v1.1.0` digest，驱动 Playwright `provider-integration.spec.ts`（686 行，4 用例）；
-- 主用例（LightRAG+Mem0+OpenSandbox 一体化工作流）默认执行；**RAGFlow 3 个用例依赖环境变量（`AGENTX_E2E_RAGFLOW_*`），未配置即 skip，且无集群内 RAGFlow fixture**（conftest `e2e_providers` 只部署 echo-mcp/echo-node/lightrag/mem0）；
-- 长期记忆只验证拒用例（`AGENT_LONG_TERM_MEMORY_SUBJECT_REQUIRED`），无成功 recall 用例；
+- 主用例（LightRAG+Mem0+OpenSandbox 一体化工作流）默认执行；**RAGFlow 用例中 2 个依赖环境变量（`AGENTX_E2E_RAGFLOW_BASE_URL`/`ALIAS_BASE_URL`），未配置即 skip**（勘察修正：第三个"RAGflow 被 egress 策略拒绝"用例默认执行——其 rejectedBaseUrl 默认指向无服务的 `host.docker.internal:19380` 也成立，明文 HTTP 被 egress 拒绝即可通过）；**无集群内 RAGFlow fixture**（conftest `e2e_providers` 只部署 echo-mcp/echo-node/lightrag/mem0），且 `test_provider_integration.py` 不注入任何 RAGFlow 变量、靠外层进程环境透传；
+- 长期记忆只验证拒用例（`AGENT_LONG_TERM_MEMORY_SUBJECT_REQUIRED`），无成功 recall 用例（勘察利好：API 级 write/recall 成功路径已有先例 `tests/e2e/runtime/test_agent_sessions.py:436`（P3-05，两轮 gateway invocation 断言 runtime_calls≥2 与审计），D1 只缺 provider-integration 套件里的 UI 两轮对话版本）；
 - `docs/todolist.md` 因此保留该条目未删。
 
 ### 2.2 planv2 剩余项
@@ -29,8 +29,8 @@
 
 ### 2.3 M7/INT 剩余项
 
-- INT-009 双阶段滚动升级：验收器已实现（0016 expand/0017 contract/Capability 分流/tag-based Sandbox Profile/Docker Desktop 双阶段），缺 M6→M7、Previous→Candidate 真实滚动与回滚证据；
-- INT-011 安全：Vault/撤销/TLS Registry/SBOM/签名/攻击矩阵代码历史上实现过，**当前工作树已无 SBOM/cosign 实现**（历史脚本删除），需按现有 `agentxctl`/release 脚本入口重建；`verify_release.py` 只有 digest + 3 次有界重试；
+- INT-009 双阶段滚动升级：验收器已实现（勘察修正：历史 0016/0017 迁移编号已不存在，`deploy/migrations` 现最高 0010；**现行双阶段入口是 `agentxctl migrate --phase expand|contract`**（`tools/agentxctl/src/operations.rs:554-668`）+ chart schemaGate initContainer + `agentx-v2-ops` 多迁移锁（MySQL GET_LOCK + ClickHouse lock 表，`agentx-v2-ops/src/lib.rs:109-190`）），缺 M6→M7、Previous→Candidate 真实滚动与回滚证据；
+- INT-011 安全：Vault/撤销/TLS Registry/SBOM/签名/攻击矩阵代码历史上实现过，**当前工作树已无 SBOM/cosign 实现**（历史 `m7-*.ps1` 已删，行为规格幸存于 `docs/plan/m7-acceptance-evidence.md` §3，`deploy/release/*.schema.json` 幸存可用），需按现有 `agentxctl`/release 脚本入口重建；`verify_release.py` 只有 digest + 3 次有界重试。勘察新增（D7 阻塞项，先决定案 4）：幸存的 `supply-chain-evidence.schema.json` 写死 `imageCount=7`，与现行发布契约的 **11 镜像**（8 常驻 + 3 Job，`dockerhub-beta.yaml:12-23`、`package_agentxctl.py`、`v2-release-manifest.schema.json` 三处互相印证）冲突——D7 动手前必须先对齐，否则 verify 与 supply-chain 两条链互相矛盾；
 - INT-012 容量："100 Execution、500 Node、200 SSE、1000 Case、200 节点和 2 小时结果尚未执行"；**容量编排无存活代码入口**（历史 performance.json 生产者已删）；
 - INT-014 发布门禁："升级、回滚、容量和签名证据尚未满足最终发布汇总器"。
 
@@ -38,15 +38,16 @@
 
 - e2e 编排：`agentxctl install/uninstall --purge-data`、临时 Namespace、`--scale-down-development` 停开发服务、产物脱敏写 `.local/artifacts/e2e/<run_id>/`；
 - 现存故障注入：runtime 重启恢复（test_runtime.py:306-326）、ClickHouse 缩容降级（test_playwright.py:111-135）、副本扩缩+升级回滚（test_release_history.py）；
-- 背压现状：仅每 caller 进程内令牌桶（`rate_limit.rs`，默认 50rps/burst100，非分布式）与 quota reserve/release（`quota.rs` MySQL 租约投影）；无租户/Provider/队列级预算与熔断；
-- Helm：八服务 replicas:1 / maxReplicas:4，无 resources 块。
+- 背压现状：仅每 caller 进程内令牌桶（`rate_limit.rs`，默认 50rps/burst100，非分布式，429 + retry-after 响应形态已有）与 quota reserve/release（`quota.rs` MySQL 租约投影）。勘察新增三点：① 配额超限现状是 **400 `AdmissionPrerequisiteMissing`**（`quota.rs:203-208`）而非 429——D3 需明确分层：分布式准入（租户并发/队列水位）归 429 + Retry-After，业务前置缺失归 400；② 并发准入（execution_concurrency/node_concurrency）发生在 Coordinator claim 与 attempt 派发侧（`engine.rs:146-156、:1890-1912`），**Gateway 接受路径无任何检查**（过载时请求已被 202 接受）——Admission 是新增链路而非加固；③ `MetricsRegistry`（`agentx-service-kit/src/lib.rs`）是无标签静态白名单 gauge（12 个 `&'static str`），按 Tenant/Provider 维度暴露指标需先改造 service-kit 支持标签（或降级为预定义汇总名）；
+- Helm：八服务 replicas:1 / maxReplicas:4。勘察修正：`maxReplicas` 无任何 HPA 模板引用（纯声明死字段，与 V2S-005"扩缩容交用户平台"一致）；resources **硬编码在模板**（如 `deployment-workflow-runtime.yaml:66`）非 values 可配——容量 Run 绑定环境规格冻结前可能需要加 values 透传。
 
 ## 3. 实施阶段
 
 ### P7-D1 Provider 对接测试收口（todolist 唯一条目）
 
-- [ ] RAGFlow 集群内 fixture：`deploy/kustomize/e2e-fixtures/runtime-providers` 增加 RAGFlow（含依赖），conftest 自动注入端口白名单 8080/8081/8090、Pod 标签 `agentx.io/runtime-provider: allowed`、Namespace 标签、`httpProviderServices` 加 ragflow——三个 skip 用例转默认执行；
-- [ ] RAGFlow fixture 健康等待与 dataset 预置（用例所需 dataset_id 自动创建）；
+- [ ] RAGFlow 集群内 fixture：`deploy/kustomize/e2e-fixtures/runtime-providers` 增加 RAGFlow（含依赖）——kustomization 公共 labels 段会自动给所有资源打 `agentx.io/runtime-provider: allowed` 标签，Namespace 标签机制也已就绪（agentxctl `ensure_namespaces`）；勘察新增两个硬约束：**端口白名单是静态 Helm 模板**（`networkpolicy-runtime-provider-egress.yaml` 只放行 8080/8081/8090/9621/8000，RAGFlow 容器监听 9380——Service 需把白名单端口映射到 9380 或扩模板）；**`httpProviderServices` 只能改 e2e 所用 values 文件**（conftest 注入不了 env）——2 个 skip 用例转默认执行；
+- [ ] RAGFlow fixture 独立开关（marker/env），避免与容量 Run 抢单节点资源（镜像数 GB + 依赖重，与 8 服务 + 双 MySQL + ClickHouse 并存紧张）；
+- [ ] RAGFlow fixture 健康等待（`/v1/system/healthz`，rollout 预算参考 lightrag 600s 先例）与 dataset 预置 Job（照抄 `lightrag-tokenizer-cache` Job 形态：集群内 Job 调 RAGFlow API 建 dataset，id 注入 `AGENTX_E2E_RAGFLOW_DATASET_ID`；`ALIAS_BASE_URL` 指向同 Service 的无别名形式解除第 2 个 skip）；
 - [ ] OpenSandbox 拉起编排：`deploy/opensandbox` 提供一键脚本/Profile（或 pytest fixture 尝试自动拉起，失败再 fail-fast 并输出指引），消除"人工预启动"环节；
 - [ ] 长期记忆成功 recall 用例：Application Session 内两轮对话，断言 Mem0 写入与召回（受 subject 作用域约束）；
 - [ ] 固化主链路为可重复入口（`-m product` 一键），证据归档；勾选并清空 `docs/todolist.md`。
@@ -72,7 +73,7 @@
 - [ ] 重建容量编排：`tests/e2e` 新增 capacity 域（pytest marker `capacity`），负载生成器（异步 Invocation 打点）、指标采集（metrics 抓取 + MySQL/Redis/CH 水位查询）、阈值断言与报告 JSON（写 `.local/artifacts/e2e/<run_id>/capacity/`）；
 - [ ] 执行矩阵：100 Execution / 500 Node / 200 SSE / 1000 Case / 200 节点 Workflow / 5000 Attempt 分级 Run + **2 小时稳定性 Run + 残留断言**（Lease/Reservation/Outbox/Inbox/Hold 业务残留=0）；
 - [ ] 副本矩阵：Gateway/Coordinator/Worker/SSE/Trace 独立扩容 Run（V2C-005 冻结生产基线）；
-- [ ] E2E-V2-012 滚动版本兼容：当前/上一版本混跑、超窗在执行前拒绝。
+- [ ] E2E-V2-012 滚动版本兼容：当前/上一版本混跑、超窗在执行前拒绝（勘察新增前置：e2e `--values` 单文件单镜像 tag，双版本混跑需双 values + `--target` 定向升级组合编排，当前 agentxctl 不支持 per-service 版本混布）。
 
 门禁：全部指标 ≤ 冻结阈值，报告归档。
 
@@ -120,7 +121,7 @@
 
 ## 6. 风险与边界
 
-- 容量 Run 对本地集群规格敏感：阈值必须绑定环境规格冻结，换环境需重新冻结；
+- 容量 Run 对本地集群规格敏感：阈值必须绑定环境规格冻结，换环境需重新冻结；resources 硬编码在模板、metrics 无标签维度是 D3/D4 的隐藏前置（见 §2.4 勘察新增），排期时预留；
 - RAGFlow fixture 镜像较大，首次拉取时间纳入 fixture 超时预算（参考 lightrag 600s 先例）；
 - gVisor/Kata 强隔离不在本线，矩阵中以"移交后续计划"标注，不伪装完成；
 - 历史容量脚本/故障注入脚本已删除，D4/D5 是重建不是恢复——按现行 `pytest tests/e2e` 编排规范写 Python，不引入新脚本形态。

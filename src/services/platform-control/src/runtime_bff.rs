@@ -72,6 +72,12 @@ pub fn routes() -> Router<ControlApiState> {
             "/api/v1/agent-subject-memory/clear",
             post(clear_agent_subject_memory),
         )
+        .route("/api/v1/deliveries", get(search_deliveries))
+        .route("/api/v1/deliveries/{delivery_id}", get(get_delivery))
+        .route(
+            "/api/v1/deliveries/{delivery_id}/retry",
+            post(retry_delivery),
+        )
 }
 
 #[derive(Default, Deserialize)]
@@ -1610,4 +1616,142 @@ fn side_effect_resolution(value: &Value) -> ApiResult<SideEffectResolutionV1> {
         .map(parse_resolution)
         .transpose()
         .map(|value| value.unwrap_or(SideEffectResolutionV1::Execute))
+}
+
+#[derive(Deserialize)]
+struct DeliveryListQuery {
+    application_id: Option<Uuid>,
+    invocation_id: Option<Uuid>,
+    execution_id: Option<Uuid>,
+    status: Option<String>,
+    limit: Option<u32>,
+}
+
+/// Delivery records (plan7 P7-A): proxies the runtime delivery outbox and
+/// dead letters for the application detail "投递记录" view.
+async fn search_deliveries(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Query(query): Query<DeliveryListQuery>,
+) -> ApiResult<Json<Value>> {
+    actor.require("application:view")?;
+    if let Some(status) = query.status.as_deref() {
+        if !matches!(
+            status,
+            "pending" | "delivering" | "delivered" | "failed" | "dead"
+        ) {
+            return Err(ApiError::bad_request(
+                "INVALID_DELIVERY_STATUS",
+                "status must be pending, delivering, delivered, failed, or dead",
+            ));
+        }
+    }
+    let (tenant_wide, application_ids, workflow_ids) =
+        execution_query_scope(&state, &actor).await?;
+    let request = json!({
+        "apiVersion": 1,
+        "tenantId": actor.tenant_id,
+        "applicationId": query.application_id,
+        "invocationId": query.invocation_id,
+        "executionId": query.execution_id,
+        "status": query.status,
+        "limit": query.limit.unwrap_or(50).clamp(1, 100),
+    });
+    let request_hash = content_hash(&json!({"operation":"delivery-search","request":request}))
+        .map_err(ApiError::internal)?;
+    let token = delegation_token(
+        &state,
+        &actor,
+        "runtime.query.deliveries",
+        application_ids,
+        workflow_ids,
+        BTreeSet::new(),
+        tenant_wide,
+        request_hash,
+    )?;
+    let response = state
+        .http
+        .post(format!(
+            "{}/internal/runtime/v1/query/deliveries:search",
+            state.runtime_query_url
+        ))
+        .bearer_auth(token)
+        .json(&request)
+        .send()
+        .await
+        .map_err(runtime_unavailable)?;
+    runtime_json::<Value>(response).await.map(Json)
+}
+
+async fn get_delivery(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Path(delivery_id): Path<Uuid>,
+) -> ApiResult<Json<Value>> {
+    actor.require("application:view")?;
+    let (tenant_wide, application_ids, workflow_ids) =
+        execution_query_scope(&state, &actor).await?;
+    let request_hash = content_hash(&json!({
+        "operation":"delivery-detail",
+        "deliveryId":delivery_id,
+    }))
+    .map_err(ApiError::internal)?;
+    let token = delegation_token(
+        &state,
+        &actor,
+        "runtime.query.deliveries",
+        application_ids,
+        workflow_ids,
+        BTreeSet::new(),
+        tenant_wide,
+        request_hash,
+    )?;
+    let response = state
+        .http
+        .get(format!(
+            "{}/internal/runtime/v1/query/deliveries/{}",
+            state.runtime_query_url, delivery_id
+        ))
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(runtime_unavailable)?;
+    runtime_json::<Value>(response).await.map(Json)
+}
+
+async fn retry_delivery(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Path(delivery_id): Path<Uuid>,
+) -> ApiResult<Json<Value>> {
+    actor.require("application:manage")?;
+    let (tenant_wide, application_ids, workflow_ids) =
+        execution_query_scope(&state, &actor).await?;
+    let request_hash = content_hash(&json!({
+        "operation":"delivery-retry",
+        "deliveryId":delivery_id,
+    }))
+    .map_err(ApiError::internal)?;
+    let token = delegation_token(
+        &state,
+        &actor,
+        "runtime.delivery.retry",
+        application_ids,
+        workflow_ids,
+        BTreeSet::new(),
+        tenant_wide,
+        request_hash,
+    )?;
+    let response = state
+        .http
+        .post(format!(
+            "{}/internal/runtime/v1/query/deliveries/{}/retry",
+            state.runtime_query_url, delivery_id
+        ))
+        .bearer_auth(token)
+        .json(&serde_json::json!({"apiVersion":1,"tenantId":actor.tenant_id}))
+        .send()
+        .await
+        .map_err(runtime_unavailable)?;
+    runtime_json::<Value>(response).await.map(Json)
 }

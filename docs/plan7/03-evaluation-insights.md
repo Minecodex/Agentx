@@ -27,10 +27,11 @@
 ### 2.3 Insights：聚合 API 完整但三个缺口
 
 - `aggregates:query` 契约（`observability/src/main.rs:1089-1168`）：metrics `count/durationMillis/costMicros/inputTokens/outputTokens/errorRate`、维度 `hour/day/workflow/application/status/errorCode/provider/resourceType`（≤3 维）、filters 白名单、窗口 ≤30 天、limit ≤1000、租户并发 4、5s 超时 + KILL QUERY；表 `workflow_trace_events`（0002 迁移，TTL 180 天）字段齐全；
-- **缺口 1**：消费端写入 `workflow_id`/`application_id` 恒 NULL（`main.rs:145-146`；`TraceEventEnvelopeV1` 无这两个字段，`query.rs:487-526`）→ 按 workflow/application 聚合当前出不了数；
+- **缺口 1**：消费端写入 `workflow_id`/`application_id` 恒 NULL（`main.rs:145-146`；`TraceEventEnvelopeV1` 无这两个字段，`query.rs:487-526`）→ 按 workflow/application 聚合当前出不了数。勘察利好：`TraceEventEnvelopeV1` 唯一构造点在 `trace_delivery.rs:273`，且 `enqueue`（:224-229）本就查询 `workflow_executions`——把该查询扩成 JOIN（workflow_id 直取、application_id 经 invocation_id JOIN `application_invocations`）即覆盖全部 34 处发射点，**无需逐点改发射代码**；
 - **缺口 2**：`traces:search` 与 `aggregates:query` 无公共暴露——platform-control 只代理了 trace/span 两个端点（`runtime_bff.rs:56-60`），委托 JWT + request hash 模式已有先例（:927-1015）；
 - **缺口 3**：`traces:search` 无 workflowId 过滤、无分页 next；metrics 无分位数（p50/p95）；
 - 前端**零图表库**（package.json 无 recharts 等，瀑布图用 CSS div）；`GET /dashboard/summary` 的 5 项运行指标返回 null（`operations_api.rs:34-51`），仪表盘成功率/成本卡显示 0/—。
+- 勘察修正：executions 列表**不支持 errorCode 筛选**（前端 `executions-page.tsx:50-51`、BFF `ExecutionListQuery`、runtime 契约 `ExecutionSearchRequestV1` 三层均无此参数；时间窗 createdAfter/createdBefore 已支持）——§3.3 的"错误分类点击跳转 executions 带参过滤"需要新增 errorCodes 全链路筛选（先决定案 3，开发期无兼容负担直接加）。
 
 ## 3. 设计
 
@@ -39,19 +40,20 @@
 - Profile 对话框：规则类型下拉加 `llm_judge`；选中时 configuration 区从 JSON textarea 切换为专用表单——模型选择器（复用 `/models` 列表，只列可授权模型）+ prompt 多行编辑器（64KiB 前置校验、支持 `{{actualOutput}}`/`{{expectedOutput}}` 插入按钮）+ 结构化输出说明（judge 需输出 `{passed, score, reason}`）；
 - 保存前调用既有校验；`MODEL_EVALUATOR_GRANT_REQUIRED`（start 时 422）在 Run 启动处映射为可读文案 + 指向资源授权页；
 - 报告页 rule 行对 `evaluatorType==='llm_judge'` 展开 `detail.modelResult`（judge 的完整结构化输出：passed/score/reason）；
-- 后端**零改动**（契约已冻结）。
+- 后端**零改动**（契约已冻结）——唯一例外（勘察新增）：judge 子执行 Trace 链接当前不可达——`evaluator_execution_id` 只存在于运行库，投影事件 `RuntimeEvaluationRuleResultV1` 不携带该字段、控制库恒 NULL。最低成本修复：runtime 在 `converge_model_evaluator` 写 `detail_json` 时补 `evaluatorExecutionId`（一行；detail 是自由 JSON，不动冻结契约，projector 自动透传）。
 
 ### 3.2 C2 观测面维度修复（Insights 与失败分布的共同前置）
 
-- `TraceEventEnvelopeV1` 增加 `workflow_id`/`application_id` 可选字段（契约版本升级）；
+- `TraceEventEnvelopeV1` 增加 `workflow_id`/`application_id` 可选字段（契约版本升级；**`#[serde(default)]`**）。升级顺序约束（勘察新增）：observability 消费循环对反序列化失败是整体重试（`main.rs:475-481`，会卡死消费），**observability 必须先于 runtime 升级**——同仓同版本发布风险可控，但升级 E2E 用例要覆盖此顺序；
 - Runtime 发射处补字段：execution 级 span 与节点 span 构造时从执行上下文带入（`engine_trace.rs`、`worker_runtime*.rs` 各发射点）；
 - ClickHouse 0003 迁移：无 DDL 变化（列已存在），只需确认写入路径；历史数据不回填（开发期不保留历史兼容）；
 - `traces:search` 顺带加 `workflowId` filter 与 `nextCursor` 分页（聚合页跳转 Trace 列表需要）；
-- metrics 增加分位数 `durationP50`/`durationP95`（`ObservabilityMetricV1` + `metric_sql`，ClickHouse `quantile` 函数）。
+- metrics 增加分位数 `durationP50`/`durationP95`（`ObservabilityMetricV1` + `metric_sql`，ClickHouse `quantile` 函数）；
+- 勘察新增：`aggregates:query` 无 `span_name` 维度（`dimension_sql` 只有 hour/day/workflow/application/status/errorCode/provider/resourceType，`main.rs:1216-1229`）——§3.3 图 4"节点耗时分布"需要新增 `spanName` 维度枚举 + dimension_sql 分支，属本线契约变更，随 C2 一并冻结。
 
 ### 3.3 C3 Insights BFF 与页面
 
-- platform-control 新增 `insights_api.rs`：`POST /api/v1/insights/aggregates`（权限 `runtime:view` 复用或新 `insight:view`，倾向复用）→ mint 委托 JWT（scope `observability.aggregate.read`）→ `x-agentx-request-hash` 转发 aggregates:query；`OBSERVABILITY_QUERY_BUDGET_EXCEEDED` 与降级（ClickHouse 缩容 0）映射为 `INSIGHTS_DEGRADED` 响应，前端显示降级提示（Trace 降级先例：`test_playwright.py:111-135`）；
+- platform-control 新增 `insights_api.rs`：`POST /api/v1/insights/aggregates`（权限 `runtime:view` 复用或新 `insight:view`，倾向复用；权限检查用标准 `actor.require`，不抄 trace 端点 `permissions.any(...)` 的非常规写法）→ mint 委托 JWT（scope `observability.aggregate.read`）→ `x-agentx-request-hash` 转发 aggregates:query；**request_hash 必须与 observability 侧逐字节一致**（hash 基准是 `json!({"operation":"aggregate-query","request":request})` 的 serde 序列化，`main.rs:1115`）——BFF 直接以 `ObservabilityAggregateRequestV1` Rust 类型构造再序列化，禁止手拼 JSON（键序/Option null/枚举 snake_case 任何偏差都会 401）；勘察新增：现有 `observability_json` helper 把一切非 2xx 折成 503，区分 422 `OBSERVABILITY_QUERY_BUDGET_EXCEEDED` 需要扩展该 helper 读响应体 code；降级（ClickHouse 缩容 0）映射为 `INSIGHTS_DEGRADED`，前端显示降级提示（Trace 降级先例：`test_playwright.py:111-135`）；dashboard 与 Insights 共享每租户 4 并发信号量，仪表盘自动轮询需加退避/降频避免吃掉配额；
 - 前端新页面 `features/insights/insights-page.tsx`：
 
 ```text
@@ -80,9 +82,9 @@
 }
 ```
 
-- 同一 Workflow 不同版本、或不同 Profile 对同一 Dataset 的 Run 均可对比；case 不对齐（Dataset 版本不同）时按 caseKey 交集对齐并在响应标记 `alignedCaseCount/totalCaseCount`；
+- 同一 Workflow 不同版本、或不同 Profile 对同一 Dataset 的 Run 均可对比；case 不对齐（Dataset 版本不同）时按 caseKey 交集对齐并在响应标记 `alignedCaseCount/totalCaseCount`。勘察新增：`evaluation_case_projection` **无 case_key 列**——对齐需每个 Run 各自 JOIN 其 dataset_version 的 `dataset_version_cases`（报告查询 `governance_api.rs:641` 已有先例）再按 case_key 求交集；跨 Profile 对比时 rule_key 集合不同，`ruleAggregates` 按 rule_key 交集对齐、缺失侧标记 absent；
 - 前端：评测列表页加"对比"多选入口；详情页增加"对比"Tab（指标对照表、逐 case 状态变化列表、规则通过率对比条形图）；失败 case 一键跳转两侧 Trace；
-- 失败节点分布/工具错误分布：作为评测详情页的一个区块，按 `targetExecutionId` 集合批量查询观测面（依赖 3.2 维度修复 + traces:search errorCode/resourceType 过滤），展示 Top 失败节点与工具错误码。
+- 失败节点分布/工具错误分布：作为评测详情页的一个区块，按 `targetExecutionId` 集合批量查询观测面（依赖 3.2 维度修复 + traces:search errorCode/resourceType 过滤），展示 Top 失败节点与工具错误码。勘察新增成本提示：`traces:search` 现只支持单 execution_id 过滤且 `next` 恒 None（`main.rs:1084`，契约有 cursor 字段但实现未用）——批量场景按循环调用实现（窗口/limit 预算内），不为此扩契约。
 
 ## 4. 实施阶段
 
@@ -90,14 +92,14 @@
 
 - [ ] Profile 对话框规则类型 + 专用配置表单（模型选择器/prompt 编辑器/变量插入/64KiB 校验）；
 - [ ] i18n 双语词条；`MODEL_EVALUATOR_GRANT_REQUIRED` 文案与授权页跳转；
-- [ ] 报告页 llm_judge 结果展示（modelResult 展开组件）；
+- [ ] 报告页 llm_judge 结果展示（modelResult 展开组件）；runtime `converge_model_evaluator` 的 detail_json 补 `evaluatorExecutionId`（Trace 链接修复，见 §3.1 唯一例外）；
 - [ ] vitest 表单测试（校验路径、类型切换）。
 
 门禁：前端测试、Playwright 评测域回归。
 
 ### P7-C2 观测面维度与指标修复
 
-- [ ] `TraceEventEnvelopeV1` 加 workflow_id/application_id + Runtime 发射点补字段（契约测试同步）；
+- [ ] `TraceEventEnvelopeV1` 加 workflow_id/application_id（`#[serde(default)]`）+ `trace_delivery.rs enqueue` 扩 JOIN 覆盖全部发射点 + observability `TraceRow` 映射（契约测试同步；升级顺序 observability 先于 runtime，见 §3.2）；
 - [ ] `traces:search` 加 workflowId filter + 游标分页；metrics 加 durationP50/durationP95；
 - [ ] observability 契约测试与查询单测（维度分组正确性、分位数）。
 
@@ -107,7 +109,7 @@
 
 - [ ] platform-control `insights_api.rs`（委托转发 + 降级/预算错误映射 + OpenAPI）；
 - [ ] recharts 引入与图表主题令牌封装（`shared/components/charts/` 统一图表组件层，保证风格一致）；
-- [ ] insights 页面四图 + 筛选 + 降级态 + 跳转联动；dashboard summary 接通真实指标；
+- [ ] insights 页面四图 + 筛选 + 降级态 + 跳转联动（errorCodes 全链路筛选：前端 URL 参数 → BFF → `ExecutionSearchRequestV1`，见 §2.3 勘察修正）；dashboard summary 接通真实指标（带退避，见 §3.3）；
 - [ ] 路由/导航/i18n/OpenAPI 再生成。
 
 门禁：BFF 契约测试（mock observability）、Playwright（含 ClickHouse 缩容降级场景）。

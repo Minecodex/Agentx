@@ -212,6 +212,8 @@ export interface components {
             healthPath?: string | null;
             name: string;
             ownerDepartmentId: string;
+            /** @enum {string} */
+            provider?: "lightrag" | "ragflow";
         };
         CreateCredentialRequest: {
             credentialType: string;
@@ -364,6 +366,7 @@ export interface components {
             name: string;
             /** @enum {string} */
             providerType: "dingtalk" | "wecom" | "feishu" | "agentx";
+            reply?: components["schemas"]["WebhookReplyConfig"];
         };
         CreateWorkflowRequest: {
             description?: string | null;
@@ -1595,6 +1598,7 @@ export interface components {
             providerType: "dingtalk" | "wecom" | "feishu" | "agentx";
             status: string;
             version: number;
+            reply?: components["schemas"]["WebhookReplyConfig"];
         };
         UpdateWorkflowRequest: {
             description?: string | null;
@@ -1678,6 +1682,7 @@ export interface components {
             secret?: string | null;
             status: string;
             version: number;
+            reply?: components["schemas"]["WebhookReplyConfig"];
         };
         WorkerCapabilityResponse: {
             capability: string;
@@ -1869,6 +1874,53 @@ export interface components {
                 [key: string]: unknown;
             })[];
             nextCursor?: string | null;
+        };
+        WebhookReplyConfig: {
+            enabled: boolean;
+            outputField: string;
+            template?: string;
+        };
+        DeliverySummary: {
+            id: string;
+            applicationId?: string | null;
+            invocationId?: string | null;
+            executionId: string;
+            channelBindingId: string;
+            provider: string;
+            origin: string;
+            /** @enum {string} */
+            status: "pending" | "delivering" | "delivered" | "failed" | "dead";
+            attemptCount: number;
+            lastErrorCode?: string | null;
+            lastErrorMessage?: string | null;
+            providerMessageId?: string | null;
+            payload: Record<string, never>;
+            createdAt: string;
+            updatedAt: string;
+        };
+        DeliveryDetail: {
+            id: string;
+            applicationId?: string | null;
+            invocationId?: string | null;
+            executionId: string;
+            channelBindingId: string;
+            provider: string;
+            origin: string;
+            /** @enum {string} */
+            status: "pending" | "delivering" | "delivered" | "failed" | "dead";
+            attemptCount: number;
+            lastErrorCode?: string | null;
+            lastErrorMessage?: string | null;
+            providerMessageId?: string | null;
+            payload: Record<string, never>;
+            createdAt: string;
+            updatedAt: string;
+            target: Record<string, never>;
+            hasCredentialSnapshot?: boolean;
+        };
+        DeliveryPage: {
+            apiVersion: number;
+            items: components["schemas"]["DeliverySummary"][];
         };
     };
     responses: never;

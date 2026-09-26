@@ -758,7 +758,8 @@
               "recovery",
               "artifact",
               "quota",
-              "trace-relay"
+              "trace-relay",
+              "delivery"
             ]
           }
         }

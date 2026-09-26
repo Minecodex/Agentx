@@ -1156,6 +1156,45 @@ async fn submit_worker_result_resolved(
             .activation(node_execution_id)
             .ok_or_else(|| RuntimeError::Internal(anyhow::anyhow!("activation disappeared")))?;
         let node = &machine.workflow().nodes[activation.node_index];
+        let delivery_node = matches!(node.node_type.as_str(), "reply_message" | "send_message")
+            .then(|| (node.node_type.clone(), node.key.clone()));
+        if let Some((node_type, node_key)) = delivery_node.as_ref()
+            && effective_status == WorkerResultStatusV1::Succeeded
+        {
+            let intent = effective_outputs
+                .get("main")
+                .and_then(|items| items.first())
+                .map(|item| item.json.clone())
+                .unwrap_or_else(|| serde_json::Value::Null);
+            let invocation_id: Option<uuid::Uuid> = attempt.try_get("invocation_id")?;
+            match super::engine_persistence::enqueue_node_delivery(
+                &mut tx,
+                &super::engine_persistence::NodeDeliveryIntent {
+                    tenant_id,
+                    execution_id,
+                    invocation_id,
+                    attempt_id: result.attempt_id,
+                    node_key,
+                    node_type,
+                    intent: &intent,
+                },
+            )
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err((code, message))) => {
+                    // Resolution failure is deterministic: flip the effective
+                    // status; the shared Failed branch below performs
+                    // machine.fail outside the workflow borrow.
+                    effective_status = WorkerResultStatusV1::Failed;
+                    effective_error_code = Some(code.into());
+                    effective_error_message = Some(message);
+                    effective_outputs.clear();
+                    effective_retryable = Some(false);
+                }
+                Err(error) => return Err(error),
+            }
+        }
         if let Err(message) = validate_node_output_contract(node, &effective_outputs) {
             effective_status = WorkerResultStatusV1::Failed;
             effective_error_code = Some(crate::output_contract::violation_code(node).into());

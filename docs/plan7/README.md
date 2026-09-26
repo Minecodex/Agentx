@@ -5,6 +5,7 @@ plan7 覆盖五个经过 n8n 与 Dify 源码对比研究后选定的最高投入
 1. Agentx 的执行内核、可靠性与治理（Checkpoint-Fork、审批会签、lease/fencing、配额审计）已达到或超过 n8n/Dify 同类实现；
 2. 差距集中在产品最后一公里（IM 出站回复、LLM 流式、终端用户体验）与生产认证收口；
 3. 生态差距（连接器数量、插件市场）不通过追赶解决，由既有 MCP + 画布插件路线承接，不在本计划内。
+4. 2026-09-26 完成五线全量源码勘察：各线"现状事实"已逐项核实并修正（修正内容以"勘察修正/勘察新增/勘察利好"标注直接并入各线正文），关键实现设计与先决决策见各线文档与本文 §2。
 
 ## 1. 五条工作线
 
@@ -37,6 +38,16 @@ P7-D3~D8（背压、容量、升级、恢复、供应链、发布审查）← �
 2. P7-E 的 E2E 复用 P7-D1 固化的 LightRAG/RAGFlow fixture。
 
 其余各线互不依赖，可并行。
+
+2026-09-26 全量源码勘察后确定的五个先决设计（已并入各线文档，实施时不再重新讨论）：
+
+| # | 分叉 | 定案 |
+|---|---|---|
+| 1 | P7-A 平台 API 域名管控 | gateway 无主机白名单且公网 443 已放行；域名后缀校验放 delivery Send Client 内实现（见 01 §3.4） |
+| 2 | P7-B content 枚举兼容 | `#[serde(untagged)]` Text 优先 + `CORE_CONTRACT_VERSION` 1.1→1.2（见 02 §3.5） |
+| 3 | P7-C 错误跳转 | 新增 errorCodes 全链路筛选（前端 URL 参数 → BFF → `ExecutionSearchRequestV1`，见 03 §2.3/§3.3） |
+| 4 | P7-D 供应链镜像数 | supply-chain schema 对齐 11 镜像（8 常驻 + 3 Job，见 04 §2.3） |
+| 5 | P7-E 出网路径 | Control 直连（集群内 dependencies），补 NetworkPolicy + Vault 读 + endpoint 校验三件（见 05 §2） |
 
 ## 3. 全局约束
 

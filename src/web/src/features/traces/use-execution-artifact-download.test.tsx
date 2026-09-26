@@ -27,7 +27,10 @@ describe('Execution Trace Artifact download', () => {
       '/api/v1/executions/execution-1/artifacts/artifact-1',
       expect.objectContaining({ headers: expect.any(Headers) }),
     ))
-    expect(DownloadUrl.createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    expect(DownloadUrl.createObjectURL).toHaveBeenCalledTimes(1)
+    const blobArg = (DownloadUrl.createObjectURL as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as Blob | undefined
+    expect(blobArg?.size).toBe('{"trace":"large"}'.length)
+    expect(blobArg?.type).toBe('application/json')
     expect(click).toHaveBeenCalledOnce()
     expect(DownloadUrl.revokeObjectURL).toHaveBeenCalledWith('blob:trace-artifact')
     click.mockRestore()

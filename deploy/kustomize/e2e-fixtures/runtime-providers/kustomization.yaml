@@ -5,6 +5,7 @@ resources:
   - lightrag-tokenizer-cache.yaml
   - ../../addons/lightrag
   - ../../addons/mem0
+  - ../../addons/ragflow
 patches:
   - target:
       group: apps

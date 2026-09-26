@@ -102,6 +102,24 @@ pub struct WebhookMessageV1 {
     pub text: String,
 }
 
+/// Channel auto-reply configuration (plan7 P7-A L1): frozen into the trigger
+/// revision alongside the rest of the channel configuration; the runtime
+/// delivery loop enqueues an outbound reply when the execution reaches a
+/// terminal state.
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebhookReplyConfigV1 {
+    pub enabled: bool,
+    /// Name of the workflow output field whose value is replied (required
+    /// when enabled; Control validates it against the deployment output
+    /// schema before freezing).
+    pub output_field: String,
+    /// Optional template over the output; only output-field variables are
+    /// allowed. When empty the raw output field value is replied as text.
+    #[serde(default)]
+    pub template: Option<String>,
+}
+
 fn default_missing_policy() -> String {
     "error".into()
 }
@@ -137,6 +155,8 @@ pub enum RuntimeTriggerConfigurationV1 {
         input_mappings: Vec<WebhookInputMappingV1>,
         #[serde(default = "default_fixed_inputs")]
         fixed_inputs: Value,
+        #[serde(default)]
+        reply: Option<WebhookReplyConfigV1>,
     },
     Schedule {
         cron_expression: String,

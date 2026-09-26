@@ -1067,18 +1067,25 @@ async fn apply_trigger_bindings(
             mode,
             input_mappings,
             fixed_inputs,
+            reply,
         } = &trigger.configuration
         {
             let provider_type =
                 serde_json::to_value(provider).map_err(|e| RuntimeError::Internal(e.into()))?;
             let channel_mode =
                 serde_json::to_value(mode).map_err(|e| RuntimeError::Internal(e.into()))?;
-            sqlx::query("INSERT INTO webhook_bindings(id,tenant_id,application_id,bundle_id,configuration_revision,configuration_hash,public_id,provider_type,channel_mode,input_mapping_json,fixed_inputs_json,secret_ref_json,status,activated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,UTC_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE bundle_id=VALUES(bundle_id),configuration_revision=VALUES(configuration_revision),configuration_hash=VALUES(configuration_hash),provider_type=VALUES(provider_type),channel_mode=VALUES(channel_mode),input_mapping_json=VALUES(input_mapping_json),fixed_inputs_json=VALUES(fixed_inputs_json),secret_ref_json=VALUES(secret_ref_json),status=VALUES(status),activated_at=UTC_TIMESTAMP(6),locked_by=NULL,locked_until=NULL,heartbeat_at=NULL,connection_status=NULL")
+            let reply_config = reply
+                .as_ref()
+                .map(serde_json::to_value)
+                .transpose()
+                .map_err(|e| RuntimeError::Internal(e.into()))?;
+            sqlx::query("INSERT INTO webhook_bindings(id,tenant_id,application_id,bundle_id,configuration_revision,configuration_hash,public_id,provider_type,channel_mode,input_mapping_json,fixed_inputs_json,reply_config_json,secret_ref_json,status,activated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,UTC_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE bundle_id=VALUES(bundle_id),configuration_revision=VALUES(configuration_revision),configuration_hash=VALUES(configuration_hash),provider_type=VALUES(provider_type),channel_mode=VALUES(channel_mode),input_mapping_json=VALUES(input_mapping_json),fixed_inputs_json=VALUES(fixed_inputs_json),reply_config_json=VALUES(reply_config_json),secret_ref_json=VALUES(secret_ref_json),status=VALUES(status),activated_at=UTC_TIMESTAMP(6),locked_by=NULL,locked_until=NULL,heartbeat_at=NULL,connection_status=NULL")
                 .bind(trigger.trigger_id).bind(tenant_id).bind(application_id).bind(bundle_id).bind(trigger.revision).bind(trigger.configuration_hash.as_str()).bind(public_id.clone())
                 .bind(provider_type.as_str().unwrap_or("agentx"))
                 .bind(channel_mode.as_str().unwrap_or("callback"))
                 .bind(serde_json::to_value(input_mappings).map_err(|e|RuntimeError::Internal(e.into()))?)
                 .bind(fixed_inputs.clone())
+                .bind(&reply_config)
                 .bind(serde_json::to_value(secret).map_err(|e|RuntimeError::Internal(e.into()))?).bind(if trigger.enabled{"active"}else{"disabled"}).execute(&mut **tx).await?;
         }
     }

@@ -273,6 +273,14 @@ fn default_manifests() -> Vec<NodeManifestVersion> {
             "nodes/memory.json",
             include_str!("../../../plugins/builtin/core/nodes/memory.json"),
         ),
+        (
+            "nodes/reply_message.json",
+            include_str!("../../../plugins/builtin/core/nodes/reply_message.json"),
+        ),
+        (
+            "nodes/send_message.json",
+            include_str!("../../../plugins/builtin/core/nodes/send_message.json"),
+        ),
     ];
     let data_nodes = [
         (
