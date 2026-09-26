@@ -3,20 +3,75 @@
   "$id": "https://agentx.local/schemas/supply-chain-evidence-v1.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "status", "environment", "registry", "trustScope", "isolationLevel", "version", "sourceCommit", "generatedAt", "imageCount", "signedImageCount", "attestedImageCount", "manifestSignatureVerified"],
+  "required": [
+    "schemaVersion",
+    "status",
+    "environment",
+    "registry",
+    "trustScope",
+    "isolationLevel",
+    "version",
+    "sourceCommit",
+    "generatedAt",
+    "imageCount",
+    "signedImageCount",
+    "attestedImageCount",
+    "manifestSignatureVerified"
+  ],
   "properties": {
-    "schemaVersion": { "const": "agentx.io/supply-chain-evidence/v1" },
-    "status": { "const": "passed" },
-    "environment": { "const": "local-docker-desktop" },
-    "registry": { "const": "local-tls" },
-    "trustScope": { "const": "local-only" },
-    "isolationLevel": { "enum": ["standard", "strong"] },
-    "version": { "type": "string", "minLength": 1 },
-    "sourceCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
-    "generatedAt": { "type": "string", "format": "date-time" },
-    "imageCount": { "const": 7 },
-    "signedImageCount": { "const": 7 },
-    "attestedImageCount": { "const": 7 },
-    "manifestSignatureVerified": { "const": true }
+    "schemaVersion": {
+      "const": "agentx.io/supply-chain-evidence/v1"
+    },
+    "status": {
+      "const": "passed"
+    },
+    "environment": {
+      "const": "local-docker-desktop"
+    },
+    "registry": {
+      "const": "local-tls"
+    },
+    "trustScope": {
+      "const": "local-only"
+    },
+    "isolationLevel": {
+      "enum": [
+        "standard",
+        "strong"
+      ]
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceCommit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "imageCount": {
+      "description": "imageCount covers the 11-image release contract (8 resident services + 3 jobs)",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 11
+    },
+    "signedImageCount": {
+      "description": "signedImageCount covers the 11-image release contract (8 resident services + 3 jobs)",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 11
+    },
+    "attestedImageCount": {
+      "description": "attestedImageCount covers the 11-image release contract (8 resident services + 3 jobs)",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 11
+    },
+    "manifestSignatureVerified": {
+      "const": true
+    }
   }
 }

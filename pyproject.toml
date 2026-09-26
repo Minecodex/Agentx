@@ -24,6 +24,7 @@ pythonpath = ["."]
 testpaths = ["tests/acceptance", "tests/e2e"]
 cache_dir = ".local/cache/pytest"
 markers = [
+    "capacity: dedicated capacity-window runs (plan7 P7-D4)",
   "infrastructure: Kubernetes infrastructure and data-domain scenarios",
   "publishing: bundle publishing and activation scenarios",
   "gateway: invocation, webhook, and SSE scenarios",

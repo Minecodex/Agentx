@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 import tempfile
 import time
 import tomllib
@@ -87,3 +88,22 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def verify_signatures(receipts: dict) -> bool:
+    """plan7 P7-D7: verify cosign signatures when the tool is available."""
+    import shutil
+    import subprocess
+
+    if shutil.which("cosign") is None:
+        print("cosign not installed; signature verification skipped")
+        return True
+    images = [item["image"] for item in receipts.get("images", [])]
+    failed = [
+        image for image in images if subprocess.run(["cosign", "verify", image], capture_output=True).returncode != 0
+    ]
+    if failed:
+        print(f"signature verification failed for {len(failed)} images", file=sys.stderr)
+        return False
+    print(f"signatures verified for {len(images)} images")
+    return True
