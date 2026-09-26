@@ -677,6 +677,7 @@ fn evaluation_work_package_payload() -> RuntimeWorkPackagePayloadV1 {
     let prompt_hash =
         agentx_runtime_contracts::ContentHash::parse(format!("sha256:{}", "e".repeat(64))).unwrap();
     let model_configuration = agentx_runtime_contracts::RuntimeResourceConfigurationV1::Model {
+        capabilities: Vec::new(),
         provider: "fixture".into(),
         endpoint: "https://model.fixture/v1".into(),
         model: "evaluator-v1".into(),

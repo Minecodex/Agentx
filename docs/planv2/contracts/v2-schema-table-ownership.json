@@ -540,5 +540,27 @@
     "cross_plane_contract": "consumer health and degraded state",
     "retention_and_delete_rule": "retain the latest row per consumer identity",
     "owning_task": "V2Q-005"
+  },
+  {
+    "table": "knowledge_documents",
+    "plane": "control",
+    "authoritative_writer": "platform-control knowledge document use cases",
+    "allowed_readers": [
+      "platform-control publisher snapshot projection"
+    ],
+    "cross_plane_contract": "knowledge document upload and indexing status",
+    "retention_and_delete_rule": "deleted with the rag resource retention sweep; artifacts unregister references",
+    "owning_task": "plan7 P7-E"
+  },
+  {
+    "table": "rag_retrieval_tests",
+    "plane": "control",
+    "authoritative_writer": "platform-control hit-testing use case",
+    "allowed_readers": [
+      "platform-control knowledge detail"
+    ],
+    "cross_plane_contract": "retrieval test history receipts",
+    "retention_and_delete_rule": "retained for the latest 100 tests per resource",
+    "owning_task": "plan7 P7-E"
   }
 ]

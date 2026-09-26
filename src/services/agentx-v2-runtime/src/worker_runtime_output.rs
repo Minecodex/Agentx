@@ -508,16 +508,6 @@ fn rag_query_text(payload: &Value) -> String {
         .unwrap_or_else(|| json_text(payload))
 }
 
-fn rag_top_k(payload: &Value) -> u64 {
-    payload
-        .get("topK")
-        .or_else(|| payload.get("top_k"))
-        .and_then(Value::as_u64)
-        .unwrap_or(5)
-}
-
-/// Build the provider-specific query request from the caller payload.
-/// Returns the URL path, the JSON body and the header carrying the secret.
 pub(super) fn rag_query_request(
     provider: &str,
     operation: &str,
@@ -525,65 +515,16 @@ pub(super) fn rag_query_request(
     index_version: &str,
     input: &Value,
 ) -> Result<(String, Value, &'static str), WorkerExecution> {
-    if provider == RAG_PROVIDER_RAGFLOW {
-        if operation != "query" {
-            return Err(WorkerExecution::failed(
-                "RAG_OPERATION_UNSUPPORTED",
-                "RAGFlow knowledge connections support query only",
-                false,
-            ));
-        }
-        let dataset_ids: Vec<String> = namespace
-            .split(',')
-            .map(str::trim)
-            .filter(|candidate| !candidate.is_empty())
-            .map(str::to_owned)
-            .collect();
-        if dataset_ids.is_empty() {
-            return Err(WorkerExecution::failed(
-                "RAG_DATASET_REQUIRED",
-                "RAGFlow knowledge resource must reference at least one dataset id",
-                false,
-            ));
-        }
-        return Ok((
-            "api/v1/retrieval".into(),
-            json!({
-                "question": rag_query_text(input),
-                "dataset_ids": dataset_ids,
-                "top_k": rag_top_k(input),
-            }),
-            "authorization",
-        ));
-    }
-    let mut body = if input.is_object() {
-        input.clone()
-    } else {
-        json!({"query": input, "mode": "naive"})
-    };
-    if let Some(object) = body.as_object_mut() {
-        if let Some(top_k) = object.remove("topK") {
-            object.insert("top_k".into(), top_k);
-        }
-        object
-            .entry("workspace".to_owned())
-            .or_insert_with(|| json!(namespace));
-        object
-            .entry("indexVersion".to_owned())
-            .or_insert_with(|| json!(index_version));
-    }
-    let path = if operation == "insert" {
-        "documents/text"
-    } else {
-        "query"
-    };
-    Ok((path.into(), body, "x-api-key"))
+    agentx_runtime_contracts::rag::rag_query_request(
+        provider,
+        operation,
+        namespace,
+        index_version,
+        input,
+    )
+    .map_err(|error| WorkerExecution::failed(error.code, error.message, false))
 }
 
-/// Normalize the provider envelope into the canonical rag payload consumed by
-/// rag_execution_output / knowledge_result_from_execution. LightRAG responses
-/// pass through unchanged; RAGFlow `{code, data}` envelopes are mapped and
-/// non-zero codes surface the provider message as a failure.
 pub(super) fn finalize_rag_response(provider: &str, execution: WorkerExecution) -> WorkerExecution {
     if provider != RAG_PROVIDER_RAGFLOW || execution.status != WorkerResultStatusV1::Succeeded {
         return execution;
@@ -591,40 +532,10 @@ pub(super) fn finalize_rag_response(provider: &str, execution: WorkerExecution) 
     let Some(value) = successful_value(&execution) else {
         return invalid_empty();
     };
-    match value.get("code").and_then(Value::as_i64) {
-        None | Some(0) => {}
-        Some(_) => {
-            let message = value
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("RAGFlow rejected the query");
-            return WorkerExecution::failed("PROVIDER_REJECTED", message, false);
-        }
+    match agentx_runtime_contracts::rag::finalize_rag_value(provider, value) {
+        Ok(normalized) => WorkerExecution::succeeded(normalized),
+        Err(error) => WorkerExecution::failed(error.code, error.message, false),
     }
-    let documents = value
-        .pointer("/data/chunks")
-        .cloned()
-        .unwrap_or_else(|| json!([]));
-    let record_ids = value
-        .pointer("/data/chunks")
-        .and_then(Value::as_array)
-        .map(|chunks| {
-            Value::Array(
-                chunks
-                    .iter()
-                    .filter_map(|chunk| chunk.get("id").and_then(Value::as_str))
-                    .map(str::to_owned)
-                    .map(Value::String)
-                    .collect(),
-            )
-        })
-        .unwrap_or_else(|| json!([]));
-    WorkerExecution::succeeded(json!({
-        "text": json_text(&documents),
-        "documents": documents,
-        "citations": [],
-        "recordIds": record_ids,
-    }))
 }
 
 #[cfg(test)]

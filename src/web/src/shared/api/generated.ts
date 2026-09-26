@@ -1928,6 +1928,27 @@ export interface components {
             apiVersion: number;
             items: components["schemas"]["DeliverySummary"][];
         };
+        KnowledgeDocument: {
+            id: string;
+            ragResourceId: string;
+            name: string;
+            contentType: string;
+            sizeBytes: number;
+            externalDocumentId?: string | null;
+            /** @enum {string} */
+            status: "uploading" | "indexing" | "indexed" | "failed";
+            errorCode?: string | null;
+            errorMessage?: string | null;
+            indexedAt?: string | null;
+            version: number;
+            createdAt: string;
+        };
+        RetrievalTestResult: {
+            text?: string;
+            documents?: Record<string, never>[];
+            citations?: unknown[];
+            recordIds?: unknown[];
+        };
     };
     responses: never;
     parameters: never;

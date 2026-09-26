@@ -25,5 +25,13 @@ spec:
         - namespaceSelector: { matchLabels: { agentx.io/plane: dependencies } }
           podSelector: { matchLabels: { app.kubernetes.io/name: vault } }
       ports: [{ protocol: TCP, port: 8200 }]
+    # plan7 P7-E: knowledge document indexing and hit-testing reach the RAG
+    # providers directly over the dependencies network path.
+    - to:
+        - namespaceSelector: { matchLabels: { agentx.io/plane: dependencies } }
+          podSelector: { matchLabels: { agentx.io/runtime-provider: allowed } }
+      ports:
+        - { protocol: TCP, port: 9621 }
+        - { protocol: TCP, port: 9380 }
     - to: [{ namespaceSelector: {}, podSelector: { matchLabels: { k8s-app: kube-dns } } }]
       ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]

@@ -85,3 +85,5 @@ export type GatewaySession = gatewayComponents['schemas']['SessionResponse']
 export type GatewayInvocation = gatewayComponents['schemas']['InvocationResponse']
 export type GatewayMessage = gatewayComponents['schemas']['MessageResponse']
 export type PageResponse<T> = { items: T[]; page: number; pageSize: number; total: number }
+export type KnowledgeDocument = components['schemas']['KnowledgeDocument']
+export type RetrievalTestResult = components['schemas']['RetrievalTestResult']
