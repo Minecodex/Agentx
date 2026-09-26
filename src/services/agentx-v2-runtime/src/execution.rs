@@ -657,6 +657,31 @@ fn project_chat_message_input(
         mapping.question_input.clone(),
         Value::String(question.to_owned()),
     )]);
+    // plan7 P7-B B5: inputs marked x-agentx-modality receive the artifact
+    // references of the matching message parts natively, so the model request
+    // builder can lift them into multimodal content parts.
+    if let Some(properties) = input_contract.get("properties").and_then(Value::as_object) {
+        for (field, schema) in properties {
+            let Some(modality) = schema.get("x-agentx-modality").and_then(Value::as_str) else {
+                continue;
+            };
+            let selected: Vec<Value> = files
+                .iter()
+                .filter(|file| {
+                    let part_type = file.get("type").and_then(Value::as_str).unwrap_or_default();
+                    match modality {
+                        "image" => part_type == "image",
+                        "audio" => part_type == "audio",
+                        _ => false,
+                    }
+                })
+                .cloned()
+                .collect();
+            if !selected.is_empty() {
+                projected.insert(field.clone(), Value::Array(selected));
+            }
+        }
+    }
     if files.is_empty() {
         return Ok(Value::Object(projected));
     }

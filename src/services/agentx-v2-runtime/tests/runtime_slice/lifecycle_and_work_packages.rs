@@ -712,6 +712,7 @@ async fn evaluation_work_package_creates_cases_converges_and_cancels_atomically(
             }))
             .unwrap(),
             configuration: agentx_runtime_contracts::RuntimeResourceConfigurationV1::Model {
+            capabilities: Vec::new(),
                 provider: "openai_compatible".into(),
                 endpoint,
                 model: "evaluator-fixture".into(),

@@ -531,6 +531,7 @@ async fn agent_worker_runs_a_bounded_tool_loop_and_persists_usage(fixture: &Fixt
     .unwrap();
     let model_id = Uuid::now_v7();
     let model_configuration = agentx_runtime_contracts::RuntimeResourceConfigurationV1::Model {
+            capabilities: Vec::new(),
         provider: "openai_compatible".into(),
         endpoint: format!("{endpoint}/model"),
         model: "fixture-model".into(),
@@ -726,6 +727,7 @@ async fn application_session_agent_restores_context_across_executions(fixture: &
     let model_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let model_id = Uuid::now_v7();
     let configuration = agentx_runtime_contracts::RuntimeResourceConfigurationV1::Model {
+            capabilities: Vec::new(),
         provider: "openai_compatible".into(),
         endpoint: "https://provider.example.test/model".into(),
         model: "fixture-model".into(),

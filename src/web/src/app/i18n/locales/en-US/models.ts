@@ -20,6 +20,7 @@ const translations = {
   "maxInputTokens": "Maximum input tokens",
   "maxOutputTokens": "Maximum output tokens",
   "defaultParameters": "Default parameters JSON",
+  "capabilities": "Input modality capabilities (comma separated: vision, audio)",
   "currency": "Currency",
   "inputPrice": "Input price / 1M tokens",
   "outputPrice": "Output price / 1M tokens",

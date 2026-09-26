@@ -78,6 +78,8 @@ struct ModelResponse {
     max_input_tokens: u64,
     max_output_tokens: u64,
     default_parameters: Value,
+    #[serde(default)]
+    capabilities: Vec<String>,
     revision_number: u64,
     connection_status: String,
     #[serde(with = "time::serde::rfc3339::option")]
@@ -104,6 +106,8 @@ struct CreateRequest {
     max_output_tokens: u64,
     #[serde(default = "default_parameters")]
     default_parameters: Value,
+    #[serde(default)]
+    capabilities: Vec<String>,
     price: PriceRequest,
 }
 
@@ -121,6 +125,8 @@ struct UpdateRequest {
     max_input_tokens: u64,
     max_output_tokens: u64,
     default_parameters: Value,
+    #[serde(default)]
+    capabilities: Vec<String>,
     expected_alias_version: u64,
     price: PriceRequest,
 }
@@ -183,11 +189,11 @@ async fn list_models(
     let status = query.status.unwrap_or_default();
     let administrator = actor.roles.iter().any(|role| role == "company_admin");
     let (rows, total) = if administrator {
-        let rows=sqlx::query("SELECT a.id,a.alias,a.status,a.version alias_version,a.updated_at,d.id deployment_id,d.connection_name,d.provider_type,d.endpoint,d.credential_id,d.owner_department_id,d.model_name,d.max_input_tokens,d.max_output_tokens,d.default_parameters,d.revision_number,COALESCE((SELECT h.status FROM resource_health_checks h WHERE h.tenant_id=a.tenant_id AND h.resource_type='model' AND h.resource_id=a.id AND h.checked_at>=GREATEST(a.updated_at,d.updated_at) ORDER BY h.check_sequence DESC LIMIT 1),'untested') connection_status,(SELECT h.checked_at FROM resource_health_checks h WHERE h.tenant_id=a.tenant_id AND h.resource_type='model' AND h.resource_id=a.id AND h.checked_at>=GREATEST(a.updated_at,d.updated_at) ORDER BY h.check_sequence DESC LIMIT 1) connection_checked_at FROM model_aliases a JOIN model_deployments d ON d.tenant_id=a.tenant_id AND d.id=a.deployment_id WHERE a.tenant_id=? AND (?='' OR a.status=?) AND (?='%%' OR a.alias LIKE ? OR d.connection_name LIKE ? OR d.model_name LIKE ?) ORDER BY a.updated_at DESC,a.id DESC LIMIT ? OFFSET ?").bind(actor.tenant_id).bind(&status).bind(&status).bind(&search).bind(&search).bind(&search).bind(&search).bind(page_size).bind(u64::from((page-1)*page_size)).fetch_all(&state.pool).await?;
+        let rows=sqlx::query("SELECT a.id,a.alias,a.status,a.version alias_version,a.updated_at,d.id deployment_id,d.connection_name,d.provider_type,d.endpoint,d.credential_id,d.owner_department_id,d.model_name,d.max_input_tokens,d.max_output_tokens,d.default_parameters,d.capabilities_json,d.revision_number,COALESCE((SELECT h.status FROM resource_health_checks h WHERE h.tenant_id=a.tenant_id AND h.resource_type='model' AND h.resource_id=a.id AND h.checked_at>=GREATEST(a.updated_at,d.updated_at) ORDER BY h.check_sequence DESC LIMIT 1),'untested') connection_status,(SELECT h.checked_at FROM resource_health_checks h WHERE h.tenant_id=a.tenant_id AND h.resource_type='model' AND h.resource_id=a.id AND h.checked_at>=GREATEST(a.updated_at,d.updated_at) ORDER BY h.check_sequence DESC LIMIT 1) connection_checked_at FROM model_aliases a JOIN model_deployments d ON d.tenant_id=a.tenant_id AND d.id=a.deployment_id WHERE a.tenant_id=? AND (?='' OR a.status=?) AND (?='%%' OR a.alias LIKE ? OR d.connection_name LIKE ? OR d.model_name LIKE ?) ORDER BY a.updated_at DESC,a.id DESC LIMIT ? OFFSET ?").bind(actor.tenant_id).bind(&status).bind(&status).bind(&search).bind(&search).bind(&search).bind(&search).bind(page_size).bind(u64::from((page-1)*page_size)).fetch_all(&state.pool).await?;
         let total:i64=sqlx::query_scalar("SELECT COUNT(*) FROM model_aliases a JOIN model_deployments d ON d.tenant_id=a.tenant_id AND d.id=a.deployment_id WHERE a.tenant_id=? AND (?='' OR a.status=?) AND (?='%%' OR a.alias LIKE ? OR d.connection_name LIKE ? OR d.model_name LIKE ?)").bind(actor.tenant_id).bind(&status).bind(&status).bind(&search).bind(&search).bind(&search).bind(&search).fetch_one(&state.pool).await?;
         (rows, total)
     } else {
-        let rows=sqlx::query("SELECT a.id,a.alias,a.status,a.version alias_version,a.updated_at,d.id deployment_id,d.connection_name,d.provider_type,d.endpoint,d.credential_id,d.owner_department_id,d.model_name,d.max_input_tokens,d.max_output_tokens,d.default_parameters,d.revision_number,COALESCE((SELECT h.status FROM resource_health_checks h WHERE h.tenant_id=a.tenant_id AND h.resource_type='model' AND h.resource_id=a.id AND h.checked_at>=GREATEST(a.updated_at,d.updated_at) ORDER BY h.check_sequence DESC LIMIT 1),'untested') connection_status,(SELECT h.checked_at FROM resource_health_checks h WHERE h.tenant_id=a.tenant_id AND h.resource_type='model' AND h.resource_id=a.id AND h.checked_at>=GREATEST(a.updated_at,d.updated_at) ORDER BY h.check_sequence DESC LIMIT 1) connection_checked_at FROM model_aliases a JOIN model_deployments d ON d.tenant_id=a.tenant_id AND d.id=a.deployment_id WHERE a.tenant_id=? AND EXISTS(SELECT 1 FROM department_closure dc WHERE dc.tenant_id=a.tenant_id AND dc.ancestor_id=? AND dc.descendant_id=d.owner_department_id) AND (?='' OR a.status=?) AND (?='%%' OR a.alias LIKE ? OR d.connection_name LIKE ? OR d.model_name LIKE ?) ORDER BY a.updated_at DESC,a.id DESC LIMIT ? OFFSET ?").bind(actor.tenant_id).bind(actor.department_id).bind(&status).bind(&status).bind(&search).bind(&search).bind(&search).bind(&search).bind(page_size).bind(u64::from((page-1)*page_size)).fetch_all(&state.pool).await?;
+        let rows=sqlx::query("SELECT a.id,a.alias,a.status,a.version alias_version,a.updated_at,d.id deployment_id,d.connection_name,d.provider_type,d.endpoint,d.credential_id,d.owner_department_id,d.model_name,d.max_input_tokens,d.max_output_tokens,d.default_parameters,d.capabilities_json,d.revision_number,COALESCE((SELECT h.status FROM resource_health_checks h WHERE h.tenant_id=a.tenant_id AND h.resource_type='model' AND h.resource_id=a.id AND h.checked_at>=GREATEST(a.updated_at,d.updated_at) ORDER BY h.check_sequence DESC LIMIT 1),'untested') connection_status,(SELECT h.checked_at FROM resource_health_checks h WHERE h.tenant_id=a.tenant_id AND h.resource_type='model' AND h.resource_id=a.id AND h.checked_at>=GREATEST(a.updated_at,d.updated_at) ORDER BY h.check_sequence DESC LIMIT 1) connection_checked_at FROM model_aliases a JOIN model_deployments d ON d.tenant_id=a.tenant_id AND d.id=a.deployment_id WHERE a.tenant_id=? AND EXISTS(SELECT 1 FROM department_closure dc WHERE dc.tenant_id=a.tenant_id AND dc.ancestor_id=? AND dc.descendant_id=d.owner_department_id) AND (?='' OR a.status=?) AND (?='%%' OR a.alias LIKE ? OR d.connection_name LIKE ? OR d.model_name LIKE ?) ORDER BY a.updated_at DESC,a.id DESC LIMIT ? OFFSET ?").bind(actor.tenant_id).bind(actor.department_id).bind(&status).bind(&status).bind(&search).bind(&search).bind(&search).bind(&search).bind(page_size).bind(u64::from((page-1)*page_size)).fetch_all(&state.pool).await?;
         let total:i64=sqlx::query_scalar("SELECT COUNT(*) FROM model_aliases a JOIN model_deployments d ON d.tenant_id=a.tenant_id AND d.id=a.deployment_id WHERE a.tenant_id=? AND EXISTS(SELECT 1 FROM department_closure dc WHERE dc.tenant_id=a.tenant_id AND dc.ancestor_id=? AND dc.descendant_id=d.owner_department_id) AND (?='' OR a.status=?) AND (?='%%' OR a.alias LIKE ? OR d.connection_name LIKE ? OR d.model_name LIKE ?)").bind(actor.tenant_id).bind(actor.department_id).bind(&status).bind(&status).bind(&search).bind(&search).bind(&search).bind(&search).fetch_one(&state.pool).await?;
         (rows, total)
     };
@@ -245,6 +251,7 @@ async fn create_model(
         input.max_input_tokens,
         input.max_output_tokens,
         &input.default_parameters,
+        &input.capabilities,
     )
     .await?;
     sqlx::query("INSERT INTO model_aliases(id,tenant_id,alias,deployment_id) VALUES(?,?,?,?)")
@@ -316,6 +323,7 @@ async fn update_model(
         input.max_input_tokens,
         input.max_output_tokens,
         &input.default_parameters,
+        &input.capabilities,
     )
     .await?;
     insert_price(&mut tx, &actor, deployment, 1, &input.price).await?;
@@ -492,8 +500,10 @@ async fn insert_deployment(
     max_input: u64,
     max_output: u64,
     parameters: &Value,
+    capabilities: &[String],
 ) -> ApiResult<()> {
-    sqlx::query("INSERT INTO model_deployments(id,tenant_id,connection_name,provider_type,endpoint,credential_id,owner_department_id,model_name,max_input_tokens,max_output_tokens,default_parameters,revision_number,supersedes_deployment_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(id).bind(actor.tenant_id).bind(required_name(connection_name)?).bind(provider).bind(endpoint).bind(credential).bind(department).bind(required_name(model_name)?).bind(max_input).bind(max_output).bind(parameters).bind(revision).bind(supersedes).execute(&mut **tx).await?;
+    let capabilities = validate_capabilities(capabilities)?;
+    sqlx::query("INSERT INTO model_deployments(id,tenant_id,connection_name,provider_type,endpoint,credential_id,owner_department_id,model_name,max_input_tokens,max_output_tokens,default_parameters,capabilities_json,revision_number,supersedes_deployment_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(id).bind(actor.tenant_id).bind(required_name(connection_name)?).bind(provider).bind(endpoint).bind(credential).bind(department).bind(required_name(model_name)?).bind(max_input).bind(max_output).bind(parameters).bind(serde_json::to_value(&capabilities).map_err(ApiError::internal)?).bind(revision).bind(supersedes).execute(&mut **tx).await?;
     Ok(())
 }
 async fn insert_history(
@@ -766,7 +776,7 @@ async fn require_credential(
     }
 }
 async fn load_model(state: &ControlApiState, tenant: Uuid, id: Uuid) -> ApiResult<ModelResponse> {
-    let row=sqlx::query("SELECT a.id,a.alias,a.status,a.version alias_version,a.updated_at,d.id deployment_id,d.connection_name,d.provider_type,d.endpoint,d.credential_id,d.owner_department_id,d.model_name,d.max_input_tokens,d.max_output_tokens,d.default_parameters,d.revision_number,COALESCE((SELECT h.status FROM resource_health_checks h WHERE h.tenant_id=a.tenant_id AND h.resource_type='model' AND h.resource_id=a.id AND h.checked_at>=GREATEST(a.updated_at,d.updated_at) ORDER BY h.check_sequence DESC LIMIT 1),'untested') connection_status,(SELECT h.checked_at FROM resource_health_checks h WHERE h.tenant_id=a.tenant_id AND h.resource_type='model' AND h.resource_id=a.id AND h.checked_at>=GREATEST(a.updated_at,d.updated_at) ORDER BY h.check_sequence DESC LIMIT 1) connection_checked_at FROM model_aliases a JOIN model_deployments d ON d.tenant_id=a.tenant_id AND d.id=a.deployment_id WHERE a.tenant_id=? AND a.id=?").bind(tenant).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Model"))?;
+    let row=sqlx::query("SELECT a.id,a.alias,a.status,a.version alias_version,a.updated_at,d.id deployment_id,d.connection_name,d.provider_type,d.endpoint,d.credential_id,d.owner_department_id,d.model_name,d.max_input_tokens,d.max_output_tokens,d.default_parameters,d.capabilities_json,d.revision_number,COALESCE((SELECT h.status FROM resource_health_checks h WHERE h.tenant_id=a.tenant_id AND h.resource_type='model' AND h.resource_id=a.id AND h.checked_at>=GREATEST(a.updated_at,d.updated_at) ORDER BY h.check_sequence DESC LIMIT 1),'untested') connection_status,(SELECT h.checked_at FROM resource_health_checks h WHERE h.tenant_id=a.tenant_id AND h.resource_type='model' AND h.resource_id=a.id AND h.checked_at>=GREATEST(a.updated_at,d.updated_at) ORDER BY h.check_sequence DESC LIMIT 1) connection_checked_at FROM model_aliases a JOIN model_deployments d ON d.tenant_id=a.tenant_id AND d.id=a.deployment_id WHERE a.tenant_id=? AND a.id=?").bind(tenant).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Model"))?;
     Ok(model_from_row(row)?)
 }
 fn model_from_row(row: MySqlRow) -> Result<ModelResponse, sqlx::Error> {
@@ -785,6 +795,16 @@ fn model_from_row(row: MySqlRow) -> Result<ModelResponse, sqlx::Error> {
         max_input_tokens: row.try_get("max_input_tokens")?,
         max_output_tokens: row.try_get("max_output_tokens")?,
         default_parameters: row.try_get("default_parameters")?,
+        capabilities: row
+            .try_get::<Option<Value>, _>("capabilities_json")?
+            .and_then(|value| value.as_array().cloned())
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|value| value.as_str().map(str::to_owned))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default(),
         revision_number: row.try_get("revision_number")?,
         connection_status: row.try_get("connection_status")?,
         connection_checked_at: row.try_get("connection_checked_at")?,
@@ -889,6 +909,18 @@ const fn default_max_input_tokens() -> u64 {
 const fn default_max_output_tokens() -> u64 {
     128_000
 }
+fn validate_capabilities(capabilities: &[String]) -> ApiResult<Vec<String>> {
+    for capability in capabilities {
+        if !matches!(capability.as_str(), "vision" | "audio") {
+            return Err(ApiError::bad_request(
+                "INVALID_MODEL_CAPABILITY",
+                "Model capabilities must be vision or audio",
+            ));
+        }
+    }
+    Ok(capabilities.to_vec())
+}
+
 fn default_parameters() -> Value {
     json!({})
 }

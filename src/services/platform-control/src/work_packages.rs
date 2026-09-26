@@ -1405,7 +1405,7 @@ async fn load_model_binding(
     tenant_id: Uuid,
     model_id: Uuid,
 ) -> ApiResult<RuntimeResourceBindingV1> {
-    let row = sqlx::query("SELECT a.version alias_version,d.id deployment_id,d.version deployment_version,d.provider_type,d.endpoint,d.model_name,d.credential_id,p.id price_version_id,p.currency,CAST(p.input_per_million AS CHAR) input_per_million,CAST(p.output_per_million AS CHAR) output_per_million FROM model_aliases a JOIN model_deployments d ON d.tenant_id=a.tenant_id AND d.id=a.deployment_id JOIN model_price_versions p ON p.tenant_id=d.tenant_id AND p.deployment_id=d.id AND p.id=(SELECT latest.id FROM model_price_versions latest WHERE latest.tenant_id=d.tenant_id AND latest.deployment_id=d.id ORDER BY latest.version_number DESC LIMIT 1) WHERE a.tenant_id=? AND a.id=? AND a.status='active' AND d.status='active'")
+    let row = sqlx::query("SELECT a.version alias_version,d.id deployment_id,d.version deployment_version,d.provider_type,d.endpoint,d.model_name,d.credential_id,d.capabilities_json,p.id price_version_id,p.currency,CAST(p.input_per_million AS CHAR) input_per_million,CAST(p.output_per_million AS CHAR) output_per_million FROM model_aliases a JOIN model_deployments d ON d.tenant_id=a.tenant_id AND d.id=a.deployment_id JOIN model_price_versions p ON p.tenant_id=d.tenant_id AND p.deployment_id=d.id AND p.id=(SELECT latest.id FROM model_price_versions latest WHERE latest.tenant_id=d.tenant_id AND latest.deployment_id=d.id ORDER BY latest.version_number DESC LIMIT 1) WHERE a.tenant_id=? AND a.id=? AND a.status='active' AND d.status='active'")
         .bind(tenant_id)
         .bind(model_id)
         .fetch_optional(&state.pool)
@@ -1443,6 +1443,16 @@ async fn load_model_binding(
             output_per_million: row.try_get("output_per_million")?,
         },
         credential,
+        capabilities: row
+            .try_get::<Option<Value>, _>("capabilities_json")?
+            .and_then(|value| value.as_array().cloned())
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|value| value.as_str().map(str::to_owned))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default(),
     };
     Ok(RuntimeResourceBindingV1 {
         resource_kind: RuntimeResourceKindV1::Model,

@@ -134,6 +134,16 @@ fn from_parts(
                     )?,
                 },
                 credential: optional_vault_reference(&snapshot)?,
+                capabilities: snapshot
+                    .get("capabilities")
+                    .and_then(Value::as_array)
+                    .map(|values| {
+                        values
+                            .iter()
+                            .filter_map(|value| value.as_str().map(str::to_owned))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default(),
             },
             vec![],
         ),

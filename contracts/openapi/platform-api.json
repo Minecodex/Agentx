@@ -1288,6 +1288,17 @@
             ]
           },
           "defaultParameters": {},
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vision",
+                "audio"
+              ]
+            },
+            "description": "Input modality capabilities"
+          },
           "endpoint": {
             "type": "string"
           },
@@ -3978,6 +3989,17 @@
             ]
           },
           "defaultParameters": {},
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vision",
+                "audio"
+              ]
+            },
+            "description": "Input modality capabilities"
+          },
           "deploymentId": {
             "format": "uuid",
             "type": "string"
@@ -7149,6 +7171,17 @@
             ]
           },
           "defaultParameters": {},
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vision",
+                "audio"
+              ]
+            },
+            "description": "Input modality capabilities"
+          },
           "endpoint": {
             "type": "string"
           },

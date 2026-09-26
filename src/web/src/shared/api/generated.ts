@@ -292,6 +292,8 @@ export interface components {
             connectionName: string;
             credentialId?: string | null;
             defaultParameters?: unknown;
+            /** @description Input modality capabilities */
+            capabilities?: ("vision" | "audio")[];
             endpoint: string;
             maxInputTokens?: number;
             maxOutputTokens?: number;
@@ -883,6 +885,8 @@ export interface components {
             connectionStatus: string;
             credentialId?: string | null;
             defaultParameters: unknown;
+            /** @description Input modality capabilities */
+            capabilities?: ("vision" | "audio")[];
             deploymentId: string;
             endpoint: string;
             id: string;
@@ -1532,6 +1536,8 @@ export interface components {
             connectionName: string;
             credentialId?: string | null;
             defaultParameters: unknown;
+            /** @description Input modality capabilities */
+            capabilities?: ("vision" | "audio")[];
             endpoint: string;
             expectedAliasVersion: number;
             maxInputTokens: number;

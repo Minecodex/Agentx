@@ -20,6 +20,7 @@ const translations = {
   "maxInputTokens": "最大输入 Token",
   "maxOutputTokens": "最大输出 Token",
   "defaultParameters": "默认参数 JSON",
+  "capabilities": "输入模态能力（逗号分隔：vision, audio）",
   "currency": "币种",
   "inputPrice": "输入单价/百万 Token",
   "outputPrice": "输出单价/百万 Token",

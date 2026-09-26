@@ -193,6 +193,7 @@ async fn agent_attachment_revocation_is_tool_scoped(fixture: &Fixture) {
 
     let model_id = Uuid::now_v7();
     let model_configuration = RuntimeResourceConfigurationV1::Model {
+            capabilities: Vec::new(),
         provider: "openai_compatible".into(),
         endpoint: "https://provider.example.test/model".into(),
         model: "authorization-fixture".into(),

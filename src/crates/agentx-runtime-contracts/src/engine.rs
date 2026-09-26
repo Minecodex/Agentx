@@ -214,6 +214,10 @@ pub enum RuntimeResourceConfigurationV1 {
         context_window: u64,
         price: RuntimeModelPriceV1,
         credential: Option<crate::VaultSecretReferenceV1>,
+        /// Modalities the deployment accepts as native model input
+        /// (plan7 P7-B); absent means text-only so old bundles stay valid.
+        #[serde(default)]
+        capabilities: Vec<String>,
     },
     Mcp {
         server_id: Uuid,
