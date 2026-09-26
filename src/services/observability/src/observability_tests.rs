@@ -187,6 +187,8 @@ fn trace_event(
         execution_id,
         execution_sequence: sequence,
         trace_id: Uuid::now_v7(),
+        workflow_id: None,
+        application_id: None,
         span_id,
         parent_span_id: None,
         event_kind,
