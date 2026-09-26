@@ -42,6 +42,7 @@ pub fn routes() -> Router<ControlApiState> {
         .route("/api/v1/approvals/{id}/decide", post(decide_approval))
         .route("/api/v1/approvals/{id}/cancel", post(cancel_approval))
         .route("/api/v1/evaluations", get(list_evaluations))
+        .route("/api/v1/evaluations/compare", get(compare_evaluations))
         .route(
             "/api/v1/evaluations/{id}/report",
             get(get_evaluation_report),
@@ -873,4 +874,156 @@ fn deterministic_id(value: &str) -> Uuid {
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     Uuid::from_bytes(bytes)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CompareEvaluationsQuery {
+    run_ids: Vec<Uuid>,
+}
+
+/// plan7 P7-C C4: compare 2..=5 evaluation runs. Cases align on case_key via
+/// each run's dataset version; rule aggregates align on rule_key with absent
+/// marking for profiles that lack a rule.
+#[allow(clippy::too_many_lines)]
+async fn compare_evaluations(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Query(query): Query<CompareEvaluationsQuery>,
+) -> ApiResult<Json<Value>> {
+    actor.require("evaluation:view")?;
+    let runs = query.run_ids;
+    if !(2..=5).contains(&runs.len()) {
+        return Err(ApiError::bad_request(
+            "INVALID_COMPARE_RUN_COUNT",
+            "Compare accepts between 2 and 5 evaluation runs",
+        ));
+    }
+    let view = projection(&state.pool).await?;
+    let mut summaries = Vec::new();
+    for run_id in &runs {
+        let row = sqlx::query(
+            "SELECT er.id,er.name,er.workflow_version_id,er.dataset_version_id,er.evaluation_profile_version_id,er.status,er.runtime_report_json FROM evaluation_runs er WHERE er.tenant_id=? AND er.id=? AND er.projection_generation=? AND er.projection_deleted=FALSE",
+        )
+        .bind(actor.tenant_id)
+        .bind(run_id)
+        .bind(view.generation)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Evaluation run"))?;
+        let report: Value = row
+            .try_get::<Option<Value>, _>("runtime_report_json")?
+            .unwrap_or_else(|| json!({}));
+        let metrics = report.get("metrics").cloned().unwrap_or_else(|| json!({}));
+        summaries.push(json!({
+            "runId": row.try_get::<Uuid, _>("id")?,
+            "name": row.try_get::<String, _>("name")?,
+            "workflowVersionId": row.try_get::<Uuid, _>("workflow_version_id")?,
+            "datasetVersionId": row.try_get::<Uuid, _>("dataset_version_id")?,
+            "profileVersionId": row.try_get::<Uuid, _>("evaluation_profile_version_id")?,
+            "status": row.try_get::<String, _>("status")?,
+            "metrics": metrics,
+        }));
+    }
+    // Case deltas aligned on case_key across each run's dataset version.
+    let mut case_deltas = Vec::new();
+    let mut aligned = 0usize;
+    let total;
+    {
+        let ids = runs
+            .iter()
+            .map(Uuid::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let rows = sqlx::query(&format!(
+            "SELECT cp.evaluation_run_id,c.case_key,cp.status,cp.score,cp.cost_micros FROM evaluation_case_projection cp JOIN dataset_version_cases c ON c.tenant_id=cp.tenant_id AND c.dataset_version_id=cp.dataset_version_id AND c.source_case_id=cp.source_case_id WHERE cp.tenant_id=? AND cp.projection_generation=? AND cp.evaluation_run_id IN ({ids})"
+        ))
+        .bind(actor.tenant_id)
+        .bind(view.generation)
+        .fetch_all(&state.pool)
+        .await?;
+        use std::collections::BTreeMap;
+        type CaseAggregate = BTreeMap<Uuid, (String, Option<f64>, u64)>;
+        let mut by_key: BTreeMap<String, CaseAggregate> = BTreeMap::new();
+        for row in rows {
+            let run_id: Uuid = row.try_get("evaluation_run_id")?;
+            let key: String = row.try_get("case_key")?;
+            by_key.entry(key).or_default().insert(
+                run_id,
+                (
+                    row.try_get("status")?,
+                    row.try_get("score")?,
+                    row.try_get("cost_micros")?,
+                ),
+            );
+        }
+        total = by_key.len();
+        for (key, per_run) in by_key {
+            if per_run.len() == runs.len() {
+                aligned += 1;
+            }
+            let baseline_status = per_run.get(&runs[0]).map(|(status, _, _)| status.clone());
+            case_deltas.push(json!({
+                "caseKey": key,
+                "baselineStatus": baseline_status,
+                "candidateStatus": per_run.get(&runs[1]).map(|(status, _, _)| status.clone()),
+                "statusByRun": runs.iter().map(|run_id| per_run.get(run_id).map(|(status, _, _)| status.clone())).collect::<Vec<_>>(),
+                "scoreByRun": runs.iter().map(|run_id| per_run.get(run_id).and_then(|(_, score, _)| *score)).collect::<Vec<_>>(),
+                "costDelta": per_run.get(&runs[1]).map(|(_, _, cost)| *cost as i64).unwrap_or(0)
+                    - per_run.get(&runs[0]).map(|(_, _, cost)| *cost as i64).unwrap_or(0),
+            }));
+        }
+    }
+    // Rule aggregates aligned on rule_key.
+    let mut rule_aggregates = Vec::new();
+    {
+        use std::collections::BTreeMap;
+        let mut by_rule: BTreeMap<String, BTreeMap<Uuid, (String, u64, u64)>> = BTreeMap::new();
+        let ids = runs
+            .iter()
+            .map(Uuid::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let rows = sqlx::query(&format!(
+            "SELECT rr.evaluation_run_id,pr.rule_key,pr.evaluator_type,rr.status FROM evaluation_rule_results rr JOIN evaluation_run_cases c ON c.tenant_id=rr.tenant_id AND c.id=rr.evaluation_run_case_id JOIN evaluation_profile_rules pr ON pr.tenant_id=rr.tenant_id AND pr.id=rr.profile_rule_id WHERE rr.tenant_id=? AND rr.projection_generation=? AND rr.evaluation_run_id IN ({ids})"
+        ))
+        .bind(actor.tenant_id)
+        .bind(view.generation)
+        .fetch_all(&state.pool)
+        .await?;
+        for row in rows {
+            let run_id: Uuid = row.try_get("evaluation_run_id")?;
+            let key: String = row.try_get("rule_key")?;
+            let entry = by_rule.entry(key).or_default().entry(run_id).or_insert((
+                row.try_get::<String, _>("rule_key")?.clone(),
+                0,
+                0,
+            ));
+            let _ = entry;
+            let status: String = row.try_get("status")?;
+            let counter = by_rule
+                .get_mut(&row.try_get::<String, _>("rule_key")?)
+                .and_then(|map| map.get_mut(&run_id));
+            if let Some(counter) = counter {
+                counter.2 += 1;
+                if status == "passed" || status == "completed" {
+                    counter.1 += 1;
+                }
+            }
+        }
+        for (key, per_run) in by_rule {
+            rule_aggregates.push(json!({
+                "ruleKey": key,
+                "passRateByRun": runs.iter().map(|run_id| per_run.get(run_id).map(|( _, passed, total)| if *total == 0 { None } else { Some(*passed as f64 / *total as f64) })).collect::<Vec<_>>(),
+            }));
+        }
+    }
+    Ok(Json(json!({
+        "apiVersion": 1,
+        "runs": summaries,
+        "alignedCaseCount": aligned,
+        "totalCaseCount": total,
+        "caseDeltas": case_deltas,
+        "ruleAggregates": rule_aggregates,
+    })))
 }

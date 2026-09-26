@@ -1148,6 +1148,26 @@ fn delegation_token(
 }
 
 #[allow(clippy::too_many_arguments)]
+pub(crate) async fn mint_observability_token(
+    state: &ControlApiState,
+    actor: &Actor,
+    scope: &str,
+    request_hash: agentx_runtime_contracts::ContentHash,
+) -> ApiResult<String> {
+    let (tenant_wide, application_ids, workflow_ids) = execution_query_scope(state, actor).await?;
+    delegation_token_with_audience(
+        state,
+        actor,
+        "agentx-observability-query",
+        scope,
+        application_ids,
+        workflow_ids,
+        BTreeSet::new(),
+        tenant_wide,
+        request_hash,
+    )
+}
+
 fn delegation_token_with_audience(
     state: &ControlApiState,
     actor: &Actor,

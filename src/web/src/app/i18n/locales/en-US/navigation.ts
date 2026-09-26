@@ -14,6 +14,7 @@ const translations = {
   "applications": "Applications",
   "playground": "Playground",
   "executions": "Executions",
+  "insights": "Insights",
   "approvals": "Approvals",
   "notifications": "Notifications",
   "datasets": "Datasets",

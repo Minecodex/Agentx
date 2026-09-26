@@ -1,4 +1,8 @@
 const translations = {
+  "judgeModel": "评审模型 ID",
+  "judgePrompt": "评审提示词",
+  "judgeHint": "评审子执行会以 JSON 输出 {passed, score, reason};提示词可引用 {{actualOutput}} 与 {{expectedOutput}}。",
+  "judgeRequiredFields": "LLM 评审规则需要模型与提示词",
   "created": "创建成功",
   "results": "结果",
   "report": "报告",

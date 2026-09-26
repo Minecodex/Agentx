@@ -272,6 +272,7 @@ fn routes() -> Router<ControlApiState> {
         .merge(crate::operations_api::routes())
         .merge(crate::external_resource_api::routes())
         .merge(crate::knowledge_document_api::routes())
+        .merge(crate::insights_api::routes())
         .merge(crate::mcp_api::routes())
         .merge(crate::skill_api::routes())
         .merge(crate::resource_api::routes())

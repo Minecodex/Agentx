@@ -544,6 +544,12 @@ async fn converge_model_evaluator(
         "failed"
     };
     detail["modelResult"] = output.clone();
+    // plan7 P7-C: the judge sub-execution trace link is derived from the
+    // deterministic evaluator id; surface it on the free-form detail payload
+    // without touching the frozen projection contract.
+    detail["evaluatorExecutionId"] = Value::String(
+        super::worker_support::stable_id(rule_id, b"model-evaluator-execution").to_string(),
+    );
     if let Some(error) = error {
         detail["error"] = error.clone();
     }

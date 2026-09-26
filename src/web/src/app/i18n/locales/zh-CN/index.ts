@@ -24,5 +24,6 @@ import errors from './errors'
 import trace from './trace'
 import agentSessions from './agentSessions'
 import canvasPlugins from './canvasPlugins'
+import insights from './insights'
 
-export const translation = { common, navigation, auth, workflows, studio, applications, executions, approvals, notifications, datasets, evaluations, runtime, trace, agentSessions, credentials, models, mcp, canvasPlugins, skills, knowledge, memory, sandbox, resourceGrants, organization, roles, errors } as const
+export const translation = { common, navigation, auth, workflows, studio, applications, executions, approvals, notifications, datasets, evaluations, runtime, trace, agentSessions, credentials, models, mcp, canvasPlugins, skills, knowledge, memory, sandbox, resourceGrants, organization, roles, errors, insights } as const

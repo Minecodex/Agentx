@@ -1,4 +1,8 @@
 const translations = {
+  "judgeModel": "Judge model ID",
+  "judgePrompt": "Judge prompt",
+  "judgeHint": "The judge sub-execution returns {passed, score, reason}; the prompt may reference {{actualOutput}} and {{expectedOutput}}.",
+  "judgeRequiredFields": "LLM judge rules need a model and a prompt",
   "created": "Created",
   "results": "Results",
   "report": "Report",

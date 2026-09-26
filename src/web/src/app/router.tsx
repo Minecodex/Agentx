@@ -49,6 +49,7 @@ const CredentialDetailPage = lazy(() => import('../features/credentials/credenti
 const ResourceGrantsPage = lazy(() => import('../features/resource-grants/resource-grants-page').then((module) => ({ default: module.ResourceGrantsPage })))
 const SandboxProfilesPage = lazy(() => import('../features/sandbox-profiles/sandbox-profiles-page').then((module) => ({ default: module.SandboxProfilesPage })))
 const SandboxProfileDetailPage = lazy(() => import('../features/sandbox-profiles/sandbox-profile-detail-page').then((module) => ({ default: module.SandboxProfileDetailPage })))
+const InsightsPage = lazy(() => import('../features/insights/insights-page').then((m) => ({ default: m.InsightsPage })))
 
 function deferred(element: ReactNode) {
   return <Suspense fallback={<div className="grid h-full min-h-72 place-items-center text-sm text-muted-foreground">Agentx…</div>}>{element}</Suspense>
@@ -78,6 +79,7 @@ export const router = createBrowserRouter([
       { path: 'notifications', element: deferred(<RequirePermission permission="notification:view"><NotificationsPage /></RequirePermission>) },
       { path: 'datasets', element: deferred(<RequirePermission permission="dataset:view"><DatasetsPage /></RequirePermission>) },
       { path: 'datasets/:id', element: deferred(<RequirePermission permission="dataset:view"><DatasetDetailPage /></RequirePermission>) },
+      { path: 'insights', element: deferred(<RequirePermission permission="execution:view"><InsightsPage /></RequirePermission>) },
       { path: 'evaluations', element: deferred(<RequirePermission permission="evaluation:view"><EvaluationsPage /></RequirePermission>) },
       { path: 'evaluations/:id', element: deferred(<RequirePermission permission="evaluation:view"><EvaluationDetailPage /></RequirePermission>) },
       { path: 'runtime', element: deferred(<RequirePermission permission="runtime:view"><RuntimeStatusPage /></RequirePermission>) },

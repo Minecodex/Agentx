@@ -14,6 +14,7 @@ const translations = {
   "applications": "应用",
   "playground": "调试台",
   "executions": "执行记录",
+  "insights": "运行洞察",
   "approvals": "待审批",
   "notifications": "消息中心",
   "datasets": "测试集",

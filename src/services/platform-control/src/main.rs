@@ -52,6 +52,7 @@ mod deletion_api;
 mod external_resource_api;
 mod governance_api;
 mod iam_api;
+mod insights_api;
 mod knowledge_document_api;
 mod mcp_api;
 mod model_api;

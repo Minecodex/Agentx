@@ -277,7 +277,7 @@ async fn load_document(
     .fetch_optional(&state.pool)
     .await?
     .ok_or_else(|| ApiError::not_found("Knowledge document"))?;
-    Ok(document_from_row(row)?)
+    document_from_row(row)
 }
 
 fn document_from_row(row: sqlx::mysql::MySqlRow) -> ApiResult<KnowledgeDocumentResponse> {
@@ -454,6 +454,7 @@ async fn retrieval_test(
     Ok(Json(normalized))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn record_retrieval_test(
     state: &ControlApiState,
     actor: &Actor,
@@ -581,7 +582,7 @@ async fn index_document(
     }
     let response = builder.send().await?;
     let status = response.status();
-    let payload: Value = response.json().await.unwrap_or(Value::Null);
+    let _payload: Value = response.json().await.unwrap_or(Value::Null);
     if !status.is_success() {
         anyhow::bail!("indexing endpoint returned HTTP {status}");
     }
