@@ -304,7 +304,8 @@
             "additionalProperties": false,
             "properties": {
               "content": {
-                "type": "string"
+                "$ref": "#/$defs/ModelContentV1",
+                "description": "Multimodal content (plan7 P7-B): plain text stays a bare JSON string\n(untagged, Text first) so existing session state deserializes without\nmigration; image/audio parts use the array form."
               },
               "isError": {
                 "default": false,
@@ -426,6 +427,34 @@
             ],
             "type": "object"
           },
+          "ImageUrlV1": {
+            "additionalProperties": false,
+            "properties": {
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "type": "object"
+          },
+          "InputAudioV1": {
+            "additionalProperties": false,
+            "properties": {
+              "data": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "data",
+              "format"
+            ],
+            "type": "object"
+          },
           "MessageRole": {
             "enum": [
               "user",
@@ -434,6 +463,75 @@
               "external_context"
             ],
             "type": "string"
+          },
+          "ModelContentPartV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "text",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "text"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "image_url": {
+                    "$ref": "#/$defs/ImageUrlV1"
+                  },
+                  "type": {
+                    "const": "image_url",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "image_url"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input_audio": {
+                    "$ref": "#/$defs/InputAudioV1"
+                  },
+                  "type": {
+                    "const": "input_audio",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "input_audio"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "ModelContentV1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "$ref": "#/$defs/ModelContentPartV1"
+                },
+                "type": "array"
+              }
+            ],
+            "description": "One multimodal content part of a model message (plan7 P7-B). `Text` is\nthe untagged default so pure-text state and requests stay plain strings."
           },
           "ReplayPolicyV1": {
             "enum": [
@@ -1244,7 +1342,8 @@
             "additionalProperties": false,
             "properties": {
               "content": {
-                "type": "string"
+                "$ref": "#/$defs/ModelContentV1",
+                "description": "Multimodal content (plan7 P7-B): plain text stays a bare JSON string\n(untagged, Text first) so existing session state deserializes without\nmigration; image/audio parts use the array form."
               },
               "isError": {
                 "default": false,
@@ -1322,6 +1421,34 @@
             ],
             "type": "object"
           },
+          "ImageUrlV1": {
+            "additionalProperties": false,
+            "properties": {
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "type": "object"
+          },
+          "InputAudioV1": {
+            "additionalProperties": false,
+            "properties": {
+              "data": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "data",
+              "format"
+            ],
+            "type": "object"
+          },
           "MessageRole": {
             "enum": [
               "user",
@@ -1330,6 +1457,75 @@
               "external_context"
             ],
             "type": "string"
+          },
+          "ModelContentPartV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "text",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "text"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "image_url": {
+                    "$ref": "#/$defs/ImageUrlV1"
+                  },
+                  "type": {
+                    "const": "image_url",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "image_url"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input_audio": {
+                    "$ref": "#/$defs/InputAudioV1"
+                  },
+                  "type": {
+                    "const": "input_audio",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "input_audio"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "ModelContentV1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "$ref": "#/$defs/ModelContentPartV1"
+                },
+                "type": "array"
+              }
+            ],
+            "description": "One multimodal content part of a model message (plan7 P7-B). `Text` is\nthe untagged default so pure-text state and requests stay plain strings."
           },
           "OperationKindV1": {
             "enum": [

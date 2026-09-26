@@ -8,11 +8,12 @@ use serde_json::{Value, json};
 
 use super::{ClaimedWorkerAttempt, WorkerExecution, mcp_tool_binding, successful_value};
 
-pub(super) fn openai_chat_request(
+pub(super) fn openai_chat_request_streaming(
     claim: &ClaimedWorkerAttempt,
     model: &str,
     price: &RuntimeModelPriceV1,
     input: &Value,
+    stream: bool,
 ) -> Value {
     let mut messages = Vec::new();
     if let Some(system) = system_prompt(&claim.node_parameters, &claim.node_type) {
@@ -35,9 +36,12 @@ pub(super) fn openai_chat_request(
     let mut request = json!({
         "model":model,
         "messages":messages,
-        "stream":false,
+        "stream":stream,
         "metadata":{"priceVersion":price.version_id},
     });
+    if stream {
+        request["stream_options"] = json!({"include_usage":true});
+    }
     if let Some(tool) = mcp_tool_binding(&claim.resources)
         && let RuntimeResourceConfigurationV1::Mcp { tool_name, .. } = &tool.configuration
     {
@@ -774,4 +778,126 @@ mod rag_protocol_tests {
             .expect("payload");
         assert_eq!(kept, payload);
     }
+}
+
+/// Aggregates an OpenAI-compatible SSE token stream (plan7 P7-B) into the
+/// non-stream response shape so the settlement, billing and replay paths are
+/// byte-identical with the buffered adapter. `on_delta` receives live text /
+/// reasoning increments while the stream is consumed.
+pub(super) async fn aggregate_openai_sse_stream(
+    response: reqwest::Response,
+    on_delta: &mut (dyn FnMut(&str, Option<&str>) + Send),
+) -> Result<Value, String> {
+    use futures_util::StreamExt;
+    let mut text = String::new();
+    let mut reasoning = String::new();
+    let mut tool_calls: Vec<ToolCallFragment> = Vec::new();
+    let mut finish_reason: Option<Value> = None;
+    let mut usage = Value::Null;
+    let mut buffer = bytes::BytesMut::new();
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|error| format!("model stream interrupted: {error}"))?;
+        buffer.extend_from_slice(&chunk);
+        while let Some(position) = buffer.iter().position(|byte| *byte == b'\n') {
+            let line = buffer.split_to(position + 1);
+            let line = std::str::from_utf8(&line[..line.len() - 1])
+                .map_err(|error| format!("model stream is not UTF-8: {error}"))?;
+            let Some(payload) = line.strip_prefix("data: ") else {
+                continue;
+            };
+            let payload = payload.trim();
+            if payload == "[DONE]" {
+                continue;
+            }
+            let frame: Value = serde_json::from_str(payload)
+                .map_err(|error| format!("model stream frame is not JSON: {error}"))?;
+            if let Some(delta_usage) = frame.get("usage").filter(|value| !value.is_null()) {
+                usage = delta_usage.clone();
+            }
+            let Some(delta) = frame.pointer("/choices/0/delta") else {
+                continue;
+            };
+            if let Some(fragment) = delta.get("content").and_then(Value::as_str) {
+                if !fragment.is_empty() {
+                    text.push_str(fragment);
+                    on_delta(fragment, None);
+                }
+            }
+            if let Some(fragment) = delta.get("reasoning_content").and_then(Value::as_str) {
+                if !fragment.is_empty() {
+                    reasoning.push_str(fragment);
+                    on_delta("", Some(fragment));
+                }
+            }
+            if let Some(calls) = delta.get("tool_calls").and_then(Value::as_array) {
+                for call in calls {
+                    let index = call.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
+                    while tool_calls.len() <= index {
+                        tool_calls.push(ToolCallFragment::default());
+                    }
+                    if let Some(name) = call.pointer("/function/name").and_then(Value::as_str) {
+                        tool_calls[index].name.push_str(name);
+                    }
+                    if let Some(arguments) =
+                        call.pointer("/function/arguments").and_then(Value::as_str)
+                    {
+                        tool_calls[index].arguments.push_str(arguments);
+                    }
+                }
+            }
+            if finish_reason.is_none()
+                && let Some(reason) = frame
+                    .pointer("/choices/0/finish_reason")
+                    .filter(|value| !value.is_null())
+            {
+                finish_reason = Some(reason.clone());
+            }
+        }
+    }
+    if text.is_empty() && tool_calls.is_empty() && reasoning.is_empty() {
+        return Err("model stream produced no content".into());
+    }
+    // Billing fallback (plan7 P7-B): streams without a usage chunk fall back
+    // to a length/4 estimate and carry the usage_estimated marker that the
+    // runtime call ledger persists.
+    let usage = if usage.is_null() {
+        json!({
+            "prompt_tokens":0,
+            "completion_tokens":(text.chars().count() as u64).div_ceil(4),
+        })
+    } else {
+        usage
+    };
+    let usage_estimated = usage
+        .get("completion_tokens")
+        .map(|_| false)
+        .unwrap_or(true)
+        || usage.is_null();
+    let mut message = json!({"role":"assistant","content":text});
+    if !reasoning.is_empty() {
+        message["reasoning_content"] = json!(reasoning);
+    }
+    if !tool_calls.is_empty() {
+        message["tool_calls"] = Value::Array(
+            tool_calls
+                .iter()
+                .map(|call| {
+                    json!({"id":call.id,"type":"function","function":{"name":call.name,"arguments":call.arguments}})
+                })
+                .collect(),
+        );
+    }
+    Ok(json!({
+        "choices":[{"message":message,"finish_reason":finish_reason.unwrap_or(Value::Null)}],
+        "usage":usage,
+        "usage_estimated":usage_estimated,
+    }))
+}
+
+#[derive(Default)]
+struct ToolCallFragment {
+    id: String,
+    name: String,
+    arguments: String,
 }

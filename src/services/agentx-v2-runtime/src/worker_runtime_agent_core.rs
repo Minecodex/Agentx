@@ -591,7 +591,17 @@ async fn finish(
         .iter()
         .rev()
         .find(|m| matches!(m.role, MessageRole::Assistant))
-        .map(|m| m.content.clone())
+        .map(|m| match &m.content {
+            agentx_agent_core::ModelContentV1::Text(text) => text.clone(),
+            agentx_agent_core::ModelContentV1::Parts(parts) => parts
+                .iter()
+                .filter_map(|part| match part {
+                    agentx_agent_core::ModelContentPartV1::Text { text } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(""),
+        })
         .unwrap_or_default();
     WorkerExecution::succeeded(agent_public_output(
         text,

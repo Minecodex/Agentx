@@ -50,10 +50,10 @@ mod provider;
 #[cfg(test)]
 use output::system_prompt;
 use output::{
-    apply_model_price, finalize_rag_response, memory_execution_output, openai_chat_request,
-    openai_execution_output, provider_usage_detail, rag_execution_output, rag_query_request,
-    runtime_call_is_replayable, runtime_call_side_effect, sandbox_execution_output,
-    tool_execution_output,
+    apply_model_price, finalize_rag_response, memory_execution_output,
+    openai_chat_request_streaming, openai_execution_output, provider_usage_detail,
+    rag_execution_output, rag_query_request, runtime_call_is_replayable, runtime_call_side_effect,
+    sandbox_execution_output, tool_execution_output,
 };
 
 pub struct WorkerExecution {
@@ -74,7 +74,13 @@ pub struct WorkerProviderResponse {
 #[derive(Clone, Debug)]
 pub enum WorkerProviderError {
     Denied(String),
-    Request { message: String, is_connect: bool },
+    Request {
+        message: String,
+        is_connect: bool,
+    },
+    /// The provider stream violated the SSE/protocol contract; never retried
+    /// automatically (plan7 P7-B).
+    Protocol(String),
 }
 
 #[async_trait::async_trait]
@@ -140,11 +146,35 @@ pub trait WorkerProvider: Send + Sync {
     }
 
     async fn close_legacy_sse_session(&self, _session_key: &str) {}
+
+    /// Streams a JSON POST response body chunk by chunk (plan7 P7-B). The
+    /// default rejects so test doubles and alternate providers stay valid
+    /// until they opt into streaming.
+    async fn post_json_stream(
+        &self,
+        _endpoint: &str,
+        _context: EgressRequestContext,
+        _timeout: std::time::Duration,
+        _headers: HeaderMap,
+        _body: &Value,
+    ) -> Result<WorkerStreamResponse, WorkerProviderError> {
+        Err(WorkerProviderError::Denied(
+            "Streaming is not supported by this provider".into(),
+        ))
+    }
 }
 
-#[derive(Clone, Copy)]
+/// A streaming provider response: status and headers are buffered, the body
+/// is consumed incrementally by the caller.
+pub struct WorkerStreamResponse {
+    pub status: StatusCode,
+    pub response: reqwest::Response,
+}
+
+#[derive(Clone)]
 enum RuntimeHttpTransport {
     Provider,
+    ProviderStream(crate::worker_runtime_delta::ModelDeltaSink),
     SandboxManager,
 }
 
@@ -216,6 +246,7 @@ pub struct RuntimeWorker {
     plugin_parallelism: usize,
     pub(crate) plugin_trace: plugin::PluginTraceSink,
     pub(crate) plugin_artifacts: Arc<plugin::PluginArtifactCache>,
+    pub(crate) deltas: crate::worker_runtime_delta::ModelDeltaSink,
 }
 
 impl RuntimeWorker {
@@ -227,8 +258,10 @@ impl RuntimeWorker {
             .clamp(1, 64);
         let plugin_artifacts = Arc::new(plugin::PluginArtifactCache::from_env());
         let plugin_trace = plugin::PluginTraceSink::new(pool.clone(), objects.clone());
+        let deltas = crate::worker_runtime_delta::ModelDeltaSink::start(pool.clone(), None);
         Ok(Self {
             plugin_trace,
+            deltas,
             pool,
             provider: Arc::new(ProviderHttpClient::from_env(
                 agentx_runtime_contracts::EgressRole::WorkflowWorker,
@@ -252,6 +285,7 @@ impl RuntimeWorker {
         let plugin_trace = plugin::PluginTraceSink::new(pool.clone(), objects.clone());
         Self {
             plugin_trace,
+            deltas: crate::worker_runtime_delta::ModelDeltaSink::disabled(),
             pool,
             provider,
             vault: RuntimeVault::from_env().ok(),
@@ -262,12 +296,28 @@ impl RuntimeWorker {
         }
     }
 
+    /// Attaches a live delta sink plus the redis client used for SSE wakeup
+    /// publication (plan7 P7-B); production workers call this after
+    /// construction.
+    pub fn with_delta_sink(mut self, pool: MySqlPool, redis: Option<redis::Client>) -> Self {
+        self.deltas = crate::worker_runtime_delta::ModelDeltaSink::start(pool, redis);
+        self
+    }
+
     pub fn plugin_parallelism(&self) -> usize {
         self.plugin_parallelism
     }
 
     pub async fn execute(&self, claim: &ClaimedWorkerAttempt) -> WorkerExecution {
         self.emit_resolved_parameters(claim).await;
+        let execution = self.execute_claim(claim).await;
+        // Deltas must land before the attempt settles; the terminal event
+        // would otherwise cut the SSE stream ahead of pending frames.
+        self.deltas.flush().await;
+        execution
+    }
+
+    async fn execute_claim(&self, claim: &ClaimedWorkerAttempt) -> WorkerExecution {
         match claim.task.capability {
             NodeCapability::Builtin => self.execute_builtin(claim),
             NodeCapability::PluginNodejs => plugin::execute(self, claim).await,
@@ -541,9 +591,15 @@ impl RuntimeWorker {
             && provider == "openai_compatible"
         {
             let endpoint = openai_chat_completions_endpoint(endpoint);
-            let request = openai_chat_request(claim, model, price, &input);
-            let execution = self
-                .call_http(
+            let streaming = claim
+                .node_parameters
+                .get("stream")
+                .and_then(Value::as_str)
+                .map(|value| value != "false")
+                .unwrap_or(true);
+            let request = openai_chat_request_streaming(claim, model, price, &input, streaming);
+            let execution = if streaming {
+                self.call_http_stream(
                     claim,
                     "model",
                     &endpoint,
@@ -553,7 +609,20 @@ impl RuntimeWorker {
                     "authorization",
                     Some(binding),
                 )
-                .await;
+                .await
+            } else {
+                self.call_http(
+                    claim,
+                    "model",
+                    &endpoint,
+                    request,
+                    call_index,
+                    credential.as_ref(),
+                    "authorization",
+                    Some(binding),
+                )
+                .await
+            };
             return openai_execution_output(execution, &claim.node_parameters);
         }
         if structured_model {
@@ -775,6 +844,36 @@ impl RuntimeWorker {
         .await
     }
 
+    /// Streaming variant (plan7 P7-B): the provider body is consumed as an
+    /// SSE token stream while deltas are emitted live; the aggregated
+    /// response keeps the buffered settlement/replay contract identical.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn call_http_stream(
+        &self,
+        claim: &ClaimedWorkerAttempt,
+        kind: &str,
+        endpoint: &str,
+        request: Value,
+        call_index: u32,
+        secret: Option<&agentx_runtime_contracts::VaultSecretReferenceV1>,
+        secret_header: &'static str,
+        binding: Option<&RuntimeResourceBindingV1>,
+    ) -> WorkerExecution {
+        self.call_http_with_transport(
+            claim,
+            kind,
+            endpoint,
+            request,
+            call_index,
+            secret,
+            secret_header,
+            binding,
+            None,
+            RuntimeHttpTransport::ProviderStream(self.deltas.clone()),
+        )
+        .await
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn call_http_effect(
         &self,
@@ -799,6 +898,35 @@ impl RuntimeWorker {
             binding,
             Some(effect_idempotency_key),
             RuntimeHttpTransport::Provider,
+        )
+        .await
+    }
+
+    /// Effect-keyed streaming call for agent model turns (plan7 P7-B).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn call_http_effect_stream(
+        &self,
+        claim: &ClaimedWorkerAttempt,
+        kind: &str,
+        endpoint: &str,
+        request: Value,
+        call_index: u32,
+        effect_idempotency_key: &str,
+        secret: Option<&agentx_runtime_contracts::VaultSecretReferenceV1>,
+        secret_header: &'static str,
+        binding: Option<&RuntimeResourceBindingV1>,
+    ) -> WorkerExecution {
+        self.call_http_with_transport(
+            claim,
+            kind,
+            endpoint,
+            request,
+            call_index,
+            secret,
+            secret_header,
+            binding,
+            Some(effect_idempotency_key),
+            RuntimeHttpTransport::ProviderStream(self.deltas.clone()),
         )
         .await
     }
@@ -1025,6 +1153,45 @@ impl RuntimeWorker {
         let context =
             EgressRequestContext::execution(claim.task.tenant_id, claim.task.execution_id);
         let response = match match transport {
+            RuntimeHttpTransport::ProviderStream(delta_sink) => {
+                let provider = self.provider.clone();
+                let endpoint = endpoint.clone();
+                let request = request.clone();
+                let timeout_ms = claim.timeout_ms;
+                let claim_tenant = claim.task.tenant_id;
+                let invocation_id = claim.invocation_id;
+                let attempt_id = claim.task.attempt_id;
+                Box::pin(async move {
+                    let stream = provider
+                        .post_json_stream(
+                            &endpoint,
+                            context,
+                            std::time::Duration::from_millis(timeout_ms),
+                            headers,
+                            &request,
+                        )
+                        .await?;
+                    let status = stream.status;
+                    let mut sink = delta_sink.clone();
+                    let aggregated = output::aggregate_openai_sse_stream(
+                        stream.response,
+                        &mut move |text: &str, reasoning: Option<&str>| {
+                            sink.emit(claim_tenant, invocation_id, attempt_id, "", text, reasoning);
+                        },
+                    )
+                    .await;
+                    match aggregated {
+                        Ok(value) => Ok(WorkerProviderResponse {
+                            status,
+                            headers: HeaderMap::new(),
+                            body: bytes::Bytes::from(
+                                serde_json::to_vec(&value).unwrap_or_else(|_| b"{}".to_vec()),
+                            ),
+                        }),
+                        Err(message) => Err(WorkerProviderError::Protocol(message)),
+                    }
+                })
+            }
             RuntimeHttpTransport::Provider if kind == "http" => self.provider.request_json(
                 request
                     .get("method")
@@ -1063,6 +1230,16 @@ impl RuntimeWorker {
                     .fail_call(
                         call_id,
                         "PROVIDER_ENDPOINT_DENIED",
+                        redact_secret_text(&message, &secret_redactions),
+                        false,
+                    )
+                    .await;
+            }
+            Err(WorkerProviderError::Protocol(message)) => {
+                return self
+                    .fail_call(
+                        call_id,
+                        "MODEL_STREAM_PROTOCOL_ERROR",
                         redact_secret_text(&message, &secret_redactions),
                         false,
                     )
@@ -1155,6 +1332,10 @@ impl RuntimeWorker {
         } else {
             payload.clone()
         };
+        let usage_estimated = payload
+            .get("usage_estimated")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         let (input_tokens, output_tokens, cost_micros, cost_currency) =
             if let Some(RuntimeResourceBindingV1 {
                 configuration: RuntimeResourceConfigurationV1::Model { price, .. },
@@ -1224,7 +1405,7 @@ impl RuntimeWorker {
             payload = json!({"statusCode":status.as_u16(),"headers":response_headers,"body":body,"files":files});
         }
         if let Err(error) = sqlx::query(
-            "UPDATE runtime_calls SET status='succeeded',provider_request_id=?,response_json=?,response_artifact_id=?,input_tokens=?,output_tokens=?,cost_micros=?,cost_currency=?,ended_at=UTC_TIMESTAMP(6) WHERE id=? AND status='sent'",
+            "UPDATE runtime_calls SET status='succeeded',provider_request_id=?,response_json=?,response_artifact_id=?,input_tokens=?,output_tokens=?,cost_micros=?,cost_currency=?,usage_estimated=?,ended_at=UTC_TIMESTAMP(6) WHERE id=? AND status='sent'",
         )
         .bind(provider_request_id)
         .bind(&payload)
@@ -1233,6 +1414,7 @@ impl RuntimeWorker {
         .bind(output_tokens)
         .bind(cost_micros)
         .bind(cost_currency)
+        .bind(usage_estimated)
         .bind(call_id)
         .execute(&self.pool)
         .await

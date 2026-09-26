@@ -747,6 +747,9 @@ async fn apply_design_credential(
 
 fn design_provider_error(error: super::WorkerProviderError) -> (i64, String) {
     match error {
+        super::WorkerProviderError::Protocol(message) => {
+            (0, format!("model stream protocol error: {message}"))
+        }
         super::WorkerProviderError::Denied(message) => (-32020, message),
         super::WorkerProviderError::Request { message, .. } => (-32020, message),
     }

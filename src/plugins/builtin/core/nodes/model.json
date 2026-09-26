@@ -127,6 +127,15 @@
         ],
         "type": "string"
       },
+      "stream": {
+        "type": "string",
+        "default": "true",
+        "enum": [
+          "true",
+          "false"
+        ],
+        "description": "Stream model output token by token to the client."
+      },
       "structuredSchema": {
         "type": "object"
       },
@@ -372,6 +381,9 @@
       },
       "userQuestion": {
         "control": "template"
+      },
+      "stream": {
+        "control": "select"
       }
     },
     "resourceSelectors": [

@@ -30,6 +30,35 @@ impl WorkerProvider for ProviderHttpClient {
         response(request.json(body).send().await).await
     }
 
+    async fn post_json_stream(
+        &self,
+        endpoint: &str,
+        context: EgressRequestContext,
+        timeout: std::time::Duration,
+        headers: HeaderMap,
+        body: &Value,
+    ) -> Result<super::WorkerStreamResponse, WorkerProviderError> {
+        let mut request = self
+            .post(endpoint, context, timeout)
+            .map_err(|error| WorkerProviderError::Denied(error.to_string()))?;
+        for (name, value) in headers {
+            if let Some(name) = name {
+                request = request.header(name, value);
+            }
+        }
+        let response =
+            request
+                .json(body)
+                .send()
+                .await
+                .map_err(|error| WorkerProviderError::Request {
+                    message: error.to_string(),
+                    is_connect: error.is_connect(),
+                })?;
+        let status = response.status();
+        Ok(super::WorkerStreamResponse { status, response })
+    }
+
     async fn post_sandbox_manager_json(
         &self,
         endpoint: &str,

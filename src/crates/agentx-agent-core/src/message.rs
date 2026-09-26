@@ -2,6 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::ports::ModelContentV1;
+
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageRole {
@@ -16,7 +18,10 @@ pub enum MessageRole {
 pub struct AgentMessageV1 {
     pub message_id: String,
     pub role: MessageRole,
-    pub content: String,
+    /// Multimodal content (plan7 P7-B): plain text stays a bare JSON string
+    /// (untagged, Text first) so existing session state deserializes without
+    /// migration; image/audio parts use the array form.
+    pub content: ModelContentV1,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCallV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -38,7 +43,7 @@ impl AgentMessageV1 {
         Self {
             message_id: message_id.into(),
             role: MessageRole::User,
-            content: content.into(),
+            content: ModelContentV1::Text(content.into()),
             tool_calls: Vec::new(),
             tool_call_id: None,
             is_error: false,
@@ -53,7 +58,7 @@ impl AgentMessageV1 {
         Self {
             message_id: message_id.into(),
             role: MessageRole::Assistant,
-            content: content.into(),
+            content: ModelContentV1::Text(content.into()),
             tool_calls,
             tool_call_id: None,
             is_error: false,

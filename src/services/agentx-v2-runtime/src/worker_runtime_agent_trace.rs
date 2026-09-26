@@ -20,6 +20,11 @@ impl RuntimeWorker {
                 error_code,
                 attributes,
             ) = match event {
+                // Deltas are forwarded live by the runtime adapter and never
+                // reach the batching collector; ignore them defensively here.
+                agentx_agent_core::CoreEventV1::ModelDelta { .. } => {
+                    continue;
+                }
                 agentx_agent_core::CoreEventV1::AgentStarted { .. } => (
                     run_id,
                     Some((

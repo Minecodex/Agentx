@@ -45,6 +45,7 @@ pub mod webhook;
 mod work_package_execution;
 mod worker_registry;
 pub mod worker_runtime;
+pub mod worker_runtime_delta;
 pub mod worker_support;
 
 use std::sync::Arc;

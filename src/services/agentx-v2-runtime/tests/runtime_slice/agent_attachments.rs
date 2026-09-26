@@ -231,6 +231,7 @@ async fn agent_attachment_revocation_is_tool_scoped(fixture: &Fixture) {
             deadline_at: OffsetDateTime::now_utc() + time::Duration::seconds(30),
         },
         node_type: "agent".into(),
+        invocation_id: None,
         node_version: 1,
         run_index: 0,
         iteration_index: 0,

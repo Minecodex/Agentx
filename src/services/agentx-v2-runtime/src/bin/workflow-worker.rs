@@ -64,10 +64,15 @@ async fn main() -> Result<()> {
             .await
             .map_err(Into::into)
     });
-    let worker = Arc::new(agentx_v2_runtime::worker_runtime::RuntimeWorker::new(
-        pool.clone(),
-        runtime_object_store(&RuntimeObjectStorageSettings::from_env()?)?,
-    )?);
+    let worker = Arc::new(
+        agentx_v2_runtime::worker_runtime::RuntimeWorker::new(
+            pool.clone(),
+            runtime_object_store(&RuntimeObjectStorageSettings::from_env()?)?,
+        )?
+        // Model deltas publish SSE wakeups on the runtime redis; missing
+        // redis degrades to the gateway's 1s poll fallback.
+        .with_delta_sink(pool.clone(), redis_client_for_wakeups(&redis_settings)),
+    );
     for capability in capabilities {
         let parallelism = if capability == "plugin_nodejs" {
             worker.plugin_parallelism()
@@ -292,6 +297,12 @@ async fn worker_loop(
 struct WorkerRedis {
     connection: redis::aio::ConnectionManager,
     settings: RuntimeRedisSettings,
+}
+
+/// A plain client handle for best-effort pubsub from the delta sink; None
+/// keeps the sink write-only when redis is not reachable at startup.
+fn redis_client_for_wakeups(settings: &RuntimeRedisSettings) -> Option<redis::Client> {
+    agentx_runtime_infrastructure::runtime_redis_client(settings).ok()
 }
 
 #[allow(clippy::too_many_arguments)]
