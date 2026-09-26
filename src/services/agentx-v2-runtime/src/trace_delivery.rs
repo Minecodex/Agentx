@@ -221,12 +221,16 @@ pub async fn enqueue(tx: &mut Transaction<'_, MySql>, draft: TraceDraft) -> Runt
     // row. The sequence itself is allocated atomically below, immediately
     // before the outbox writes, so Envelope construction no longer holds an
     // execution-row lock across the initial read/modify/write cycle.
-    let trace_id: Uuid =
-        sqlx::query_scalar("SELECT trace_id FROM workflow_executions WHERE tenant_id=? AND id=?")
-            .bind(draft.tenant_id)
-            .bind(draft.execution_id)
-            .fetch_one(&mut **tx)
-            .await?;
+    let identity = sqlx::query(
+        "SELECT e.trace_id,e.workflow_id,i.application_id FROM workflow_executions e LEFT JOIN application_invocations i ON i.tenant_id=e.tenant_id AND i.id=e.invocation_id WHERE e.tenant_id=? AND e.id=?",
+    )
+    .bind(draft.tenant_id)
+    .bind(draft.execution_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    let trace_id: Uuid = identity.try_get("trace_id")?;
+    let workflow_id: Option<Uuid> = identity.try_get("workflow_id")?;
+    let application_id: Option<Uuid> = identity.try_get("application_id")?;
     let changed = sqlx::query(
         "UPDATE workflow_executions SET trace_watermark=LAST_INSERT_ID(trace_watermark+1) WHERE tenant_id=? AND id=?",
     )
@@ -247,7 +251,7 @@ pub async fn enqueue(tx: &mut Transaction<'_, MySql>, draft: TraceDraft) -> Runt
     let unsigned = json!({
         "schemaVersion":1,"eventId":event_id,"tenantId":draft.tenant_id,
         "executionId":draft.execution_id,"executionSequence":sequence,
-        "traceId":trace_id,"spanId":draft.span_id,
+        "traceId":trace_id,"workflowId":workflow_id,"applicationId":application_id,"spanId":draft.span_id,
         "parentSpanId":draft.parent_span_id,"eventKind":draft.event_kind,
         "spanKind":draft.span_kind,"spanName":draft.span_name,
         "nodeExecutionId":draft.node_execution_id,
@@ -277,6 +281,8 @@ pub async fn enqueue(tx: &mut Transaction<'_, MySql>, draft: TraceDraft) -> Runt
         execution_id: draft.execution_id,
         execution_sequence: sequence,
         trace_id,
+        workflow_id,
+        application_id,
         span_id: draft.span_id,
         parent_span_id: draft.parent_span_id,
         event_kind: draft.event_kind,

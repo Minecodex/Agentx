@@ -30,6 +30,17 @@
             "publicId": {
               "type": "string"
             },
+            "reply": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WebhookReplyConfigV1"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
             "secret": {
               "$ref": "#/$defs/VaultSecretReferenceV1"
             }
@@ -144,6 +155,32 @@
         "feishu"
       ],
       "type": "string"
+    },
+    "WebhookReplyConfigV1": {
+      "additionalProperties": false,
+      "description": "Channel auto-reply configuration (plan7 P7-A L1): frozen into the trigger\nrevision alongside the rest of the channel configuration; the runtime\ndelivery loop enqueues an outbound reply when the execution reaches a\nterminal state.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "outputField": {
+          "description": "Name of the workflow output field whose value is replied (required\nwhen enabled; Control validates it against the deployment output\nschema before freezing).",
+          "type": "string"
+        },
+        "template": {
+          "default": null,
+          "description": "Optional template over the output; only output-field variables are\nallowed. When empty the raw output field value is replied as text.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "enabled",
+        "outputField"
+      ],
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

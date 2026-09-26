@@ -234,6 +234,14 @@
         {
           "additionalProperties": false,
           "properties": {
+            "capabilities": {
+              "default": [],
+              "description": "Modalities the deployment accepts as native model input\n(plan7 P7-B); absent means text-only so old bundles stay valid.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
             "contextWindow": {
               "format": "uint64",
               "minimum": 0,
@@ -362,6 +370,10 @@
               "type": "string"
             },
             "namespace": {
+              "type": "string"
+            },
+            "provider": {
+              "default": "lightrag",
               "type": "string"
             }
           },

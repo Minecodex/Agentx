@@ -130,6 +130,8 @@ impl From<TraceEventEnvelopeV1> for TraceRow {
             execution_id: value.execution_id,
             execution_sequence: value.execution_sequence,
             trace_id: value.trace_id,
+            workflow_id: value.workflow_id,
+            application_id: value.application_id,
             span_id: value.span_id,
             parent_span_id: value.parent_span_id,
             event_kind: trace_event_kind_name(value.event_kind).into(),
@@ -142,8 +144,6 @@ impl From<TraceEventEnvelopeV1> for TraceRow {
             runtime_call_id: value.runtime_call_id,
             sandbox_lease_id: value.sandbox_lease_id,
             wait_id: value.wait_id,
-            workflow_id: None,
-            application_id: None,
             resource_type: value.resource_type,
             resource_id: value.resource_id,
             resource_version: value.resource_version,
@@ -180,6 +180,8 @@ impl TryFrom<TraceRow> for TraceEventEnvelopeV1 {
             execution_id: value.execution_id,
             execution_sequence: value.execution_sequence,
             trace_id: value.trace_id,
+            workflow_id: value.workflow_id,
+            application_id: value.application_id,
             span_id: value.span_id,
             parent_span_id: value.parent_span_id,
             event_kind: parse_trace_event_kind(&value.event_kind)?,
@@ -1058,7 +1060,7 @@ async fn search_traces(
     let statuses = serde_json::to_string(&request.statuses)
         .map_err(|error| ApiError::budget(error.to_string()))?;
     let query_id_text = query_id.to_string();
-    let query_result = tokio::time::timeout(Duration::from_secs(5), state.clickhouse_query.query("SELECT event_id,tenant_id,execution_id,execution_sequence,trace_id,span_id,parent_span_id,event_kind,span_kind,span_name,node_execution_id,attempt_id,agent_run_id,agent_iteration_id,runtime_call_id,sandbox_lease_id,wait_id,workflow_id,application_id,resource_type,resource_id,resource_version,event_type,status,error_code,error_message,duration_ms,input_tokens,output_tokens,cost_micros,attributes_json,content_ref,content_kind,content_preview_json,content_hash,occurred_at FROM workflow_trace_events FINAL WHERE tenant_id=? AND occurred_at>=fromUnixTimestamp64Micro(?) AND occurred_at<=fromUnixTimestamp64Micro(?) AND (? IS NULL OR execution_id=?) AND (JSONLength(?)=0 OR has(JSONExtract(?, 'Array(String)'),event_type)) AND (JSONLength(?)=0 OR has(JSONExtract(?, 'Array(String)'),status)) AND event_id NOT IN (SELECT event_id FROM trace_ingest_conflicts WHERE tenant_id=?) ORDER BY occurred_at,event_id LIMIT ?")
+    let query_result = tokio::time::timeout(Duration::from_secs(5), state.clickhouse_query.query("SELECT event_id,tenant_id,execution_id,execution_sequence,trace_id,span_id,parent_span_id,event_kind,span_kind,span_name,node_execution_id,attempt_id,agent_run_id,agent_iteration_id,runtime_call_id,sandbox_lease_id,wait_id,workflow_id,application_id,resource_type,resource_id,resource_version,event_type,status,error_code,error_message,duration_ms,input_tokens,output_tokens,cost_micros,attributes_json,content_ref,content_kind,content_preview_json,content_hash,occurred_at FROM workflow_trace_events FINAL WHERE tenant_id=? AND occurred_at>=fromUnixTimestamp64Micro(?) AND occurred_at<=fromUnixTimestamp64Micro(?) AND (? IS NULL OR execution_id=?) AND (? IS NULL OR workflow_id=?) AND (JSONLength(?)=0 OR has(JSONExtract(?, 'Array(String)'),event_type)) AND (JSONLength(?)=0 OR has(JSONExtract(?, 'Array(String)'),status)) AND event_id NOT IN (SELECT event_id FROM trace_ingest_conflicts WHERE tenant_id=?) ORDER BY occurred_at,event_id LIMIT ?")
         .with_option("query_id", &query_id_text)
         .with_option("max_execution_time", "5")
         .bind(request.tenant_id).bind(timestamp_micros(request.from)?).bind(timestamp_micros(request.to)?).bind(request.execution_id).bind(request.execution_id).bind(&event_types).bind(&event_types).bind(&statuses).bind(&statuses).bind(request.tenant_id).bind(request.limit).fetch_all::<TraceRow>()).await;
@@ -1077,11 +1079,18 @@ async fn search_traces(
         .map(TryInto::try_into)
         .collect::<Result<Vec<_>>>()
         .map_err(|error| ApiError::unavailable(error.to_string()))?;
+    let next = if (events.len() as u32) >= request.limit {
+        events.last().map(|event: &TraceEventEnvelopeV1| {
+            format!("{}:{}", event.event_id, event.occurred_at.unix_timestamp())
+        })
+    } else {
+        None
+    };
     Ok(Json(TraceSearchPageV1 {
         api_version: 1,
         query_id,
         events,
-        next: None,
+        next,
         degraded,
     }))
 }
@@ -1225,6 +1234,7 @@ fn dimension_sql(value: &ObservabilityDimensionV1) -> (&'static str, &'static st
             ("provider", "JSONExtractString(attributes_json,'provider')")
         }
         ObservabilityDimensionV1::ResourceType => ("resourceType", "ifNull(resource_type,'')"),
+        ObservabilityDimensionV1::SpanName => ("spanName", "span_name"),
     }
 }
 fn metric_sql(value: &ObservabilityMetricV1) -> (&'static str, &'static str) {
@@ -1235,6 +1245,8 @@ fn metric_sql(value: &ObservabilityMetricV1) -> (&'static str, &'static str) {
         ObservabilityMetricV1::InputTokens => ("inputTokens", "sum(ifNull(input_tokens,0))"),
         ObservabilityMetricV1::OutputTokens => ("outputTokens", "sum(ifNull(output_tokens,0))"),
         ObservabilityMetricV1::ErrorRate => ("errorRate", "avg(status='failed')"),
+        ObservabilityMetricV1::DurationP50 => ("durationP50", "quantile(0.5)(duration_ms)"),
+        ObservabilityMetricV1::DurationP95 => ("durationP95", "quantile(0.95)(duration_ms)"),
     }
 }
 

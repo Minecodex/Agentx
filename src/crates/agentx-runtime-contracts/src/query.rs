@@ -492,6 +492,14 @@ pub struct TraceEventEnvelopeV1 {
     pub execution_id: Uuid,
     pub execution_sequence: u64,
     pub trace_id: Uuid,
+    /// Aggregation dimensions (plan7 P7-C): filled at the single outbox
+    /// enqueue point from the execution row; absent on events produced by
+    /// older runtimes (serde default keeps the consumer green during the
+    /// rollout window).
+    #[serde(default)]
+    pub workflow_id: Option<Uuid>,
+    #[serde(default)]
+    pub application_id: Option<Uuid>,
     pub span_id: Uuid,
     pub parent_span_id: Option<Uuid>,
     pub event_kind: TraceEventKindV1,
@@ -635,6 +643,9 @@ pub struct TraceSearchRequestV1 {
     pub api_version: u32,
     pub tenant_id: Uuid,
     pub execution_id: Option<Uuid>,
+    /// plan7 P7-C: aggregate-page drill-down needs workflow-scoped search.
+    #[serde(default)]
+    pub workflow_id: Option<Uuid>,
     pub event_types: Vec<String>,
     pub statuses: Vec<String>,
     #[schemars(with = "String")]
@@ -683,6 +694,9 @@ pub enum ObservabilityMetricV1 {
     InputTokens,
     OutputTokens,
     ErrorRate,
+    /// plan7 P7-C: node-duration distribution charts.
+    DurationP50,
+    DurationP95,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
@@ -696,6 +710,8 @@ pub enum ObservabilityDimensionV1 {
     ErrorCode,
     Provider,
     ResourceType,
+    /// plan7 P7-C: node-duration distribution charts.
+    SpanName,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]

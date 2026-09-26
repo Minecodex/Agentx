@@ -6939,6 +6939,14 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "capabilities": {
+                    "default": [],
+                    "description": "Modalities the deployment accepts as native model input\n(plan7 P7-B); absent means text-only so old bundles stay valid.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "contextWindow": {
                     "format": "uint64",
                     "minimum": 0,
@@ -7067,6 +7075,10 @@
                     "type": "string"
                   },
                   "namespace": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "default": "lightrag",
                     "type": "string"
                   }
                 },
@@ -7370,6 +7382,17 @@
                   },
                   "publicId": {
                     "type": "string"
+                  },
+                  "reply": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/WebhookReplyConfigV1"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
                   },
                   "secret": {
                     "$ref": "#/$defs/VaultSecretReferenceV1"
@@ -7705,6 +7728,32 @@
               "feishu"
             ],
             "type": "string"
+          },
+          "WebhookReplyConfigV1": {
+            "additionalProperties": false,
+            "description": "Channel auto-reply configuration (plan7 P7-A L1): frozen into the trigger\nrevision alongside the rest of the channel configuration; the runtime\ndelivery loop enqueues an outbound reply when the execution reaches a\nterminal state.",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "outputField": {
+                "description": "Name of the workflow output field whose value is replied (required\nwhen enabled; Control validates it against the deployment output\nschema before freezing).",
+                "type": "string"
+              },
+              "template": {
+                "default": null,
+                "description": "Optional template over the output; only output-field variables are\nallowed. When empty the raw output field value is replied as text.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "enabled",
+              "outputField"
+            ],
+            "type": "object"
           },
           "WorkerCompatibilityV1": {
             "additionalProperties": false,
@@ -9056,28 +9105,47 @@
       "ObservabilityAggregateRequestV1": {
         "$defs": {
           "ObservabilityDimensionV1": {
-            "enum": [
-              "hour",
-              "day",
-              "workflow",
-              "application",
-              "status",
-              "error_code",
-              "provider",
-              "resource_type"
-            ],
-            "type": "string"
+            "oneOf": [
+              {
+                "enum": [
+                  "hour",
+                  "day",
+                  "workflow",
+                  "application",
+                  "status",
+                  "error_code",
+                  "provider",
+                  "resource_type"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "span_name",
+                "description": "plan7 P7-C: node-duration distribution charts.",
+                "type": "string"
+              }
+            ]
           },
           "ObservabilityMetricV1": {
-            "enum": [
-              "count",
-              "duration_millis",
-              "cost_micros",
-              "input_tokens",
-              "output_tokens",
-              "error_rate"
-            ],
-            "type": "string"
+            "oneOf": [
+              {
+                "enum": [
+                  "count",
+                  "duration_millis",
+                  "cost_micros",
+                  "input_tokens",
+                  "output_tokens",
+                  "error_rate",
+                  "duration_p95"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "duration_p50",
+                "description": "plan7 P7-C: node-duration distribution charts.",
+                "type": "string"
+              }
+            ]
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -9485,6 +9553,14 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "capabilities": {
+                    "default": [],
+                    "description": "Modalities the deployment accepts as native model input\n(plan7 P7-B); absent means text-only so old bundles stay valid.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "contextWindow": {
                     "format": "uint64",
                     "minimum": 0,
@@ -9613,6 +9689,10 @@
                     "type": "string"
                   },
                   "namespace": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "default": "lightrag",
                     "type": "string"
                   }
                 },
@@ -12141,6 +12221,14 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "capabilities": {
+                    "default": [],
+                    "description": "Modalities the deployment accepts as native model input\n(plan7 P7-B); absent means text-only so old bundles stay valid.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "contextWindow": {
                     "format": "uint64",
                     "minimum": 0,
@@ -12269,6 +12357,10 @@
                     "type": "string"
                   },
                   "namespace": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "default": "lightrag",
                     "type": "string"
                   }
                 },
@@ -12572,6 +12664,17 @@
                   },
                   "publicId": {
                     "type": "string"
+                  },
+                  "reply": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/WebhookReplyConfigV1"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
                   },
                   "secret": {
                     "$ref": "#/$defs/VaultSecretReferenceV1"
@@ -12907,6 +13010,32 @@
               "feishu"
             ],
             "type": "string"
+          },
+          "WebhookReplyConfigV1": {
+            "additionalProperties": false,
+            "description": "Channel auto-reply configuration (plan7 P7-A L1): frozen into the trigger\nrevision alongside the rest of the channel configuration; the runtime\ndelivery loop enqueues an outbound reply when the execution reaches a\nterminal state.",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "outputField": {
+                "description": "Name of the workflow output field whose value is replied (required\nwhen enabled; Control validates it against the deployment output\nschema before freezing).",
+                "type": "string"
+              },
+              "template": {
+                "default": null,
+                "description": "Optional template over the output; only output-field variables are\nallowed. When empty the raw output field value is replied as text.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "enabled",
+              "outputField"
+            ],
+            "type": "object"
           },
           "WorkerCompatibilityV1": {
             "additionalProperties": false,
@@ -15424,6 +15553,14 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "capabilities": {
+                    "default": [],
+                    "description": "Modalities the deployment accepts as native model input\n(plan7 P7-B); absent means text-only so old bundles stay valid.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "contextWindow": {
                     "format": "uint64",
                     "minimum": 0,
@@ -15552,6 +15689,10 @@
                     "type": "string"
                   },
                   "namespace": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "default": "lightrag",
                     "type": "string"
                   }
                 },
@@ -16994,6 +17135,14 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "capabilities": {
+                    "default": [],
+                    "description": "Modalities the deployment accepts as native model input\n(plan7 P7-B); absent means text-only so old bundles stay valid.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "contextWindow": {
                     "format": "uint64",
                     "minimum": 0,
@@ -17122,6 +17271,10 @@
                     "type": "string"
                   },
                   "namespace": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "default": "lightrag",
                     "type": "string"
                   }
                 },
@@ -21040,6 +21193,14 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "capabilities": {
+                    "default": [],
+                    "description": "Modalities the deployment accepts as native model input\n(plan7 P7-B); absent means text-only so old bundles stay valid.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "contextWindow": {
                     "format": "uint64",
                     "minimum": 0,
@@ -21168,6 +21329,10 @@
                     "type": "string"
                   },
                   "namespace": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "default": "lightrag",
                     "type": "string"
                   }
                 },
@@ -21883,6 +22048,14 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "capabilities": {
+                    "default": [],
+                    "description": "Modalities the deployment accepts as native model input\n(plan7 P7-B); absent means text-only so old bundles stay valid.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "contextWindow": {
                     "format": "uint64",
                     "minimum": 0,
@@ -22011,6 +22184,10 @@
                     "type": "string"
                   },
                   "namespace": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "default": "lightrag",
                     "type": "string"
                   }
                 },
@@ -22560,6 +22737,17 @@
                   "publicId": {
                     "type": "string"
                   },
+                  "reply": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/WebhookReplyConfigV1"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
                   "secret": {
                     "$ref": "#/$defs/VaultSecretReferenceV1"
                   }
@@ -22674,6 +22862,32 @@
               "feishu"
             ],
             "type": "string"
+          },
+          "WebhookReplyConfigV1": {
+            "additionalProperties": false,
+            "description": "Channel auto-reply configuration (plan7 P7-A L1): frozen into the trigger\nrevision alongside the rest of the channel configuration; the runtime\ndelivery loop enqueues an outbound reply when the execution reaches a\nterminal state.",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "outputField": {
+                "description": "Name of the workflow output field whose value is replied (required\nwhen enabled; Control validates it against the deployment output\nschema before freezing).",
+                "type": "string"
+              },
+              "template": {
+                "default": null,
+                "description": "Optional template over the output; only output-field variables are\nallowed. When empty the raw output field value is replied as text.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "enabled",
+              "outputField"
+            ],
+            "type": "object"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -25275,6 +25489,14 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "capabilities": {
+                    "default": [],
+                    "description": "Modalities the deployment accepts as native model input\n(plan7 P7-B); absent means text-only so old bundles stay valid.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "contextWindow": {
                     "format": "uint64",
                     "minimum": 0,
@@ -25403,6 +25625,10 @@
                     "type": "string"
                   },
                   "namespace": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "default": "lightrag",
                     "type": "string"
                   }
                 },
@@ -26812,6 +27038,14 @@
               "null"
             ]
           },
+          "applicationId": {
+            "default": null,
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "attemptId": {
             "format": "uuid",
             "type": [
@@ -26983,6 +27217,15 @@
               "string",
               "null"
             ]
+          },
+          "workflowId": {
+            "default": null,
+            "description": "Aggregation dimensions (plan7 P7-C): filled at the single outbox\nenqueue point from the execution row; absent on events produced by\nolder runtimes (serde default keeps the consumer green during the\nrollout window).",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -27043,6 +27286,14 @@
                 ]
               },
               "agentRunId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "applicationId": {
+                "default": null,
                 "format": "uuid",
                 "type": [
                   "string",
@@ -27215,6 +27466,15 @@
                 "type": "string"
               },
               "waitId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "workflowId": {
+                "default": null,
+                "description": "Aggregation dimensions (plan7 P7-C): filled at the single outbox\nenqueue point from the execution row; absent on events produced by\nolder runtimes (serde default keeps the consumer green during the\nrollout window).",
                 "format": "uuid",
                 "type": [
                   "string",
@@ -27351,6 +27611,15 @@
           },
           "to": {
             "type": "string"
+          },
+          "workflowId": {
+            "default": null,
+            "description": "plan7 P7-C: aggregate-page drill-down needs workflow-scoped search.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -27431,6 +27700,14 @@
                 ]
               },
               "agentRunId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "applicationId": {
+                "default": null,
                 "format": "uuid",
                 "type": [
                   "string",
@@ -27603,6 +27880,15 @@
                 "type": "string"
               },
               "waitId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "workflowId": {
+                "default": null,
+                "description": "Aggregation dimensions (plan7 P7-C): filled at the single outbox\nenqueue point from the execution row; absent on events produced by\nolder runtimes (serde default keeps the consumer green during the\nrollout window).",
                 "format": "uuid",
                 "type": [
                   "string",
