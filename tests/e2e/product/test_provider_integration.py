@@ -68,13 +68,25 @@ def _require_opensandbox() -> None:
 
 
 def _sandbox_image_digest() -> str:
-    run(("docker", "pull", SANDBOX_IMAGE_TAG), timeout=600)
-    inspect = run(
-        ("docker", "inspect", SANDBOX_IMAGE_TAG, "--format", "{{index .RepoDigests 0}}"),
-        timeout=60,
-    )
-    digest = inspect.stdout.strip()
-    if "@sha256:" not in digest:
+    def inspect_digest() -> str | None:
+        result = run(
+            ("docker", "inspect", SANDBOX_IMAGE_TAG, "--format", "{{index .RepoDigests 0}}"),
+            check=False,
+            timeout=60,
+        )
+        digest = result.stdout.strip()
+        return digest if "@sha256:" in digest else None
+
+    # The 7 GiB image is usually pre-pulled on the e2e host; only fall back
+    # to a registry pull (bounded retries) when the local digest is missing.
+    digest = inspect_digest()
+    if digest is None:
+        for _attempt in range(3):
+            run(("docker", "pull", SANDBOX_IMAGE_TAG), timeout=1200)
+            digest = inspect_digest()
+            if digest is not None:
+                break
+    if digest is None:
         pytest.fail(f"无法解析 {SANDBOX_IMAGE_TAG} 的镜像摘要:{digest}")
     return digest
 
