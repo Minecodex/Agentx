@@ -28,7 +28,7 @@ spec:
   template:
     metadata:
       labels:
-    app.kubernetes.io/name: ragflow
+        app.kubernetes.io/name: ragflow
     spec:
       containers:
         - name: ragflow

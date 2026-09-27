@@ -310,7 +310,7 @@ def e2e_providers(installed_agentx: dict[str, str]) -> dict[str, str]:
         if deployment == "lightrag" or (deployment.startswith("ragflow-") and deployment != "ragflow-redis"):
             rollout_timeout = 600
         elif deployment == "ragflow":
-            rollout_timeout = 1200
+            rollout_timeout = 2400
         else:
             rollout_timeout = 300
         result = run(

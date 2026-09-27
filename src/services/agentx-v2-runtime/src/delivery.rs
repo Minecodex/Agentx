@@ -227,7 +227,7 @@ pub async fn dead(
     Ok(())
 }
 
-/// Dead letter replay (POST /deliveries/{id}:retry): re-enqueues the archived
+/// Dead letter replay (POST /deliveries/{id}/retry): re-enqueues the archived
 /// record as a fresh pending delivery.
 pub async fn replay_dead_letter(
     pool: &MySqlPool,

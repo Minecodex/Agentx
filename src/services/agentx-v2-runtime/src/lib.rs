@@ -96,7 +96,10 @@ impl RuntimeState {
             objects: runtime_object_store(&object_storage)?,
             trust: Arc::new(RuntimeTrust::from_env_without_user_keys()?),
             wakeups: crate::sse_wakeup::SseWakeup::disabled(),
-            vault: None,
+            // The delivery role rides the maintenance state and reads frozen
+            // channel credentials; a missing Vault fails its startup check
+            // explicitly instead of degrading to a crash loop.
+            vault: RuntimeVault::from_env().ok(),
         })
     }
 }

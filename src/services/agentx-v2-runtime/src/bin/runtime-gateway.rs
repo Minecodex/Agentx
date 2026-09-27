@@ -129,7 +129,7 @@ async fn main() -> Result<()> {
             get(agentx_v2_runtime::delivery_query::get_delivery),
         )
         .route(
-            "/internal/runtime/v1/query/deliveries/{id}:retry",
+            "/internal/runtime/v1/query/deliveries/{id}/retry",
             post(agentx_v2_runtime::delivery_query::retry_delivery),
         )
         .route(

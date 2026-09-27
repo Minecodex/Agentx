@@ -112,6 +112,29 @@ def test_provider_integration_suite(
     )
 
 
+def _wait_application_deployment(
+    client: httpx.Client,
+    headers: dict[str, str],
+    application_id: str,
+    deployment_id: str,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + 300
+    latest: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/v1/applications/{application_id}/deployments", headers=headers)
+        response.raise_for_status()
+        latest = next(
+            (item for item in response.json() if item["id"] == deployment_id),
+            {},
+        )
+        if latest.get("status") == "active":
+            return latest
+        if latest.get("status") == "rejected":
+            raise AssertionError(f"application deployment rejected: {json.dumps(latest, ensure_ascii=False)}")
+        time.sleep(1)
+    raise AssertionError(f"application deployment did not become active: {json.dumps(latest, ensure_ascii=False)}")
+
+
 def _publish_application_deployment(
     client: httpx.Client,
     headers: dict[str, str],
@@ -131,8 +154,15 @@ def _publish_application_deployment(
             headers=headers,
             json=payload,
         )
-        if response.status_code in {200, 201}:
-            return response.json()
+        # Publishing is asynchronous (202 Accepted): wait for the deployment
+        # to converge to active instead of treating the ack as the result.
+        if response.status_code == 202:
+            return _wait_application_deployment(
+                client,
+                headers,
+                application_id,
+                response.json()["id"],
+            )
         last_error = f"{response.status_code} {response.text}"
         time.sleep(3)
     raise AssertionError(f"publish deployment failed: {last_error}")
