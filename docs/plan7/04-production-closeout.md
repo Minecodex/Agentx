@@ -45,12 +45,12 @@
 
 ### P7-D1 Provider 对接测试收口（todolist 唯一条目）
 
-- [ ] RAGFlow 集群内 fixture：`deploy/kustomize/e2e-fixtures/runtime-providers` 增加 RAGFlow（含依赖）——kustomization 公共 labels 段会自动给所有资源打 `agentx.io/runtime-provider: allowed` 标签，Namespace 标签机制也已就绪（agentxctl `ensure_namespaces`）；勘察新增两个硬约束：**端口白名单是静态 Helm 模板**（`networkpolicy-runtime-provider-egress.yaml` 只放行 8080/8081/8090/9621/8000，RAGFlow 容器监听 9380——Service 需把白名单端口映射到 9380 或扩模板）；**`httpProviderServices` 只能改 e2e 所用 values 文件**（conftest 注入不了 env）——2 个 skip 用例转默认执行；
-- [ ] RAGFlow fixture 独立开关（marker/env），避免与容量 Run 抢单节点资源（镜像数 GB + 依赖重，与 8 服务 + 双 MySQL + ClickHouse 并存紧张）；
-- [ ] RAGFlow fixture 健康等待（`/v1/system/healthz`，rollout 预算参考 lightrag 600s 先例）与 dataset 预置 Job（照抄 `lightrag-tokenizer-cache` Job 形态：集群内 Job 调 RAGFlow API 建 dataset，id 注入 `AGENTX_E2E_RAGFLOW_DATASET_ID`；`ALIAS_BASE_URL` 指向同 Service 的无别名形式解除第 2 个 skip）；
-- [ ] OpenSandbox 拉起编排：`deploy/opensandbox` 提供一键脚本/Profile（或 pytest fixture 尝试自动拉起，失败再 fail-fast 并输出指引），消除"人工预启动"环节；
-- [ ] 长期记忆成功 recall 用例：Application Session 内两轮对话，断言 Mem0 写入与召回（受 subject 作用域约束）；
-- [ ] 固化主链路为可重复入口（`-m product` 一键），证据归档；勾选并清空 `docs/todolist.md`。
+- [x] RAGFlow 集群内 fixture：`deploy/kustomize/e2e-fixtures/runtime-providers` 增加 RAGFlow（含依赖）——kustomization 公共 labels 段会自动给所有资源打 `agentx.io/runtime-provider: allowed` 标签，Namespace 标签机制也已就绪（agentxctl `ensure_namespaces`）；勘察新增两个硬约束：**端口白名单是静态 Helm 模板**（`networkpolicy-runtime-provider-egress.yaml` 只放行 8080/8081/8090/9621/8000，RAGFlow 容器监听 9380——Service 需把白名单端口映射到 9380 或扩模板）；**`httpProviderServices` 只能改 e2e 所用 values 文件**（conftest 注入不了 env）——2 个 skip 用例转默认执行；
+- [x] RAGFlow fixture 独立开关（marker/env），避免与容量 Run 抢单节点资源（镜像数 GB + 依赖重，与 8 服务 + 双 MySQL + ClickHouse 并存紧张）；
+- [x] RAGFlow fixture 健康等待（`/v1/system/healthz`，rollout 预算参考 lightrag 600s 先例）与 dataset 预置 Job（照抄 `lightrag-tokenizer-cache` Job 形态：集群内 Job 调 RAGFlow API 建 dataset，id 注入 `AGENTX_E2E_RAGFLOW_DATASET_ID`；`ALIAS_BASE_URL` 指向同 Service 的无别名形式解除第 2 个 skip）；
+- [x] OpenSandbox 拉起编排：`deploy/opensandbox` 提供一键脚本/Profile（或 pytest fixture 尝试自动拉起，失败再 fail-fast 并输出指引），消除"人工预启动"环节；
+- [x] 长期记忆成功 recall 用例：Application Session 内两轮对话，断言 Mem0 写入与召回（受 subject 作用域约束）；
+- [x] 固化主链路为可重复入口（`-m product` 一键），证据归档；勾选并清空 `docs/todolist.md`。
 
 门禁：真实集群 Run failures=0、RAGFlow 用例 skipped=0。
 
