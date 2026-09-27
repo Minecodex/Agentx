@@ -1175,6 +1175,7 @@ mod tests {
                     output_per_million: "2".into(),
                 },
                 credential: None,
+                capabilities: Vec::new(),
             },
             object_ids: vec![],
         }];

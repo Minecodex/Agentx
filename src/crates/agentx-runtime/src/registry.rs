@@ -688,6 +688,8 @@ mod tests {
                 "if",
                 "list",
                 "loop_over_items",
+                "reply_message",
+                "send_message",
                 "merge",
                 "model",
                 "set",

@@ -1168,6 +1168,7 @@ pub(crate) async fn mint_observability_token(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn delegation_token_with_audience(
     state: &ControlApiState,
     actor: &Actor,

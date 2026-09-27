@@ -1,11 +1,12 @@
 use super::output::effective_agent_budget;
+use super::output::runtime_call_is_replayable;
 use super::{
     WorkerExecution, apply_http_credential, declarative_http_request, mcp_tool_binding,
     openai_chat_completions_endpoint, openai_execution_output, provider_secret_header,
-    provider_usage_detail, redact_secret_bytes, runtime_call_fingerprint,
-    runtime_call_is_replayable, runtime_call_side_effect, sandbox_execution_output,
+    provider_usage_detail, redact_secret_bytes, runtime_call_fingerprint, sandbox_execution_output,
     secret_fragments, system_prompt,
 };
+use crate::worker_runtime_calls::runtime_call_side_effect;
 use agentx_runtime_contracts::{
     ContentHash, RuntimeResourceBindingV1, RuntimeResourceConfigurationV1, RuntimeResourceKindV1,
     WorkerResultStatusV1,

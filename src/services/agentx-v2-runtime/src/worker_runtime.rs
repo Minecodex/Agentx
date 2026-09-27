@@ -21,7 +21,7 @@ use crate::{
     vault::RuntimeVault,
     worker_support::{
         openai_chat_completions_endpoint, provider_secret_header, runtime_call_fingerprint,
-        runtime_call_span_name, stable_id,
+        stable_id,
     },
 };
 
@@ -52,8 +52,7 @@ use output::system_prompt;
 use output::{
     apply_model_price, finalize_rag_response, memory_execution_output,
     openai_chat_request_streaming, openai_execution_output, provider_usage_detail,
-    rag_execution_output, rag_query_request, runtime_call_is_replayable, runtime_call_side_effect,
-    sandbox_execution_output, tool_execution_output,
+    rag_execution_output, rag_query_request, sandbox_execution_output, tool_execution_output,
 };
 
 pub struct WorkerExecution {
@@ -1204,6 +1203,7 @@ impl RuntimeWorker {
                         )
                         .await?;
                     let status = stream.status;
+                    let headers = stream.response.headers().clone();
                     let mut sink = delta_sink.clone();
                     let aggregated = output::aggregate_openai_sse_stream(
                         stream.response,
@@ -1215,7 +1215,7 @@ impl RuntimeWorker {
                     match aggregated {
                         Ok(value) => Ok(WorkerProviderResponse {
                             status,
-                            headers: HeaderMap::new(),
+                            headers,
                             body: bytes::Bytes::from(
                                 serde_json::to_vec(&value).unwrap_or_else(|_| b"{}".to_vec()),
                             ),
@@ -1505,19 +1505,6 @@ fn capability_resource_kind(capability: &NodeCapability) -> RuntimeResourceKindV
         NodeCapability::Memory => RuntimeResourceKindV1::Memory,
         NodeCapability::Sandbox => RuntimeResourceKindV1::SandboxProfile,
         NodeCapability::Builtin | NodeCapability::PluginNodejs => RuntimeResourceKindV1::Credential,
-    }
-}
-
-fn resource_kind_name(kind: RuntimeResourceKindV1) -> &'static str {
-    match kind {
-        RuntimeResourceKindV1::Model => "model",
-        RuntimeResourceKindV1::Mcp => "mcp",
-        RuntimeResourceKindV1::Rag => "rag",
-        RuntimeResourceKindV1::Memory => "memory",
-        RuntimeResourceKindV1::Skill => "skill",
-        RuntimeResourceKindV1::Credential => "credential",
-        RuntimeResourceKindV1::SandboxProfile => "sandbox_profile",
-        RuntimeResourceKindV1::Composite => "composite",
     }
 }
 

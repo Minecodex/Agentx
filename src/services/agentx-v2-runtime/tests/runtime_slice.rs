@@ -119,6 +119,71 @@ struct StubWorkerProvider {
 
 #[async_trait::async_trait]
 impl WorkerProvider for StubWorkerProvider {
+    async fn post_json_stream(
+        &self,
+        endpoint: &str,
+        context: agentx_v2_runtime::egress::EgressRequestContext,
+        timeout: Duration,
+        headers: reqwest::header::HeaderMap,
+        body: &Value,
+    ) -> Result<agentx_v2_runtime::worker_runtime::WorkerStreamResponse, WorkerProviderError> {
+        // Synthesize an OpenAI-style SSE token stream from the buffered
+        // fixture response so streaming model calls replay identically.
+        let buffered = self
+            .post_json(endpoint, context, timeout, headers, body)
+            .await?;
+        let payload = serde_json::from_slice::<Value>(&buffered.body).unwrap_or(Value::Null);
+        let message = payload
+            .pointer("/choices/0/message")
+            .cloned()
+            .unwrap_or(Value::Null);
+        let finish_reason = payload
+            .pointer("/choices/0/finish_reason")
+            .cloned()
+            .unwrap_or(Value::Null);
+        let mut delta_message = json!({"role":"assistant"});
+        if let Some(content) = message.get("content").filter(|value| !value.is_null()) {
+            delta_message["content"] = content.clone();
+        }
+        if let Some(tool_calls) = message.get("tool_calls").and_then(Value::as_array) {
+            delta_message["tool_calls"] = json!(tool_calls
+                .iter()
+                .enumerate()
+                .map(|(index, call)| json!({
+                    "index": index,
+                    "id": call.get("id").cloned().unwrap_or(Value::Null),
+                    "type": "function",
+                    "function": {
+                        "name": call.pointer("/function/name").cloned().unwrap_or(Value::Null),
+                        "arguments": call.pointer("/function/arguments").cloned().unwrap_or(Value::Null),
+                    }
+                }))
+                .collect::<Vec<_>>());
+        }
+        let mut frames = String::new();
+        let delta = json!({"choices":[{"index":0,"delta":delta_message,"finish_reason":null}],"usage":Value::Null});
+        frames.push_str(&format!("data: {delta}\n\n"));
+        let usage = payload.get("usage").cloned().unwrap_or(Value::Null);
+        let finish =
+            json!({"choices":[{"index":0,"delta":{},"finish_reason":finish_reason}],"usage":usage});
+        frames.push_str(&format!("data: {finish}\n\n"));
+        frames.push_str("data: [DONE]\n\n");
+        let mut response = axum::http::Response::builder()
+            .status(200)
+            .body(reqwest::Body::from(frames))
+            .expect("fixture SSE response");
+        for (name, value) in &buffered.headers {
+            response.headers_mut().insert(
+                name,
+                reqwest::header::HeaderValue::from_bytes(value.as_bytes())
+                    .expect("fixture header value"),
+            );
+        }
+        Ok(agentx_v2_runtime::worker_runtime::WorkerStreamResponse {
+            status: buffered.status,
+            response: reqwest::Response::from(response),
+        })
+    }
     async fn post_json(
         &self,
         endpoint: &str,

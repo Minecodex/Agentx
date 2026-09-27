@@ -3,14 +3,12 @@
 //! type so the delegation request hash matches the observability side byte
 //! for byte; budget and degraded states map to explicit API codes.
 
-use axum::{Json, extract::State, http::HeaderMap};
-use serde::Deserialize;
-use serde_json::{Value, json};
-use uuid::Uuid;
-
 use agentx_runtime_contracts::{
     ObservabilityAggregateRequestV1, ObservabilityDimensionV1, ObservabilityMetricV1, content_hash,
 };
+use axum::{Json, extract::State, http::HeaderMap};
+use serde::Deserialize;
+use serde_json::{Value, json};
 
 use crate::api_error::{ApiError, ApiResult};
 use crate::control_api::{Actor, ControlApiState};

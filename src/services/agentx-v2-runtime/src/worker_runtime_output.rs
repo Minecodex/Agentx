@@ -499,15 +499,6 @@ fn string_ids(value: Option<&Value>) -> Value {
 
 pub(crate) const RAG_PROVIDER_RAGFLOW: &str = "ragflow";
 
-fn rag_query_text(payload: &Value) -> String {
-    payload
-        .get("query")
-        .or_else(|| payload.get("question"))
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .unwrap_or_else(|| json_text(payload))
-}
-
 pub(super) fn rag_query_request(
     provider: &str,
     operation: &str,

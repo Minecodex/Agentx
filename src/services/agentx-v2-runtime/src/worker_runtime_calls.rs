@@ -8,9 +8,10 @@ use sqlx::Row;
 use uuid::Uuid;
 
 use super::engine::ClaimedWorkerAttempt;
-use super::worker_runtime::output::{runtime_call_is_replayable, runtime_call_side_effect};
+use super::worker_runtime::output::runtime_call_is_replayable;
+pub(crate) use super::worker_runtime::output::runtime_call_side_effect;
 use super::worker_runtime::{RuntimeWorker, WorkerExecution};
-use super::worker_support::{runtime_call_fingerprint, runtime_call_span_name, stable_id};
+use super::worker_support::{runtime_call_span_name, stable_id};
 
 fn resource_kind_name(kind: RuntimeResourceKindV1) -> &'static str {
     match kind {

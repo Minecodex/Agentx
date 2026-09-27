@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use uuid::Uuid;
 
-use crate::error::{RuntimeError, RuntimeResult};
+use crate::error::RuntimeError;
 
 /// Concurrent non-terminal invocations one tenant may keep in flight.
 fn max_running_per_tenant() -> i64 {

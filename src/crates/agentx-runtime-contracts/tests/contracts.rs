@@ -404,6 +404,8 @@ fn trace_fixture_event(content_kind: TraceContentKindV1) -> TraceEventEnvelopeV1
         execution_id: Uuid::now_v7(),
         execution_sequence: 1,
         trace_id: Uuid::now_v7(),
+        workflow_id: None,
+        application_id: None,
         span_id: Uuid::now_v7(),
         parent_span_id: None,
         event_kind: TraceEventKindV1::Started,
