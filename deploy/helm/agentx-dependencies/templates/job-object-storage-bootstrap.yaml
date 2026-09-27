@@ -12,6 +12,7 @@ spec:
       containers:
         - name: bootstrap
           image: quay.io/minio/mc:latest
+          imagePullPolicy: {{ .Values.global.images.pullPolicy }}
           envFrom: [{ secretRef: { name: {{ .Values.global.secrets.dependencies }} } }]
           command: [/bin/sh, -ec]
           args:
