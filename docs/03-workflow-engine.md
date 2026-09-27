@@ -190,6 +190,11 @@ Execution Style：
 - suspend：挂起等待外部恢复（Approval 专用）
 - sub_workflow：调用不可变的已发布 Workflow Version
 
+内置节点目录（agentx/core 包）：`agent`、`approval`、`code`、`if`、`loop_over_items`、`merge`、`model`、`sub_workflow`、`mcp_tool`、`skill`、`rag`、`memory`，以及 plan7 P7-A 新增的 IM 回复节点：
+
+- `reply_message`：回复触发本工作流的来源 IM 会话。内容为任意 workflow 变量；目标由 ExecutionOrigin → Invocation Trigger Context 在结算事务内解析，非 IM 来源执行失败 `REPLY_TARGET_UNRESOLVED`。语义为非终态副作用：结算事务入队 `delivery_outbox` 后节点即成功，实际投递异步进行。
+- `send_message`：向显式渠道会话主动发送。参数为 content + channelId（+ 可选 targetConversationId/senderId）；渠道无法解析时发布被阻塞（`SEND_CHANNEL_UNRESOLVED`）。
+
 `remote_action` 已整条废弃（plan5）：触发内部 Workflow 由 `sub_workflow` 承载，第三方节点生态位未来归 MCP。
 
 Sandbox Python、JavaScript、Shell 和 Agent 是运行适配或内置节点能力，不要求对外提供语言 SDK。UI Schema 还需要表达条件显示、Collection、Fixed Collection、Resource Locator、Resource Mapper 和动态选项；动态能力通过 load options、list search、resource mapping 和 credential test 等受控 API 提供，不能只依赖 JSON Schema。

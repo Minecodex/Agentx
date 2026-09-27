@@ -29,6 +29,7 @@ pub mod plugin_design;
 pub mod publish;
 pub mod query;
 mod query_authority;
+pub mod provider_breaker;
 pub mod quota;
 pub mod rate_limit;
 pub mod resource_check;

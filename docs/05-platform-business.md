@@ -155,6 +155,12 @@ Workflow Draft 可以选择 Skill Definition 和目标版本；发布时必须�
 
 RAG 节点的 Trace 包含查询、召回结果引用、Score、耗时和错误。
 
+知识库管理面（plan7 P7-E）：
+
+- LightRAG 资源支持文档上传→外部索引→状态跟踪→hit-testing 最小闭环。上传走 `POST /api/v1/knowledge/resources/{id}/documents`（multipart；text/plain、text/markdown、text/csv、application/json；8 MiB/文件、200 篇/资源、256 MiB 总量；同 sha256 去重）；索引由 Control 直连 LightRAG `documents/text`（同步、60s 超时），状态机 uploading→indexing→indexed/failed，`rag_resources.sync_status` 随之激活。
+- RAGFlow 资源保持外部自管：文档区显示占位说明，写路径维持 `RAG_OPERATION_UNSUPPORTED`；hit-testing 同样支持（`POST .../retrieval-test`，query + topK 1..=20，结果归一 documents/citations/recordIds，历史落 `rag_retrieval_tests`）。
+- 协议构造与响应归一单源于 `agentx-runtime-contracts::rag`（runtime worker、Agent 附件槽与 Control 共用；未支持的操作显式拒绝，delete 不再静默映射为查询）。
+
 ## 7. Memory
 
 首期提供 Mem0 Adapter，统一接口：
@@ -195,6 +201,7 @@ Application 可以：
 - Webhook 回调
 - 查询 Execution 状态
 - 取消 Execution
+- IM 渠道出站回复（plan7 P7-A）：渠道配置 `reply { enabled, outputField, template }` 冻结进 trigger revision；Execution 成功终态在终态事务内向 `delivery_outbox` 入队平台回复，由 delivery Role 异步投递（租约+栅栏+指数退避，5 次后死信），投递记录可查、死信可重放（`POST /api/v1/deliveries/{id}/retry`）；工作流内亦可用 `reply_message`/`send_message` 节点控制回复内容与时机。
 
 ## 9. Session 和 Message
 

@@ -246,6 +246,8 @@ pub struct RuntimeWorker {
     pub(crate) plugin_trace: plugin::PluginTraceSink,
     pub(crate) plugin_artifacts: Arc<plugin::PluginArtifactCache>,
     pub(crate) deltas: crate::worker_runtime_delta::ModelDeltaSink,
+    pub(crate) provider_breaker: std::sync::Arc<crate::provider_breaker::ProviderBreaker>,
+    pub(crate) provider_limiter: std::sync::Arc<crate::provider_breaker::FairnessLimiter>,
 }
 
 impl RuntimeWorker {
@@ -259,6 +261,8 @@ impl RuntimeWorker {
         let plugin_trace = plugin::PluginTraceSink::new(pool.clone(), objects.clone());
         let deltas = crate::worker_runtime_delta::ModelDeltaSink::start(pool.clone(), None);
         Ok(Self {
+            provider_breaker: crate::provider_breaker::ProviderBreaker::shared(),
+            provider_limiter: crate::provider_breaker::FairnessLimiter::shared(),
             plugin_trace,
             deltas,
             pool,
@@ -283,6 +287,8 @@ impl RuntimeWorker {
         let plugin_artifacts = Arc::new(plugin::PluginArtifactCache::for_tests());
         let plugin_trace = plugin::PluginTraceSink::new(pool.clone(), objects.clone());
         Self {
+            provider_breaker: crate::provider_breaker::ProviderBreaker::shared(),
+            provider_limiter: crate::provider_breaker::FairnessLimiter::shared(),
             plugin_trace,
             deltas: crate::worker_runtime_delta::ModelDeltaSink::disabled(),
             pool,
@@ -1026,10 +1032,66 @@ impl RuntimeWorker {
             )
             .await
         {
-            Ok(Some(value)) => return WorkerExecution::succeeded(value),
+            Ok(Some(value)) => {
+                // plan7 P7-B: an idempotent replay hit does not re-send the
+                // provider stream; emit the cached result as one merged
+                // delta frame so replayed streaming calls keep the same
+                // client experience as the first attempt.
+                if let RuntimeHttpTransport::ProviderStream(delta_sink) = &transport
+                    && let Some(text) = value
+                        .pointer("/choices/0/message/content")
+                        .and_then(Value::as_str)
+                    && !text.is_empty()
+                {
+                    delta_sink.emit(
+                        claim.task.tenant_id,
+                        claim.invocation_id,
+                        claim.task.attempt_id,
+                        "",
+                        text,
+                        None,
+                    );
+                }
+                return WorkerExecution::succeeded(value);
+            }
             Ok(None) => {}
             Err(result) => return result,
         }
+        // plan7 P7-D3: deterministic fail-fast while the provider breaker is
+        // open (the reserved ledger row records the rejection), then bound
+        // in-flight calls per tenant × kind × provider host. The permit is
+        // owned: every return path below releases the slot.
+        let breaker_key = crate::provider_breaker::provider_key(
+            claim.task.tenant_id,
+            kind,
+            endpoint,
+        );
+        if !self
+            .provider_breaker
+            .allow(&breaker_key, std::time::Instant::now())
+        {
+            return self
+                .fail_call(
+                    call_id,
+                    crate::provider_breaker::PROVIDER_CIRCUIT_OPEN,
+                    "Provider circuit is open after consecutive failures".to_string(),
+                    false,
+                )
+                .await;
+        }
+        let _fairness_permit = match self.provider_limiter.try_acquire(&breaker_key) {
+            Some(permit) => permit,
+            None => {
+                return self
+                    .fail_call(
+                        call_id,
+                        crate::provider_breaker::PROVIDER_BUSY,
+                        "Provider in-flight cap for this tenant/kind/host is reached".to_string(),
+                        true,
+                    )
+                    .await;
+            }
+        };
         let mut endpoint = endpoint.to_owned();
         let mut headers = HeaderMap::new();
         let mut secret_redactions = Vec::new();
@@ -1258,6 +1320,8 @@ impl RuntimeWorker {
         {
             Ok(response) => response,
             Err(WorkerProviderError::Denied(message)) => {
+                self.provider_breaker
+                    .record_failure(&breaker_key, std::time::Instant::now());
                 return self
                     .fail_call(
                         call_id,
@@ -1281,6 +1345,8 @@ impl RuntimeWorker {
                 message,
                 is_connect,
             }) => {
+                self.provider_breaker
+                    .record_failure(&breaker_key, std::time::Instant::now());
                 let unknown = !is_connect;
                 return self
                     .fail_call(
@@ -1297,6 +1363,14 @@ impl RuntimeWorker {
             }
         };
         let status = response.status;
+        // plan7 P7-D3: HTTP-level outcome feeds the breaker; transport-level
+        // errors are recorded in the dispatch match arms below.
+        if status.is_success() {
+            self.provider_breaker.record_success(&breaker_key);
+        } else {
+            self.provider_breaker
+                .record_failure(&breaker_key, std::time::Instant::now());
+        }
         let provider_request_id = response
             .headers
             .get("x-request-id")
