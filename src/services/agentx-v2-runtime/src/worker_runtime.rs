@@ -1061,11 +1061,8 @@ impl RuntimeWorker {
         // open (the reserved ledger row records the rejection), then bound
         // in-flight calls per tenant × kind × provider host. The permit is
         // owned: every return path below releases the slot.
-        let breaker_key = crate::provider_breaker::provider_key(
-            claim.task.tenant_id,
-            kind,
-            endpoint,
-        );
+        let breaker_key =
+            crate::provider_breaker::provider_key(claim.task.tenant_id, kind, endpoint);
         if !self
             .provider_breaker
             .allow(&breaker_key, std::time::Instant::now())
@@ -1266,6 +1263,19 @@ impl RuntimeWorker {
                         .await?;
                     let status = stream.status;
                     let headers = stream.response.headers().clone();
+                    if !status.is_success() {
+                        let body = stream
+                            .response
+                            .text()
+                            .await
+                            .unwrap_or_default()
+                            .chars()
+                            .take(400)
+                            .collect::<String>();
+                        return Err(WorkerProviderError::Protocol(format!(
+                            "model stream endpoint returned HTTP {status}: {body}"
+                        )));
+                    }
                     let mut sink = delta_sink.clone();
                     let aggregated = output::aggregate_openai_sse_stream(
                         stream.response,

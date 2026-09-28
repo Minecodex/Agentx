@@ -1482,6 +1482,8 @@ version = "0.0.4-beta"
 dependencies = [
  "anyhow",
  "axum",
+ "bytes",
+ "futures-util",
  "rmcp",
  "serde",
  "serde_json",

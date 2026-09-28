@@ -90,6 +90,7 @@ global:
       - lightrag
       - mem0
       - ragflow
+      - mock-openai
       allowedPublicPorts:
       - 443
       allowedPrivateCidrs:

@@ -122,17 +122,12 @@ impl FairnessLimiter {
         })
     }
 
-    pub fn try_acquire(
-        &self,
-        key: &str,
-    ) -> Option<tokio::sync::OwnedSemaphorePermit> {
+    pub fn try_acquire(&self, key: &str) -> Option<tokio::sync::OwnedSemaphorePermit> {
         let semaphore = {
             let mut semaphores = self.semaphores.lock().expect("fairness limiter lock");
             semaphores
                 .entry(key.to_owned())
-                .or_insert_with(|| {
-                    std::sync::Arc::new(tokio::sync::Semaphore::new(self.per_key))
-                })
+                .or_insert_with(|| std::sync::Arc::new(tokio::sync::Semaphore::new(self.per_key)))
                 .clone()
         };
         semaphore.clone().try_acquire_owned().ok()
@@ -194,7 +189,10 @@ mod tests {
         let second = limiter.try_acquire("k").expect("second permit");
         assert!(limiter.try_acquire("k").is_none(), "cap reached");
         drop(second);
-        assert!(limiter.try_acquire("k").is_some(), "permit released on drop");
+        assert!(
+            limiter.try_acquire("k").is_some(),
+            "permit released on drop"
+        );
         drop(first);
     }
 

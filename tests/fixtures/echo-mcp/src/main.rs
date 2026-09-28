@@ -8,6 +8,8 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use bytes::Bytes;
+use futures_util::StreamExt;
 use rmcp::{
     Json, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -474,11 +476,64 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
         .and_then(Value::as_bool)
         .unwrap_or(false)
     {
+        let model_name = request
+            .get("model")
+            .and_then(Value::as_str)
+            .unwrap_or("echo-model")
+            .to_owned();
+        let behavior_stream = matches!(
+            model_name.as_str(),
+            "echo-slow-stream" | "echo-abort-stream" | "echo-no-usage"
+        ) && tool_call.is_none();
         let delta = if let Some(call) = tool_call {
             json!({"tool_calls":[{"index":0,"id":call["id"],"type":"function","function":{"name":call["function"]["name"],"arguments":call["function"]["arguments"]}}]})
         } else {
             json!({"content":content})
         };
+        // plan7 P7-B B6: behavior fixtures switch on the model name so the
+        // streaming E2E can exercise slow streams, mid-stream aborts and
+        // usage-less streams against the real worker transport.
+        if behavior_stream {
+            let tokens: Vec<String> = match &content {
+                Some(text) => text.split_inclusive(' ').map(str::to_owned).collect(),
+                None => vec!["echo".into()],
+            };
+            let abort = model_name.as_str() == "echo-abort-stream";
+            let include_usage = model_name.as_str() != "echo-no-usage";
+            let slow = model_name.as_str() == "echo-slow-stream";
+            let usage_frame = usage.clone();
+            let model_for_stream = model_name.clone();
+            let stream = futures_util::stream::iter(tokens.into_iter().enumerate()).then(
+                move |(index, token)| {
+                    let usage_for_frame = usage_frame.clone();
+                    let model_in_frame = model_for_stream.clone();
+                    async move {
+                        if slow {
+                            tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+                        }
+                        let frame = json!({
+                            "id":"m5-stream","model":model_in_frame,
+                            "choices":[{"index":0,"delta":{"content":token},"finish_reason":null}]
+                        });
+                        let mut frame_text = format!("data: {frame}\n\n");
+                        if index == 4 && include_usage {
+                            frame_text.push_str(&format!(
+                                "data: {}\n\ndata: [DONE]\n\n",
+                                json!({"id":"m5-stream","model":model_in_frame,"choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":usage_for_frame})
+                            ));
+                        }
+                        Ok::<Bytes, std::io::Error>(Bytes::from(frame_text))
+                    }
+                },
+            )
+            .take(if abort { 3 } else { usize::MAX });
+            let body = Body::from_stream(stream);
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(body)
+                .expect("fixture response");
+        }
         let body = format!(
             "data: {}\n\ndata: {}\n\ndata: [DONE]\n\n",
             json!({"id":"m5-stream","choices":[{"index":0,"delta":delta,"finish_reason":finish_reason}]}),
@@ -544,6 +599,8 @@ mod tests {
         http::{HeaderMap, HeaderValue, header},
         response::IntoResponse,
     };
+    use bytes::Bytes;
+    use futures_util::StreamExt;
     use serde_json::{Value, json};
 
     #[test]
