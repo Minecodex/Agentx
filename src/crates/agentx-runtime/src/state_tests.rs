@@ -195,6 +195,25 @@ fn closes_unselected_branch_without_blocking_merge() {
 }
 
 #[test]
+fn start_to_exit_workflow_completes_immediately() {
+    let workflow = compile(json!({
+        "schemaVersion":"8.0",
+        "nodes":[],
+        "connections":[
+            {"id":"a","sourceNodeId":"__start__","sourceHandle":"main","targetNodeId":"__test_exit__","targetHandle":"main","order":0}
+        ]
+    }));
+    assert!(
+        workflow.start_to_exit.is_some(),
+        "fixture must compile as start→exit"
+    );
+    let mut machine = ExecutionMachine::new(workflow, vec![item(1)]).unwrap();
+    assert_eq!(machine.status(), RuntimeExecutionStatus::Succeeded);
+    assert!(machine.next_ready().is_none());
+    assert!(machine.end_deliveries().is_empty());
+}
+
+#[test]
 fn retry_adds_attempt_to_same_activation_and_late_transitions_fail() {
     let workflow = compile(json!({
         "schemaVersion":"8.0",

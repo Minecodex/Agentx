@@ -1,0 +1,119 @@
+"""IM platform mock server (plan7 P7-A A7).
+
+Serves one HTTP server that emulates the three platforms' send APIs with
+behavior switching by path prefix:
+
+- /dingtalk/* : sessionWebhook (errcode envelope), /v1.0/* official API
+- /feishu/*   : tenant_access_token + im/v1/messages ({code,data})
+- /wecom/*     : gettoken + message/send ({errcode,access_token})
+
+Behaviors: ok (default), rate-limit (429 / errcode 429), unauthorized
+(401/60011), not-found (404 / errcode 500 invalid chat id). Requests are
+logged so the E2E can assert the mock received the reply.
+"""
+import json
+import threading
+import time
+
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+RECEIVED = []
+LOCK = threading.Lock()
+
+
+def record(entry):
+    with LOCK:
+        RECEIVED.append(entry)
+
+
+def received_snapshot():
+    with LOCK:
+        return list(RECEIVED)
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _read_body(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            return json.loads(raw or b"{}")
+        except json.JSONDecodeError:
+            return {"_raw": raw.decode("utf-8", "replace")}
+
+    def _reply(self, status, payload, headers=None):
+        data = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        for key, value in (headers or {}).items():
+            self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_POST(self):
+        body = self._read_body()
+        path = self.path
+        last = path.rstrip("/").split("/")[-1]
+        behavior = "ok"
+        for known in ("rate-limit", "unauthorized", "not-found", "ok"):
+            if last == known or last.endswith("-" + known):
+                behavior = known
+                break
+        record({"path": path, "behavior": behavior, "body": body, "at": time.time()})
+
+        if path.startswith("/dingtalk/"):
+            if behavior == "rate-limit":
+                return self._reply(429, {"errcode": 429, "errmsg": "too many requests"})
+            if behavior == "unauthorized":
+                return self._reply(401, {"errcode": 601, "errmsg": "unauthorized"})
+            if behavior == "not-found":
+                return self._reply(200, {"errcode": 500, "errmsg": "invalid conversation"})
+            # sessionWebhook & official API success shapes (message_id matches
+            # the delivery client's provider-message extraction key)
+            return self._reply(200, {"errcode": 0, "errmsg": "ok", "message_id": "dt-mock-1", "processQueryKey": "dt-mock-pqk"})
+
+        if path.startswith("/feishu/"):
+            if "tenant_access_token" in path:
+                if behavior == "unauthorized":
+                    return self._reply(200, {"code": 99991663, "msg": "app secret is empty"})
+                return self._reply(200, {"code": 0, "msg": "ok", "tenant_access_token": "t-mock", "expire": 7200})
+            if behavior == "rate-limit":
+                return self._reply(429, {"code": 99991400, "msg": "too many requests"})
+            if behavior == "unauthorized":
+                return self._reply(200, {"code": 99991663, "msg": "app secret is empty"})
+            if behavior == "not-found":
+                return self._reply(200, {"code": 230002, "msg": "chat not found"})
+            return self._reply(200, {"code": 0, "data": {"message_id": "fs-mock-1"}, "msg": "ok"})
+
+        if path.startswith("/wecom/"):
+            if "gettoken" in path:
+                if behavior == "unauthorized":
+                    return self._reply(200, {"errcode": 40001, "errmsg": "invalid credential"})
+                return self._reply(200, {"errcode": 0, "access_token": "wx-mock"})
+            if behavior == "rate-limit":
+                return self._reply(429, {"errcode": 45009, "errmsg": "api freq out of limit"})
+            if behavior == "unauthorized":
+                return self._reply(200, {"errcode": 40001, "errmsg": "invalid credential"})
+            if behavior == "not-found":
+                return self._reply(200, {"errcode": 86004, "errmsg": "invalid chatid"})
+            return self._reply(200, {"errcode": 0, "msgid": "wx-mock-1"})
+
+        return self._reply(404, {"error": "unknown mock path"})
+
+    def do_GET(self):
+        if self.path == "/health":
+            return self._reply(200, {"status": "ok"})
+        if self.path == "/received":
+            return self._reply(200, {"items": received_snapshot()})
+        if self.path == "/reset":
+            with LOCK:
+                RECEIVED.clear()
+            return self._reply(200, {"status": "ok"})
+        return self._reply(404, {"error": "not found"})
+
+    def log_message(self, _format, *_args):
+        return
+
+
+if __name__ == "__main__":
+    ThreadingHTTPServer(("0.0.0.0", 8090), Handler).serve_forever()

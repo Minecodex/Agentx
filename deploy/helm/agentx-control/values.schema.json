@@ -288,6 +288,10 @@
                     "type": "string"
                   },
                   "description": "First DNS labels of in-cluster provider services allowed over plain HTTP through the egress gateway."
+                },
+                "deliveryDomainExtraAllowlist": {
+                  "type": "string",
+                  "description": "Comma-separated DNS labels extending the outbound delivery host allowlist (leading-label match, e.g. in-cluster IM fixtures)."
                 }
               }
             },

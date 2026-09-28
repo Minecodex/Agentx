@@ -141,7 +141,7 @@ pub(super) async fn create_webhook(
         .map(serde_json::to_value)
         .transpose()
         .map_err(ApiError::internal)?;
-    sqlx::query("INSERT INTO application_webhooks(id,tenant_id,application_id,name,public_id,secret_ref_json,provider_type,channel_mode,channel_config_json,reply_config_json,input_mapping_json,fixed_inputs_json,status,configuration_revision,configuration_hash,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'active',1,?,?)")
+    sqlx::query("INSERT INTO application_webhooks(id,tenant_id,application_id,name,public_id,secret_ref_json,provider_type,channel_mode,channel_config_json,reply_config_json,input_mapping_json,fixed_inputs_json,status,configuration_revision,configuration_hash,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'active',1,?,?)")
         .bind(webhook_id).bind(actor.tenant_id).bind(application_id).bind(name).bind(&public_id)
         .bind(serde_json::to_value(&secret_reference).map_err(ApiError::internal)?)
         .bind(&input.provider_type).bind(&input.channel_mode).bind(&channel_config_json)

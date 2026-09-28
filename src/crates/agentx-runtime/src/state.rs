@@ -205,6 +205,10 @@ impl ExecutionMachine {
             machine.create_activation(start, 0, 0, inputs, Vec::new(), ActivationStatus::Ready)?;
         }
         machine.status = RuntimeExecutionStatus::Running;
+        // A start→exit workflow has no activations to run; it completes in the
+        // same transaction that started it (the exit resolves against the
+        // workflow input), instead of lingering in Running forever.
+        machine.update_terminal_status();
         Ok(machine)
     }
 

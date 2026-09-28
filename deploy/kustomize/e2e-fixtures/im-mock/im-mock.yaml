@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: im-mock
+  labels:
+    app.kubernetes.io/name: im-mock
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: im-mock
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: im-mock
+        agentx.io/runtime-provider: allowed
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: server
+          image: python:3.12-slim
+          command: ["python", "/im-mock/im-mock.py"]
+          ports:
+            - { name: http, containerPort: 8090 }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 2
+            periodSeconds: 3
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: server, mountPath: /im-mock }
+      volumes:
+        - name: server
+          configMap:
+            name: im-mock-server
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: im-mock
+  labels:
+    app.kubernetes.io/name: im-mock
+spec:
+  selector:
+    app.kubernetes.io/name: im-mock
+  ports:
+    - { name: http, port: 8090, targetPort: http }

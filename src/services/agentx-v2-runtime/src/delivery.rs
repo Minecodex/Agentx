@@ -121,9 +121,9 @@ pub async fn claim(pool: &MySqlPool, owner: Uuid) -> RuntimeResult<Option<Delive
         channel_binding_id: row.try_get("channel_binding_id")?,
         provider: row.try_get("provider")?,
         origin: row.try_get("origin")?,
-        target: row.try_get("target")?,
-        credential_ref: row.try_get("credential_ref")?,
-        payload: row.try_get("payload")?,
+        target: row.try_get("target_json")?,
+        credential_ref: row.try_get("credential_ref_json")?,
+        payload: row.try_get("payload_json")?,
         attempt_count,
     }))
 }
@@ -142,9 +142,9 @@ pub async fn complete(
         lease_guard()
     ))
     .bind(provider_message_id)
+    .bind(claim.id)
     .bind(claim.owner)
     .bind(claim.fencing_token)
-    .bind(claim.id)
     .execute(pool)
     .await?;
     if changed.rows_affected() != 1 {
@@ -176,9 +176,9 @@ pub async fn fail_retryable(
     .bind(delay)
     .bind(code)
     .bind(message.chars().take(1000).collect::<String>())
+    .bind(claim.id)
     .bind(claim.owner)
     .bind(claim.fencing_token)
-    .bind(claim.id)
     .execute(pool)
     .await?;
     if changed.rows_affected() != 1 {
@@ -200,7 +200,7 @@ pub async fn dead(
 ) -> RuntimeResult<()> {
     let mut tx = pool.begin().await?;
     sqlx::query(
-        "INSERT INTO delivery_dead_letters(id,tenant_id,application_id,invocation_id,execution_id,channel_binding_id,provider,origin,target_json,credential_ref_json,payload_json,attempt_count,last_error_code,last_error_message,provider_message_id,idempotency_key,created_at) SELECT id,tenant_id,application_id,invocation_id,execution_id,channel_binding_id,provider,origin,target_json,credential_ref_json,payload_json,attempt_count,?,?,provider_message_id,idempotency_key,created_at FROM delivery_outbox WHERE id=? ON DUPLICATE KEY UPDATE id=id",
+        "INSERT INTO delivery_dead_letters(id,tenant_id,application_id,invocation_id,execution_id,channel_binding_id,provider,origin,target_json,credential_ref_json,payload_json,attempt_count,last_error_code,last_error_message,provider_message_id,idempotency_key,created_at) SELECT id,tenant_id,application_id,invocation_id,execution_id,channel_binding_id,provider,origin,target_json,credential_ref_json,payload_json,attempt_count,?,?,provider_message_id,idempotency_key,created_at FROM delivery_outbox o WHERE o.id=? ON DUPLICATE KEY UPDATE last_error_code=o.last_error_code",
     )
     .bind(code)
     .bind(message.chars().take(1000).collect::<String>())
@@ -211,9 +211,9 @@ pub async fn dead(
         "DELETE FROM delivery_outbox WHERE id=? AND {}",
         lease_guard()
     ))
+    .bind(claim.id)
     .bind(claim.owner)
     .bind(claim.fencing_token)
-    .bind(claim.id)
     .execute(&mut *tx)
     .await?;
     if changed.rows_affected() != 1 {

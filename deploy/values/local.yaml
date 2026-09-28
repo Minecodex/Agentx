@@ -91,6 +91,8 @@ global:
       - mem0
       - ragflow
       - mock-openai
+      - im-mock
+      deliveryDomainExtraAllowlist: im-mock
       allowedPublicPorts:
       - 443
       allowedPrivateCidrs:
