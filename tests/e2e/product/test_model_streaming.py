@@ -1,3 +1,4 @@
+# ruff: noqa: S608
 """Model streaming E2E (plan7 P7-B B6).
 
 Uses the extended echo-mcp behavior models (echo-slow-stream, echo-no-usage)
@@ -17,6 +18,7 @@ import pytest
 
 from tests.e2e.runtime.test_agent_attachments import (
     _access_token,
+    _runtime_mysql,
 )
 
 pytestmark = [pytest.mark.cluster, pytest.mark.product]
@@ -436,3 +438,17 @@ def test_stream_deltas_arrive_before_terminal_in_order(
                 break
             time.sleep(2)
     assert assistant, "assistant message was not projected"
+
+    # plan7 P7-B §3.7: streaming model calls record time-to-first-token on the
+    # runtime_call and surface it on the Trace span attributes.
+    execution_id = _runtime_mysql(
+        installed_agentx,
+        f"SELECT BIN_TO_UUID(execution_id) FROM application_invocations WHERE id=UUID_TO_BIN('{invocation_id}');",
+    )
+    first_token = _runtime_mysql(
+        installed_agentx,
+        "SELECT COALESCE(first_token_ms, 0) FROM runtime_calls "
+        f"WHERE execution_id=UUID_TO_BIN('{execution_id}') AND status='succeeded' "
+        "ORDER BY ended_at DESC LIMIT 1;",
+    )
+    assert first_token and int(first_token) > 0, f"first_token_ms not recorded: {first_token}"

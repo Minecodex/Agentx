@@ -451,3 +451,77 @@ def test_l1_reply_delivered_and_dead_letter_replay(
         time.sleep(3)
     assert dead_row, "unauthorized delivery did not reach the dead letter archive"
     assert dead_row["lastErrorCode"] == "DELIVERY_PROVIDER_REJECTED", dead_row
+
+    # 5b. dead letter replay: the mock's unauthorized behavior is transient
+    # (401 once), so replaying the archived delivery now succeeds.
+    with httpx.Client(base_url=service_urls["web"], timeout=60) as control:
+        replay = control.post(
+            f"/api/v1/deliveries/{dead_row['id']}/retry",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert replay.status_code in (200, 202), f"{replay.status_code} {replay.text}"
+    replayed: dict[str, Any] | None = None
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline:
+        rows = _delivery_rows(installed_agentx, me["companyId"], dead_execution)
+        replayed = next((row for row in rows if row["status"] == "delivered"), None)
+        if replayed:
+            break
+        time.sleep(3)
+    assert replayed, f"dead letter replay did not deliver: {_delivery_rows(installed_agentx, me['companyId'], dead_execution)}"
+
+    # 3. transient 429 → exponential backoff retry → delivered with attempts.
+    with httpx.Client(base_url=service_urls["runtime"], timeout=30) as gateway:
+        throttled = _signed_dingtalk_post(
+            gateway,
+            webhook_path,
+            secret,
+            {
+                "msgId": f"delivery-throttle-{run_id}",
+                "conversationId": "e2e-chat",
+                "conversationType": "1",
+                "senderId": "e2e-sender",
+                "senderNick": "E2E",
+                "msgtype": "text",
+                "content": json.dumps({"content": "throttle probe"}),
+                "createAt": int(time.time() * 1000),
+            },
+            f"{im_mock['url']}/dingtalk/session-rate-limit",
+        )
+        assert throttled.status_code in (200, 202), f"{throttled.status_code} {throttled.text}"
+    throttle_execution: str | None = None
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline and throttle_execution is None:
+        raw = _runtime_mysql(
+            installed_agentx,
+            "SELECT BIN_TO_UUID(execution_id) FROM application_invocations "
+            f"WHERE tenant_id=UUID_TO_BIN('{me['companyId']}') AND provider_event_id='delivery-throttle-{run_id}';",
+        )
+        if raw and raw.lower() != "null":
+            throttle_execution = raw
+        time.sleep(2)
+    assert throttle_execution, "throttled invocation not created"
+    throttled_row: dict[str, Any] | None = None
+    deadline = time.monotonic() + 180
+    while time.monotonic() < deadline:
+        rows = _delivery_rows(installed_agentx, me["companyId"], throttle_execution)
+        throttled_row = next((row for row in rows if row["status"] == "delivered"), None)
+        if throttled_row:
+            break
+        time.sleep(3)
+    assert throttled_row, (
+        "rate-limited delivery did not recover: "
+        f"{_delivery_rows(installed_agentx, me['companyId'], throttle_execution)}"
+    )
+    # The mock fails the first two hits (429), so a delivered row proves the
+    # backoff loop retried: attemptCount >= 3 and the error was cleared.
+    assert throttled_row["attemptCount"] >= 3, throttled_row
+    assert throttled_row["lastErrorCode"] is None, throttled_row
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if any(item["behavior"] == "ok" for item in _mock_received(deps_ns, "dingtalk/session-rate-limit")):
+            break
+        time.sleep(2)
+    assert any(
+        item["behavior"] == "ok" for item in _mock_received(deps_ns, "dingtalk/session-rate-limit")
+    ), "im-mock did not record the recovered throttle delivery"

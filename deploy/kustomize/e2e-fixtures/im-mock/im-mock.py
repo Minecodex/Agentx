@@ -14,11 +14,29 @@ logged so the E2E can assert the mock received the reply.
 import json
 import threading
 import time
-
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 RECEIVED = []
 LOCK = threading.Lock()
+# Failure behaviors are transient per path: rate-limit fails the first two
+# hits, unauthorized the first one, so the delivery loop's backoff/retry and
+# dead-letter replay drills can observe recovery without fixture restarts.
+TRANSIENT_FAILURES = {"rate-limit": 2, "unauthorized": 1}
+PATH_HITS = {}
+
+
+def resolve_behavior(path):
+    last = path.rstrip("/").split("/")[-1]
+    for known in ("rate-limit", "unauthorized", "not-found", "ok"):
+        if last == known or last.endswith("-" + known):
+            if known in TRANSIENT_FAILURES:
+                with LOCK:
+                    hits = PATH_HITS.get(path, 0)
+                    PATH_HITS[path] = hits + 1
+                    if hits < TRANSIENT_FAILURES[known]:
+                        return known
+            return "ok"
+    return "ok"
 
 
 def record(entry):
@@ -53,12 +71,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         body = self._read_body()
         path = self.path
-        last = path.rstrip("/").split("/")[-1]
-        behavior = "ok"
-        for known in ("rate-limit", "unauthorized", "not-found", "ok"):
-            if last == known or last.endswith("-" + known):
-                behavior = known
-                break
+        behavior = resolve_behavior(path)
         record({"path": path, "behavior": behavior, "body": body, "at": time.time()})
 
         if path.startswith("/dingtalk/"):
@@ -108,6 +121,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/reset":
             with LOCK:
                 RECEIVED.clear()
+                PATH_HITS.clear()
             return self._reply(200, {"status": "ok"})
         return self._reply(404, {"error": "not found"})
 
@@ -116,4 +130,4 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("0.0.0.0", 8090), Handler).serve_forever()
+    ThreadingHTTPServer(("0.0.0.0", 8090), Handler).serve_forever()  # noqa: S104 -- in-cluster fixture

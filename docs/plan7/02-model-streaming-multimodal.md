@@ -105,7 +105,7 @@ delivery.completed / delivery.failed                     -- 由 P7-A 复用同�
 ### P7-B1 契约冻结
 
 - [x] `model.delta` 事件 schema（`agentx-runtime-contracts` engine/gateway 契约 + OpenAPI）；
-- [ ] `ModelRequestV1` 多模态 parts 枚举、模型资源 `capabilities` 字段、`x-agentx-modality` Schema 标记约定（parts 枚举与 capabilities 已实现；`x-agentx-modality` 标记未实现，移交）；
+- [x] `ModelRequestV1` 多模态 parts 枚举、模型资源 `capabilities` 字段、`x-agentx-modality` Schema 标记约定（标记约定入 schema_contract：仅 image/audio 且必须 array 型，`INVALID_MODALITY_SCHEMA`）；
 - [x] 错误码冻结：`MODEL_STREAM_PROTOCOL_ERROR`、`MODEL_INPUT_UNSUPPORTED`、`MODEL_INPUT_TOO_LARGE`、`USAGE_ESTIMATED` 标记语义；
 - [x] Control/Runtime 迁移（`model_deployments` capabilities 列）与 OpenAPI 再生成。
 
@@ -118,6 +118,7 @@ delivery.completed / delivery.failed                     -- 由 P7-A 复用同�
 - [x] model 节点 `stream` 参数接线；delta sink（mpsc + 后台小事务 + 结算前 drain）节流合并写 `invocation_events` + sse_wakeup 第二发布点；
 - [x] 计费收口（usage chunk / 回退估算，`usage_estimated` 补进 INSERT 列）与 `runtime_calls` 重放不重发流、补发合并帧；
 - [x] invocation_events 清理规则进 retention/gc。
+- [x] `first_token_ms`：流式首 delta 计时进 `runtime_calls`（迁移 0012）与 runtime_call Trace span `firstTokenMs` 属性；B6 E2E 断言实测 >0（2026-09-29 run3）。
 
 门禁：mock SSE fixture 单测（正常流、无 usage 流、中途错误、重放）、计费断言、幂等断言。
 
@@ -139,12 +140,12 @@ delivery.completed / delivery.failed                     -- 由 P7-A 复用同�
 
 - [x] 模型资源 capabilities（表列 + 校验 + binding 透传 + 前端表单，链上 4 个点，契约字段 `#[serde(default)]`）；
 - [x] 请求构造 parts 化（model 节点 + Agent ModelPort 两处）+ artifact→data URI 解析与大小门；
-- [ ] `chat_message_payload`/`project_chat_message_input` 的 `x-agentx-modality` 投递（依赖未实现的 modality 标记约定，随上项移交）；
+- [x] `chat_message_payload`/`project_chat_message_input` 的 `x-agentx-modality` 投递（匹配 part 投递 artifact 引用数组，单测覆盖 image 过滤与通用 file 映射共存）。
 - [ ] Playground 附件图片 → 模型原生 vision 的端到端联调（parts 化与能力门禁已实现并有单测；浏览器级 vision 联调移交）。
 
 ### P7-B6 E2E 验收
 
-- [x] 见第 5 节（主链路 2026-09-28 `test_model_streaming.py` 1 passed 373s：API 全链建凭证/模型/工作流/发布/聊天，SSE 断言 delta 先于终态按序到达，慢流/断流/无 usage/重放合并帧四行为；场景 5 vision 联调/6 UI 错误呈现/7 Agent 节点+`first_token_ms`/8 UI 覆盖移交，其中 `first_token_ms` Trace 字段未实现为已知缺口）。
+- [x] 见第 5 节（主链路 2026-09-28 `test_model_streaming.py` 1 passed 373s：API 全链建凭证/模型/工作流/发布/聊天，SSE 断言 delta 先于终态按序到达，慢流/断流/无 usage/重放合并帧四行为；场景 5 vision 联调/6 UI 错误呈现/7 Agent 节点流式/8 UI 覆盖移交；`first_token_ms` 已实现并进 B6 断言：runtime_calls 列 + Trace span `firstTokenMs` 属性，流式调用实测 >0）。
 
 ## 5. E2E 验收（临时 Namespace）
 

@@ -1242,6 +1242,9 @@ impl RuntimeWorker {
         }
         let context =
             EgressRequestContext::execution(claim.task.tenant_id, claim.task.execution_id);
+        // Time-to-first-token for streaming model calls; 0 means the call was
+        // non-streaming or produced no tokens.
+        let first_token_ms = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
         let response = match match transport {
             RuntimeHttpTransport::ProviderStream(delta_sink) => {
                 let provider = self.provider.clone();
@@ -1251,7 +1254,9 @@ impl RuntimeWorker {
                 let claim_tenant = claim.task.tenant_id;
                 let invocation_id = claim.invocation_id;
                 let attempt_id = claim.task.attempt_id;
+                let first_token = std::sync::Arc::clone(&first_token_ms);
                 Box::pin(async move {
+                    let requested_at = std::time::Instant::now();
                     let stream = provider
                         .post_json_stream(
                             &endpoint,
@@ -1277,9 +1282,17 @@ impl RuntimeWorker {
                         )));
                     }
                     let mut sink = delta_sink.clone();
+                    let mut first_token_seen = false;
                     let aggregated = output::aggregate_openai_sse_stream(
                         stream.response,
                         &mut move |text: &str, reasoning: Option<&str>| {
+                            if !first_token_seen {
+                                first_token_seen = true;
+                                first_token.store(
+                                    requested_at.elapsed().as_millis() as u64,
+                                    std::sync::atomic::Ordering::Relaxed,
+                                );
+                            }
                             sink.emit(claim_tenant, invocation_id, attempt_id, "", text, reasoning);
                         },
                     )
@@ -1520,8 +1533,12 @@ impl RuntimeWorker {
             };
             payload = json!({"statusCode":status.as_u16(),"headers":response_headers,"body":body,"files":files});
         }
+        let first_token_ms = {
+            let value = first_token_ms.load(std::sync::atomic::Ordering::Relaxed);
+            (value > 0).then_some(value as u32)
+        };
         if let Err(error) = sqlx::query(
-            "UPDATE runtime_calls SET status='succeeded',provider_request_id=?,response_json=?,response_artifact_id=?,input_tokens=?,output_tokens=?,cost_micros=?,cost_currency=?,usage_estimated=?,ended_at=UTC_TIMESTAMP(6) WHERE id=? AND status='sent'",
+            "UPDATE runtime_calls SET status='succeeded',provider_request_id=?,response_json=?,response_artifact_id=?,input_tokens=?,output_tokens=?,cost_micros=?,cost_currency=?,usage_estimated=?,first_token_ms=?,ended_at=UTC_TIMESTAMP(6) WHERE id=? AND status='sent'",
         )
         .bind(provider_request_id)
         .bind(&payload)
@@ -1531,6 +1548,7 @@ impl RuntimeWorker {
         .bind(cost_micros)
         .bind(cost_currency)
         .bind(usage_estimated)
+        .bind(first_token_ms)
         .bind(call_id)
         .execute(&self.pool)
         .await

@@ -1358,4 +1358,33 @@ mod tests {
         let output = json!({"type":"object","properties":{"result":{"type":"string","x-agentx-sensitive":true}}});
         assert!(validate_runtime_chat_mapping(&mapping, &input, &output).is_err());
     }
+
+    #[test]
+    fn modality_marked_inputs_receive_matching_artifact_references() {
+        let mapping = ChatMappingV1 {
+            question_input: "prompt".into(),
+            file_input: Some("documents".into()),
+            answer_output: "result".into(),
+            answer_files_output: None,
+        };
+        let schema = json!({"type":"object","properties":{
+            "prompt":{"type":"string"},
+            "images":{"type":"array","x-agentx-modality":"image"},
+            "documents":{"type":"array","x-agentx-artifact":true,"x-agentx-artifact-array":true}
+        }});
+        let image = json!({"artifactId":"00000000-0000-0000-0000-000000000002","type":"image"});
+        let audio = json!({"artifactId":"00000000-0000-0000-0000-000000000003","type":"audio"});
+        let projected = project_chat_message_input(
+            &json!({"question":"describe this","files":[image.clone(), audio.clone()]}),
+            &mapping,
+            &schema,
+        )
+        .unwrap();
+        assert_eq!(projected["prompt"], json!("describe this"));
+        // Only parts matching the marked modality land in the marked input.
+        assert_eq!(projected["images"], json!([image.clone()]));
+        assert!(projected.get("audio").is_none());
+        // The generic file mapping still receives every attachment.
+        assert_eq!(projected["documents"], json!([image, audio]));
+    }
 }

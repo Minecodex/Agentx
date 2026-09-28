@@ -179,7 +179,7 @@ impl RuntimeWorker {
         error_code: Option<&str>,
         content: Option<&Value>,
     ) {
-        let row = match sqlx::query("SELECT tenant_id,execution_id,node_execution_id,attempt_id,agent_run_id,plugin_parent_span_entity_id,iteration_index,call_kind,resource_type,resource_id,resource_version_id,response_artifact_id,input_tokens,output_tokens,cost_micros,error_message FROM runtime_calls WHERE id=?")
+        let row = match sqlx::query("SELECT tenant_id,execution_id,node_execution_id,attempt_id,agent_run_id,plugin_parent_span_entity_id,iteration_index,call_kind,resource_type,resource_id,resource_version_id,response_artifact_id,input_tokens,output_tokens,cost_micros,first_token_ms,error_message FROM runtime_calls WHERE id=?")
             .bind(call_id)
             .fetch_optional(&self.pool)
             .await
@@ -273,6 +273,7 @@ impl RuntimeWorker {
         trace.attributes = json!({
             "meteringSource": if plugin_parent.is_some() { "plugin_host_call" } else { "platform_runtime_call" },
             "costIncludedInParent": false,
+            "firstTokenMs": row.try_get::<Option<u64>, _>("first_token_ms").ok().flatten(),
         });
         trace.error_code = error_code.map(str::to_owned);
         trace.error_message = row.try_get("error_message").ok();
