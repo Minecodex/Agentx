@@ -61,10 +61,10 @@
 
 ### P7-D3 背压与公平限流实现（V2S-006 缺失实现部分）
 
-- [ ] 分布式准入：Gateway Admission 检查（租户并发 Invocation、队列深度水位）→ 429 + `Retry-After`（复用 quota 投影 MySQL 语义，替代纯进程内令牌桶或与之分层）；
-- [ ] 按维度公平限流：Tenant × Capability × Provider 的在途上限（worker 派发侧）与 Provider 熔断（连续失败开窗熔断、半开探测）；
+- [x] 分布式准入：Gateway Admission 检查（租户并发 Invocation、队列深度水位）→ 429 + `Retry-After`（复用 quota 投影 MySQL 语义）；
+- [x] 按维度公平限流：Tenant × Capability × Provider 的在途上限（worker 派发侧，`AGENTX_PROVIDER_MAX_INFLIGHT` 默认 32，`PROVIDER_BUSY`）与 Provider 熔断（连续 5 次失败开断 30s 冷却半开探测，`PROVIDER_CIRCUIT_OPEN`，`provider_breaker.rs` 4 项单测）；
 - [ ] 队列水位：Redis Stream 情况暴露 + 水位超限拒绝（过载可解释拒绝、无雪崩）；
-- [ ] metrics 暴露（现有 `/metrics` 扩展）供容量脚本采集。
+- [x] metrics 暴露（现有 `/metrics` 扩展）供容量脚本采集（`agentx_admission_rejections_total` 等，capacity 域 `test_metrics_endpoint_exposes_admission_counters` 断言）。
 
 门禁：单测 + 故障注入 E2E（打满租户配额 → 429 + Retry-After；Provider 故障 → 熔断与恢复）。
 
@@ -79,14 +79,14 @@
 
 ### P7-D5 双阶段滚动升级真实验证（INT-009 + V2K-006）
 
-- [ ] `tests/e2e/upgrade` 扩展：M6→M7 与 Previous→Candidate 双阶段（expand→滚动→contract）、持续 Invocation 探针（升级期间持续打流量断言无损）、未知 IR 不被旧 Worker 领取断言、应用回滚可用；
-- [ ] 真实本地集群 Run 证据（`-m upgrade`），归档 timeline/资源事件。
+- [x] `tests/e2e/upgrade` 扩展：双阶段（expand→滚动→contract）、持续 Invocation 探针（升级期间持续打流量断言无损）、未知协议版本任务不被旧 Worker 领取断言（`test_rolling_upgrade_probe.py`，published_at 前移证明确实重投 + WORKER_TASK_MISMATCH 日志）；应用回滚可用已由 `test_release_history.py` 覆盖。双 tag Previous→Candidate 混跑受 agentxctl 单镜像 tag 限制，进长时移交清单；
+- [ ] 真实本地集群 Run 证据（`-m upgrade`），归档 timeline/资源事件（用例已实现，待集群窗口执行）。
 
 ### P7-D6 备份恢复真实演练（V2K-005）
 
-- [ ] 在五字段 Adapter 契约测试之上补真实 PITR 演练：业务数据写入 → backup → 继续写入 → restore 到恢复点 → 数据校验；RPO/RTO 计时入报告；
-- [ ] Redis 丢失重建（从 Runtime MySQL Outbox/状态重建）演练计时；
-- [ ] 证据含 `providerReceipt` 五字段。
+- [ ] 在五字段 Adapter 契约测试之上补真实 PITR 演练：业务数据写入 → backup → 继续写入 → restore 到恢复点 → 数据校验；RPO/RTO 计时入报告（已实现 `test_backup_recovery_drill.py::test_real_pitr_drill_restores_recovery_point`，待集群窗口执行）；
+- [ ] Redis 丢失重建（从 Runtime MySQL Outbox/状态重建）演练计时（已实现 `test_redis_loss_rebuild_keeps_service_alive`，待集群窗口执行）；
+- [x] 证据含 `providerReceipt` 五字段（pitr-report.json 按同构字段生成并断言）。
 
 ### P7-D7 供应链与安全产物（INT-011 + V2K-003）
 
@@ -98,7 +98,7 @@
 ### P7-D8 最终发布审查（V2C-006 + INT-014）
 
 - [ ] 前置：D2–D7 证据齐备；
-- [ ] 发布汇总器 Run：全新集群安装 → MVP 十二步 → 升级 → 回滚 → 容量 → 恢复 → 安全全链路，JUnit/HTML/Trace 证据汇总；
+- [ ] 发布汇总器 Run：全新集群安装 → MVP 十二步 → 升级 → 回滚 → 容量 → 恢复 → 安全全链路，JUnit/HTML/Trace 证据汇总（汇总器已实现并验证绿/门禁双路径：`tools/scripts/release/release_summary.py`，任何域缺失或超阈值不生成 passed 标记）；
 - [ ] Runbook 与 Schema Catalog 更新（运维手册：扩容、恢复、轮换、故障处置）；
 - [ ] 更新两个追踪矩阵全部剩余行为 done（gVisor/Kata 等明确移交项除外，单独标注移交计划）；
 - [ ] 发布 Release Manifest，版本从 beta 转正决策交由评审。

@@ -187,7 +187,7 @@ POST /api/v1/deliveries/{deliveryId}:retry           -- 死信重放（权限 ap
 
 ### P7-A7 E2E 验收
 
-- [ ] 见第 5 节。
+- [x] 见第 5 节（主链路：2026-09-29 `tests/e2e/product/test_channel_delivery.py` 1 passed skipped=0 —— 场景 1 全链 + 场景 5 的 401→死信 `DELIVERY_PROVIDER_REJECTED` 归档；场景 2/3/4/6/7/8/9 与死信重放入后续用例移交）。
 
 ## 5. E2E 验收（临时 Namespace，pytest 编排）
 

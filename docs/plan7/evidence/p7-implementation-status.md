@@ -8,7 +8,7 @@
 
 | 线 | 状态 | 说明 |
 |---|---|---|
-| P7-A 出站回复 | 代码完成 | 契约/迁移/delivery 状态机/三平台 Send Client/三层回复/BFF/前端；E2E 待集群 |
+| P7-A 出站回复 | **E2E 全绿(2026-09-29)** | 主链路 1 passed skipped=0: 钉钉 callback 渠道→签名入站→执行→L1 自动回复→im-mock delivered(provider_message_id)→401 死信 DELIVERY_PROVIDER_REJECTED；过程修复 9 个真实缺陷（见下） |
 | P7-B 流式+多模态 | 代码完成 | model.delta 旁路(结算前 flush)/SSE 聚合同构结算/usage_estimated/capabilities 链/原生 parts/modality 投递/前端增量气泡 |
 | P7-C 评测与 Insights | 代码完成 | 维度单点修复+P50/P95+spanName/llm_judge UI+judge Trace 链接/insights BFF+recharts 四图/对比报告 API |
 | P7-D1 | **E2E 全绿(2026-09-27)** | `2 passed` 425s: Playwright 4 用例(LightRAG/Mem0/OpenSandbox 主链路 + RAGFlow 协议端到端/egress 拒绝/协议失配 3 用例默认执行) + 长期记忆成功召回; 证据 run `c2ca3c5c70`(见 .local/artifacts/e2e/), RAGFlow adapter 截图留档 |
@@ -17,14 +17,39 @@
 | P7-D4/D7 | 入口完成 | capacity 域编排/供应链脚本(11 镜像对齐)；分级 Run 在移交清单 |
 | P7-E 知识库 | 代码完成 | 协议共享抽取(delete 显式拒绝)/文档上传索引/hit-testing/前端三区 |
 
+## A7 全绿过程中修复的真实缺陷（2026-09-28/29，均只有集群运行才能暴露）
+
+1. **引擎**：start→exit 直连工作流 `ExecutionMachine::new` 后无 activation 也无人推进，永久卡 `running`（此前无任何 e2e 覆盖该形态）；`state.rs` 终态推导 + 回归单测。
+2. **网关**：钉钉 sessionWebhook 回调把消息文本放在 JSON 编码的 `content` 字段，`message_text` 只认 `text.content`，文本丢失为空串；补解码路径 + 单测。
+3. **delivery.claim**：`target/credential_ref/payload` 列名与 SELECT 的 `*_json` 不匹配。
+4. **delivery.complete/fail_retryable/dead**：WHERE 绑定顺序错位（owner/token/id 与 id/owner/token 互换），UUID 绑进 BIGINT 位 → 1292。
+5. **delivery.dead**：`INSERT…SELECT…ON DUPLICATE KEY UPDATE id=id` 在 MySQL 的 INSERT…SELECT 形式下列歧义 → 1052；改源别名自更新。
+6. **delivery_send.allowed_host**：额外白名单按后缀匹配，集群内服务是 `im-mock.<ns>.svc` 前缀形态 → 全拒；改为前缀 DNS 标签精确匹配（公网 provider 后缀语义不变）。
+7. **fixture**：im-mock 缺 `agentx.io/runtime-provider: allowed` 标签，双向 NetworkPolicy 拒绝 8090 → PROVIDER_UNAVAILABLE×5 次重试后死信；行为路径只认末段精确词，`session-unauthorized` 落默认 ok；成功响应缺 `message_id`。
+8. **配置链**：`deliveryDomainExtraAllowlist`/`httpProviderServices` 缺 im-mock；chart 与 values schema（4 chart + 顶层）需声明新键，且 agentxctl 内嵌 chart 必须重编才能生效。
+9. **测试竞态**：egress 单测改进程环境变量与断言默认行为的用例并行竞态，偶发失败；共享 Mutex 串行化。
+
 ## 集群验证状态（2026-09-27 更新）
 
 - ✅ 全部 11 服务本地镜像构建并导入集群；RAGFlow/ES/MySQL/Valkey/MinIO、mem0-server、lightrag(dev)、minio/mc、opensandbox(execd/egress/code-interpreter) 镜像齐备
 - ✅ 全量 `cargo test --workspace` 67 个测试目标全绿
 - ✅ D1 provider E2E `2 passed`(RAGFlow 用例默认执行, skipped=0)
+- ✅ A7 渠道出站回复 E2E `1 passed 233s`(2026-09-29, run25, skipped=0)
 - ✅ 过程修复: 网络策略(RAGFlow 栈内互访端口)、object-storage/mc pullPolicy、ragflow kustomize 缩进、publish 等待 202 收敛、流式聚合保 headers、e2e 沙箱摘要本地读取
 
 ## 待执行的集群命令（后续窗口）
+
+```bash
+# D5/D6 演练（expand→滚动→contract + 持续探针 + 未知协议不领取；PITR + Redis 重建）
+export AGENTX_E2E_VALUES=deploy/values/local.yaml
+PATH="/opt/homebrew/opt/helm@3/bin:$PATH" uv run --group test pytest tests/e2e/upgrade -m upgrade --timeout=7200
+
+# D8 发布汇总（全链证据齐备后）
+uv run python tools/scripts/release/release_summary.py \
+  --evidence .local/artifacts/e2e --dist .local/dist \
+  --junit business=<junit.xml> --junit security=<junit.xml> \
+  --output .local/dist/release-summary.json --passed-marker .local/dist/release-gate.passed
+```
 
 ```bash
 # P7-A/B/E 功能 E2E（按各线第 5 节补齐 mock fixture 后）
@@ -41,8 +66,8 @@ AGENTX_E2E_RAGFLOW_DISABLE=1 uv run --group test pytest tests/e2e/capacity \
 1. **E2E mock fixture**：P7-A 三平台 IM mock（Kustomize，按路径切换 成功/429/401/目标不存在）、P7-B mock OpenAI 流 fixture（慢流/断流/无 usage/重放）——各线第 5 节已定义行为矩阵。
 2. **D3 剩余**：Tenant×Capability×Provider 公平限流（worker 派发侧）与 Provider 熔断（runtime_calls 开窗）；MetricsRegistry 标签维度化。
 3. **D4 分级 Run**：100/500/1000/200 节点/5000 Attempt/2h 稳定性/副本矩阵（入口 `tests/e2e/capacity` 已就绪）。
-4. **D5/D6**：双阶段滚动升级用例扩展、真实 PITR 演练（`agentxctl migrate --phase` 与 backup/restore 入口均已存在）。
-5. **D8**：发布汇总器与 Runbook/Schema Catalog 更新；README"不建议生产"自述按剩余边界处理。
+4. **D5/D6 真实 Run**：用例已实现（`tests/e2e/upgrade/test_rolling_upgrade_probe.py`、`test_backup_recovery_drill.py`），待专用集群窗口执行并归档证据；双 tag Previous→Candidate 混跑受 agentxctl 单镜像 tag 限制。
+5. **D8 汇总 Run**：汇总器已实现并验证（绿路径写 passed 标记/阈值不足阻断），待全链证据齐备后执行；Runbook/Schema Catalog 更新随最终发布评审。
 6. **追踪矩阵**：两个 99-*.md 待上述证据落地后统一更新 done。
 
 ## 本机环境备忘（复跑 D1 时）
