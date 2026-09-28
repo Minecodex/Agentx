@@ -33,3 +33,11 @@ spec:
         - { protocol: TCP, port: 9621 }
         - { protocol: TCP, port: 8000 }
         - { protocol: TCP, port: 9380 }
+    # plan7 P7-E: Control indexes knowledge documents and runs hit-testing
+    # against the RAG providers directly (9621 LightRAG, 9380 RAGFlow).
+    - from:
+        - namespaceSelector: { matchLabels: { agentx.io/plane: control } }
+          podSelector: { matchLabels: { agentx.io/plane: control } }
+      ports:
+        - { protocol: TCP, port: 9621 }
+        - { protocol: TCP, port: 9380 }

@@ -135,19 +135,19 @@ async fn upload_document(
         ));
     }
     let counts = sqlx::query(
-        "SELECT COUNT(*) document_count,COALESCE(SUM(size_bytes),0) total_bytes FROM knowledge_documents WHERE tenant_id=? AND rag_resource_id=? AND status<>'failed'",
+        "SELECT COUNT(*) document_count,CAST(COALESCE(SUM(size_bytes),0) AS SIGNED) total_bytes FROM knowledge_documents WHERE tenant_id=? AND rag_resource_id=? AND status<>'failed'",
     )
     .bind(actor.tenant_id)
     .bind(resource_id)
     .fetch_one(&state.pool)
     .await?;
-    if counts.try_get::<u64, _>("document_count")? >= MAX_DOCUMENTS_PER_RESOURCE {
+    if counts.try_get::<i64, _>("document_count")? >= MAX_DOCUMENTS_PER_RESOURCE as i64 {
         return Err(ApiError::unprocessable(
             "KNOWLEDGE_DOCUMENT_LIMIT",
             "Knowledge resources hold at most 200 documents",
         ));
     }
-    if counts.try_get::<u64, _>("total_bytes")? + bytes.len() as u64 > MAX_TOTAL_BYTES_PER_RESOURCE
+    if counts.try_get::<i64, _>("total_bytes")? + bytes.len() as i64 > MAX_TOTAL_BYTES_PER_RESOURCE as i64
     {
         return Err(ApiError::unprocessable(
             "KNOWLEDGE_DOCUMENT_LIMIT",
@@ -200,7 +200,7 @@ async fn upload_document(
     )
     .bind(actor.tenant_id)
     .bind(stored.id.as_uuid())
-    .bind(document_id)
+    .bind(document_id.to_string())
     .execute(&mut *tx)
     .await?;
     sqlx::query("UPDATE knowledge_documents SET status='indexing' WHERE tenant_id=? AND id=?")
@@ -435,6 +435,38 @@ async fn retrieval_test(
     }
     let normalized = agentx_runtime_contracts::rag::finalize_rag_value(&provider, payload)
         .map_err(|error| ApiError::unprocessable(error.code, error.message))?;
+    // LightRAG /query passes through unchanged and returns
+    // {response, references:[...]} with chunk contents attached via the
+    // include_chunk_content flag; surface those references as the canonical
+    // documents so hit-testing shows chunks for both providers.
+    let normalized = if provider == agentx_runtime_contracts::rag::RAG_PROVIDER_LIGHT_RAG
+        && normalized.get("documents").is_none()
+    {
+        let documents: Vec<serde_json::Value> = normalized
+            .get("references")
+            .and_then(Value::as_array)
+            .map(|references| {
+                references
+                    .iter()
+                    .map(|reference| {
+                        serde_json::json!({
+                            "documentId": reference.get("file_path").cloned().unwrap_or_else(|| serde_json::json!(null)),
+                            "chunkId": reference.get("reference_id").cloned().unwrap_or_else(|| serde_json::json!(null)),
+                            "content": reference.get("content").cloned().unwrap_or_else(|| serde_json::json!(null)),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        serde_json::json!({
+            "text": normalized.get("response").cloned().unwrap_or_else(|| serde_json::json!(null)),
+            "documents": documents,
+            "citations": [],
+            "recordIds": [],
+        })
+    } else {
+        normalized
+    };
     let hits = normalized
         .get("documents")
         .and_then(Value::as_array)
@@ -558,7 +590,10 @@ async fn index_document(
         &json!({}),
     )
     .map_err(|error| anyhow::anyhow!("{}: {}", error.code, error.message))?;
-    body["texts"] = json!([String::from_utf8_lossy(content).into_owned()]);
+    // LightRAG v0.20 contract: single `text` + required `file_source`
+    // (batch `texts` array no longer exists on documents/text).
+    body["text"] = json!(String::from_utf8_lossy(content).into_owned());
+    body["file_source"] = json!(format!("agentx-knowledge:{namespace}"));
     let url = format!("{}/{}", endpoint.trim_end_matches('/'), path);
     let parsed = reqwest::Url::parse(&url)
         .map_err(|error| anyhow::anyhow!("knowledge endpoint is invalid: {error}"))?;
