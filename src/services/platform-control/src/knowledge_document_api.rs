@@ -147,7 +147,8 @@ async fn upload_document(
             "Knowledge resources hold at most 200 documents",
         ));
     }
-    if counts.try_get::<i64, _>("total_bytes")? + bytes.len() as i64 > MAX_TOTAL_BYTES_PER_RESOURCE as i64
+    if counts.try_get::<i64, _>("total_bytes")? + bytes.len() as i64
+        > MAX_TOTAL_BYTES_PER_RESOURCE as i64
     {
         return Err(ApiError::unprocessable(
             "KNOWLEDGE_DOCUMENT_LIMIT",
