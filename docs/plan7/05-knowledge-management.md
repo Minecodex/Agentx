@@ -119,7 +119,7 @@ rag_resources.sync_status 语义激活：有文档在 indexing 时 syncing，全
 
 ### P7-E6 E2E 验收
 
-- [ ] 见第 5 节。
+- [x] 见第 5 节（主链路 2026-09-28 `knowledge-management.spec.ts` 1 passed 389s：连接创建→文档上传→索引轮询→hit-testing 命中 sapphire-orbit 内容与 score、UI 面板渲染；场景 5 失败态/6 RAGFlow hit-testing 组合/7 Agent 工作流引用/8 授权六态移交）。
 
 ## 5. E2E 验收（临时 Namespace，复用 P7-D1 的 provider fixture）
 

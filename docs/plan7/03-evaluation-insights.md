@@ -124,7 +124,7 @@
 
 ### P7-C5 E2E 验收
 
-- [ ] 见第 5 节。
+- [ ] 见第 5 节（本线计划门禁为契约/ClickHouse testcontainers/BFF mock/vitest/Playwright，均已绿；§5 的集群级 E2E 七场景未执行，移交清单）。
 
 ## 5. E2E 验收（临时 Namespace）
 
