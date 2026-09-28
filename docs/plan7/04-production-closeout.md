@@ -80,12 +80,12 @@
 ### P7-D5 双阶段滚动升级真实验证（INT-009 + V2K-006）
 
 - [x] `tests/e2e/upgrade` 扩展：双阶段（expand→滚动→contract）、持续 Invocation 探针（升级期间持续打流量断言无损）、未知协议版本任务不被旧 Worker 领取断言（`test_rolling_upgrade_probe.py`，published_at 前移证明确实重投 + WORKER_TASK_MISMATCH 日志）；应用回滚可用已由 `test_release_history.py` 覆盖。双 tag Previous→Candidate 混跑受 agentxctl 单镜像 tag 限制，进长时移交清单；
-- [ ] 真实本地集群 Run 证据（`-m upgrade`），归档 timeline/资源事件（用例已实现，待集群窗口执行）。
+- [x] 真实本地集群 Run 证据（2026-09-29 `pytest tests/e2e/upgrade -m upgrade` **8 passed** skipped=0，timeline/事件/资源/报告归档于 run 目录 `upgrade-rolling/`）。
 
 ### P7-D6 备份恢复真实演练（V2K-005）
 
-- [ ] 在五字段 Adapter 契约测试之上补真实 PITR 演练：业务数据写入 → backup → 继续写入 → restore 到恢复点 → 数据校验；RPO/RTO 计时入报告（已实现 `test_backup_recovery_drill.py::test_real_pitr_drill_restores_recovery_point`，待集群窗口执行）；
-- [ ] Redis 丢失重建（从 Runtime MySQL Outbox/状态重建）演练计时（已实现 `test_redis_loss_rebuild_keeps_service_alive`，待集群窗口执行）；
+- [x] 在五字段 Adapter 契约测试之上补真实 PITR 演练：业务数据写入 → backup → 继续写入 → restore 到恢复点 → 数据校验；RPO/RTO 计时入报告（2026-09-29 全绿，pod 内 dump/restore 避免 BINARY(16) 经文本管道损坏）；
+- [x] Redis 丢失重建（从 Runtime MySQL Outbox/状态重建）演练计时（2026-09-29 全绿，FLUSHALL 后新 Invocation 正常完成）；
 - [x] 证据含 `providerReceipt` 五字段（pitr-report.json 按同构字段生成并断言）。
 
 ### P7-D7 供应链与安全产物（INT-011 + V2K-003）

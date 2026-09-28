@@ -35,15 +35,14 @@
 - ✅ 全量 `cargo test --workspace` 67 个测试目标全绿
 - ✅ D1 provider E2E `2 passed`(RAGFlow 用例默认执行, skipped=0)
 - ✅ A7 渠道出站回复 E2E `1 passed 233s`(2026-09-29, run25, skipped=0)
+- ✅ D5/D6 升级与恢复演练 `8 passed 366s`(2026-09-29, skipped=0): 双阶段滚动升级+持续探针零丢失、
+  未知协议版本经 backlog 重投但活体 Worker 在 claim 门禁拒绝(WORKER_TASK_MISMATCH)、
+  真实 PITR(恢复点前行在/后写行丢/活库不受扰+五字段收据+RPO/RTO)、Redis FLUSHALL 重建存活
 - ✅ 过程修复: 网络策略(RAGFlow 栈内互访端口)、object-storage/mc pullPolicy、ragflow kustomize 缩进、publish 等待 202 收敛、流式聚合保 headers、e2e 沙箱摘要本地读取
 
 ## 待执行的集群命令（后续窗口）
 
 ```bash
-# D5/D6 演练（expand→滚动→contract + 持续探针 + 未知协议不领取；PITR + Redis 重建）
-export AGENTX_E2E_VALUES=deploy/values/local.yaml
-PATH="/opt/homebrew/opt/helm@3/bin:$PATH" uv run --group test pytest tests/e2e/upgrade -m upgrade --timeout=7200
-
 # D8 发布汇总（全链证据齐备后）
 uv run python tools/scripts/release/release_summary.py \
   --evidence .local/artifacts/e2e --dist .local/dist \
@@ -66,7 +65,6 @@ AGENTX_E2E_RAGFLOW_DISABLE=1 uv run --group test pytest tests/e2e/capacity \
 1. **E2E mock fixture**：P7-A 三平台 IM mock（Kustomize，按路径切换 成功/429/401/目标不存在）、P7-B mock OpenAI 流 fixture（慢流/断流/无 usage/重放）——各线第 5 节已定义行为矩阵。
 2. **D3 剩余**：Tenant×Capability×Provider 公平限流（worker 派发侧）与 Provider 熔断（runtime_calls 开窗）；MetricsRegistry 标签维度化。
 3. **D4 分级 Run**：100/500/1000/200 节点/5000 Attempt/2h 稳定性/副本矩阵（入口 `tests/e2e/capacity` 已就绪）。
-4. **D5/D6 真实 Run**：用例已实现（`tests/e2e/upgrade/test_rolling_upgrade_probe.py`、`test_backup_recovery_drill.py`），待专用集群窗口执行并归档证据；双 tag Previous→Candidate 混跑受 agentxctl 单镜像 tag 限制。
 5. **D8 汇总 Run**：汇总器已实现并验证（绿路径写 passed 标记/阈值不足阻断），待全链证据齐备后执行；Runbook/Schema Catalog 更新随最终发布评审。
 6. **追踪矩阵**：两个 99-*.md 待上述证据落地后统一更新 done。
 

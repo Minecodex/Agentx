@@ -15,7 +15,6 @@ recorded.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import time
 from pathlib import Path
@@ -67,6 +66,11 @@ def _control_mysql_raw(installed_agentx: dict[str, str], command: str, *, input_
     ).stdout
 
 
+def _pod_backup_path(run_id: str) -> str:
+    # Ephemeral path inside the single-use MySQL pod of an isolated E2E namespace.
+    return f"/tmp/pitr-backup-{run_id}.sql"  # noqa: S108 -- isolated E2E pod scratch file
+
+
 def _mysql_client(args: str) -> str:
     return f"{_MYSQL_ENV} {args}"
 
@@ -98,15 +102,18 @@ def test_real_pitr_drill_restores_recovery_point(
         _create_marker_workflow(control, headers, before_name)
 
     backup_started = time.time()
-    dump = _control_mysql_raw(
+    # Dump and restore run entirely inside the MySQL pod: the dump carries
+    # BINARY(16) keys that a text-mode pipe would corrupt (UTF-8 replacement).
+    pod_backup = _pod_backup_path(run_id)
+    digest = _control_mysql_raw(
         installed_agentx,
-        _mysqldump("--single-transaction --no-tablespaces agentx_control"),
-    )
+        f"{_mysqldump('--single-transaction --no-tablespaces agentx_control')} > {pod_backup} "
+        f'&& sha256sum {pod_backup} | cut -d" " -f1 && grep -c "CREATE TABLE" {pod_backup}',
+    ).splitlines()
     backup_seconds = time.time() - backup_started
+    content_sha256, object_count = digest[0].strip(), int(digest[1].strip() or 0)
     artifact_dir = Path(installed_agentx["artifact_dir"]) / "backup"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    dump_path = artifact_dir / "control-backup.sql"
-    dump_path.write_text(dump, encoding="utf-8")
 
     # Post-backup business write: must exist in the live database but be lost
     # by a restore to the recovery point.
@@ -119,7 +126,7 @@ def test_real_pitr_drill_restores_recovery_point(
     _control_mysql_raw(
         installed_agentx, _mysql_client(f"-e 'DROP DATABASE IF EXISTS {scratch_db}; CREATE DATABASE {scratch_db};'")
     )
-    _control_mysql_raw(installed_agentx, _mysql_client(scratch_db), input_text=dump)
+    _control_mysql_raw(installed_agentx, f"{_mysql_client(scratch_db)} < {pod_backup}")
     restore_seconds = time.time() - restore_started
 
     def restored_count(name: str) -> int:
@@ -154,8 +161,8 @@ def test_real_pitr_drill_restores_recovery_point(
     receipt = {
         "status": "passed",
         "recoveryPointUtc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(backup_started)),
-        "objectCount": dump.count("CREATE TABLE"),
-        "contentSha256": hashlib.sha256(dump.encode("utf-8")).hexdigest(),
+        "objectCount": object_count,
+        "contentSha256": content_sha256,
         "schemaVersionObserved": observed,
     }
     report = {
@@ -177,6 +184,7 @@ def test_real_pitr_drill_restores_recovery_point(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     _control_mysql_raw(installed_agentx, _mysql_client(f"-e 'DROP DATABASE {scratch_db};'"))
+    _control_mysql_raw(installed_agentx, f"rm -f {pod_backup}")
 
     assert set(receipt) == {
         "status",

@@ -28,7 +28,6 @@ from tests.e2e.product.test_channel_delivery import (
     _access_token,
     _development_environment_id,
     _dingtalk_channel,
-    _passthrough_workflow,
     _publish_application,
     _signed_dingtalk_post,
 )
@@ -38,6 +37,74 @@ from tests.e2e.support import agentxctl, run
 pytestmark = [pytest.mark.cluster, pytest.mark.upgrade]
 
 
+def _relay_workflow(control: httpx.Client, headers: dict[str, str], name: str) -> dict[str, str]:
+    """start→set→exit workflow: unlike a direct start→exit graph it produces a
+    real node attempt the future-protocol drill can requeue."""
+    created = control.post(
+        "/api/v1/workflows",
+        headers=headers,
+        json={"name": name, "description": "P7-D5 rolling probe", "visibility": "company"},
+    )
+    created.raise_for_status()
+    workflow_id = created.json()["id"]
+    draft = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
+    draft.raise_for_status()
+    definition = draft.json()["definition"]
+    definition["start"]["inputs"] = {
+        "type": "object",
+        "properties": {"message": {"type": "string"}},
+        "required": ["message"],
+        "additionalProperties": False,
+    }
+    relay = {
+        "id": "relay",
+        "key": "relay",
+        "type": "set",
+        "typeVersion": 1,
+        "name": "Relay",
+        "disabled": False,
+        "parameters": {},
+        "contextWrites": [],
+        "resourceReferences": [],
+        "settings": {},
+    }
+    definition["nodes"].append(relay)
+    exit_node = next(node for node in definition["nodes"] if node["type"] == "exit")
+    definition["connections"] = [
+        {
+            "id": "start-relay",
+            "sourceNodeId": "__start__",
+            "sourceHandle": "main",
+            "targetNodeId": "relay",
+            "targetHandle": "main",
+            "order": 0,
+        },
+        {
+            "id": "relay-exit",
+            "sourceNodeId": "relay",
+            "sourceHandle": "main",
+            "targetNodeId": exit_node["id"],
+            "targetHandle": "main",
+            "order": 0,
+        },
+    ]
+    saved = control.put(
+        f"/api/v1/workflows/{workflow_id}/draft",
+        headers=headers,
+        json={"expectedRevision": draft.json()["revision"], "definition": definition},
+    )
+    assert saved.status_code in (200, 204), saved.text
+    latest = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
+    latest.raise_for_status()
+    published = control.post(
+        f"/api/v1/workflows/{workflow_id}/versions",
+        headers=headers,
+        json={"draftRevision": latest.json()["revision"]},
+    )
+    assert published.status_code in (200, 201), published.text
+    return {"workflowId": workflow_id, "versionId": published.json()["id"]}
+
+
 @pytest.fixture(scope="module")
 def probe_channel(installed_agentx: dict[str, str], service_urls: dict[str, str]) -> dict[str, Any]:
     """Published application with an inbound webhook channel as the probe target."""
@@ -45,7 +112,7 @@ def probe_channel(installed_agentx: dict[str, str], service_urls: dict[str, str]
     with httpx.Client(base_url=service_urls["web"], timeout=60) as control:
         token, me = _access_token(control)
         headers = {"Authorization": f"Bearer {token}"}
-        workflow = _passthrough_workflow(control, headers, f"Rolling Probe {run_id}")
+        workflow = _relay_workflow(control, headers, f"Rolling Probe {run_id}")
         environment_id = _development_environment_id(control, headers)
         deploy = control.post(
             f"/api/v1/workflows/{workflow['workflowId']}/deployments",
@@ -334,8 +401,8 @@ def test_worker_never_claims_future_protocol_attempts(
     def attempt_state() -> str:
         return _runtime_mysql(
             installed_agentx,
-            "SELECT CONCAT(status,':',COALESCE(worker_instance_id IS NULL,1),':',"
-            "COALESCE(DATE_FORMAT(published_at,'%Y%m%d%H%i%s'),'none')) FROM node_attempts a "
+            "SELECT CONCAT(a.status,':',COALESCE(a.worker_instance_id IS NULL,1),':',"
+            "COALESCE(DATE_FORMAT(o.published_at,'%Y%m%d%H%i%s'),'none')) FROM node_attempts a "
             "LEFT JOIN execution_outbox o ON o.attempt_id=a.id AND o.message_type='dispatch_node' "
             f"WHERE a.id=UUID_TO_BIN('{attempt_id}');",
         )
@@ -354,7 +421,7 @@ def test_worker_never_claims_future_protocol_attempts(
     assert offered, "dispatch backlog never re-offered the future-protocol task"
 
     logs = run(
-        ("kubectl", "-n", installed_agentx["runtime_namespace"], "logs", "deployment/workflow-runtime", "--tail=2000"),
+        ("kubectl", "-n", installed_agentx["runtime_namespace"], "logs", "deployment/workflow-worker", "--tail=2000"),
         timeout=120,
     ).stdout
     assert "WORKER_TASK_MISMATCH" in logs, "live Worker never hit the protocol claim gate"
