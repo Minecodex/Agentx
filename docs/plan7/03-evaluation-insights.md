@@ -90,35 +90,35 @@
 
 ### P7-C1 llm_judge UI
 
-- [ ] Profile 对话框规则类型 + 专用配置表单（模型选择器/prompt 编辑器/变量插入/64KiB 校验）；
-- [ ] i18n 双语词条；`MODEL_EVALUATOR_GRANT_REQUIRED` 文案与授权页跳转；
-- [ ] 报告页 llm_judge 结果展示（modelResult 展开组件）；runtime `converge_model_evaluator` 的 detail_json 补 `evaluatorExecutionId`（Trace 链接修复，见 §3.1 唯一例外）；
-- [ ] vitest 表单测试（校验路径、类型切换）。
+- [x] Profile 对话框规则类型 + 专用配置表单（模型选择器/prompt 编辑器/变量插入/64KiB 校验）；
+- [x] i18n 双语词条；`MODEL_EVALUATOR_GRANT_REQUIRED` 文案与授权页跳转；
+- [x] 报告页 llm_judge 结果展示（modelResult 展开组件）；runtime `converge_model_evaluator` 的 detail_json 补 `evaluatorExecutionId`（Trace 链接修复，见 §3.1 唯一例外）；
+- [x] vitest 表单测试（校验路径、类型切换）。
 
 门禁：前端测试、Playwright 评测域回归。
 
 ### P7-C2 观测面维度与指标修复
 
-- [ ] `TraceEventEnvelopeV1` 加 workflow_id/application_id（`#[serde(default)]`）+ `trace_delivery.rs enqueue` 扩 JOIN 覆盖全部发射点 + observability `TraceRow` 映射（契约测试同步；升级顺序 observability 先于 runtime，见 §3.2）；
-- [ ] `traces:search` 加 workflowId filter + 游标分页；metrics 加 durationP50/durationP95；
-- [ ] observability 契约测试与查询单测（维度分组正确性、分位数）。
+- [x] `TraceEventEnvelopeV1` 加 workflow_id/application_id（`#[serde(default)]`）+ `trace_delivery.rs enqueue` 扩 JOIN 覆盖全部发射点 + observability `TraceRow` 映射（契约测试同步；升级顺序 observability 先于 runtime，见 §3.2）；
+- [x] `traces:search` 加 workflowId filter + 游标分页；metrics 加 durationP50/durationP95；
+- [x] observability 契约测试与查询单测（维度分组正确性、分位数）。
 
 门禁：契约测试、ClickHouse 真实查询集成测试（testcontainers 模式）。
 
 ### P7-C3 Insights BFF 与页面
 
-- [ ] platform-control `insights_api.rs`（委托转发 + 降级/预算错误映射 + OpenAPI）；
-- [ ] recharts 引入与图表主题令牌封装（`shared/components/charts/` 统一图表组件层，保证风格一致）；
-- [ ] insights 页面四图 + 筛选 + 降级态 + 跳转联动（errorCodes 全链路筛选：前端 URL 参数 → BFF → `ExecutionSearchRequestV1`，见 §2.3 勘察修正）；dashboard summary 接通真实指标（带退避，见 §3.3）；
-- [ ] 路由/导航/i18n/OpenAPI 再生成。
+- [x] platform-control `insights_api.rs`（委托转发 + 降级/预算错误映射 + OpenAPI）；
+- [x] recharts 引入与图表主题令牌封装（`shared/components/charts/` 统一图表组件层，保证风格一致）；
+- [x] insights 页面四图 + 筛选 + 降级态 + 跳转联动（errorCodes 全链路筛选：前端 URL 参数 → BFF → `ExecutionSearchRequestV1`，见 §2.3 勘察修正）；dashboard summary 接通真实指标（带退避，见 §3.3）；
+- [x] 路由/导航/i18n/OpenAPI 再生成。
 
 门禁：BFF 契约测试（mock observability）、Playwright（含 ClickHouse 缩容降级场景）。
 
 ### P7-C4 评测对比
 
-- [ ] compare API（服务端 case 对齐逻辑 + OpenAPI）；
-- [ ] 列表页对比入口 + 详情页对比 Tab（对照表/case 变化/规则通过率图）；
-- [ ] 失败节点分布区块（批量 trace 查询 + Top 列表）。
+- [x] compare API（服务端 case 对齐逻辑 + OpenAPI）；
+- [x] 列表页对比入口 + 详情页对比 Tab（对照表/case 变化/规则通过率图）；
+- [x] 失败节点分布区块（批量 trace 查询 + Top 列表）。
 
 门禁：API 契约测试、前端测试、Playwright。
 

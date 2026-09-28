@@ -56,8 +56,8 @@
 
 ### P7-D2 容量阈值冻结（V2S-006 前置）
 
-- [ ] 产出 `docs/planv2/evidence/capacity-thresholds.md`：按 `04-e2e-acceptance.md` §3 七组指标（Invocation 错误率/p95/p99/Admission Reject、SSE 建连重连/Drain、Attempt/Outbox/Inbox/Trace 最大年龄、MySQL 连接/锁等待/慢查询/IOPS、Redis 内存/Pending/Lag/重建、Provider/Sandbox 隔离池并发与熔断恢复、2 小时残留）绑定测试环境规格写死数值；
-- [ ] 阈值评审冻结后任何容量 Run 不得更改（门禁语义）。
+- [x] 产出 `docs/planv2/evidence/capacity-thresholds.md`：按 `04-e2e-acceptance.md` §3 七组指标（Invocation 错误率/p95/p99/Admission Reject、SSE 建连重连/Drain、Attempt/Outbox/Inbox/Trace 最大年龄、MySQL 连接/锁等待/慢查询/IOPS、Redis 内存/Pending/Lag/重建、Provider/Sandbox 隔离池并发与熔断恢复、2 小时残留）绑定测试环境规格写死数值；
+- [x] 阈值评审冻结后任何容量 Run 不得更改（门禁语义）。
 
 ### P7-D3 背压与公平限流实现（V2S-006 缺失实现部分）
 
@@ -70,7 +70,7 @@
 
 ### P7-D4 容量编排重建与执行（V2S-006 + INT-012 + V2C-005）
 
-- [ ] 重建容量编排：`tests/e2e` 新增 capacity 域（pytest marker `capacity`），负载生成器（异步 Invocation 打点）、指标采集（metrics 抓取 + MySQL/Redis/CH 水位查询）、阈值断言与报告 JSON（写 `.local/artifacts/e2e/<run_id>/capacity/`）；
+- [x] 重建容量编排：`tests/e2e` 新增 capacity 域（pytest marker `capacity`），负载生成器（异步 Invocation 打点）、指标采集（metrics 抓取 + MySQL/Redis/CH 水位查询）、阈值断言与报告 JSON（写 `.local/artifacts/e2e/<run_id>/capacity/`）；
 - [ ] 执行矩阵：100 Execution / 500 Node / 200 SSE / 1000 Case / 200 节点 Workflow / 5000 Attempt 分级 Run + **2 小时稳定性 Run + 残留断言**（Lease/Reservation/Outbox/Inbox/Hold 业务残留=0）；
 - [ ] 副本矩阵：Gateway/Coordinator/Worker/SSE/Trace 独立扩容 Run（V2C-005 冻结生产基线）；
 - [ ] E2E-V2-012 滚动版本兼容：当前/上一版本混跑、超窗在执行前拒绝（勘察新增前置：e2e `--values` 单文件单镜像 tag，双版本混跑需双 values + `--target` 定向升级组合编排，当前 agentxctl 不支持 per-service 版本混布）。
@@ -90,7 +90,7 @@
 
 ### P7-D7 供应链与安全产物（INT-011 + V2K-003）
 
-- [ ] 重建供应链链路（Python，入 `tools/scripts/release/`）：7 镜像 SBOM 生成（syft）、cosign 签名与 Attestation、发布校验脚本验签（`verify_release.py` 扩展：验签名/attestation，不只 digest）；
+- [x] 重建供应链链路（Python，入 `tools/scripts/release/`）：11 镜像对齐的 SBOM 生成（syft）、cosign 签名与 Attestation、`verify_release.py` 验签扩展均已实现（`supply_chain.py`；本机缺 syft/cosign 时报告所需命令不静默）；真实签名链执行随 D7 其余项移交。
 - [ ] Role 级 Secret/ServiceAccount 拆分验证（各 Role 最小凭据，NetworkPolicy/凭据矩阵断言）；
 - [ ] 双租户攻击矩阵 Run：跨租户 ID 猜测、Grant 绕过、日志泄密、凭证重放、Sandbox 销毁后 Handle 失效等 8 项负向验收器真实执行；
 - [ ] 本地 TLS Registry 签名链验证。

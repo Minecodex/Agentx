@@ -146,44 +146,44 @@ POST /api/v1/deliveries/{deliveryId}:retry           -- 死信重放（权限 ap
 
 ### P7-A1 契约冻结
 
-- [ ] 冻结 DeliveryOutboxV1、ProviderSendRequestV1、Trigger Context 出站字段（sessionWebhook/过期时间/conversation/sender）DTO；
-- [ ] 冻结 `reply_message`/`send_message` 节点 Manifest（参数 Schema、输出契约、错误码 `REPLY_TARGET_UNRESOLVED`/`SEND_CHANNEL_UNRESOLVED`/`DELIVERY_PROVIDER_REJECTED`）；
-- [ ] 更新 `contracts/openapi`（渠道 reply 配置、deliveries 查询/重试 API）与 Runtime Internal API 契约；
-- [ ] 出站凭证字段进 provider 模板（企微 corpid/corpsecret/agentid、钉钉 robotCode，敏感走 Vault、非敏感进 channel_config_json，见 §2 勘察新增）；
-- [ ] `docs/planv2/contracts/v2-schema-table-ownership.json` 登记 `delivery_outbox`/`delivery_dead_letters`（boundary check 对增量迁移 CREATE TABLE 强制校验，漏登记 `cargo xtask check` 失败）；
-- [ ] 更新 `docs/03-workflow-engine.md` 节点清单与 `docs/05-platform-business.md` 渠道章节。
+- [x] 冻结 DeliveryOutboxV1、ProviderSendRequestV1、Trigger Context 出站字段（sessionWebhook/过期时间/conversation/sender）DTO；
+- [x] 冻结 `reply_message`/`send_message` 节点 Manifest（参数 Schema、输出契约、错误码 `REPLY_TARGET_UNRESOLVED`/`SEND_CHANNEL_UNRESOLVED`/`DELIVERY_PROVIDER_REJECTED`）；
+- [x] 更新 `contracts/openapi`（渠道 reply 配置、deliveries 查询/重试 API）与 Runtime Internal API 契约；
+- [x] 出站凭证字段进 provider 模板（企微 corpid/corpsecret/agentid、钉钉 robotCode，敏感走 Vault、非敏感进 channel_config_json，见 §2 勘察新增）；
+- [x] `docs/planv2/contracts/v2-schema-table-ownership.json` 登记 `delivery_outbox`/`delivery_dead_letters`（boundary check 对增量迁移 CREATE TABLE 强制校验，漏登记 `cargo xtask check` 失败）；
+- [x] 更新 `docs/03-workflow-engine.md` 节点清单与 `docs/05-platform-business.md` 渠道章节。
 
 门禁：契约测试、Schema 测试、boundary check、OpenAPI diff 通过。
 
 ### P7-A2 投递基础设施
 
-- [ ] Runtime 新迁移：`delivery_outbox` + `delivery_dead_letters`；
-- [ ] delivery 投递循环 Role（lease + fencing + 退避重试 + 死信迁移）；
-- [ ] 三平台 Send Client（钉钉 sessionWebhook→API 回退、飞书 token+im/v1/messages、企微主动消息）；
-- [ ] Send Client per-provider 域名后缀校验（gateway 无主机白名单，见 §3.4）；`AGENTX_RUNTIME_ROLES` 与 helm values 增加 `delivery` Role；egress-smoke 覆盖三平台路径。
+- [x] Runtime 新迁移：`delivery_outbox` + `delivery_dead_letters`；
+- [x] delivery 投递循环 Role（lease + fencing + 退避重试 + 死信迁移）；
+- [x] 三平台 Send Client（钉钉 sessionWebhook→API 回退、飞书 token+im/v1/messages、企微主动消息）；
+- [x] Send Client per-provider 域名后缀校验（gateway 无主机白名单，见 §3.4）；`AGENTX_RUNTIME_ROLES` 与 helm values 增加 `delivery` Role；egress-smoke 覆盖三平台路径。
 
 门禁：fixture 回放契约测试（平台 API mock：成功、限流、凭证失效、目标不存在）、投递重试与幂等测试、多副本投递循环测试（双副本无重复投递）。
 
 ### P7-A3 L1 渠道自动回复
 
-- [ ] 渠道配置 `reply` 段落（Control 校验 + 发布冻结 + Runtime 投递器订阅 Execution 终态）；
-- [ ] Execution 终态与 delivery 入队同事务；投递事件进 `invocation_events`；
-- [ ] 前端"回复设置"表单与投递状态展示。
+- [x] 渠道配置 `reply` 段落（Control 校验 + 发布冻结 + Runtime 投递器订阅 Execution 终态）；
+- [x] Execution 终态与 delivery 入队同事务；投递事件进 `invocation_events`；
+- [x] 前端"回复设置"表单与投递状态展示。
 
 ### P7-A4 L2 回复消息节点
 
-- [ ] builtin manifest + 纯函数 intent 渲染（deliveryId 确定性派生，见 §3.5 两段式设计）；
-- [ ] `submit_worker_result_resolved` 结算事务入队 delivery（目标解析在结算侧）；非 IM 来源执行失败路径测试。
+- [x] builtin manifest + 纯函数 intent 渲染（deliveryId 确定性派生，见 §3.5 两段式设计）；
+- [x] `submit_worker_result_resolved` 结算事务入队 delivery（目标解析在结算侧）；非 IM 来源执行失败路径测试。
 
 ### P7-A5 L3 发送节点与发布门禁
 
-- [ ] `send_message` 节点 + 发布时 channel 解析门禁（三种解析路径与失败阻塞）；
-- [ ] Studio 节点面板与参数表单接入。
+- [x] `send_message` 节点 + 发布时 channel 解析门禁（三种解析路径与失败阻塞）；
+- [x] Studio 节点面板与参数表单接入。
 
 ### P7-A6 API 与前端投递可观测
 
-- [ ] deliveries 列表/详情/重试 API（BFF → Runtime query）；
-- [ ] 前端投递记录页 + 渠道详情投递状态。
+- [x] deliveries 列表/详情/重试 API（BFF → Runtime query）；
+- [x] 前端投递记录页 + 渠道详情投递状态。
 
 ### P7-A7 E2E 验收
 

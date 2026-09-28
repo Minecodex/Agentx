@@ -89,33 +89,33 @@ rag_resources.sync_status 语义激活：有文档在 indexing 时 syncing，全
 
 ### P7-E1 契约冻结
 
-- [ ] `knowledge_documents` DDL（control 迁移 0011）与文档 API、retrieval-test API 契约（OpenAPI 再生成）；`v2-schema-table-ownership.json` 登记新表 + `artifact_references` 引用注册设计（见 §3.1 勘察新增）；
-- [ ] content_type 白名单、大小/数量上限、错误码冻结（`KNOWLEDGE_DOCUMENT_TYPE_UNSUPPORTED`、`KNOWLEDGE_DOCUMENT_TOO_LARGE`、`KNOWLEDGE_DOCUMENT_DUPLICATED`、`KNOWLEDGE_INDEX_FAILED`）；
-- [ ] 更新 `docs/05-platform-business.md` 知识库章节与 `docs/13-architecture-service-data-map.md` 表目录。
+- [x] `knowledge_documents` DDL（control 迁移 0011）与文档 API、retrieval-test API 契约（OpenAPI 再生成）；`v2-schema-table-ownership.json` 登记新表 + `artifact_references` 引用注册设计（见 §3.1 勘察新增）；
+- [x] content_type 白名单、大小/数量上限、错误码冻结（`KNOWLEDGE_DOCUMENT_TYPE_UNSUPPORTED`、`KNOWLEDGE_DOCUMENT_TOO_LARGE`、`KNOWLEDGE_DOCUMENT_DUPLICATED`、`KNOWLEDGE_INDEX_FAILED`）；
+- [x] 更新 `docs/05-platform-business.md` 知识库章节与 `docs/13-architecture-service-data-map.md` 表目录。
 
 门禁：契约测试、Schema 测试、boundary check、OpenAPI diff。
 
 ### P7-E2 协议抽取
 
-- [ ] RAG 协议（query/insert/finalize）抽到共享 crate，runtime worker 与 Agent 附件槽切换引用；
-- [ ] 既有 RAG 协议测试随迁并保持全绿（行为不变重构）。
+- [x] RAG 协议（query/insert/finalize）抽到共享 crate，runtime worker 与 Agent 附件槽切换引用；
+- [x] 既有 RAG 协议测试随迁并保持全绿（行为不变重构）。
 
 ### P7-E3 文档上传与索引
 
-- [ ] 文档 API（上传/列表/删除）+ artifacts 存储 + 上限校验；
-- [ ] LightRAG 索引调用 + 状态回写 + `rag_resources.sync_status` 激活；
-- [ ] 凭证与 egress：Control 出网三件套——NetworkPolicy 补 dependencies 规则（9621/9380 + provider 标签选择器）、Vault 读 helper、endpoint 安全校验（见 §2 勘察新增）。
+- [x] 文档 API（上传/列表/删除）+ artifacts 存储 + 上限校验；
+- [x] LightRAG 索引调用 + 状态回写 + `rag_resources.sync_status` 激活；
+- [x] 凭证与 egress：Control 出网三件套——NetworkPolicy 补 dependencies 规则（9621/9380 + provider 标签选择器）、Vault 读 helper、endpoint 安全校验（见 §2 勘察新增）。
 
 ### P7-E4 hit-testing
 
-- [ ] retrieval-test API（共享协议 + 权限 + 历史/健康记录）；
-- [ ] RAGFlow 与 LightRAG 双 provider 联调。
+- [x] retrieval-test API（共享协议 + 权限 + 历史/健康记录）；
+- [ ] RAGFlow 与 LightRAG 双 provider 联调（LightRAG 全链 E2E 已绿；RAGFlow 协议级用例已绿，文档索引全链在 D1 fixture 已验，retrieval-test 双 provider 组合移交）。
 
 ### P7-E5 前端
 
-- [ ] 详情页三区重构 + 上传交互（dropzone 抽共享组件，skill 页有同需求）+ 状态轮询 + hit-testing 面板；后端文档/检索 API 独立模块（如 `knowledge_document_api.rs`——external_resource_api.rs 已 840 行，不再往里加）；顺带统一 `knowledge:delete`（前端在用）与后端 `knowledge:manage` 的权限口径；
-- [ ] i18n 双语、深浅主题、空态/错误态；
-- [ ] vitest + Playwright knowledge 域用例。
+- [x] 详情页三区重构 + 上传交互（dropzone 抽共享组件，skill 页有同需求）+ 状态轮询 + hit-testing 面板；后端文档/检索 API 独立模块（如 `knowledge_document_api.rs`——external_resource_api.rs 已 840 行，不再往里加）；顺带统一 `knowledge:delete`（前端在用）与后端 `knowledge:manage` 的权限口径；
+- [x] i18n 双语、深浅主题、空态/错误态；
+- [x] vitest + Playwright knowledge 域用例。
 
 ### P7-E6 E2E 验收
 
