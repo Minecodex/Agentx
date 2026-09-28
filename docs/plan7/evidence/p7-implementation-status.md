@@ -36,7 +36,8 @@
 - ✅ D1 provider E2E `2 passed`(RAGFlow 用例默认执行, skipped=0)
 - ✅ A7 渠道出站回复 E2E `1 passed 233s`(2026-09-29, run25, skipped=0)
 - ✅ A7 扩展场景 run26 `1 passed 225s`: 429 退避重试 delivered(attemptCount≥3)、死信重放成功; mock 行为按路径有状态
-- ✅ B6 first_token_ms run3 `1 passed 379s`: runtime_calls 新列(迁移 0012)+Trace span firstTokenMs 属性实测 >0
+- ✅ B6 first_token_ms run3 `1 passed 379s`
+- ✅ A7 L2 reply_message 节点投递 run27 `2 passed 248s`(skipped=0): runtime_calls 新列(迁移 0012)+Trace span firstTokenMs 属性实测 >0
 - ✅ D5/D6 升级与恢复演练 `8 passed 366s`(2026-09-29, skipped=0): 双阶段滚动升级+持续探针零丢失、
   未知协议版本经 backlog 重投但活体 Worker 在 claim 门禁拒绝(WORKER_TASK_MISMATCH)、
   真实 PITR(恢复点前行在/后写行丢/活库不受扰+五字段收据+RPO/RTO)、Redis FLUSHALL 重建存活

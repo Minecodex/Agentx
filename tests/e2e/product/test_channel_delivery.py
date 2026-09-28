@@ -468,7 +468,9 @@ def test_l1_reply_delivered_and_dead_letter_replay(
         if replayed:
             break
         time.sleep(3)
-    assert replayed, f"dead letter replay did not deliver: {_delivery_rows(installed_agentx, me['companyId'], dead_execution)}"
+    assert replayed, (
+        f"dead letter replay did not deliver: {_delivery_rows(installed_agentx, me['companyId'], dead_execution)}"
+    )
 
     # 3. transient 429 → exponential backoff retry → delivered with attempts.
     with httpx.Client(base_url=service_urls["runtime"], timeout=30) as gateway:
@@ -522,6 +524,187 @@ def test_l1_reply_delivered_and_dead_letter_replay(
         if any(item["behavior"] == "ok" for item in _mock_received(deps_ns, "dingtalk/session-rate-limit")):
             break
         time.sleep(2)
+    assert any(item["behavior"] == "ok" for item in _mock_received(deps_ns, "dingtalk/session-rate-limit")), (
+        "im-mock did not record the recovered throttle delivery"
+    )
+
+
+def test_l2_reply_node_delivers_to_trigger_conversation(
+    installed_agentx: dict[str, str],
+    service_urls: dict[str, str],
+    im_mock: dict[str, str],
+    run_id: str,
+) -> None:
+    """plan7 P7-A A7 scenario 2: the reply_message node enqueues its delivery
+    at attempt settlement (origin node:*) independently of the channel's L1
+    auto-reply, which stays disabled here to isolate the two paths."""
+    deps_ns = installed_agentx["dependencies_namespace"]
+    with httpx.Client(base_url=service_urls["web"], timeout=60) as control:
+        token, me = _access_token(control)
+        headers = {"Authorization": f"Bearer {token}"}
+        # start(message) → reply_message(literal content) → exit
+        created = control.post(
+            "/api/v1/workflows",
+            headers=headers,
+            json={"name": f"L2 Reply E2E {run_id}", "description": "P7-A L2", "visibility": "company"},
+        )
+        created.raise_for_status()
+        workflow_id = created.json()["id"]
+        draft = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
+        draft.raise_for_status()
+        definition = draft.json()["definition"]
+        definition["start"]["inputs"] = {
+            "type": "object",
+            "properties": {"message": {"type": "string"}},
+            "required": ["message"],
+            "additionalProperties": False,
+        }
+        exit_node = next(node for node in definition["nodes"] if node["type"] == "exit")
+        definition["nodes"].append(
+            {
+                "id": "reply",
+                "key": "reply",
+                "type": "reply_message",
+                "typeVersion": 1,
+                "name": "Reply",
+                "disabled": False,
+                "parameters": {"content": "node-level reply"},
+                "contextWrites": [],
+                "resourceReferences": [],
+                "settings": {},
+            }
+        )
+        definition["end"] = {"completion": "first_return", "outputs": {}, "error": {"outputs": {}}}
+        definition["connections"] = [
+            {
+                "id": "start-reply",
+                "sourceNodeId": "__start__",
+                "sourceHandle": "main",
+                "targetNodeId": "reply",
+                "targetHandle": "main",
+                "order": 0,
+            },
+            {
+                "id": "reply-exit",
+                "sourceNodeId": "reply",
+                "sourceHandle": "main",
+                "targetNodeId": exit_node["id"],
+                "targetHandle": "main",
+                "order": 0,
+            },
+        ]
+        saved = control.put(
+            f"/api/v1/workflows/{workflow_id}/draft",
+            headers=headers,
+            json={"expectedRevision": draft.json()["revision"], "definition": definition},
+        )
+        assert saved.status_code in (200, 204), saved.text
+        latest = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
+        latest.raise_for_status()
+        published = control.post(
+            f"/api/v1/workflows/{workflow_id}/versions",
+            headers=headers,
+            json={"draftRevision": latest.json()["revision"]},
+        )
+        assert published.status_code in (200, 201), published.text
+        version_id = published.json()["id"]
+
+        environment_id = _development_environment_id(control, headers)
+        deploy = control.post(
+            f"/api/v1/workflows/{workflow_id}/deployments",
+            headers=headers,
+            json={"environmentId": environment_id, "workflowVersionId": version_id},
+        )
+        assert deploy.status_code in (200, 201), deploy.text
+        application = control.post(
+            "/api/v1/applications",
+            headers=headers,
+            json={
+                "workflowId": workflow_id,
+                "name": f"L2 Reply App {run_id}",
+                "slug": f"l2-reply-{run_id}",
+                "visibility": "company",
+            },
+        )
+        assert application.status_code in (200, 201), application.text
+        application_id = application.json()["id"]
+        channel = _dingtalk_channel(control, headers, application_id, reply_enabled=False)
+        _publish_application(
+            control, headers, {"workflowId": workflow_id, "versionId": version_id}, application_id, environment_id
+        )
+
+    webhook_path = channel["path"]
+    secret = "e2e-dingtalk-secret"  # noqa: S105 -- isolated E2E fixture credential
+    public_id = channel["publicId"]
+
+    def _binding_state() -> str:
+        return _runtime_mysql(
+            installed_agentx,
+            "SELECT CONCAT(COUNT(*), ':', COALESCE(MAX(w.status),'none')) FROM webhook_bindings w "
+            f"WHERE w.public_id='{public_id}';",
+        )
+
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline and _binding_state().startswith("0:"):
+        time.sleep(3)
+    assert not _binding_state().startswith("0:"), f"webhook binding never reached runtime: {_binding_state()}"
+
+    event_id = f"l2-reply-{run_id}"
+    with httpx.Client(base_url=service_urls["runtime"], timeout=30) as gateway:
+        accepted = _signed_dingtalk_post(
+            gateway,
+            webhook_path,
+            secret,
+            {
+                "msgId": event_id,
+                "conversationId": "e2e-chat",
+                "conversationType": "1",
+                "senderId": "e2e-sender",
+                "senderNick": "E2E",
+                "msgtype": "text",
+                "content": json.dumps({"content": "trigger the reply node"}),
+                "createAt": int(time.time() * 1000),
+            },
+            f"{im_mock['url']}/dingtalk/session-ok",
+        )
+        assert accepted.status_code in (200, 202), f"{accepted.status_code} {accepted.text}"
+
+    execution_id: str | None = None
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline and execution_id is None:
+        raw = _runtime_mysql(
+            installed_agentx,
+            "SELECT BIN_TO_UUID(execution_id) FROM application_invocations "
+            f"WHERE tenant_id=UUID_TO_BIN('{me['companyId']}') AND provider_event_id='{event_id}';",
+        )
+        if raw and raw.lower() != "null":
+            execution_id = raw
+        time.sleep(2)
+    assert execution_id, "L2 invocation not created"
+
+    node_row: dict[str, Any] | None = None
+    deadline = time.monotonic() + 180
+    while time.monotonic() < deadline:
+        rows = _delivery_rows(installed_agentx, me["companyId"], execution_id)
+        node_row = next(
+            (row for row in rows if row["status"] == "delivered" and (row["origin"] or "").startswith("node:")),
+            None,
+        )
+        if node_row:
+            break
+        time.sleep(3)
+    assert node_row, (
+        f"reply node delivery not delivered: {_delivery_rows(installed_agentx, me['companyId'], execution_id)}"
+    )
+    assert node_row["providerMessageId"], node_row
+
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        received = _mock_received(deps_ns, "dingtalk/session-ok")
+        if any(item["body"].get("text", {}).get("content") == "node-level reply" for item in received):
+            break
+        time.sleep(2)
     assert any(
-        item["behavior"] == "ok" for item in _mock_received(deps_ns, "dingtalk/session-rate-limit")
-    ), "im-mock did not record the recovered throttle delivery"
+        item["body"].get("text", {}).get("content") == "node-level reply"
+        for item in _mock_received(deps_ns, "dingtalk/session-ok")
+    ), "im-mock did not record the node-level reply"

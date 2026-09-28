@@ -187,7 +187,7 @@ POST /api/v1/deliveries/{deliveryId}:retry           -- 死信重放（权限 ap
 
 ### P7-A7 E2E 验收
 
-- [x] 见第 5 节（主链路：2026-09-29 `tests/e2e/product/test_channel_delivery.py` 1 passed skipped=0 —— 场景 1 全链 + 场景 4 瞬时 429 退避重试 delivered(attemptCount≥3、错误清除) + 场景 5 恒 401 死信归档与重放后成功（run26 2026-09-29, 1 passed 225s）；场景 2/3/6/7/8/9 移交，mock 行为改为按路径有状态(前 N 次失败后恢复)）。
+- [x] 见第 5 节（主链路：2026-09-29 `tests/e2e/product/test_channel_delivery.py` 1 passed skipped=0 —— 场景 1 全链 + 场景 4 瞬时 429 退避重试 delivered(attemptCount≥3、错误清除) + 场景 5 恒 401 死信归档与重放后成功（run26 2026-09-29, 1 passed 225s）；场景 2 reply_message 节点 L2 投递(run27 2026-09-29, 2 passed 248s: origin=node:* delivered+provider_message_id, mock 收到节点内容, 渠道 L1 关闭隔离两路径; 变量渲染仍留单测覆盖)；场景 3/6/7/8/9 移交，mock 行为改为按路径有状态(前 N 次失败后恢复)）。
 
 ## 5. E2E 验收（临时 Namespace，pytest 编排）
 
