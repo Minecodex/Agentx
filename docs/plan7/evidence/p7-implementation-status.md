@@ -68,13 +68,15 @@ AGENTX_E2E_RAGFLOW_DISABLE=1 uv run --group test pytest tests/e2e/capacity \
 1. `first_token_ms`：迁移 0012（runtime_calls 列）+ 流式臂首 delta 计时 + 结算 UPDATE + Trace span `firstTokenMs` 属性；B6 E2E 断言实测 >0。
 2. `x-agentx-modality`：schema_contract 校验（仅 image/audio、必须 array 型，`INVALID_MODALITY_SCHEMA`）+ 投递单测（标记输入收匹配 part 的 artifact 引用数组、与通用 file 映射共存）。
 
-## 移交清单（后续会话）
+## 移交清单（后续会话，2026-09-29 修订——已完成项移出）
 
-1. **E2E mock fixture**：P7-A 三平台 IM mock（Kustomize，按路径切换 成功/429/401/目标不存在）、P7-B mock OpenAI 流 fixture（慢流/断流/无 usage/重放）——各线第 5 节已定义行为矩阵。
-2. **D3 剩余**：Tenant×Capability×Provider 公平限流（worker 派发侧）与 Provider 熔断（runtime_calls 开窗）；MetricsRegistry 标签维度化。
-3. **D4 分级 Run**：100/500/1000/200 节点/5000 Attempt/2h 稳定性/副本矩阵（入口 `tests/e2e/capacity` 已就绪）。
-5. **D8 汇总 Run**：汇总器已实现并验证（绿路径写 passed 标记/阈值不足阻断），待全链证据齐备后执行；Runbook/Schema Catalog 更新随最终发布评审。
-6. **追踪矩阵**：两个 99-*.md 待上述证据落地后统一更新 done。
+1. **A7 剩余场景**：send_message 主动推送(L3)、无 Deployment/停用渠道/非 IM 触发错误码、重复终态幂等防重、投递循环 Pod 强杀不丢、UI 覆盖（回复设置表单/投递记录/重试/双语主题）。
+2. **B6 剩余场景**：vision 附件端到端联调、`MODEL_INPUT_UNSUPPORTED` UI 呈现、Agent 节点流式+`first_token_ms` Trace 联动、UI 覆盖。
+3. **P7-C §5 七场景集群 E2E**（llm_judge 全链 UI/两版本对比/Insights 四图真实数据/降级提示/仪表盘）。
+4. **D4 分级 Run**：100/500/1000/200 节点/5000 Attempt/2h 稳定性+残留断言/副本矩阵/双版本混跑（入口 `tests/e2e/capacity` 已就绪，需独占集群窗口）。
+5. **D7 真实执行**：syft/cosign 签名链、Role 级 SA/凭据矩阵断言、双租户攻击矩阵 8 项、TLS Registry 验证。
+6. **D8 汇总 Run**：汇总器已实现并验证（绿路径写 passed 标记/阈值不足阻断），待全链证据齐备后执行；Runbook/Schema Catalog 更新与 Release Manifest 随最终发布评审。
+7. **追踪矩阵**：两个 99-*.md 待上述证据落地后统一更新 done；README"不建议生产"自述因此暂不移除。
 
 ## 本机环境备忘（复跑 D1 时）
 
