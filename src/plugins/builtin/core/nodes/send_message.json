@@ -1,225 +1,237 @@
 {
-  "protocolVersion": "3.0",
-  "nodeType": "send_message",
-  "version": 1,
-  "displayName": "Send Message",
-  "description": "Send a message to an explicit channel conversation.",
-  "category": "logic",
-  "keywords": [
+ "protocolVersion": "3.0",
+ "nodeType": "send_message",
+ "version": 1,
+ "displayName": "Send Message",
+ "description": "Send a message to an explicit channel conversation.",
+ "category": "logic",
+ "keywords": [
+  "send",
+  "message",
+  "push",
+  "发送",
+  "消息"
+ ],
+ "localizations": {
+  "en-US": {
+   "displayName": "Send Message",
+   "description": "Send a message to an explicit channel conversation.",
+   "keywords": [
     "send",
     "message",
-    "push",
+    "push"
+   ],
+   "inputPortLabels": {
+    "main": "Main"
+   },
+   "outputPortLabels": {
+    "main": "Main",
+    "error": "Error"
+   },
+   "parameterLabels": {
+    "content": "Content",
+    "channelId": "Channel",
+    "targetConversationId": "Conversation",
+    "senderId": "Sender"
+   }
+  },
+  "zh-CN": {
+   "displayName": "发送消息",
+   "description": "向指定渠道会话主动发送消息（异步投递）。",
+   "keywords": [
     "发送",
     "消息"
+   ],
+   "inputPortLabels": {
+    "main": "主输入"
+   },
+   "outputPortLabels": {
+    "main": "主输出",
+    "error": "错误"
+   },
+   "parameterLabels": {
+    "content": "发送内容",
+    "channelId": "渠道",
+    "targetConversationId": "会话",
+    "senderId": "接收人"
+   }
+  }
+ },
+ "iconKey": "send",
+ "executionStyle": "action",
+ "capability": "builtin",
+ "readiness": "required",
+ "inputPorts": [
+  {
+   "name": "main",
+   "kind": "main",
+   "required": false,
+   "variadic": true
+  },
+  {
+   "name": "left",
+   "kind": "main",
+   "required": false,
+   "variadic": false
+  },
+  {
+   "name": "right",
+   "kind": "main",
+   "required": false,
+   "variadic": false
+  }
+ ],
+ "outputPorts": [
+  {
+   "name": "main",
+   "kind": "main",
+   "required": false,
+   "variadic": false
+  },
+  {
+   "name": "error",
+   "kind": "error",
+   "required": false,
+   "variadic": false
+  }
+ ],
+ "bindingSlots": [],
+ "parameterSchema": {
+  "type": "object",
+  "required": [
+   "content",
+   "channelId"
   ],
-  "localizations": {
-    "en-US": {
-      "displayName": "Send Message",
-      "description": "Send a message to an explicit channel conversation.",
-      "keywords": [
-        "send",
-        "message",
-        "push"
-      ],
-      "inputPortLabels": {
-        "main": "Main"
-      },
-      "outputPortLabels": {
-        "main": "Main",
-        "error": "Error"
-      },
-      "parameterLabels": {
-        "content": "Content",
-        "channelId": "Channel",
-        "targetConversationId": "Conversation",
-        "senderId": "Sender"
-      }
-    },
-    "zh-CN": {
-      "displayName": "发送消息",
-      "description": "向指定渠道会话主动发送消息（异步投递）。",
-      "keywords": [
-        "发送",
-        "消息"
-      ],
-      "inputPortLabels": {
-        "main": "主输入"
-      },
-      "outputPortLabels": {
-        "main": "主输出",
-        "error": "错误"
-      },
-      "parameterLabels": {
-        "content": "发送内容",
-        "channelId": "渠道",
-        "targetConversationId": "会话",
-        "senderId": "接收人"
-      }
-    }
+  "additionalProperties": false,
+  "properties": {
+   "content": {
+    "type": "string"
+   },
+   "channelId": {
+    "type": "string"
+   },
+   "targetConversationId": {
+    "type": "string"
+   },
+   "senderId": {
+    "type": "string"
+   }
+  }
+ },
+ "outputSchema": {
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+   "deliveryId": {
+    "type": "string"
+   },
+   "status": {
+    "type": "string"
+   },
+   "content": {
+    "type": "string"
+   },
+   "channelId": {
+    "type": "string"
+   },
+   "targetConversationId": {
+    "type": "string"
+   },
+   "senderId": {
+    "type": "string"
+   }
   },
-  "iconKey": "send",
-  "executionStyle": "action",
-  "capability": "builtin",
-  "readiness": "required",
-  "inputPorts": [
-    {
-      "name": "main",
-      "kind": "main",
-      "required": false,
-      "variadic": true
+  "required": [
+   "deliveryId",
+   "status"
+  ]
+ },
+ "outputPortSchemas": {
+  "error": {
+   "additionalProperties": false,
+   "properties": {
+    "code": {
+     "type": "string"
     },
-    {
-      "name": "left",
-      "kind": "main",
-      "required": false,
-      "variadic": false
+    "details": {
+     "type": "object"
     },
-    {
-      "name": "right",
-      "kind": "main",
-      "required": false,
-      "variadic": false
+    "message": {
+     "type": "string"
+    },
+    "nodeExecutionId": {
+     "type": "string"
+    },
+    "retryable": {
+     "type": "boolean"
+    },
+    "sourceNodeId": {
+     "type": "string"
     }
+   },
+   "required": [
+    "code",
+    "message",
+    "retryable",
+    "details",
+    "sourceNodeId",
+    "nodeExecutionId"
+   ],
+   "type": "object"
+  }
+ },
+ "outputCardinality": {
+  "main": "many",
+  "error": "many"
+ },
+ "selectorCapabilities": {
+  "namespaces": [
+   "inputs",
+   "outputs",
+   "contexts"
   ],
-  "outputPorts": [
-    {
-      "name": "main",
-      "kind": "main",
-      "required": false,
-      "variadic": false
-    },
-    {
-      "name": "error",
-      "kind": "error",
-      "required": false,
-      "variadic": false
-    }
-  ],
-  "bindingSlots": [],
-  "parameterSchema": {
-    "type": "object",
-    "required": [
-      "content",
-      "channelId"
-    ],
-    "additionalProperties": false,
-    "properties": {
-      "content": {
-        "type": "string"
-      },
-      "channelId": {
-        "type": "string"
-      },
-      "targetConversationId": {
-        "type": "string"
-      },
-      "senderId": {
-        "type": "string"
-      }
-    }
+  "supportsCurrent": true,
+  "supportsFirstLast": true,
+  "supportsAll": true,
+  "supportsRunSelection": true
+ },
+ "contextReadCapability": true,
+ "contextWriteCapability": false,
+ "artifactOutputSchema": {
+  "type": "array",
+  "items": {
+   "type": "object"
+  }
+ },
+ "uiSchema": {
+  "fields": {
+   "content": {
+    "control": "textarea"
+   },
+   "channelId": {
+    "control": "text"
+   },
+   "targetConversationId": {
+    "control": "text"
+   },
+   "senderId": {
+    "control": "text"
+   }
   },
-  "outputSchema": {
-    "type": "object",
-    "additionalProperties": false,
-    "properties": {
-      "deliveryId": {
-        "type": "string"
-      },
-      "status": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "deliveryId",
-      "status"
-    ]
-  },
-  "outputPortSchemas": {
-    "error": {
-      "additionalProperties": false,
-      "properties": {
-        "code": {
-          "type": "string"
-        },
-        "details": {
-          "type": "object"
-        },
-        "message": {
-          "type": "string"
-        },
-        "nodeExecutionId": {
-          "type": "string"
-        },
-        "retryable": {
-          "type": "boolean"
-        },
-        "sourceNodeId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "code",
-        "message",
-        "retryable",
-        "details",
-        "sourceNodeId",
-        "nodeExecutionId"
-      ],
-      "type": "object"
-    }
-  },
-  "outputCardinality": {
-    "main": "many",
-    "error": "many"
-  },
-  "selectorCapabilities": {
-    "namespaces": [
-      "inputs",
-      "outputs",
-      "contexts"
-    ],
-    "supportsCurrent": true,
-    "supportsFirstLast": true,
-    "supportsAll": true,
-    "supportsRunSelection": true
-  },
-  "contextReadCapability": true,
-  "contextWriteCapability": false,
-  "artifactOutputSchema": {
-    "type": "array",
-    "items": {
-      "type": "object"
-    }
-  },
-  "uiSchema": {
-    "fields": {
-      "content": {
-        "control": "textarea"
-      },
-      "channelId": {
-        "control": "text"
-      },
-      "targetConversationId": {
-        "control": "text"
-      },
-      "senderId": {
-        "control": "text"
-      }
-    },
-    "canvas": {
-      "role": "default"
-    }
-  },
-  "providers": [],
-  "credentials": [],
-  "defaultTimeoutMs": 30000,
-  "retryPolicy": {
-    "retryable": false,
-    "maxAttempts": 0,
-    "initialBackoffMs": 0,
-    "maxBackoffMs": 0
-  },
-  "sandboxRequired": false,
-  "supportsMock": true,
-  "sideEffectLevel": "irreversible"
+  "canvas": {
+   "role": "default"
+  }
+ },
+ "providers": [],
+ "credentials": [],
+ "defaultTimeoutMs": 30000,
+ "retryPolicy": {
+  "retryable": false,
+  "maxAttempts": 0,
+  "initialBackoffMs": 0,
+  "maxBackoffMs": 0
+ },
+ "sandboxRequired": false,
+ "supportsMock": true,
+ "sideEffectLevel": "irreversible"
 }

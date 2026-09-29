@@ -21,13 +21,14 @@ LOCK = threading.Lock()
 # Failure behaviors are transient per path: rate-limit fails the first two
 # hits, unauthorized the first one, so the delivery loop's backoff/retry and
 # dead-letter replay drills can observe recovery without fixture restarts.
-TRANSIENT_FAILURES = {"rate-limit": 2, "unauthorized": 1}
+# flaky: pod-kill/resilience drills need a wide backoff window before recovery.
+TRANSIENT_FAILURES = {"rate-limit": 2, "unauthorized": 1, "flaky": 6}
 PATH_HITS = {}
 
 
 def resolve_behavior(path):
     last = path.rstrip("/").split("/")[-1]
-    for known in ("rate-limit", "unauthorized", "not-found", "ok"):
+    for known in ("rate-limit", "unauthorized", "flaky", "slow", "not-found", "ok"):
         if last == known or last.endswith("-" + known):
             if known in TRANSIENT_FAILURES:
                 with LOCK:
@@ -35,7 +36,9 @@ def resolve_behavior(path):
                     PATH_HITS[path] = hits + 1
                     if hits < TRANSIENT_FAILURES[known]:
                         return known
-            return "ok"
+                # Transient failure window elapsed: the provider recovered.
+                return "ok"
+            return known
     return "ok"
 
 
@@ -75,8 +78,23 @@ class Handler(BaseHTTPRequestHandler):
         record({"path": path, "behavior": behavior, "body": body, "at": time.time()})
 
         if path.startswith("/dingtalk/"):
-            if behavior == "rate-limit":
+            # Official robot API subpaths (token then batch/group send).
+            if "oauth2/accessToken" in path:
+                if behavior == "unauthorized":
+                    return self._reply(200, {"code": 401, "msg": "invalid app credential"})
+                return self._reply(200, {"code": 0, "accessToken": "dt-mock-token", "expireIn": 7200})
+            if "oToMessages/batchSend" in path or "groupMessages/send" in path:
+                if behavior == "rate-limit":
+                    return self._reply(429, {"code": 429, "msg": "too many requests"})
+                if behavior == "not-found":
+                    return self._reply(200, {"code": 404, "msg": "conversation not found"})
+                return self._reply(200, {"code": 0, "message_id": "dt-mock-official-1", "processQueryKey": "dt-official-pqk"})
+            if behavior in ("rate-limit", "flaky"):
                 return self._reply(429, {"errcode": 429, "errmsg": "too many requests"})
+            if behavior == "slow":
+                # Hold the delivery loop in-flight so a crash mid-send can be
+                # exercised; the reply still succeeds afterwards.
+                time.sleep(60)
             if behavior == "unauthorized":
                 return self._reply(401, {"errcode": 601, "errmsg": "unauthorized"})
             if behavior == "not-found":

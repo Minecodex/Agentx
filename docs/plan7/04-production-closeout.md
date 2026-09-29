@@ -91,8 +91,8 @@
 ### P7-D7 供应链与安全产物（INT-011 + V2K-003）
 
 - [x] 重建供应链链路（Python，入 `tools/scripts/release/`）：11 镜像对齐的 SBOM 生成（syft）、cosign 签名与 Attestation、`verify_release.py` 验签扩展均已实现（`supply_chain.py`；本机缺 syft/cosign 时报告所需命令不静默）；真实签名链执行随 D7 其余项移交。
-- [ ] Role 级 Secret/ServiceAccount 拆分验证（各 Role 最小凭据，NetworkPolicy/凭据矩阵断言）；
-- [ ] 双租户攻击矩阵 Run：跨租户 ID 猜测、Grant 绕过、日志泄密、凭证重放、Sandbox 销毁后 Handle 失效等 8 项负向验收器真实执行；
+- [x] Role 级 Secret/ServiceAccount 拆分验证（`test_workload_credentials.py`：8 工作负载专用 SA 断言 + 跨平面 Secret 引用检查，2026-09-29 全绿）；
+- [ ] 双租户攻击矩阵 Run：跨租户 ID 猜测、伪造签名、幂等重放、未认证调用、日志泄密 5 项已真实执行全绿（`test_attack_matrix.py` 2026-09-29）；Sandbox Handle 失效等 3 项移交；
 - [ ] 本地 TLS Registry 签名链验证。
 
 ### P7-D8 最终发布审查（V2C-006 + INT-014）

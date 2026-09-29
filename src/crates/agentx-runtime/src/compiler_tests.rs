@@ -1583,3 +1583,44 @@ fn empty_definition_compiles_start_to_exit() {
     assert_eq!(compiled.start_to_exit.as_deref(), Some("exit"));
     assert!(compiled.exits["exit"].protected);
 }
+
+#[test]
+fn reply_message_intent_satisfies_effective_output_contract() {
+    // plan7 P7-A: the delivery builtin emits content + deliveryId + status on
+    // main; the frozen per-port contract must accept exactly that shape.
+    let workflow = WorkflowCompiler::new(&NodeRegistry::m5_defaults())
+        .compile(
+            &serde_json::from_value(serde_json::json!({
+                "schemaVersion":"8.0",
+                "start":{"inputs":{"type":"object","properties":{"message":{"type":"string"}}},"contexts":{}},
+                "nodes":[
+                    {"id":"relay","key":"relay","type":"reply_message","typeVersion":1,"name":"Relay",
+                     "parameters":{"content":"hello"}},
+                    {"id":"exit","key":"exit","type":"exit","typeVersion":1,"name":"End",
+                     "parameters":{"outputs":{},"errorOutputs":{}}}
+                ],
+                "connections":[
+                    {"id":"a","sourceNodeId":"__start__","sourceHandle":"main","targetNodeId":"relay","targetHandle":"main","order":0},
+                    {"id":"b","sourceNodeId":"relay","sourceHandle":"main","targetNodeId":"exit","targetHandle":"main","order":0}
+                ],
+                "end":{"outputs":{}}
+            }))
+            .unwrap(),
+            &CompileContext::default(),
+        )
+        .unwrap();
+    let node = workflow
+        .nodes
+        .iter()
+        .find(|node| node.id == "relay")
+        .unwrap();
+    let schema = &node.effective_output_contract.port_schemas["main"];
+    let validator = jsonschema::validator_for(schema).unwrap();
+    validator
+        .validate(&serde_json::json!({
+            "content":"hello",
+            "deliveryId":"00000000-0000-0000-0000-000000000001",
+            "status":"queued"
+        }))
+        .unwrap();
+}

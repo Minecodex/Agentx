@@ -721,6 +721,20 @@ async fn commit_artifact_upload(
         .bind(request_hash)
         .execute(&mut *tx)
         .await?;
+    // plan7 P7-B B5: the multimodal resolver reads artifacts through
+    // runtime_objects, so chat-uploaded artifacts must register the ready
+    // object row alongside the artifacts row.
+    sqlx::query("INSERT INTO runtime_objects(object_id,tenant_id,object_key,content_hash,size_bytes,media_type,status,idempotency_key,request_hash,temporary_expires_at,ready_at) VALUES(?,?,?,?,?,?,'ready',?,?,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6))")
+        .bind(artifact_id)
+        .bind(tenant_id)
+        .bind(final_key)
+        .bind(format!("sha256:{hash}"))
+        .bind(size_bytes)
+        .bind(content_type)
+        .bind(idempotency_key)
+        .bind(request_hash)
+        .execute(&mut *tx)
+        .await?;
     crate::quota::settle(
         &mut tx,
         tenant_id,

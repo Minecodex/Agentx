@@ -708,3 +708,591 @@ def test_l2_reply_node_delivers_to_trigger_conversation(
         item["body"].get("text", {}).get("content") == "node-level reply"
         for item in _mock_received(deps_ns, "dingtalk/session-ok")
     ), "im-mock did not record the node-level reply"
+
+
+def _channel(
+    control: httpx.Client,
+    headers: dict[str, str],
+    application_id: str,
+    provider_type: str,
+    channel_mode: str,
+    channel_config: dict[str, Any],
+) -> dict[str, Any]:
+    created = control.post(
+        f"/api/v1/applications/{application_id}/webhooks",
+        headers=headers,
+        json={
+            "name": f"{provider_type} {channel_mode}",
+            "providerType": provider_type,
+            "channelMode": channel_mode,
+            "channelConfig": channel_config,
+            "inputMappings": [{"source": "message.text", "target": "message", "missingPolicy": "error"}],
+            "fixedInputs": {},
+        },
+    )
+    assert created.status_code in (200, 201), created.text
+    return created.json()
+
+
+def test_l3_send_message_idempotency_and_pod_crash_resilience(
+    installed_agentx: dict[str, str],
+    service_urls: dict[str, str],
+    im_mock: dict[str, str],
+    run_id: str,
+) -> None:
+    """plan7 P7-A A7 scenarios 3/7/8: send_message over the official robot
+    API, duplicate inbound idempotency, and delivery survival across a
+    workflow-runtime pod crash mid-send."""
+    rt_ns = installed_agentx["runtime_namespace"]
+    deps_ns = installed_agentx["dependencies_namespace"]
+    # Point the official robot API at the mock for this isolated namespace.
+    run(
+        (
+            "kubectl",
+            "-n",
+            rt_ns,
+            "set",
+            "env",
+            "deployment/workflow-runtime",
+            f"AGENTX_DELIVERY_DINGTALK_API_BASE={im_mock['url']}/dingtalk",
+        ),
+        timeout=120,
+    )
+    run(("kubectl", "-n", rt_ns, "rollout", "status", "deployment/workflow-runtime", "--timeout=300s"), timeout=330)
+
+    with httpx.Client(base_url=service_urls["web"], timeout=60) as control:
+        token, me = _access_token(control)
+        headers = {"Authorization": f"Bearer {token}"}
+        created = control.post(
+            "/api/v1/workflows",
+            headers=headers,
+            json={"name": f"L3 Send E2E {run_id}", "description": "P7-A L3", "visibility": "company"},
+        )
+        created.raise_for_status()
+        workflow_id = created.json()["id"]
+        draft = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
+        draft.raise_for_status()
+        definition = draft.json()["definition"]
+        definition["start"]["inputs"] = {
+            "type": "object",
+            "properties": {"message": {"type": "string"}},
+            "required": ["message"],
+            "additionalProperties": False,
+        }
+        exit_node = next(node for node in definition["nodes"] if node["type"] == "exit")
+        application = control.post(
+            "/api/v1/applications",
+            headers=headers,
+            json={
+                "workflowId": workflow_id,
+                "name": f"L3 Send App {run_id}",
+                "slug": f"l3-send-{run_id}",
+                "visibility": "company",
+            },
+        )
+        assert application.status_code in (200, 201), application.text
+        application_id = application.json()["id"]
+        trigger_channel = _channel(
+            control,
+            headers,
+            application_id,
+            "dingtalk",
+            "callback",
+            {"secret": "e2e-dingtalk-secret", "aesKey": "", "robotCode": "e2e-robot"},
+        )
+        send_channel = _channel(
+            control,
+            headers,
+            application_id,
+            "dingtalk",
+            "stream",
+            {"clientId": "e2e-client", "clientSecret": "e2e-client-secret", "robotCode": "e2e-robot"},
+        )
+        definition["nodes"].append(
+            {
+                "id": "push",
+                "key": "push",
+                "type": "send_message",
+                "typeVersion": 1,
+                "name": "Push",
+                "disabled": False,
+                "parameters": {
+                    "content": "proactive push",
+                    "channelId": send_channel["id"],
+                    "senderId": "e2e-sender",
+                },
+                "contextWrites": [],
+                "resourceReferences": [],
+                "settings": {},
+            }
+        )
+        # The crash-drill channel enables the L1 auto reply, which needs an
+        # answer output to render; map it from the input like the passthrough.
+        exit_node["parameters"]["outputs"] = {
+            "answer": {
+                "kind": "reference",
+                "selector": {
+                    "namespace": "inputs",
+                    "run": {"kind": "current"},
+                    "item": {"kind": "current"},
+                    "path": ["message"],
+                },
+                "missingPolicy": {"kind": "error"},
+            }
+        }
+        definition["end"] = {
+            "completion": "first_return",
+            "outputs": {"answer": {"schema": {"type": "string"}, "required": True, "sensitive": False}},
+            "error": {"outputs": {}},
+        }
+        definition["connections"] = [
+            {
+                "id": "start-push",
+                "sourceNodeId": "__start__",
+                "sourceHandle": "main",
+                "targetNodeId": "push",
+                "targetHandle": "main",
+                "order": 0,
+            },
+            {
+                "id": "push-exit",
+                "sourceNodeId": "push",
+                "sourceHandle": "main",
+                "targetNodeId": exit_node["id"],
+                "targetHandle": "main",
+                "order": 0,
+            },
+        ]
+        saved = control.put(
+            f"/api/v1/workflows/{workflow_id}/draft",
+            headers=headers,
+            json={"expectedRevision": draft.json()["revision"], "definition": definition},
+        )
+        assert saved.status_code in (200, 204), saved.text
+        latest = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
+        latest.raise_for_status()
+        published = control.post(
+            f"/api/v1/workflows/{workflow_id}/versions",
+            headers=headers,
+            json={"draftRevision": latest.json()["revision"]},
+        )
+        assert published.status_code in (200, 201), published.text
+        environment_id = _development_environment_id(control, headers)
+        deploy = control.post(
+            f"/api/v1/workflows/{workflow_id}/deployments",
+            headers=headers,
+            json={"environmentId": environment_id, "workflowVersionId": published.json()["id"]},
+        )
+        assert deploy.status_code in (200, 201), deploy.text
+        _publish_application(
+            control,
+            headers,
+            {"workflowId": workflow_id, "versionId": published.json()["id"]},
+            application_id,
+            environment_id,
+        )
+
+    webhook_path = trigger_channel["path"]
+    secret = "e2e-dingtalk-secret"  # noqa: S105 -- isolated E2E fixture credential
+    public_id = trigger_channel["publicId"]
+
+    def _binding_state() -> str:
+        return _runtime_mysql(
+            installed_agentx,
+            "SELECT CONCAT(COUNT(*), ':', COALESCE(MAX(w.status),'none')) FROM webhook_bindings w "
+            f"WHERE w.public_id='{public_id}';",
+        )
+
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline and _binding_state().startswith("0:"):
+        time.sleep(3)
+    assert not _binding_state().startswith("0:"), f"webhook binding never reached runtime: {_binding_state()}"
+
+    # Scenario 3: send_message over the official robot API (token → direct send).
+    event_id = f"l3-send-{run_id}"
+    with httpx.Client(base_url=service_urls["runtime"], timeout=30) as gateway:
+        accepted = _signed_dingtalk_post(
+            gateway,
+            webhook_path,
+            secret,
+            {
+                "msgId": event_id,
+                "conversationId": "e2e-chat",
+                "conversationType": "1",
+                "senderId": "e2e-sender",
+                "senderNick": "E2E",
+                "msgtype": "text",
+                "content": json.dumps({"content": "trigger the push"}),
+                "createAt": int(time.time() * 1000),
+            },
+            f"{im_mock['url']}/dingtalk/session-ok",
+        )
+        assert accepted.status_code in (200, 202), f"{accepted.status_code} {accepted.text}"
+
+        # Scenario 7: replaying the identical inbound event is idempotent.
+        duplicate = _signed_dingtalk_post(
+            gateway,
+            webhook_path,
+            secret,
+            {
+                "msgId": event_id,
+                "conversationId": "e2e-chat",
+                "conversationType": "1",
+                "senderId": "e2e-sender",
+                "senderNick": "E2E",
+                "msgtype": "text",
+                "content": json.dumps({"content": "trigger the push"}),
+                "createAt": int(time.time() * 1000),
+            },
+            f"{im_mock['url']}/dingtalk/session-ok",
+        )
+        assert duplicate.status_code in (200, 202), f"{duplicate.status_code} {duplicate.text}"
+
+    execution_id: str | None = None
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline and execution_id is None:
+        raw = _runtime_mysql(
+            installed_agentx,
+            "SELECT BIN_TO_UUID(execution_id) FROM application_invocations "
+            f"WHERE tenant_id=UUID_TO_BIN('{me['companyId']}') AND provider_event_id='{event_id}';",
+        )
+        if raw and raw.lower() != "null":
+            execution_id = raw
+        time.sleep(2)
+    assert execution_id, "L3 invocation not created"
+
+    send_row: dict[str, Any] | None = None
+    deadline = time.monotonic() + 180
+    while time.monotonic() < deadline:
+        rows = _delivery_rows(installed_agentx, me["companyId"], execution_id)
+        send_row = next(
+            (row for row in rows if row["status"] == "delivered" and (row["origin"] or "").startswith("node:")),
+            None,
+        )
+        if send_row:
+            break
+        time.sleep(3)
+    assert send_row, (
+        f"send_message delivery not delivered: {_delivery_rows(installed_agentx, me['companyId'], execution_id)}"
+    )
+    assert send_row["providerMessageId"] == "dt-official-pqk", send_row
+    assert len(_delivery_rows(installed_agentx, me["companyId"], execution_id)) == 1, (
+        "duplicate event produced extra deliveries"
+    )
+
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if any("batchSend" in item["path"] for item in _mock_received(deps_ns, "/dingtalk/")):
+            break
+        time.sleep(2)
+    assert any(
+        "batchSend" in item["path"] and (item["body"].get("msgParam") or {}).get("content") == "proactive push"
+        for item in _mock_received(deps_ns, "/dingtalk/")
+    ), "im-mock did not record the official-API push"
+
+    # Scenario 8: crash the delivery loop mid-send; the expired lease is
+    # requeued and the delivery completes on the replacement pod. The drill
+    # uses the L1 auto-reply path (the only one carrying a sessionWebhook),
+    # so the app gets a second callback channel with replies enabled.
+    with httpx.Client(base_url=service_urls["web"], timeout=60) as control:
+        crash_channel = _dingtalk_channel(
+            control, {"Authorization": f"Bearer {token}"}, application_id, reply_enabled=True
+        )
+        # A new channel bumps the trigger manifest revision; republish so the
+        # runtime activates the fresh binding set.
+        republish = None
+        for _ in range(40):
+            republish = control.post(
+                f"/api/v1/applications/{application_id}/deployments",
+                headers={"Authorization": f"Bearer {token}"},
+                json={
+                    "workflowVersionId": published.json()["id"],
+                    "environmentId": environment_id,
+                    "sessionVersionPolicy": "pinned",
+                },
+            )
+            if republish.status_code == 202:
+                break
+            time.sleep(3)
+        assert republish is not None and republish.status_code == 202, getattr(republish, "text", "")
+    crash_public = crash_channel["publicId"]
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline:
+        raw = _runtime_mysql(
+            installed_agentx,
+            "SELECT COUNT(*) FROM webhook_bindings WHERE public_id='" + crash_public + "';",
+        )
+        if raw and raw != "0":
+            break
+        time.sleep(3)
+    else:
+        raise AssertionError("crash-drill channel binding never reached runtime")
+    kill_event = f"l3-kill-{run_id}"
+    with httpx.Client(base_url=service_urls["runtime"], timeout=30) as gateway:
+        slow = _signed_dingtalk_post(
+            gateway,
+            crash_channel["path"],
+            secret,
+            {
+                "msgId": kill_event,
+                "conversationId": "e2e-chat",
+                "conversationType": "1",
+                "senderId": "e2e-sender",
+                "senderNick": "E2E",
+                "msgtype": "text",
+                "content": json.dumps({"content": "crash mid delivery"}),
+                "createAt": int(time.time() * 1000),
+            },
+            f"{im_mock['url']}/dingtalk/session-slow",
+        )
+        assert slow.status_code in (200, 202), f"{slow.status_code} {slow.text}"
+    kill_execution: str | None = None
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline and kill_execution is None:
+        raw = _runtime_mysql(
+            installed_agentx,
+            "SELECT BIN_TO_UUID(execution_id) FROM application_invocations "
+            f"WHERE tenant_id=UUID_TO_BIN('{me['companyId']}') AND provider_event_id='{kill_event}';",
+        )
+        if raw and raw.lower() != "null":
+            kill_execution = raw
+        time.sleep(2)
+    assert kill_execution, "crash-drill invocation not created"
+    deadline = time.monotonic() + 120
+    seen_delivering = False
+    while time.monotonic() < deadline:
+        rows = _delivery_rows(installed_agentx, me["companyId"], kill_execution)
+        if any(row["status"] == "delivering" for row in rows):
+            seen_delivering = True
+            break
+    if not seen_delivering:
+        execution_status = _runtime_mysql(
+            installed_agentx,
+            "SELECT CONCAT(e.status,'|',COALESCE(e.error_code,''),'|',LEFT(COALESCE(e.error_message,''),300)) "
+            f"FROM workflow_executions e WHERE e.id=UUID_TO_BIN('{kill_execution}');",
+        )
+        dead_letters = _runtime_mysql(
+            installed_agentx,
+            "SELECT COALESCE(GROUP_CONCAT(CONCAT(last_error_code,':',LEFT(COALESCE(last_error_message,''),120))),'none') "
+            f"FROM delivery_dead_letters WHERE execution_id=UUID_TO_BIN('{kill_execution}');",
+        )
+        pytest.fail(
+            "delivery never entered in-flight state for the crash drill: "
+            f"rows={_delivery_rows(installed_agentx, me['companyId'], kill_execution)} "
+            f"execution={execution_status} dead={dead_letters}"
+        )
+    pod = run(
+        (
+            "kubectl",
+            "-n",
+            rt_ns,
+            "get",
+            "pods",
+            "-l",
+            "app.kubernetes.io/name=workflow-runtime",
+            "-o",
+            "jsonpath={.items[0].metadata.name}",
+        ),
+        timeout=60,
+    ).stdout.strip()
+    run(("kubectl", "-n", rt_ns, "delete", "pod", pod, "--grace-period=0"), timeout=120)
+    run(("kubectl", "-n", rt_ns, "rollout", "status", "deployment/workflow-runtime", "--timeout=300s"), timeout=330)
+
+    kill_row: dict[str, Any] | None = None
+    deadline = time.monotonic() + 300
+    while time.monotonic() < deadline:
+        rows = _delivery_rows(installed_agentx, me["companyId"], kill_execution)
+        kill_row = next((row for row in rows if row["status"] == "delivered"), None)
+        if kill_row:
+            break
+        time.sleep(3)
+    assert kill_row, (
+        "in-flight delivery was lost across the pod crash: "
+        f"{_delivery_rows(installed_agentx, me['companyId'], kill_execution)}"
+    )
+
+
+def test_reply_node_fails_without_im_trigger(
+    installed_agentx: dict[str, str],
+    service_urls: dict[str, str],
+    run_id: str,
+) -> None:
+    """plan7 P7-A A7 scenario 6: a reply_message node outside an IM trigger
+    fails deterministically with REPLY_TARGET_UNRESOLVED."""
+    with httpx.Client(base_url=service_urls["web"], timeout=60) as control:
+        token, _me = _access_token(control)
+        headers = {"Authorization": f"Bearer {token}"}
+        created = control.post(
+            "/api/v1/workflows",
+            headers=headers,
+            json={"name": f"L2 NoTrigger E2E {run_id}", "description": "P7-A scenario 6", "visibility": "company"},
+        )
+        created.raise_for_status()
+        workflow_id = created.json()["id"]
+        draft = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
+        draft.raise_for_status()
+        definition = draft.json()["definition"]
+        definition["start"]["inputs"] = {
+            "type": "object",
+            "properties": {"message": {"type": "string"}},
+            "required": ["message"],
+            "additionalProperties": False,
+        }
+        exit_node = next(node for node in definition["nodes"] if node["type"] == "exit")
+        definition["nodes"].append(
+            {
+                "id": "reply",
+                "key": "reply",
+                "type": "reply_message",
+                "typeVersion": 1,
+                "name": "Reply",
+                "disabled": False,
+                "parameters": {"content": "should not deliver"},
+                "contextWrites": [],
+                "resourceReferences": [],
+                "settings": {},
+            }
+        )
+        exit_node["parameters"]["outputs"] = {
+            "answer": {
+                "kind": "reference",
+                "selector": {
+                    "namespace": "inputs",
+                    "run": {"kind": "current"},
+                    "item": {"kind": "current"},
+                    "path": ["message"],
+                },
+                "missingPolicy": {"kind": "error"},
+            }
+        }
+        definition["end"] = {
+            "completion": "first_return",
+            "outputs": {"answer": {"schema": {"type": "string"}, "required": True, "sensitive": False}},
+            "error": {"outputs": {}},
+        }
+        definition["connections"] = [
+            {
+                "id": "start-reply",
+                "sourceNodeId": "__start__",
+                "sourceHandle": "main",
+                "targetNodeId": "reply",
+                "targetHandle": "main",
+                "order": 0,
+            },
+            {
+                "id": "reply-exit",
+                "sourceNodeId": "reply",
+                "sourceHandle": "main",
+                "targetNodeId": exit_node["id"],
+                "targetHandle": "main",
+                "order": 0,
+            },
+        ]
+        saved = control.put(
+            f"/api/v1/workflows/{workflow_id}/draft",
+            headers=headers,
+            json={"expectedRevision": draft.json()["revision"], "definition": definition},
+        )
+        assert saved.status_code in (200, 204), saved.text
+        latest = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
+        latest.raise_for_status()
+        published = control.post(
+            f"/api/v1/workflows/{workflow_id}/versions",
+            headers=headers,
+            json={"draftRevision": latest.json()["revision"]},
+        )
+        assert published.status_code in (200, 201), published.text
+        version_id = published.json()["id"]
+        environment_id = _development_environment_id(control, headers)
+        deploy = control.post(
+            f"/api/v1/workflows/{workflow_id}/deployments",
+            headers=headers,
+            json={"environmentId": environment_id, "workflowVersionId": version_id},
+        )
+        assert deploy.status_code in (200, 201), deploy.text
+        application = control.post(
+            "/api/v1/applications",
+            headers=headers,
+            json={
+                "workflowId": workflow_id,
+                "name": f"L2 NoTrigger App {run_id}",
+                "slug": f"l2-notrigger-{run_id}",
+                "visibility": "company",
+            },
+        )
+        assert application.status_code in (200, 201), application.text
+        application_id = application.json()["id"]
+        _publish_application(
+            control, headers, {"workflowId": workflow_id, "versionId": version_id}, application_id, environment_id
+        )
+        # Give the application a chat mapping so it can be invoked without a
+        # webhook trigger context.
+        deployments = control.get(f"/api/v1/applications/{application_id}/deployments", headers=headers)
+        deployments.raise_for_status()
+        latest_deployment = deployments.json()[0]
+        mapping = control.put(
+            f"/api/v1/applications/{application_id}/deployments/{latest_deployment['id']}/playground-config",
+            headers=headers,
+            json={
+                "expectedVersion": 0,
+                "mapping": {
+                    "questionInput": "message",
+                    "fileInput": None,
+                    "answerOutput": "answer",
+                    "answerFilesOutput": None,
+                },
+            },
+        )
+        assert mapping.status_code in (200, 201, 202, 204), mapping.text
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            config = control.get(
+                f"/api/v1/applications/{application_id}/deployments/{latest_deployment['id']}/playground-config",
+                headers=headers,
+            )
+            config.raise_for_status()
+            if config.json().get("publishStatus") == "active":
+                break
+            time.sleep(2)
+        else:
+            raise AssertionError("playground mapping did not publish")
+        detail = control.get(f"/api/v1/applications/{application_id}", headers=headers)
+        detail.raise_for_status()
+        slug = detail.json()["slug"]
+
+    with httpx.Client(base_url=service_urls["runtime"], timeout=90) as gateway:
+        session = gateway.post(
+            f"/gateway/v1/applications/{slug}/sessions",
+            headers={"Authorization": f"Bearer {token}", "Idempotency-Key": f"notrigger-session-{time.time_ns()}"},
+            json={"title": None, "externalUserId": None},
+        )
+        assert session.status_code == 201, session.text
+        session_id = session.json()["id"]
+        accepted = gateway.post(
+            f"/gateway/v1/sessions/{session_id}/messages",
+            headers={"Authorization": f"Bearer {token}", "Idempotency-Key": f"notrigger-invoke-{time.time_ns()}"},
+            json={"parts": [{"partType": "text", "content": "no im trigger"}]},
+        )
+        assert accepted.status_code == 202, accepted.text
+        invocation_id = accepted.json()["id"]
+        deadline = time.monotonic() + 180
+        status = None
+        while time.monotonic() < deadline:
+            probe = gateway.get(
+                f"/gateway/v1/invocations/{invocation_id}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            probe.raise_for_status()
+            status = probe.json()["status"]
+            if status in {"completed", "succeeded", "failed", "cancelled"}:
+                break
+            time.sleep(1)
+        assert status == "failed", f"non-IM invocation should fail: {status}"
+
+    node_error = _runtime_mysql(
+        installed_agentx,
+        "SELECT COALESCE(error_code,'none') FROM node_attempts a "
+        "JOIN application_invocations i ON i.execution_id=a.execution_id AND i.tenant_id=a.tenant_id "
+        f"WHERE i.id=UUID_TO_BIN('{invocation_id}') ORDER BY a.attempt_number DESC LIMIT 1;",
+    )
+    assert node_error == "REPLY_TARGET_UNRESOLVED", node_error

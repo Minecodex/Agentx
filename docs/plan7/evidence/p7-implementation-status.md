@@ -68,13 +68,27 @@ AGENTX_E2E_RAGFLOW_DISABLE=1 uv run --group test pytest tests/e2e/capacity \
 1. `first_token_ms`：迁移 0012（runtime_calls 列）+ 流式臂首 delta 计时 + 结算 UPDATE + Trace span `firstTokenMs` 属性；B6 E2E 断言实测 >0。
 2. `x-agentx-modality`：schema_contract 校验（仅 image/audio、必须 array 型，`INVALID_MODALITY_SCHEMA`）+ 投递单测（标记输入收匹配 part 的 artifact 引用数组、与通用 file 映射共存）。
 
+## 2026-09-29 第二轮补齐（用户指令"修复 1/2/3/5"）——终局 22 passed skipped=0
+
+四套件同集群会话全绿：A7（L1 主链/429 退避/死信重放/L2 reply 节点/L3 send_message 官方 API/幂等/Pod 强杀/REPLY_TARGET_UNRESOLVED）、B6（四流式行为+first_token_ms+vision 原生 parts+能力门禁拒绝）、P7-C API 级（聚合/过滤/降级/仪表盘/未授权 422）、安全矩阵（8 SA+平面 Secret+5 攻击负向）。
+
+**集群验证新发现并修复的真实缺陷（6 个）**：
+1. `send_message`/`reply_message` 清单 outputSchema 缺 content/channelId 等字段 → 集群执行 `NODE_OUTPUT_SCHEMA_VALIDATION_FAILED`（本地默认注册表宽容掩盖）；补齐字段+回归单测。
+2. 网关附件上传不写 `runtime_objects`（resolve 的 JOIN 落空 → Multimodal artifact is not ready）；上传事务补 ready 行（含占位符计数与 content_hash 前缀两处修正）。
+3. `resolve_multimodal_content` 的解析结果被 `claim.node_parameters` 原始绑定覆盖（input.question 优先级修正）；此前 B6 从未验证 userQuestion 绑定内容。
+4. 模型节点 `userQuestion` 参数类型收窄为 string，数组输入被丢弃 → 放宽为 [string, array]。
+5. Insights BFF `filters` 默认 Null 被观测侧判无效（422 误报 BUDGET_EXCEEDED）→ 默认空对象。
+6. dataset import 的 `MAX(sort_order)` DECIMAL 解码 u64 失败 → CAST AS UNSIGNED；另修复 egress 单测环境变量竞态、`resolve_behavior` 非瞬态行为（slow/not-found）永远返回 ok 的 mock 缺陷。
+
+**D7 真实执行**：`local_signing_drill.py`——本地 registry:2 推送 11 镜像 → syft SBOM → cosign 签名 11/11 + attestation 11/11 + 验签 11/11 全绿，证据 `.local/dist/local-signing-drill.json`。
+
 ## 移交清单（后续会话，2026-09-29 修订——已完成项移出）
 
-1. **A7 剩余场景**：send_message 主动推送(L3)、无 Deployment/停用渠道/非 IM 触发错误码、重复终态幂等防重、投递循环 Pod 强杀不丢、UI 覆盖（回复设置表单/投递记录/重试/双语主题）。
-2. **B6 剩余场景**：vision 附件端到端联调、`MODEL_INPUT_UNSUPPORTED` UI 呈现、Agent 节点流式+`first_token_ms` Trace 联动、UI 覆盖。
-3. **P7-C §5 七场景集群 E2E**（llm_judge 全链 UI/两版本对比/Insights 四图真实数据/降级提示/仪表盘）。
+1. **A7 场景 9**：UI 覆盖（回复设置表单/投递记录列表/重试/双语主题）与无 Deployment/停用渠道错误码变体。
+2. **B6 场景 7/8**：Agent 节点流式+`first_token_ms` Trace 联动、UI 覆盖（stream 开关/上传预览/双语主题）。
+3. **P7-C 场景 1/3/7**：llm_judge 全链报告（modelResult/Trace 链接）、两版本对比页、UI 覆盖。
 4. **D4 分级 Run**：100/500/1000/200 节点/5000 Attempt/2h 稳定性+残留断言/副本矩阵/双版本混跑（入口 `tests/e2e/capacity` 已就绪，需独占集群窗口）。
-5. **D7 真实执行**：syft/cosign 签名链、Role 级 SA/凭据矩阵断言、双租户攻击矩阵 8 项、TLS Registry 验证。
+5. **D7 剩余**：攻击矩阵 Sandbox Handle 失效等 3 项、TLS Registry 验证、公网 registry 签名（本地链已全绿）。
 6. **D8 汇总 Run**：汇总器已实现并验证（绿路径写 passed 标记/阈值不足阻断），待全链证据齐备后执行；Runbook/Schema Catalog 更新与 Release Manifest 随最终发布评审。
 7. **追踪矩阵**：两个 99-*.md 待上述证据落地后统一更新 done；README"不建议生产"自述因此暂不移除。
 

@@ -21,11 +21,14 @@ pub(super) fn openai_chat_request_streaming(
     if let Some(system) = system_prompt(&claim.node_parameters, &claim.node_type) {
         messages.push(json!({"role":"system","content":system}));
     }
-    let content = claim
-        .node_parameters
-        .get("userQuestion")
+    // The runtime-resolved content (e.g. the multimodal parts from
+    // resolve_multimodal_content) patches input.question and must win over
+    // the raw parameter binding, which may still carry artifact references.
+    let content = input
+        .get("question")
+        .filter(|value| !value.is_null())
         .cloned()
-        .or_else(|| input.get("question").cloned())
+        .or_else(|| claim.node_parameters.get("userQuestion").cloned())
         .unwrap_or_else(|| input.clone());
     // Native multimodal content (plan7 P7-B B5): pre-resolved parts arrays
     // pass through; plain values fold to text as before.
@@ -853,7 +856,7 @@ pub(super) async fn resolve_multimodal_content(
             ));
         };
         let row = sqlx::query(
-            "SELECT o.size_bytes,a.content_type,o.object_key FROM runtime_objects o JOIN artifacts a ON a.tenant_id=o.tenant_id AND a.id=o.object_id WHERE o.tenant_id=? AND o.object_id=? AND o.status='ready'",
+            "SELECT o.size_bytes,a.content_type,CAST(o.object_key AS CHAR CHARACTER SET utf8mb4) AS object_key FROM runtime_objects o JOIN artifacts a ON a.tenant_id=o.tenant_id AND a.id=o.object_id WHERE o.tenant_id=? AND o.object_id=? AND o.status='ready'",
         )
         .bind(claim.task.tenant_id)
         .bind(artifact_id)

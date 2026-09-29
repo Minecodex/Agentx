@@ -64,10 +64,10 @@ P7-D3~D8（背压、容量、升级、恢复、供应链、发布审查）← �
 
 | 线 | 状态 | 证据 |
 |---|---|---|
-| P7-A | **代码+门禁完成；E2E 主链全绿** | A7 `1 passed 233s`(skipped=0)：钉钉入站→执行→L1 回复→im-mock delivered(`provider_message_id`)→401 死信 `DELIVERY_PROVIDER_REJECTED`；过程修复 9 个真实缺陷。A7 场景 2/3/4/6-9 与死信重放移交 |
-| P7-B | **代码+门禁完成；B6 主链全绿** | B6 `1 passed 373s`：慢流/断流/无 usage/重放合并帧四行为，delta 先于终态按序。**已知缺口**：`first_token_ms` Trace 字段与 `x-agentx-modality` 标记未实现（移交）；场景 5-8 移交 |
-| P7-C | **代码+门禁完成** | C1-C4 实现全落地（insights_api/对比 API/llm_judge UI/维度修复），vitest 与 Playwright 域内绿；无独立集群 E2E（按计划门禁为契约+testcontainers+vitest+Playwright） |
-| P7-D | **D1/D2/D3/D5/D6 全绿；D4/D7/D8 部分完成** | D1 `2 passed`、D2 阈值冻结、D3 熔断/公平限流+准入 429、D5/D6 演练 `8 passed`；D4 分级容量 Run/2h 稳定性、D7 真实签名链+攻击矩阵、D8 全链汇总 Run 待窗口执行（移交清单见 evidence） |
+| P7-A | **代码+门禁完成；E2E 场景 1-8 全绿** | 2026-09-29 终局 22 passed：L1 主链/429 退避/死信重放/L2 reply 节点/L3 send_message 官方 API/重复入站幂等/Pod 强杀不丢/REPLY_TARGET_UNRESOLVED；累计修复 10+ 真实缺陷；场景 9 UI 覆盖移交 |
+| P7-B | **代码+门禁完成；B6 场景 1-6 全绿** | 四流式行为+`first_token_ms` 实测>0+vision 原生 image_url part（附件→modality 投递→模型请求）+无能力模型 MODEL_INPUT_UNSUPPORTED；两个缺口已补齐并修复 4 个多模态链路真实缺陷；场景 7/8 移交 |
+| P7-C | **代码+门禁完成；API 级集群 E2E 场景 2/4/5/6 全绿** | 聚合真实数据+workflowId 过滤、ClickHouse 缩容降级+恢复、仪表盘数据源、未授权 llm_judge 422；修复 BFF filters 默认与 dataset DECIMAL 两缺陷；场景 1/3/7 移交 |
+| P7-D | **D1/D2/D3/D5/D6/D7(本地链+SA/攻击矩阵) 全绿；D4/D8 待窗口** | D1 `2 passed`、D2 冻结、D3 背压熔断、D5/D6 `8 passed`、D7 本地签名链 11/11+SA 矩阵+攻击矩阵 5 项（2026-09-29）；D4 分级容量与 2h 稳定性、D8 全链汇总 Run 待独占窗口（移交清单见 evidence） |
 | P7-E | **代码+门禁完成；E6 全绿** | E6 `1 passed 389s`：上传→索引→hit-testing 命中+sapphire-orbit 内容；修复 4 个真实缺陷（LightRAG v0.20 协议实测）；RAGFlow 组合联调移交 |
 
 证据文件在各线完成后写入 `docs/plan7/evidence/`，命名 `p7-<线号>-<主题>.md`。

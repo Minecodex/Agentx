@@ -163,6 +163,15 @@ const DINGTALK_SUFFIXES: &[&str] = &["oapi.dingtalk.com", "api.dingtalk.com"];
 const FEISHU_SUFFIXES: &[&str] = &["open.feishu.cn", "open.larksuite.com"];
 const WECOM_SUFFIXES: &[&str] = &["qyapi.weixin.qq.com"];
 
+/// Base for the official DingTalk robot API; overridable so isolated E2E
+/// environments can point the token/send calls at the in-cluster mock.
+fn dingtalk_api_base() -> String {
+    std::env::var("AGENTX_DELIVERY_DINGTALK_API_BASE")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "https://api.dingtalk.com".into())
+}
+
 async fn send_dingtalk(
     vault: &RuntimeVault,
     http: &ProviderHttpClient,
@@ -213,7 +222,7 @@ async fn send_dingtalk(
     };
     let (status, body) = send_json(
         http,
-        "https://api.dingtalk.com/v1.0/oauth2/accessToken",
+        &format!("{}/v1.0/oauth2/accessToken", dingtalk_api_base()),
         DINGTALK_SUFFIXES,
         claim.tenant_id,
         claim.id,
@@ -245,7 +254,7 @@ async fn send_dingtalk(
                 DeliverySendError::rejected("group delivery has no conversationId".into())
             })?;
         (
-            "https://api.dingtalk.com/v1.0/robot/groupMessages/send",
+            format!("{}/v1.0/robot/groupMessages/send", dingtalk_api_base()),
             json!({"robotCode": robot_code, "openConversationId": conversation_id, "msgKey": "sampleText", "msgParam": {"content": text}}),
         )
     } else {
@@ -255,13 +264,13 @@ async fn send_dingtalk(
             .and_then(Value::as_str)
             .ok_or_else(|| DeliverySendError::rejected("direct delivery has no senderId".into()))?;
         (
-            "https://api.dingtalk.com/v1.0/robot/oToMessages/batchSend",
+            format!("{}/v1.0/robot/oToMessages/batchSend", dingtalk_api_base()),
             json!({"robotCode": robot_code, "userIds": [sender_id], "msgKey": "sampleText", "msgParam": {"content": text}}),
         )
     };
     let (status, body) = send_json(
         http,
-        request.0,
+        &request.0,
         DINGTALK_SUFFIXES,
         claim.tenant_id,
         claim.id,

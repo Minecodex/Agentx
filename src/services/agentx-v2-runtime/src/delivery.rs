@@ -84,6 +84,23 @@ pub struct DeliveryClaim {
     pub attempt_count: u32,
 }
 
+/// Returns crash-lost in-flight rows to the pending queue once their lease
+/// has expired; safe to call from every delivery loop tick.
+pub async fn requeue_expired(pool: &MySqlPool) -> RuntimeResult<()> {
+    let changed = sqlx::query(
+        "UPDATE delivery_outbox SET status='pending',locked_by=NULL,locked_until=NULL WHERE status='delivering' AND locked_until<=UTC_TIMESTAMP(6)",
+    )
+    .execute(pool)
+    .await?;
+    if changed.rows_affected() > 0 {
+        tracing::warn!(
+            requeued = changed.rows_affected(),
+            "Requeued delivery rows whose lease expired in-flight"
+        );
+    }
+    Ok(())
+}
+
 pub async fn claim(pool: &MySqlPool, owner: Uuid) -> RuntimeResult<Option<DeliveryClaim>> {
     let mut tx = pool.begin().await?;
     let row = sqlx::query(

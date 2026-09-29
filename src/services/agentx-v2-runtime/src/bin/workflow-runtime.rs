@@ -641,6 +641,9 @@ async fn delivery_loop(
             return Ok(());
         }
         let started = std::time::Instant::now();
+        // A crashed delivery loop leaves rows in 'delivering' with a dead
+        // lease; requeue expired ones so in-flight deliveries are not lost.
+        agentx_v2_runtime::delivery::requeue_expired(&pool).await?;
         let Some(claim) = agentx_v2_runtime::delivery::claim(&pool, owner).await? else {
             tokio::time::sleep(Duration::from_millis(200)).await;
             progress.processed_since(started).await;

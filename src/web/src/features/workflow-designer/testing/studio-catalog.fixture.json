@@ -606,7 +606,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:31c9cfd03b66f78f89408572eef34ae67d4a1c95c1f7cc47f250e230dcc209b0",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -969,7 +969,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:31c9cfd03b66f78f89408572eef34ae67d4a1c95c1f7cc47f250e230dcc209b0",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -1397,7 +1397,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:31c9cfd03b66f78f89408572eef34ae67d4a1c95c1f7cc47f250e230dcc209b0",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -2296,7 +2296,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:31c9cfd03b66f78f89408572eef34ae67d4a1c95c1f7cc47f250e230dcc209b0",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3091,7 +3091,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:31c9cfd03b66f78f89408572eef34ae67d4a1c95c1f7cc47f250e230dcc209b0",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3368,7 +3368,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:31c9cfd03b66f78f89408572eef34ae67d4a1c95c1f7cc47f250e230dcc209b0",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3527,7 +3527,10 @@
           "type": "object"
         },
         "userQuestion": {
-          "type": "string",
+          "type": [
+            "string",
+            "array"
+          ],
           "x-agentx-binding": {
             "acceptedCardinality": [
               "single"
@@ -3787,7 +3790,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:31c9cfd03b66f78f89408572eef34ae67d4a1c95c1f7cc47f250e230dcc209b0",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3909,6 +3912,9 @@
     "outputSchema": {
       "additionalProperties": false,
       "properties": {
+        "content": {
+          "type": "string"
+        },
         "deliveryId": {
           "type": "string"
         },
@@ -3992,7 +3998,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:31c9cfd03b66f78f89408572eef34ae67d4a1c95c1f7cc47f250e230dcc209b0",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4132,10 +4138,22 @@
     "outputSchema": {
       "additionalProperties": false,
       "properties": {
+        "channelId": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
         "deliveryId": {
           "type": "string"
         },
+        "senderId": {
+          "type": "string"
+        },
         "status": {
+          "type": "string"
+        },
+        "targetConversationId": {
           "type": "string"
         }
       },
@@ -4224,7 +4242,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:31c9cfd03b66f78f89408572eef34ae67d4a1c95c1f7cc47f250e230dcc209b0",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4668,7 +4686,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:31c9cfd03b66f78f89408572eef34ae67d4a1c95c1f7cc47f250e230dcc209b0",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },

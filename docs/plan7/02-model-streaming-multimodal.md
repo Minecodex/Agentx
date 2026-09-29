@@ -141,11 +141,11 @@ delivery.completed / delivery.failed                     -- 由 P7-A 复用同�
 - [x] 模型资源 capabilities（表列 + 校验 + binding 透传 + 前端表单，链上 4 个点，契约字段 `#[serde(default)]`）；
 - [x] 请求构造 parts 化（model 节点 + Agent ModelPort 两处）+ artifact→data URI 解析与大小门；
 - [x] `chat_message_payload`/`project_chat_message_input` 的 `x-agentx-modality` 投递（匹配 part 投递 artifact 引用数组，单测覆盖 image 过滤与通用 file 映射共存）。
-- [ ] Playground 附件图片 → 模型原生 vision 的端到端联调（parts 化与能力门禁已实现并有单测；浏览器级 vision 联调移交）。
+- [x] Playground 附件图片 → 模型原生 vision 的端到端联调（2026-09-29 集群全绿：API 级上传→投递→原生 image_url part 断言；浏览器级交互留 UI 覆盖用例）。
 
 ### P7-B6 E2E 验收
 
-- [x] 见第 5 节（主链路 2026-09-28 `test_model_streaming.py` 1 passed 373s：API 全链建凭证/模型/工作流/发布/聊天，SSE 断言 delta 先于终态按序到达，慢流/断流/无 usage/重放合并帧四行为；场景 5 vision 联调/6 UI 错误呈现/7 Agent 节点流式/8 UI 覆盖移交；`first_token_ms` 已实现并进 B6 断言：runtime_calls 列 + Trace span `firstTokenMs` 属性，流式调用实测 >0）。
+- [x] 见第 5 节（主链路 2026-09-28 `test_model_streaming.py` 1 passed 373s：API 全链建凭证/模型/工作流/发布/聊天，SSE 断言 delta 先于终态按序到达，慢流/断流/无 usage/重放合并帧四行为；场景 5 vision 端到端(附件上传→x-agentx-modality 投递→echo-vision 断言原生 image_url part, vision-ok:1)与场景 6 无能力模型→MODEL_INPUT_UNSUPPORTED 终态——2026-09-29 全绿; 过程修复 4 个真实缺陷: 上传缺 runtime_objects 行、object_key ascii 列解码、userQuestion 解析结果被原始绑定覆盖(input.question 优先)、模型节点 userQuestion 参数类型收窄为 string; 场景 7 Agent 节点流式/8 UI 覆盖移交; `first_token_ms` 已实测 >0）。
 
 ## 5. E2E 验收（临时 Namespace）
 

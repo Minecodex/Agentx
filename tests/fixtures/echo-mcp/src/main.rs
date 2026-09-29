@@ -313,6 +313,35 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
         )
             .into_response();
     }
+    // plan7 P7-B B6 scenario 5: the vision fixture reports whether the
+    // request carried native image_url content parts.
+    if request.get("model").and_then(Value::as_str) == Some("echo-vision") {
+        let messages = request
+            .get("messages")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let image_parts = messages
+            .iter()
+            .filter_map(|message| message.get("content").and_then(Value::as_array))
+            .flatten()
+            .filter(|part| part.get("type").and_then(Value::as_str) == Some("image_url"))
+            .count();
+        let text = if image_parts > 0 {
+            format!("vision-ok:{image_parts}")
+        } else {
+            "vision-missing".into()
+        };
+        return (
+            StatusCode::OK,
+            AxumJson(json!({
+                "id":"chatcmpl-vision","object":"chat.completion","model":"echo-vision",
+                "choices":[{"index":0,"message":{"role":"assistant","content":text},"finish_reason":"stop"}],
+                "usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}
+            })),
+        )
+            .into_response();
+    }
     let messages = request
         .get("messages")
         .and_then(Value::as_array)

@@ -124,7 +124,7 @@
 
 ### P7-C5 E2E 验收
 
-- [ ] 见第 5 节（本线计划门禁为契约/ClickHouse testcontainers/BFF mock/vitest/Playwright，均已绿；§5 的集群级 E2E 七场景未执行，移交清单）。
+- [ ] 见第 5 节（场景 2/4/5/6 已集群全绿 2026-09-29: 聚合真实数据+workflowId 过滤、ClickHouse 缩容→INSIGHTS_DEGRADED 且执行不受影响+恢复、仪表盘数据源、未授权 llm_judge→422 GRANT 错误；修复 BFF filters 默认 Null 与 dataset MAX(sort_order) DECIMAL 两缺陷；场景 1/3 llm_judge 全链报告与两版本对比、场景 7 UI 覆盖移交）。
 
 ## 5. E2E 验收（临时 Namespace）
 

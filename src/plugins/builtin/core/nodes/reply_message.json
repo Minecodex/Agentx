@@ -1,198 +1,201 @@
 {
-  "protocolVersion": "3.0",
-  "nodeType": "reply_message",
-  "version": 1,
-  "displayName": "Reply Message",
-  "description": "Reply to the conversation that triggered this workflow.",
-  "category": "logic",
-  "keywords": [
+ "protocolVersion": "3.0",
+ "nodeType": "reply_message",
+ "version": 1,
+ "displayName": "Reply Message",
+ "description": "Reply to the conversation that triggered this workflow.",
+ "category": "logic",
+ "keywords": [
+  "reply",
+  "message",
+  "回复",
+  "消息"
+ ],
+ "localizations": {
+  "en-US": {
+   "displayName": "Reply Message",
+   "description": "Reply to the conversation that triggered this workflow.",
+   "keywords": [
     "reply",
-    "message",
+    "message"
+   ],
+   "inputPortLabels": {
+    "main": "Main"
+   },
+   "outputPortLabels": {
+    "main": "Main",
+    "error": "Error"
+   },
+   "parameterLabels": {
+    "content": "Content"
+   }
+  },
+  "zh-CN": {
+   "displayName": "回复消息",
+   "description": "向触发本工作流的来源会话回复消息（异步投递）。",
+   "keywords": [
     "回复",
     "消息"
+   ],
+   "inputPortLabels": {
+    "main": "主输入"
+   },
+   "outputPortLabels": {
+    "main": "主输出",
+    "error": "错误"
+   },
+   "parameterLabels": {
+    "content": "回复内容"
+   }
+  }
+ },
+ "iconKey": "reply",
+ "executionStyle": "action",
+ "capability": "builtin",
+ "readiness": "required",
+ "inputPorts": [
+  {
+   "name": "main",
+   "kind": "main",
+   "required": false,
+   "variadic": true
+  },
+  {
+   "name": "left",
+   "kind": "main",
+   "required": false,
+   "variadic": false
+  },
+  {
+   "name": "right",
+   "kind": "main",
+   "required": false,
+   "variadic": false
+  }
+ ],
+ "outputPorts": [
+  {
+   "name": "main",
+   "kind": "main",
+   "required": false,
+   "variadic": false
+  },
+  {
+   "name": "error",
+   "kind": "error",
+   "required": false,
+   "variadic": false
+  }
+ ],
+ "bindingSlots": [],
+ "parameterSchema": {
+  "type": "object",
+  "required": [
+   "content"
   ],
-  "localizations": {
-    "en-US": {
-      "displayName": "Reply Message",
-      "description": "Reply to the conversation that triggered this workflow.",
-      "keywords": [
-        "reply",
-        "message"
-      ],
-      "inputPortLabels": {
-        "main": "Main"
-      },
-      "outputPortLabels": {
-        "main": "Main",
-        "error": "Error"
-      },
-      "parameterLabels": {
-        "content": "Content"
-      }
-    },
-    "zh-CN": {
-      "displayName": "回复消息",
-      "description": "向触发本工作流的来源会话回复消息（异步投递）。",
-      "keywords": [
-        "回复",
-        "消息"
-      ],
-      "inputPortLabels": {
-        "main": "主输入"
-      },
-      "outputPortLabels": {
-        "main": "主输出",
-        "error": "错误"
-      },
-      "parameterLabels": {
-        "content": "回复内容"
-      }
-    }
+  "additionalProperties": false,
+  "properties": {
+   "content": {
+    "type": "string"
+   }
+  }
+ },
+ "outputSchema": {
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+   "deliveryId": {
+    "type": "string"
+   },
+   "status": {
+    "type": "string"
+   },
+   "content": {
+    "type": "string"
+   }
   },
-  "iconKey": "reply",
-  "executionStyle": "action",
-  "capability": "builtin",
-  "readiness": "required",
-  "inputPorts": [
-    {
-      "name": "main",
-      "kind": "main",
-      "required": false,
-      "variadic": true
+  "required": [
+   "deliveryId",
+   "status"
+  ]
+ },
+ "outputPortSchemas": {
+  "error": {
+   "additionalProperties": false,
+   "properties": {
+    "code": {
+     "type": "string"
     },
-    {
-      "name": "left",
-      "kind": "main",
-      "required": false,
-      "variadic": false
+    "details": {
+     "type": "object"
     },
-    {
-      "name": "right",
-      "kind": "main",
-      "required": false,
-      "variadic": false
+    "message": {
+     "type": "string"
+    },
+    "nodeExecutionId": {
+     "type": "string"
+    },
+    "retryable": {
+     "type": "boolean"
+    },
+    "sourceNodeId": {
+     "type": "string"
     }
+   },
+   "required": [
+    "code",
+    "message",
+    "retryable",
+    "details",
+    "sourceNodeId",
+    "nodeExecutionId"
+   ],
+   "type": "object"
+  }
+ },
+ "outputCardinality": {
+  "main": "many",
+  "error": "many"
+ },
+ "selectorCapabilities": {
+  "namespaces": [
+   "inputs",
+   "outputs",
+   "contexts"
   ],
-  "outputPorts": [
-    {
-      "name": "main",
-      "kind": "main",
-      "required": false,
-      "variadic": false
-    },
-    {
-      "name": "error",
-      "kind": "error",
-      "required": false,
-      "variadic": false
-    }
-  ],
-  "bindingSlots": [],
-  "parameterSchema": {
-    "type": "object",
-    "required": [
-      "content"
-    ],
-    "additionalProperties": false,
-    "properties": {
-      "content": {
-        "type": "string"
-      }
-    }
+  "supportsCurrent": true,
+  "supportsFirstLast": true,
+  "supportsAll": true,
+  "supportsRunSelection": true
+ },
+ "contextReadCapability": true,
+ "contextWriteCapability": false,
+ "artifactOutputSchema": {
+  "type": "array",
+  "items": {
+   "type": "object"
+  }
+ },
+ "uiSchema": {
+  "fields": {
+   "content": {
+    "control": "textarea"
+   }
   },
-  "outputSchema": {
-    "type": "object",
-    "additionalProperties": false,
-    "properties": {
-      "deliveryId": {
-        "type": "string"
-      },
-      "status": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "deliveryId",
-      "status"
-    ]
-  },
-  "outputPortSchemas": {
-    "error": {
-      "additionalProperties": false,
-      "properties": {
-        "code": {
-          "type": "string"
-        },
-        "details": {
-          "type": "object"
-        },
-        "message": {
-          "type": "string"
-        },
-        "nodeExecutionId": {
-          "type": "string"
-        },
-        "retryable": {
-          "type": "boolean"
-        },
-        "sourceNodeId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "code",
-        "message",
-        "retryable",
-        "details",
-        "sourceNodeId",
-        "nodeExecutionId"
-      ],
-      "type": "object"
-    }
-  },
-  "outputCardinality": {
-    "main": "many",
-    "error": "many"
-  },
-  "selectorCapabilities": {
-    "namespaces": [
-      "inputs",
-      "outputs",
-      "contexts"
-    ],
-    "supportsCurrent": true,
-    "supportsFirstLast": true,
-    "supportsAll": true,
-    "supportsRunSelection": true
-  },
-  "contextReadCapability": true,
-  "contextWriteCapability": false,
-  "artifactOutputSchema": {
-    "type": "array",
-    "items": {
-      "type": "object"
-    }
-  },
-  "uiSchema": {
-    "fields": {
-      "content": {
-        "control": "textarea"
-      }
-    },
-    "canvas": {
-      "role": "default"
-    }
-  },
-  "providers": [],
-  "credentials": [],
-  "defaultTimeoutMs": 30000,
-  "retryPolicy": {
-    "retryable": false,
-    "maxAttempts": 0,
-    "initialBackoffMs": 0,
-    "maxBackoffMs": 0
-  },
-  "sandboxRequired": false,
-  "supportsMock": true,
-  "sideEffectLevel": "irreversible"
+  "canvas": {
+   "role": "default"
+  }
+ },
+ "providers": [],
+ "credentials": [],
+ "defaultTimeoutMs": 30000,
+ "retryPolicy": {
+  "retryable": false,
+  "maxAttempts": 0,
+  "initialBackoffMs": 0,
+  "maxBackoffMs": 0
+ },
+ "sandboxRequired": false,
+ "supportsMock": true,
+ "sideEffectLevel": "irreversible"
 }

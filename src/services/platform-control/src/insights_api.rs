@@ -22,7 +22,7 @@ pub struct InsightsAggregateInput {
     pub to: time::OffsetDateTime,
     pub metrics: Vec<ObservabilityMetricV1>,
     pub dimensions: Vec<ObservabilityDimensionV1>,
-    #[serde(default)]
+    #[serde(default = "empty_filters")]
     pub filters: Value,
     #[serde(default = "default_limit")]
     pub limit: u32,
@@ -30,6 +30,10 @@ pub struct InsightsAggregateInput {
 
 fn default_limit() -> u32 {
     100
+}
+
+fn empty_filters() -> Value {
+    json!({})
 }
 
 pub async fn aggregate(

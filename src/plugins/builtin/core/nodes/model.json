@@ -1,412 +1,415 @@
 {
-  "protocolVersion": "3.0",
-  "nodeType": "model",
-  "version": 1,
-  "displayName": "Model",
-  "description": "Invoke an authorized model resource.",
-  "category": "ai",
-  "keywords": [
+ "protocolVersion": "3.0",
+ "nodeType": "model",
+ "version": 1,
+ "displayName": "Model",
+ "description": "Invoke an authorized model resource.",
+ "category": "ai",
+ "keywords": [
+  "model"
+ ],
+ "localizations": {
+  "en-US": {
+   "displayName": "Model",
+   "description": "Invoke an authorized model resource.",
+   "keywords": [
     "model"
-  ],
-  "localizations": {
-    "en-US": {
-      "displayName": "Model",
-      "description": "Invoke an authorized model resource.",
-      "keywords": [
-        "model"
-      ],
-      "inputPortLabels": {
-        "main": "Input"
-      },
-      "outputPortLabels": {
-        "error": "Error",
-        "main": "Output"
-      },
-      "parameterLabels": {
-        "prompt": "Prompt",
-        "responseMode": "Response Mode",
-        "structuredSchema": "Structured Schema",
-        "userQuestion": "User Question"
-      },
-      "parameterEnumOptions": {
-        "responseMode": {
-          "json_schema": "Json schema",
-          "text": "Text"
-        }
-      }
-    },
-    "zh-CN": {
-      "displayName": "模型",
-      "description": "调用已授权的模型资源。",
-      "keywords": [
-        "模型"
-      ],
-      "inputPortLabels": {
-        "main": "输入"
-      },
-      "outputPortLabels": {
-        "error": "错误",
-        "main": "输出"
-      },
-      "parameterLabels": {
-        "prompt": "提示词",
-        "responseMode": "响应模式",
-        "structuredSchema": "结构化输出结构",
-        "userQuestion": "用户问题"
-      },
-      "parameterEnumOptions": {
-        "responseMode": {
-          "json_schema": "JSON Schema",
-          "text": "文本"
-        }
-      }
+   ],
+   "inputPortLabels": {
+    "main": "Input"
+   },
+   "outputPortLabels": {
+    "error": "Error",
+    "main": "Output"
+   },
+   "parameterLabels": {
+    "prompt": "Prompt",
+    "responseMode": "Response Mode",
+    "structuredSchema": "Structured Schema",
+    "userQuestion": "User Question"
+   },
+   "parameterEnumOptions": {
+    "responseMode": {
+     "json_schema": "Json schema",
+     "text": "Text"
     }
+   }
   },
-  "iconKey": "brain-circuit",
-  "executionStyle": "action",
-  "capability": "model",
-  "readiness": "any",
-  "inputPorts": [
-    {
-      "name": "main",
-      "kind": "main",
-      "required": true,
-      "variadic": false
+  "zh-CN": {
+   "displayName": "模型",
+   "description": "调用已授权的模型资源。",
+   "keywords": [
+    "模型"
+   ],
+   "inputPortLabels": {
+    "main": "输入"
+   },
+   "outputPortLabels": {
+    "error": "错误",
+    "main": "输出"
+   },
+   "parameterLabels": {
+    "prompt": "提示词",
+    "responseMode": "响应模式",
+    "structuredSchema": "结构化输出结构",
+    "userQuestion": "用户问题"
+   },
+   "parameterEnumOptions": {
+    "responseMode": {
+     "json_schema": "JSON Schema",
+     "text": "文本"
     }
-  ],
-  "outputPorts": [
-    {
-      "name": "main",
-      "kind": "main",
-      "required": false,
-      "variadic": false
-    },
-    {
-      "name": "error",
-      "kind": "error",
-      "required": false,
-      "variadic": false
-    }
-  ],
-  "bindingSlots": [],
-  "parameterSchema": {
-    "additionalProperties": false,
-    "properties": {
-      "prompt": {
-        "type": "string",
-        "x-agentx-binding": {
-          "acceptedCardinality": [
-            "single"
-          ],
-          "acceptedKinds": [
-            "literal",
-            "reference",
-            "template"
-          ],
-          "allowedNamespaces": [
-            "inputs",
-            "outputs",
-            "contexts",
-            "execution",
-            "item",
-            "loop"
-          ],
-          "missingPolicies": [
-            "error",
-            "null",
-            "omit"
-          ],
-          "recursive": false
-        }
-      },
-      "responseMode": {
-        "default": "text",
-        "enum": [
-          "text",
-          "json_schema"
-        ],
-        "type": "string"
-      },
-      "stream": {
-        "type": "string",
-        "default": "true",
-        "enum": [
-          "true",
-          "false"
-        ],
-        "description": "Stream model output token by token to the client."
-      },
-      "structuredSchema": {
-        "type": "object"
-      },
-      "userQuestion": {
-        "type": "string",
-        "x-agentx-binding": {
-          "acceptedCardinality": [
-            "single"
-          ],
-          "acceptedKinds": [
-            "literal",
-            "reference",
-            "template"
-          ],
-          "allowedNamespaces": [
-            "inputs",
-            "outputs",
-            "contexts",
-            "execution",
-            "item",
-            "loop"
-          ],
-          "missingPolicies": [
-            "error",
-            "null",
-            "omit"
-          ],
-          "recursive": false
-        }
-      }
-    },
-    "type": "object"
+   }
+  }
+ },
+ "iconKey": "brain-circuit",
+ "executionStyle": "action",
+ "capability": "model",
+ "readiness": "any",
+ "inputPorts": [
+  {
+   "name": "main",
+   "kind": "main",
+   "required": true,
+   "variadic": false
+  }
+ ],
+ "outputPorts": [
+  {
+   "name": "main",
+   "kind": "main",
+   "required": false,
+   "variadic": false
   },
-  "outputSchema": {
-    "additionalProperties": false,
-    "properties": {
-      "citations": {
-        "items": {
-          "additionalProperties": false,
-          "properties": {
-            "metadata": {
-              "type": "object"
-            },
-            "recordId": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "sourceId": {
-              "minLength": 1,
-              "type": "string"
-            },
-            "text": {
-              "type": "string"
-            },
-            "title": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "uri": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          "required": [
-            "sourceId",
-            "text",
-            "metadata"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "files": {
-        "items": {
-          "additionalProperties": false,
-          "properties": {
-            "artifactId": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "contentType": {
-              "minLength": 1,
-              "type": "string"
-            },
-            "fileName": {
-              "minLength": 1,
-              "type": "string"
-            },
-            "sha256": {
-              "pattern": "^[0-9a-fA-F]{64}$",
-              "type": "string"
-            },
-            "sizeBytes": {
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "artifactId",
-            "fileName",
-            "contentType",
-            "sizeBytes",
-            "sha256"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "finishReason": {
-        "type": [
-          "string",
-          "null"
-        ]
-      },
-      "partial": {
-        "type": "boolean"
-      },
-      "reasoningContent": {
-        "type": [
-          "string",
-          "null"
-        ]
-      },
-      "structuredOutput": {
-        "type": [
-          "object",
-          "null"
-        ]
-      },
-      "text": {
-        "type": "string"
-      },
-      "usage": {
-        "additionalProperties": false,
-        "properties": {
-          "costMicros": {
-            "type": "integer"
-          },
-          "inputTokens": {
-            "type": "integer"
-          },
-          "outputTokens": {
-            "type": "integer"
-          },
-          "totalTokens": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "inputTokens",
-          "outputTokens",
-          "totalTokens",
-          "costMicros"
-        ],
-        "type": "object"
-      }
-    },
-    "required": [
-      "text",
-      "reasoningContent",
-      "structuredOutput",
-      "files",
-      "citations",
-      "usage",
-      "finishReason",
-      "partial"
-    ],
-    "type": "object"
-  },
-  "outputPortSchemas": {
-    "error": {
-      "additionalProperties": false,
-      "properties": {
-        "code": {
-          "type": "string"
-        },
-        "details": {
-          "type": "object"
-        },
-        "message": {
-          "type": "string"
-        },
-        "nodeExecutionId": {
-          "type": "string"
-        },
-        "retryable": {
-          "type": "boolean"
-        },
-        "sourceNodeId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "code",
-        "message",
-        "retryable",
-        "details",
-        "sourceNodeId",
-        "nodeExecutionId"
-      ],
-      "type": "object"
-    }
-  },
-  "outputCardinality": {
-    "error": "many",
-    "main": "exactly_one"
-  },
-  "selectorCapabilities": {
-    "namespaces": [
+  {
+   "name": "error",
+   "kind": "error",
+   "required": false,
+   "variadic": false
+  }
+ ],
+ "bindingSlots": [],
+ "parameterSchema": {
+  "additionalProperties": false,
+  "properties": {
+   "prompt": {
+    "type": "string",
+    "x-agentx-binding": {
+     "acceptedCardinality": [
+      "single"
+     ],
+     "acceptedKinds": [
+      "literal",
+      "reference",
+      "template"
+     ],
+     "allowedNamespaces": [
       "inputs",
       "outputs",
-      "contexts"
+      "contexts",
+      "execution",
+      "item",
+      "loop"
+     ],
+     "missingPolicies": [
+      "error",
+      "null",
+      "omit"
+     ],
+     "recursive": false
+    }
+   },
+   "responseMode": {
+    "default": "text",
+    "enum": [
+     "text",
+     "json_schema"
     ],
-    "supportsCurrent": true,
-    "supportsFirstLast": true,
-    "supportsAll": true,
-    "supportsRunSelection": true
+    "type": "string"
+   },
+   "stream": {
+    "type": "string",
+    "default": "true",
+    "enum": [
+     "true",
+     "false"
+    ],
+    "description": "Stream model output token by token to the client."
+   },
+   "structuredSchema": {
+    "type": "object"
+   },
+   "userQuestion": {
+    "type": [
+     "string",
+     "array"
+    ],
+    "x-agentx-binding": {
+     "acceptedCardinality": [
+      "single"
+     ],
+     "acceptedKinds": [
+      "literal",
+      "reference",
+      "template"
+     ],
+     "allowedNamespaces": [
+      "inputs",
+      "outputs",
+      "contexts",
+      "execution",
+      "item",
+      "loop"
+     ],
+     "missingPolicies": [
+      "error",
+      "null",
+      "omit"
+     ],
+     "recursive": false
+    }
+   }
   },
-  "contextReadCapability": true,
-  "contextWriteCapability": true,
-  "artifactOutputSchema": {
+  "type": "object"
+ },
+ "outputSchema": {
+  "additionalProperties": false,
+  "properties": {
+   "citations": {
     "items": {
-      "type": "object"
+     "additionalProperties": false,
+     "properties": {
+      "metadata": {
+       "type": "object"
+      },
+      "recordId": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "sourceId": {
+       "minLength": 1,
+       "type": "string"
+      },
+      "text": {
+       "type": "string"
+      },
+      "title": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "uri": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "sourceId",
+      "text",
+      "metadata"
+     ],
+     "type": "object"
     },
     "type": "array"
-  },
-  "uiSchema": {
-    "fields": {
-      "prompt": {
-        "control": "prompt"
+   },
+   "files": {
+    "items": {
+     "additionalProperties": false,
+     "properties": {
+      "artifactId": {
+       "format": "uuid",
+       "type": "string"
       },
-      "responseMode": {
-        "control": "select"
+      "contentType": {
+       "minLength": 1,
+       "type": "string"
       },
-      "structuredSchema": {
-        "control": "schema_editor"
+      "fileName": {
+       "minLength": 1,
+       "type": "string"
       },
-      "userQuestion": {
-        "control": "template"
+      "sha256": {
+       "pattern": "^[0-9a-fA-F]{64}$",
+       "type": "string"
       },
-      "stream": {
-        "control": "select"
+      "sizeBytes": {
+       "minimum": 0,
+       "type": "integer"
       }
+     },
+     "required": [
+      "artifactId",
+      "fileName",
+      "contentType",
+      "sizeBytes",
+      "sha256"
+     ],
+     "type": "object"
     },
-    "resourceSelectors": [
-      {
-        "operation": "use",
-        "required": true,
-        "resourceType": "model"
-      }
+    "type": "array"
+   },
+   "finishReason": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "partial": {
+    "type": "boolean"
+   },
+   "reasoningContent": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "structuredOutput": {
+    "type": [
+     "object",
+     "null"
+    ]
+   },
+   "text": {
+    "type": "string"
+   },
+   "usage": {
+    "additionalProperties": false,
+    "properties": {
+     "costMicros": {
+      "type": "integer"
+     },
+     "inputTokens": {
+      "type": "integer"
+     },
+     "outputTokens": {
+      "type": "integer"
+     },
+     "totalTokens": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "inputTokens",
+     "outputTokens",
+     "totalTokens",
+     "costMicros"
     ],
-    "canvas": {
-      "role": "default"
+    "type": "object"
+   }
+  },
+  "required": [
+   "text",
+   "reasoningContent",
+   "structuredOutput",
+   "files",
+   "citations",
+   "usage",
+   "finishReason",
+   "partial"
+  ],
+  "type": "object"
+ },
+ "outputPortSchemas": {
+  "error": {
+   "additionalProperties": false,
+   "properties": {
+    "code": {
+     "type": "string"
+    },
+    "details": {
+     "type": "object"
+    },
+    "message": {
+     "type": "string"
+    },
+    "nodeExecutionId": {
+     "type": "string"
+    },
+    "retryable": {
+     "type": "boolean"
+    },
+    "sourceNodeId": {
+     "type": "string"
     }
+   },
+   "required": [
+    "code",
+    "message",
+    "retryable",
+    "details",
+    "sourceNodeId",
+    "nodeExecutionId"
+   ],
+   "type": "object"
+  }
+ },
+ "outputCardinality": {
+  "error": "many",
+  "main": "exactly_one"
+ },
+ "selectorCapabilities": {
+  "namespaces": [
+   "inputs",
+   "outputs",
+   "contexts"
+  ],
+  "supportsCurrent": true,
+  "supportsFirstLast": true,
+  "supportsAll": true,
+  "supportsRunSelection": true
+ },
+ "contextReadCapability": true,
+ "contextWriteCapability": true,
+ "artifactOutputSchema": {
+  "items": {
+   "type": "object"
   },
-  "providers": [],
-  "credentials": [],
-  "defaultTimeoutMs": 300000,
-  "retryPolicy": {
-    "retryable": false,
-    "maxAttempts": 0,
-    "initialBackoffMs": 0,
-    "maxBackoffMs": 0
+  "type": "array"
+ },
+ "uiSchema": {
+  "fields": {
+   "prompt": {
+    "control": "prompt"
+   },
+   "responseMode": {
+    "control": "select"
+   },
+   "structuredSchema": {
+    "control": "schema_editor"
+   },
+   "userQuestion": {
+    "control": "template"
+   },
+   "stream": {
+    "control": "select"
+   }
   },
-  "sandboxRequired": false,
-  "supportsMock": false,
-  "sideEffectLevel": "none"
+  "resourceSelectors": [
+   {
+    "operation": "use",
+    "required": true,
+    "resourceType": "model"
+   }
+  ],
+  "canvas": {
+   "role": "default"
+  }
+ },
+ "providers": [],
+ "credentials": [],
+ "defaultTimeoutMs": 300000,
+ "retryPolicy": {
+  "retryable": false,
+  "maxAttempts": 0,
+  "initialBackoffMs": 0,
+  "maxBackoffMs": 0
+ },
+ "sandboxRequired": false,
+ "supportsMock": false,
+ "sideEffectLevel": "none"
 }
