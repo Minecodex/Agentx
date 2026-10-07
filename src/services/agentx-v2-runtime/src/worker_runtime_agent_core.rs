@@ -1603,19 +1603,18 @@ impl<'a> AgentToolRouter<'a> {
                 if let Some(secret) = credential {
                     self.authorize_secret_dependency(secret)?;
                 }
-                let (path, request, secret_header) =
-                    match super::output::rag_query_request(
-                        &provider,
-                        "query",
-                        namespace,
-                        index_version,
-                        &call.arguments,
-                    ) {
-                        Ok(built) => built,
-                        Err(failed) => {
-                            return tool_result_from_execution(failed);
-                        }
-                    };
+                let (path, request, secret_header) = match super::output::rag_query_request(
+                    &provider,
+                    "query",
+                    namespace,
+                    index_version,
+                    &call.arguments,
+                ) {
+                    Ok(built) => built,
+                    Err(failed) => {
+                        return tool_result_from_execution(failed);
+                    }
+                };
                 let index = self.call_index;
                 self.call_index = self.call_index.saturating_add(1);
                 let endpoint = format!("{}/{}", endpoint.trim_end_matches('/'), path);

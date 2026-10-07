@@ -85,7 +85,7 @@ def run(binary: Path, args: tuple[str, ...], cwd: Path) -> str:
 
 
 def release_images(rendered: str, version: str) -> list[str]:
-    images = sorted(set(re.findall(r'''^\s+image:\s*["']?(kakj/agentx-[^\s"']+)''', rendered, re.MULTILINE)))
+    images = sorted(set(re.findall(r"""^\s+image:\s*["']?(kakj/agentx-[^\s"']+)""", rendered, re.MULTILINE)))
     if len(images) != 11 or any(not image.endswith(f":v{version}") for image in images):
         raise ValueError("embedded deployment must contain all 11 Docker Hub images at the CLI release version")
     return images

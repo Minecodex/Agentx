@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 import yaml
 
+from tests.e2e import support
 from tests.e2e.conftest import _must_remain_available_during_scale_down
 from tests.e2e.support import run
 
@@ -30,17 +33,29 @@ def test_scale_down_keeps_the_ingress_admission_controller_available() -> None:
     assert not _must_remain_available_during_scale_down(application)
 
 
-def test_playwright_harness_uses_the_windows_executable_shim_and_new_stage_name() -> None:
-    source = Path("tests/e2e/product/test_playwright.py").read_text(encoding="utf-8")
+@pytest.mark.parametrize("platform", ["nt", "posix"])
+def test_playwright_harness_uses_the_windows_executable_shim_and_new_stage_name(
+    platform: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls = []
 
-    assert '("corepack.cmd", "pnpm") if os.name == "nt" else ("corepack", "pnpm")' in source
-    assert 'environment["AGENTX_E2E_STAGE"] = "helm-agentxctl"' in source
-    assert 'environment["AGENTX_V2_08_CONTEXT_OUTPUT"]' in source
-    assert '"tests/v2-08-api-first.spec.ts"' in source
-    assert '"tests/m2.1-control-plane.spec.ts"' in source
-    assert '"tests/m6-workflow-studio.spec.ts"' in source
-    assert '[*pnpm, "--filter", "@agentx/e2e", "exec", "playwright", "test", *tests]' in source
-    assert '[pnpm, "--filter", "@agentx/e2e", "test"]' not in source
+    def capture(command: list[str], **kwargs: object) -> None:
+        calls.append((command, kwargs))
+
+    monkeypatch.setattr(support, "os", SimpleNamespace(name=platform))
+    monkeypatch.setattr(support.subprocess, "run", capture)
+    tests = ["tests/v2-08-api-first.spec.ts", "tests/m2.1-control-plane.spec.ts", "tests/m6-workflow-studio.spec.ts"]
+    environment = {"AGENTX_E2E_STAGE": "helm-agentxctl", "AGENTX_V2_08_CONTEXT_OUTPUT": str(tmp_path / "context.json")}
+    support.run_playwright(tmp_path, "product", tests, environment)
+
+    assert len(calls) == 1
+    command, kwargs = calls[0]
+    executable = "corepack.cmd" if platform == "nt" else "corepack"
+    assert command == [executable, "pnpm", "--filter", "@agentx/e2e", "exec", "playwright", "test", *tests]
+    assert kwargs["shell"] is False
+    assert kwargs["check"] is True
+    assert kwargs["cwd"] == str(tmp_path)
+    assert kwargs["env"] == {**environment, "AGENTX_E2E_SUITE": "product"}
 
 
 def test_control_plane_selects_its_scoped_echo_mcp_fixture() -> None:

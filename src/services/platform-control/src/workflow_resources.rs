@@ -611,8 +611,10 @@ async fn external_snapshot(
     // deterministic synthetic version so runtime bindings keep matching the
     // compiled attachment descriptors (same derivation in compiler_agent).
     if reference.resource_version_id.is_none() {
-        reference.resource_version_id =
-            Some(agentx_runtime_contracts::deterministic_uuid(resource_id, b"external-current"));
+        reference.resource_version_id = Some(agentx_runtime_contracts::deterministic_uuid(
+            resource_id,
+            b"external-current",
+        ));
     }
     let row = if rag {
         sqlx::query("SELECT r.external_resource_id external_name,r.version resource_version,c.id connection_id,c.provider,c.endpoint,c.version connection_version,c.credential_id,c.configuration_json FROM rag_resources r JOIN rag_connections c ON c.id=r.connection_id WHERE r.tenant_id=? AND r.id=? AND r.status='active' AND c.status='active'")

@@ -101,3 +101,8 @@ Agentx 是一个采用 n8n 式画布交互、但使用 Agentx 原生 Workflow/No
 - Trace Event Schema
 
 这些规范分别在 [阶段 01](plan/01-contracts-and-foundation.md)、[阶段 08](plan/08-workflow-runtime-core.md)、[阶段 09](plan/09-checkpoint-wait-recovery.md) 和 [阶段 10](plan/10-agent-opensandbox.md) 中完成并通过阶段门禁，不再作为无归属的开放事项保留。
+
+
+## 提交与自动检查
+
+主分支保护、功能分支、PR 和必需检查见 [PR 与 CI 合并规则](ci.md)。
