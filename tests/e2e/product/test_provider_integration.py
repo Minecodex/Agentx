@@ -35,9 +35,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-
 from tests.e2e.support import run, run_playwright
-
 
 OPENSANDBOX_HEALTH = "http://127.0.0.1:18080/health"
 OPENSANDBOX_API_KEY = "agentx-local-opensandbox-key"
@@ -90,4 +88,6 @@ def test_provider_integration_suite(
     environment["AGENTX_E2E_LIGHTRAG_BASE_URL"] = e2e_providers["lightrag"]
     environment["AGENTX_E2E_MEM0_BASE_URL"] = e2e_providers["mem0"]
     environment.setdefault("AGENTX_E2E_SANDBOX_IMAGE", _sandbox_image_digest())
-    run_playwright(Path(installed_agentx["root"]), "provider-integration", ("tests/provider-integration.spec.ts",), environment)
+    run_playwright(
+        Path(installed_agentx["root"]), "provider-integration", ("tests/provider-integration.spec.ts",), environment
+    )
