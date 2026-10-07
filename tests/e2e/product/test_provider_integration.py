@@ -35,6 +35,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+
 from tests.e2e.support import run, run_playwright
 
 OPENSANDBOX_HEALTH = "http://127.0.0.1:18080/health"
