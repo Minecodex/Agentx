@@ -21,3 +21,5 @@ Ubuntu / Windows 原有 `cargo xtask check --fast` 门禁与新增前端 lint、
 Kubernetes E2E 保留原有 `AGENTX_E2E_LINUX_ENABLED` / `AGENTX_E2E_WINDOWS_ENABLED` 开关和专用 self-hosted runner。启用时失败或取消会阻止 `CI`；关闭时跳过仅表示该集群验收未运行，不表示通过。
 
 CI 失败会阻止合并。修复失败后在同一个功能分支继续提交，重新运行检查；不要通过删除必需检查或设置管理员绕过来把失败当作通过。
+
+Rust 格式检查使用仓库指定的 1.97.1 工具链；修复了首次 CI 检出的五个既有源文件格式问题。

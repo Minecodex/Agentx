@@ -730,7 +730,10 @@ mod rag_protocol_tests {
         }));
         let normalized = finalize_rag_response("ragflow", execution);
         assert_eq!(normalized.status, WorkerResultStatusV1::Succeeded);
-        let payload = normalized.outputs.get("main").and_then(|items| items.first())
+        let payload = normalized
+            .outputs
+            .get("main")
+            .and_then(|items| items.first())
             .map(|item| item.json.clone())
             .expect("payload");
         assert_eq!(
@@ -764,7 +767,10 @@ mod rag_protocol_tests {
         let payload: Value = json!({"data": {"documents": ["a"]}});
         let execution = super::super::WorkerExecution::succeeded(payload.clone());
         let normalized = finalize_rag_response("lightrag", execution);
-        let kept = normalized.outputs.get("main").and_then(|items| items.first())
+        let kept = normalized
+            .outputs
+            .get("main")
+            .and_then(|items| items.first())
             .map(|item| item.json.clone())
             .expect("payload");
         assert_eq!(kept, payload);
