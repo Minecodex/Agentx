@@ -1,0 +1,13 @@
+{{- if .Values.global.components.sandbox.localProxyUpstream }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: opensandbox-tls-proxy-egress, namespace: {{ .Values.global.namespaces.runtime }} }
+spec:
+  podSelector: { matchLabels: { agentx.io/opensandbox-health: allowed } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { agentx.io/plane: dependencies } }
+          podSelector: { matchLabels: { app.kubernetes.io/name: opensandbox } }
+      ports: [{ protocol: TCP, port: 8443 }]
+{{- end }}

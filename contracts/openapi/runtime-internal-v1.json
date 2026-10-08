@@ -1669,6 +1669,13 @@
                   "null"
                 ]
               },
+              "evaluatorExecutionId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "id": {
                 "format": "uuid",
                 "type": "string"
@@ -2489,6 +2496,13 @@
                 "minimum": 0,
                 "type": [
                   "integer",
+                  "null"
+                ]
+              },
+              "evaluatorExecutionId": {
+                "format": "uuid",
+                "type": [
+                  "string",
                   "null"
                 ]
               },
@@ -3975,6 +3989,11 @@
           "summary": {
             "$ref": "#/$defs/ExecutionSummaryV1"
           },
+          "traceEventCount": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "traceWatermark": {
             "format": "uint64",
             "minimum": 0,
@@ -3993,7 +4012,8 @@
           "summary",
           "stateVersion",
           "admissionEpoch",
-          "traceWatermark"
+          "traceWatermark",
+          "traceEventCount"
         ],
         "title": "ExecutionDetailV1",
         "type": "object"
@@ -4691,6 +4711,12 @@
               "null"
             ]
           },
+          "errorCodes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "initiatorDepartmentIds": {
             "items": {
               "format": "uuid",
@@ -4766,6 +4792,7 @@
           "initiatorDepartmentIds",
           "triggerTypes",
           "statuses",
+          "errorCodes",
           "sessionMode",
           "limit"
         ],
@@ -8095,7 +8122,17 @@
             "format": "uuid",
             "type": "string"
           },
+          "expectedEventCount": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "expectedWatermark": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ingestedEventCount": {
             "format": "uint64",
             "minimum": 0,
             "type": "integer"
@@ -8134,6 +8171,8 @@
           "executionId",
           "ingestedWatermark",
           "expectedWatermark",
+          "ingestedEventCount",
+          "expectedEventCount",
           "complete",
           "degraded",
           "totalSpans",
@@ -8330,6 +8369,13 @@
                 "minimum": 0,
                 "type": [
                   "integer",
+                  "null"
+                ]
+              },
+              "evaluatorExecutionId": {
+                "format": "uuid",
+                "type": [
+                  "string",
                   "null"
                 ]
               },
@@ -9131,6 +9177,8 @@
               {
                 "enum": [
                   "count",
+                  "succeeded_count",
+                  "failed_count",
                   "duration_millis",
                   "cost_micros",
                   "input_tokens",
@@ -20066,6 +20114,13 @@
                 "minimum": 0,
                 "type": [
                   "integer",
+                  "null"
+                ]
+              },
+              "evaluatorExecutionId": {
+                "format": "uuid",
+                "type": [
+                  "string",
                   "null"
                 ]
               },

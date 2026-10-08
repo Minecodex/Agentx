@@ -1,0 +1,36 @@
+{{- if and (ne .Values.global.environment "production") .Values.global.components.secretProvider.caSecretName }}
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: vault-tls-proxy, namespace: {{ .Values.global.namespaces.dependencies }} }
+data:
+  default.conf: |
+    server {
+      listen 8200 ssl;
+      ssl_certificate /tls/tls.crt;
+      ssl_certificate_key /tls/tls.key;
+      location / {
+        proxy_pass http://127.0.0.1:18200;
+        proxy_set_header Host $host;
+      }
+    }
+{{- end }}
+{{- if and (ne .Values.global.environment "production") .Values.global.components.sandbox.localProxyUpstream }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: opensandbox-tls-proxy, namespace: {{ .Values.global.namespaces.dependencies }} }
+data:
+  default.conf: |
+    server {
+      listen 8443 ssl;
+      ssl_certificate /tls/tls.crt;
+      ssl_certificate_key /tls/tls.key;
+      client_max_body_size 32m;
+      location / {
+        proxy_pass {{ .Values.global.components.sandbox.localProxyUpstream }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 300s;
+      }
+    }
+{{- end }}

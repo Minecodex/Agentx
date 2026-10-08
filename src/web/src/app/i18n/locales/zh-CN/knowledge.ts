@@ -1,4 +1,5 @@
 const translations = {
+  "deleteDocumentDescription": "删除平台记录与源文件引用？外部索引仍会保留，需要在外部服务中清理。",
   "create": "接入知识库",
   "addResource": "添加知识资源",
   "connection": "现有连接",

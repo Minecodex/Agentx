@@ -1,12 +1,21 @@
 apiVersion: v1
 kind: Service
-metadata: { name: agentx-egress-sandbox, namespace: {{ .Values.global.namespaces.dependencies }} }
+metadata:
+  name: agentx-egress-sandbox
+  namespace: {{ .Values.global.namespaces.dependencies }}
+{{- if .Values.global.network.egressGateway.sandboxAccess.serviceAnnotations }}
+  annotations:
+    {{- toYaml .Values.global.network.egressGateway.sandboxAccess.serviceAnnotations | nindent 4 }}
+{{- end }}
 spec:
   {{- $access := .Values.global.network.egressGateway.sandboxAccess }}
   {{- if eq $access.mode "nodePort" }}
   type: NodePort
   {{- else if eq $access.mode "privateLoadBalancer" }}
   type: LoadBalancer
+  {{- if $access.loadBalancerClass }}
+  loadBalancerClass: {{ $access.loadBalancerClass | quote }}
+  {{- end }}
   loadBalancerSourceRanges:
     {{- toYaml $access.sourceCidrs | nindent 4 }}
   {{- else }}

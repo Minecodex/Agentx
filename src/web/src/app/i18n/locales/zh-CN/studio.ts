@@ -302,6 +302,7 @@ const translations = {
     "addFirstNode": "添加循环体节点"
   },
   "runtime": {
+    "streamTail": "模型增量预览", "reasoning": "推理内容",
     "title": "执行",
     "expand": "展开执行轨道",
     "collapse": "折叠执行轨道",

@@ -24,17 +24,25 @@ spec:
             - { name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT, value: "1" }
           ports: [{ name: http, containerPort: 8123 }, { name: native, containerPort: 9000 }]
           startupProbe:
-            httpGet: { path: /ping, port: http }
+            httpGet: { path: /ping, port: http{{ if .Values.global.components.clickhouse.caSecretName }}, scheme: HTTPS{{ end }} }
             failureThreshold: 60
             periodSeconds: 2
           readinessProbe:
-            httpGet: { path: /ping, port: http }
+            httpGet: { path: /ping, port: http{{ if .Values.global.components.clickhouse.caSecretName }}, scheme: HTTPS{{ end }} }
             periodSeconds: 5
           volumeMounts:
+{{- if .Values.global.components.clickhouse.caSecretName }}
+            - { name: tls, mountPath: /tls, readOnly: true }
+            - { name: init, mountPath: /etc/clickhouse-server/config.d/tls.xml, subPath: tls.xml, readOnly: true }
+{{- end }}
             - { name: data, mountPath: /var/lib/clickhouse }
             - { name: init, mountPath: /docker-entrypoint-initdb.d, readOnly: true }
             - { name: clickhouse-secrets, mountPath: /run/secrets/agentx, readOnly: true }
       volumes:
+{{- if .Values.global.components.clickhouse.caSecretName }}
+        - name: tls
+          secret: { secretName: {{ .Values.global.components.clickhouse.caSecretName }} }
+{{- end }}
         - name: init
           configMap: { name: clickhouse-init, defaultMode: 0555 }
         - name: clickhouse-secrets

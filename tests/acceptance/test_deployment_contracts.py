@@ -47,7 +47,9 @@ def test_chart_schemas_are_identical() -> None:
 
 
 @pytest.mark.skipif(shutil.which("helm") is None, reason="Helm is not installed")
-@pytest.mark.parametrize("values_name", ["local.yaml", "dockerhub-beta.yaml", "production.example.yaml"])
+@pytest.mark.parametrize(
+    "values_name", ["local.yaml", "local-tls.yaml", "dockerhub-beta.yaml", "production.example.yaml"]
+)
 def test_all_charts_lint_and_render(values_name: str) -> None:
     rendered = "\n".join(render(f"deploy/values/{values_name}", target) for target in TARGETS)
     documents = [document for document in yaml.safe_load_all(rendered) if isinstance(document, dict)]
@@ -65,10 +67,18 @@ def test_all_charts_lint_and_render(values_name: str) -> None:
     assert "agentx.io/deployment/v2alpha3" not in rendered
     assert "agentx-agentx-" not in rendered
     assert "kind: HorizontalPodAutoscaler" not in rendered
-    if values_name == "production.example.yaml":
+    if values_name in {"local-tls.yaml", "production.example.yaml"}:
         assert "--get-server-public-key" not in rendered
     else:
         assert "--get-server-public-key" in rendered
+    if values_name == "local-tls.yaml":
+        clickhouse = next(
+            document
+            for document in documents
+            if document.get("kind") == "ConfigMap" and document["metadata"]["name"] == "clickhouse-init"
+        )
+        assert "<https_port>8123</https_port>" in clickhouse["data"]["tls.xml"]
+        assert '<http_port remove="remove" />' in clickhouse["data"]["tls.xml"]
     assert "wait-for-control-schema" in rendered
     assert "wait-for-runtime-schema" in rendered
     assert "wait-for-observability-schema" in rendered
@@ -114,6 +124,43 @@ def test_all_charts_lint_and_render(values_name: str) -> None:
     assert {source["ipBlock"]["cidr"] for source in sandbox_rule["from"]} == set(
         values["global"]["network"]["egressGateway"]["sandboxAccess"]["sourceCidrs"]
     )
+    if values_name == "production.example.yaml":
+        sandbox_service = next(
+            item
+            for item in documents
+            if item.get("kind") == "Service" and item["metadata"]["name"] == "agentx-egress-sandbox"
+        )
+        assert (
+            sandbox_service["metadata"]["annotations"]
+            == values["global"]["network"]["egressGateway"]["sandboxAccess"]["serviceAnnotations"]
+        )
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="Helm is not installed")
+def test_metallb_sandbox_service_uses_the_explicit_controller(tmp_path: Path) -> None:
+    values = yaml.safe_load(Path("deploy/values/production.example.yaml").read_text(encoding="utf-8"))
+    values["global"]["images"]["sourceCommit"] = "0" * 40
+    access = values["global"]["network"]["egressGateway"]["sandboxAccess"]
+    access.update(
+        loadBalancerClass="metallb",
+        endpoint="https://172.18.255.241",
+        serviceAnnotations={
+            "metallb.io/address-pool": "agentx-private",
+            "metallb.io/loadBalancerIPs": "172.18.255.241",
+        },
+    )
+    path = tmp_path / "metallb-values.yaml"
+    path.write_text(yaml.safe_dump(values), encoding="utf-8")
+    documents = list(yaml.safe_load_all(render(str(path), "dependencies")))
+    service = next(
+        item
+        for item in documents
+        if item.get("kind") == "Service" and item["metadata"]["name"] == "agentx-egress-sandbox"
+    )
+    assert service["spec"]["type"] == "LoadBalancer"
+    assert service["spec"]["loadBalancerClass"] == "metallb"
+    assert service["metadata"]["annotations"] == access["serviceAnnotations"]
+    assert service["spec"]["loadBalancerSourceRanges"] == access["sourceCidrs"]
 
 
 @pytest.mark.skipif(shutil.which("helm") is None, reason="Helm is not installed")

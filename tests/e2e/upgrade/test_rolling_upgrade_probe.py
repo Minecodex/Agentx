@@ -33,6 +33,7 @@ from tests.e2e.product.test_channel_delivery import (
 )
 from tests.e2e.runtime.test_agent_attachments import _runtime_mysql
 from tests.e2e.support import agentxctl, run
+from tools.scripts.release.evidence import evidence_identity
 
 pytestmark = [pytest.mark.cluster, pytest.mark.upgrade]
 
@@ -236,10 +237,12 @@ class ContinuousProbe(threading.Thread):
 
     def summary(self) -> dict[str, Any]:
         invocations = [record for record in self.records if record["kind"] == "invocation"]
-        latencies = sorted(record["latencyMs"] for record in invocations if record["finalStatus"] == "succeeded")
+        latencies = sorted(record["latencyMs"] for record in invocations if record.get("finalStatus") == "succeeded")
         return {
             "samples": len(self.records),
             "invocations": len(invocations),
+            "accepted": sum(1 for record in invocations if record["accepted"]),
+            "completed": len(latencies),
             "succeeded": len(latencies),
             "unreachable": sum(1 for record in self.records if record["kind"] == "unreachable"),
             "p50LatencyMs": latencies[len(latencies) // 2] if latencies else None,
@@ -314,13 +317,16 @@ def test_two_phase_rolling_upgrade_with_continuous_probe(
 
     summary = probe.summary()
     report = {
+        "identity": evidence_identity(installed_agentx),
         "schemaVersion": 1,
         "phase": "expand->rolling->contract",
         "originalReplicas": original,
         "rollingSeconds": round(rolling_seconds, 1),
         "contractSeconds": round(contract_seconds, 1),
         "probe": summary,
-        "status": "passed" if not summary["failures"] else "failed",
+        "status": "passed"
+        if not summary["failures"] and summary["accepted"] > 0 and summary["accepted"] == summary["completed"]
+        else "failed",
     }
     path = Path(installed_agentx["artifact_dir"]) / "upgrade-rolling" / "rolling-upgrade-report.json"
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

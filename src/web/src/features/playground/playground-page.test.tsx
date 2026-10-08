@@ -52,6 +52,32 @@ describe('application playground sessions', () => {
     await waitFor(() => expect(requestedPaths).toContain('/gateway/v1/sessions/session-2/messages'))
   })
 
+  it('sends an uploaded image as a native image part from the conversation composer', async () => {
+    let submitted: { parts: Array<{ partType: string; artifactId?: string }> } | undefined
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), 'http://agentx.test').pathname
+      if (path === '/api/v1/applications') return jsonResponse({ items: [application()], page: 1, pageSize: 100, total: 1 })
+      if (path === '/api/v1/applications/app-1/deployments') return jsonResponse([deployment()])
+      if (path.endsWith('/playground-config')) return jsonResponse(config({ questionInput: 'prompt', fileInput: 'attachments', answerOutput: 'answer', answerFilesOutput: null }))
+      if (path === '/api/v1/applications/app-1/sessions') return jsonResponse([session('session-1', '第一轮会话')])
+      if (path === '/gateway/v1/artifacts') return jsonResponse({ artifactId: 'image-1', contentType: 'image/png', sizeBytes: 8, sha256: 'image-sha' })
+      if (path === '/gateway/v1/sessions/session-1/messages' && init?.method === 'POST') {
+        submitted = JSON.parse(String(init.body))
+        return jsonResponse({ id: 'image-invocation', status: 'completed' })
+      }
+      if (path === '/gateway/v1/invocations/image-invocation') return jsonResponse({ id: 'image-invocation', status: 'completed' })
+      return jsonResponse([])
+    }))
+    const view = renderPlayground('/playground?applicationId=app-1&mode=conversation&sessionId=session-1')
+    const composer = await screen.findByPlaceholderText('输入消息进行测试…')
+    await waitFor(() => expect(screen.getByRole('button', { name: '添加附件' })).toBeEnabled())
+    fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(['tiny png'], 'tiny.png', { type: 'image/png' })] } })
+    expect(await screen.findByText('tiny.png')).toBeVisible()
+    fireEvent.change(composer, { target: { value: 'Describe this image' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+    await waitFor(() => expect(submitted?.parts).toEqual(expect.arrayContaining([{ partType: 'image', artifactId: 'image-1', content: expect.objectContaining({ type: 'image', contentType: 'image/png' }) }])))
+  })
+
   it('opens mapping configuration from the settings action and keeps publishing state', async () => {
     let saved: unknown
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -230,7 +256,7 @@ describe('historical parameter projection', () => {
 
 function renderPlayground(path: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(<QueryClientProvider client={client}><TooltipPrimitive.Provider><ToastProvider><MemoryRouter initialEntries={[path]}><PlaygroundPage /></MemoryRouter></ToastProvider></TooltipPrimitive.Provider></QueryClientProvider>)
+  return render(<QueryClientProvider client={client}><TooltipPrimitive.Provider><ToastProvider><MemoryRouter initialEntries={[path]}><PlaygroundPage /></MemoryRouter></ToastProvider></TooltipPrimitive.Provider></QueryClientProvider>)
 }
 
 function application() { return { id: 'app-1', name: '客服应用', slug: 'support', status: 'active', activeDeploymentId: 'deployment-1' } }

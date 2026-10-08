@@ -1,6 +1,6 @@
 /* oxlint-disable react/only-export-components */
 import { lazy, Suspense, type ReactNode } from 'react'
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, type RouteObject } from 'react-router-dom'
 
 import { DashboardPage } from '../features/dashboard/dashboard-page'
 import { NotFoundPage } from '../features/not-found/not-found-page'
@@ -10,6 +10,7 @@ import { SetupPage } from '../features/auth/setup-page'
 import { LoginPage } from '../features/auth/login-page'
 import { ChangePasswordPage } from '../features/auth/change-password-page'
 import { ForbiddenPage } from '../features/auth/forbidden-page'
+import { RouteErrorPage } from './route-error-page'
 
 const ApplicationsPage = lazy(() => import('../features/applications/applications-page').then((module) => ({ default: module.ApplicationsPage })))
 const ApplicationDetailPage = lazy(() => import('../features/applications/application-detail-page').then((module) => ({ default: module.ApplicationDetailPage })))
@@ -55,7 +56,7 @@ function deferred(element: ReactNode) {
   return <Suspense fallback={<div className="grid h-full min-h-72 place-items-center text-sm text-muted-foreground">Agentx…</div>}>{element}</Suspense>
 }
 
-export const router = createBrowserRouter([
+const routes: RouteObject[] = [
   { path: 'setup', element: <PublicRoute kind="setup"><SetupPage /></PublicRoute> },
   { path: 'login', element: <PublicRoute kind="login"><LoginPage /></PublicRoute> },
   { path: 'change-password', element: <PublicRoute kind="change-password"><ChangePasswordPage /></PublicRoute> },
@@ -106,4 +107,6 @@ export const router = createBrowserRouter([
       { path: '*', element: <NotFoundPage /> },
     ],
   },
-])
+]
+
+export const router = createBrowserRouter([{ errorElement: <RouteErrorPage />, children: routes }])

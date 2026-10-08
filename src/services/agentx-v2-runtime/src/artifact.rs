@@ -13,12 +13,12 @@ use crate::{
 };
 
 pub async fn externalize_one(state: &RuntimeState) -> RuntimeResult<bool> {
-    if let Some(row) = sqlx::query(
-        "SELECT id,tenant_id,input_json FROM workflow_executions e WHERE input_json IS NOT NULL AND JSON_STORAGE_SIZE(input_json)>? AND NOT EXISTS(SELECT 1 FROM artifact_references r WHERE r.tenant_id=e.tenant_id AND r.owner_type='execution' AND r.owner_id=CAST(BIN_TO_UUID(e.id) AS CHAR) COLLATE utf8mb4_0900_ai_ci AND r.reference_role='workflow_input') ORDER BY created_at,id LIMIT 1",
-    )
-    .bind(16 * 1024_u64)
-    .fetch_optional(&state.pool)
-    .await?
+    if let Some(row) = load_candidate(
+        &state.pool,
+        "SELECT id FROM workflow_executions e FORCE INDEX(idx_runtime_execution_input_size) WHERE input_size_bytes>? AND NOT EXISTS(SELECT 1 FROM artifact_references r WHERE r.tenant_id=e.tenant_id AND r.owner_type='execution' AND r.owner_id=CAST(BIN_TO_UUID(e.id) AS CHAR) COLLATE utf8mb4_0900_ai_ci AND r.reference_role='workflow_input') ORDER BY id LIMIT 1",
+        "SELECT id,tenant_id,input_json FROM workflow_executions WHERE id=? AND input_json IS NOT NULL",
+        16 * 1024,
+    ).await?
     {
         let execution_id: Uuid = row.try_get("id")?;
         let tenant_id: Uuid = row.try_get("tenant_id")?;
@@ -45,12 +45,12 @@ pub async fn externalize_one(state: &RuntimeState) -> RuntimeResult<bool> {
         tx.commit().await?;
         return Ok(true);
     }
-    if let Some(row) = sqlx::query(
-        "SELECT a.id,a.tenant_id,a.execution_id,a.node_execution_id,a.attempt_number,a.input_json,n.node_name FROM node_attempts a JOIN node_executions n ON n.id=a.node_execution_id WHERE a.input_json IS NOT NULL AND JSON_STORAGE_SIZE(a.input_json)>? AND NOT EXISTS(SELECT 1 FROM artifact_references r WHERE r.tenant_id=a.tenant_id AND r.owner_type='node_attempt' AND r.owner_id=CAST(BIN_TO_UUID(a.id) AS CHAR) COLLATE utf8mb4_0900_ai_ci AND r.reference_role='attempt_input') ORDER BY a.created_at,a.id LIMIT 1",
-    )
-    .bind(16 * 1024_u64)
-    .fetch_optional(&state.pool)
-    .await?
+    if let Some(row) = load_candidate(
+        &state.pool,
+        "SELECT id FROM node_attempts a FORCE INDEX(idx_node_attempt_input_size) WHERE input_size_bytes>? AND NOT EXISTS(SELECT 1 FROM artifact_references r WHERE r.tenant_id=a.tenant_id AND r.owner_type='node_attempt' AND r.owner_id=CAST(BIN_TO_UUID(a.id) AS CHAR) COLLATE utf8mb4_0900_ai_ci AND r.reference_role='attempt_input') ORDER BY id LIMIT 1",
+        "SELECT a.id,a.tenant_id,a.execution_id,a.node_execution_id,a.attempt_number,a.input_json,n.node_name FROM node_attempts a JOIN node_executions n ON n.id=a.node_execution_id WHERE a.id=? AND a.input_json IS NOT NULL",
+        16 * 1024,
+    ).await?
     {
         let attempt_id: Uuid = row.try_get("id")?;
         let tenant_id: Uuid = row.try_get("tenant_id")?;
@@ -100,12 +100,12 @@ pub async fn externalize_one(state: &RuntimeState) -> RuntimeResult<bool> {
         tx.commit().await?;
         return Ok(true);
     }
-    if let Some(row) = sqlx::query(
-        "SELECT id,tenant_id,payload_hash,payload_json FROM checkpoints WHERE payload_artifact_id IS NULL AND payload_json IS NOT NULL AND JSON_STORAGE_SIZE(payload_json)>? ORDER BY created_at,id LIMIT 1",
-    )
-    .bind(agentx_runtime_contracts::INLINE_RESULT_LIMIT_BYTES)
-    .fetch_optional(&state.pool)
-    .await?
+    if let Some(row) = load_candidate(
+        &state.pool,
+        "SELECT id FROM checkpoints FORCE INDEX(idx_checkpoint_externalize) WHERE payload_artifact_id IS NULL AND payload_size_bytes>? ORDER BY id LIMIT 1",
+        "SELECT id,tenant_id,payload_hash,payload_json FROM checkpoints WHERE id=? AND payload_artifact_id IS NULL AND payload_json IS NOT NULL",
+        agentx_runtime_contracts::INLINE_RESULT_LIMIT_BYTES,
+    ).await?
     {
         let checkpoint_id: Uuid = row.try_get("id")?;
         let tenant_id: Uuid = row.try_get("tenant_id")?;
@@ -144,12 +144,12 @@ pub async fn externalize_one(state: &RuntimeState) -> RuntimeResult<bool> {
         tx.commit().await?;
         return Ok(changed.rows_affected() == 1);
     }
-    if let Some(row) = sqlx::query(
-        "SELECT id,tenant_id,terminal_result_hash,terminal_result_json FROM workflow_executions WHERE terminal_result_object_id IS NULL AND terminal_result_json IS NOT NULL AND JSON_STORAGE_SIZE(terminal_result_json)>? ORDER BY ended_at,id LIMIT 1",
-    )
-    .bind(agentx_runtime_contracts::INLINE_RESULT_LIMIT_BYTES)
-    .fetch_optional(&state.pool)
-    .await?
+    if let Some(row) = load_candidate(
+        &state.pool,
+        "SELECT id FROM workflow_executions FORCE INDEX(idx_runtime_terminal_externalize) WHERE terminal_result_object_id IS NULL AND terminal_result_size_bytes>? ORDER BY id LIMIT 1",
+        "SELECT id,tenant_id,terminal_result_hash,terminal_result_json FROM workflow_executions WHERE id=? AND terminal_result_object_id IS NULL AND terminal_result_json IS NOT NULL",
+        agentx_runtime_contracts::INLINE_RESULT_LIMIT_BYTES,
+    ).await?
     {
         let execution_id: Uuid = row.try_get("id")?;
         let tenant_id: Uuid = row.try_get("tenant_id")?;
@@ -197,6 +197,27 @@ pub async fn externalize_one(state: &RuntimeState) -> RuntimeResult<bool> {
         return Ok(changed.rows_affected() == 1);
     }
     Ok(false)
+}
+
+async fn load_candidate(
+    pool: &sqlx::MySqlPool,
+    candidate_query: &str,
+    payload_query: &str,
+    minimum_size: u64,
+) -> RuntimeResult<Option<sqlx::mysql::MySqlRow>> {
+    // Discover candidates through the indexed size/owner columns. Fetch the
+    // large immutable JSON by key, rechecking that retention or another
+    // artifact worker has not already removed/externalized the payload.
+    let id: Option<Uuid> = sqlx::query_scalar(candidate_query)
+        .bind(minimum_size)
+        .fetch_optional(pool)
+        .await
+        .inspect_err(|error| tracing::error!(%error, candidate_query, "Runtime artifact candidate query failed"))?;
+    let Some(id) = id else { return Ok(None) };
+    Ok(sqlx::query(payload_query)
+        .bind(id)
+        .fetch_optional(pool)
+        .await?)
 }
 
 pub async fn load_artifact(

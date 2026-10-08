@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -105,9 +106,45 @@ def test_release_stays_private_until_every_asset_is_uploaded(
     source.write_bytes(b"release-fixture")
     for target in TARGETS:
         create_package(source, "1.2.3-test", target, tmp_path)
+    identity = {
+        "runId": "unit-fixture",
+        "sourceCommit": "a" * 40,
+        "sourceTreeSha256": "b" * 64,
+        "imageManifestSha256": "c" * 64,
+    }
     (tmp_path / "release-images.json").write_text(
-        json.dumps({"version": "1.2.3-test", "images": [{}] * 11}),
-        encoding="utf-8",
+        json.dumps(
+            {
+                "version": "1.2.3-test",
+                "images": [{}] * 11,
+                "identity": identity,
+                "status": "passed",
+                "verifiedImages": [{}] * 11,
+                "manifestSignatureVerified": True,
+            }
+        )
+    )
+    from tools.scripts.release.release_summary import REQUIRED_JUNIT
+
+    domains = {f"junit:{name}" for name in REQUIRED_JUNIT} | {
+        "capacity",
+        "backup-recovery",
+        "rolling-upgrade",
+        "supply-chain",
+    }
+    summary = tmp_path / "release-summary.json"
+    summary.write_text(
+        json.dumps(
+            {"identity": identity, "overall": "passed", "domains": {name: {"status": "passed"} for name in domains}}
+        )
+    )
+    (tmp_path / "release-gate.passed").write_text(
+        json.dumps({"identity": identity, "summarySha256": hashlib.sha256(summary.read_bytes()).hexdigest()})
+    )
+    (tmp_path / "supply-chain-evidence.json").write_text(
+        json.dumps(
+            {"identity": identity, "status": "passed", "trustScope": "release-policy", "environment": "release-ci"}
+        )
     )
     notes = tmp_path / "notes.md"
     notes.write_text("Release notes", encoding="utf-8")
@@ -141,4 +178,4 @@ def test_release_stays_private_until_every_asset_is_uploaded(
         actions = [call[1] for call in calls]
         assert actions.index("upload") < actions.index("edit")
         upload = next(call for call in calls if call[1] == "upload")
-        assert len(upload[3:-1]) == 9
+        assert len(upload[3:-1]) == 12

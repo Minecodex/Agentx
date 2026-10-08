@@ -13,13 +13,13 @@ spec:
       serviceAccountName: platform-control
       automountServiceAccountToken: false
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
-      restartPolicy: OnFailure
+      restartPolicy: Never
       initContainers:
         - name: wait-for-control-mysql
           image: mysql:8.4
           securityContext: { allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 999, runAsGroup: 999, capabilities: { drop: [ALL] } }
           command: [sh, -ec]
-          args: ['until MYSQL_PWD="$AGENTX_CONTROL_MYSQL_PASSWORD" mysql --connect-timeout=5 {{ if eq .Values.global.environment "production" }}--ssl-mode=VERIFY_IDENTITY --ssl-ca=/etc/agentx-ca/mysql.pem{{ else }}--ssl-mode=DISABLED --get-server-public-key{{ end }} -h "$AGENTX_CONTROL_MYSQL_HOST" -u "$AGENTX_CONTROL_MYSQL_USER" -e "SELECT 1" agentx_control >/dev/null 2>&1; do sleep 2; done']
+          args: ['until MYSQL_PWD="$AGENTX_CONTROL_MYSQL_PASSWORD" mysql --connect-timeout=5 {{ if .Values.global.components.controlMysql.caSecretName }}--ssl-mode=VERIFY_IDENTITY --ssl-ca=/etc/agentx-ca/mysql.pem{{ else }}--ssl-mode=DISABLED --get-server-public-key{{ end }} -h "$AGENTX_CONTROL_MYSQL_HOST" -u "$AGENTX_CONTROL_MYSQL_USER" -e "SELECT 1" agentx_control >/dev/null 2>&1; do sleep 2; done']
           env:
             - { name: AGENTX_CONTROL_MYSQL_HOST, value: {{ .Values.global.components.controlMysql.host | quote }} }
             - { name: AGENTX_CONTROL_MYSQL_USER, value: {{ .Values.global.components.controlMysql.migrateUser | quote }} }

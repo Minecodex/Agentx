@@ -533,8 +533,8 @@ test.describe.serial('Provider integration', () => {
     const knowledgeName = `Provider LightRAG ${stamp}`
     const memoryName = `Provider Mem0 ${stamp}`
     const sandboxName = `Provider Sandbox ${stamp}`
-    await createKnowledgeViaUi(page, `Provider LightRAG Connection ${stamp}`, lightRagBaseUrl, '/health', knowledgeName, `pv-integration-${stamp}`, providerRagKeyName)
-    await createMemoryViaUi(page, `Provider Mem0 Connection ${stamp}`, mem0BaseUrl, '/openapi.json', memoryName, `pv-integration-${stamp}`)
+    await createKnowledgeViaUi(page, `Provider LightRAG Connection ${stamp}`, lightRagBaseUrl, '/health', knowledgeName, `pv_integration_${stamp}`, providerRagKeyName)
+    await createMemoryViaUi(page, `Provider Mem0 Connection ${stamp}`, mem0BaseUrl, '/openapi.json', memoryName, `pv_integration_${stamp}`)
     await verifyConnectionTest(page, '知识库', knowledgeName)
     await verifyConnectionTest(page, '记忆', memoryName)
     await ensureSandboxProfile(page, token, department.id, sandboxName)

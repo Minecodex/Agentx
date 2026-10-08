@@ -145,19 +145,12 @@ pub async fn claim(pool: &MySqlPool, owner: Uuid) -> RuntimeResult<Option<Delive
     }))
 }
 
-fn lease_guard() -> &'static str {
-    "locked_by=? AND fencing_token=? AND locked_until>UTC_TIMESTAMP(6)"
-}
-
 pub async fn complete(
     pool: &MySqlPool,
     claim: &DeliveryClaim,
     provider_message_id: Option<&str>,
 ) -> RuntimeResult<()> {
-    let changed = sqlx::query(&format!(
-        "UPDATE delivery_outbox SET status='delivered',provider_message_id=?,locked_by=NULL,locked_until=NULL,last_error_code=NULL,last_error_message=NULL WHERE id=? AND status='delivering' AND {}",
-        lease_guard()
-    ))
+    let changed = sqlx::query("UPDATE delivery_outbox SET status='delivered',provider_message_id=?,locked_by=NULL,locked_until=NULL,last_error_code=NULL,last_error_message=NULL WHERE id=? AND status='delivering' AND locked_by=? AND fencing_token=? AND locked_until>UTC_TIMESTAMP(6)")
     .bind(provider_message_id)
     .bind(claim.id)
     .bind(claim.owner)
@@ -186,10 +179,7 @@ pub async fn fail_retryable(
         return dead(pool, claim, code, message).await;
     }
     let delay = (1_u64 << claim.attempt_count.min(6)).min(60);
-    let changed = sqlx::query(&format!(
-        "UPDATE delivery_outbox SET status='pending',next_attempt_at=DATE_ADD(UTC_TIMESTAMP(6),INTERVAL ? SECOND),locked_by=NULL,locked_until=NULL,last_error_code=?,last_error_message=? WHERE id=? AND status='delivering' AND {}",
-        lease_guard()
-    ))
+    let changed = sqlx::query("UPDATE delivery_outbox SET status='pending',next_attempt_at=DATE_ADD(UTC_TIMESTAMP(6),INTERVAL ? SECOND),locked_by=NULL,locked_until=NULL,last_error_code=?,last_error_message=? WHERE id=? AND status='delivering' AND locked_by=? AND fencing_token=? AND locked_until>UTC_TIMESTAMP(6)")
     .bind(delay)
     .bind(code)
     .bind(message.chars().take(1000).collect::<String>())
@@ -224,10 +214,7 @@ pub async fn dead(
     .bind(claim.id)
     .execute(&mut *tx)
     .await?;
-    let changed = sqlx::query(&format!(
-        "DELETE FROM delivery_outbox WHERE id=? AND {}",
-        lease_guard()
-    ))
+    let changed = sqlx::query("DELETE FROM delivery_outbox WHERE id=? AND locked_by=? AND fencing_token=? AND locked_until>UTC_TIMESTAMP(6)")
     .bind(claim.id)
     .bind(claim.owner)
     .bind(claim.fencing_token)

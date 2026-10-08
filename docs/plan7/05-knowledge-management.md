@@ -34,7 +34,10 @@ knowledge_documents
   id, tenant_id, rag_resource_id
   name, content_type, size_bytes, sha256
   artifact_id            -- 原件（artifacts 表 + control_objects）
-  external_document_id   -- 外部服务文档/批次 ID（LightRAG 返回）
+  external_document_id   -- LightRAG 最终 processed 文档 ID，不使用上传 track_id
+  provider_track_id      -- 上传受理后的任务 ID
+  index_snapshot_json    -- 固定 endpoint、workspace、indexVersion 和 Vault secret version
+  locked_by, claim_token, locked_until, next_reconcile_at, index_deadline_at
   status                 -- uploading / indexing / indexed / failed
   error_code, error_message
   indexed_at, version, created_by, created_at, updated_at
@@ -50,10 +53,11 @@ rag_resources.sync_status 语义激活：有文档在 indexing 时 syncing，全
 ### 3.2 文档上传与索引（LightRAG）
 
 - `POST /api/v1/knowledge/resources/{id}/documents`（multipart，仿 skill 上传）：校验 content_type 白名单与大小上限（首期 8MiB/文件，单资源 200 文档/256MiB 总量）→ 原件入 artifacts → 行 status=uploading → 触发索引；
-- 索引执行：Control 侧调用 LightRAG `POST {endpoint}/documents/text`（协议已有：workspace=external_resource_id、indexVersion 注入、`x-api-key`，凭证经 Vault 快照）→ 成功 status=indexed + external_document_id + indexed_at；失败 status=failed + 错误码。勘察新增两个注意：`documents/text` 的响应结构**仓库内从未被消费过**（只有 e2e 经 runtime insert 间接覆盖），external_document_id 的实际取值需对 LightRAG 实测确定后冻结；管理面上传的 indexVersion 必须与 runtime worker insert 同源——都从 `rag_resources.version` 派生，否则同 workspace 出现不同 indexVersion、破坏验收 7 的同源验证；
-- 索引为同步小任务还是后台任务：**首期同步执行**（文本直传 HTTP，秒级），超时 60s；失败不阻塞其他文档；
-- 删除：`DELETE .../documents/{docId}` —— LightRAG 无标准删除协议的边界：首期只删平台记录与 artifact，不回撤外部索引（文档明示"外部索引需在外部服务清理"）；如 LightRAG 提供 `documents/delete` 则调用并以响应为准。勘察新增：现有 `rag_query_request` 对未知 operation **静默落到 `/query`**（LightRAG 分支只区分 insert/非 insert，`worker_runtime_output.rs` 内）——共享协议抽取时必须显式拦截 delete 等未支持 operation，否则删除语义会被误发成查询；
-- 列表：`GET .../documents`（分页、状态筛选）。
+- 索引执行：上传事务注册原件引用并写 `uploading`，返回 **202**。Control API Role 的后台 reconciler 以 30 秒租约和递增 claim token 领取，5 秒续租；重启后继续扫描持久状态。`POST /documents/text` 的受理结果仅推进到 `indexing`，保存 `track_id`，轮询 `/documents/track_status/{track_id}` 确认 `processed` 后才写 `indexed`、最终 document ID 与 indexed_at。提交前丢失租约的结果丢弃，不影响 API Role。
+- 快照固定上传时的 endpoint、workspace、resource version 和 Vault 凭证版本，防止重试期间变更资源导致索引漂移。稳定 `file_source=agentx_<document_uuid_without_dashes>.txt`；受理后、保存 track_id 前崩溃时，以 `/documents/paginated` 的 file_path 找回任务。429、409、5xx 和连接故障延后重试，总索引窗口 2 小时。
+- 删除：`DELETE .../documents/{docId}` —— LightRAG 无标准删除协议的边界：首期只删平台文档记录并释放 artifact_references 原件引用，由既有 Artifact retention 回收原件；不回撤外部索引（文档明示"外部索引需在外部服务清理"）；如 LightRAG 提供 `documents/delete` 则调用并以响应为准。勘察新增：现有 `rag_query_request` 对未知 operation **静默落到 `/query`**（LightRAG 分支只区分 insert/非 insert，`worker_runtime_output.rs` 内）——共享协议抽取时必须显式拦截 delete 等未支持 operation，否则删除语义会被误发成查询；
+- 列表：`GET .../documents` 返回资源内有界列表；200 文档上限包含 failed 文档。上传/索引中禁止删除，避免释放正在读取的原件。所有文档、上传、删除和检索操作复用资源的部门作用域校验。
+- LightRAG 检索调试调用 `/query/data`、`mode=naive`，返回真实 chunk/content/file_path；缺失分数显示为空。workspace 通过 `LIGHTRAG-WORKSPACE` 头绑定，仅允许 1–128 位 ASCII 字母、数字和下划线，输入不能覆盖资源快照中的 workspace/indexVersion。
 
 ### 3.3 RAG 协议抽取共享
 
@@ -89,7 +93,7 @@ rag_resources.sync_status 语义激活：有文档在 indexing 时 syncing，全
 
 ### P7-E1 契约冻结
 
-- [x] `knowledge_documents` DDL（control 迁移 0011）与文档 API、retrieval-test API 契约（OpenAPI 再生成）；`v2-schema-table-ownership.json` 登记新表 + `artifact_references` 引用注册设计（见 §3.1 勘察新增）；
+- [x] `knowledge_documents` DDL（control 迁移 0013）与文档 API、retrieval-test API 契约（OpenAPI 再生成）；`v2-schema-table-ownership.json` 登记新表 + `artifact_references` 引用注册设计（见 §3.1 勘察新增）；
 - [x] content_type 白名单、大小/数量上限、错误码冻结（`KNOWLEDGE_DOCUMENT_TYPE_UNSUPPORTED`、`KNOWLEDGE_DOCUMENT_TOO_LARGE`、`KNOWLEDGE_DOCUMENT_DUPLICATED`、`KNOWLEDGE_INDEX_FAILED`）；
 - [x] 更新 `docs/05-platform-business.md` 知识库章节与 `docs/13-architecture-service-data-map.md` 表目录。
 

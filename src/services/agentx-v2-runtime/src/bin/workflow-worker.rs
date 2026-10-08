@@ -11,6 +11,7 @@ mod runtime_task_queue;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    agentx_service_kit::install_tls_provider();
     let capabilities = worker_capabilities()?;
     validate_plugin_runtime(&capabilities).await?;
     let pool = connect_runtime_mysql(&RuntimeMySqlSettings::from_env()?).await?;
@@ -71,7 +72,10 @@ async fn main() -> Result<()> {
         )?
         // Model deltas publish SSE wakeups on the runtime redis; missing
         // redis degrades to the gateway's 1s poll fallback.
-        .with_delta_sink(pool.clone(), redis_client_for_wakeups(&redis_settings)),
+        .with_delta_sink(
+            pool.clone(),
+            agentx_v2_runtime::sse_wakeup::SseWakeup::from_env()?,
+        ),
     );
     for capability in capabilities {
         let parallelism = if capability == "plugin_nodejs" {
@@ -137,6 +141,7 @@ async fn main() -> Result<()> {
     let metrics_lifecycle = lifecycle.clone();
     tasks.spawn(async move {
         collect_worker_metrics(
+            worker,
             pool,
             metrics_redis,
             metrics,
@@ -297,12 +302,6 @@ async fn worker_loop(
 struct WorkerRedis {
     connection: redis::aio::ConnectionManager,
     settings: RuntimeRedisSettings,
-}
-
-/// A plain client handle for best-effort pubsub from the delta sink; None
-/// keeps the sink write-only when redis is not reachable at startup.
-fn redis_client_for_wakeups(settings: &RuntimeRedisSettings) -> Option<redis::Client> {
-    agentx_runtime_infrastructure::runtime_redis_client(settings).ok()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -578,6 +577,7 @@ async fn submit_poisoned_result(
 }
 
 async fn collect_worker_metrics(
+    worker: Arc<agentx_v2_runtime::worker_runtime::RuntimeWorker>,
     pool: sqlx::MySqlPool,
     redis_settings: RuntimeRedisSettings,
     metrics: agentx_service_kit::MetricsRegistry,
@@ -585,10 +585,25 @@ async fn collect_worker_metrics(
     lifecycle: agentx_service_kit::ServiceLifecycle,
 ) -> Result<()> {
     while !lifecycle.is_draining() {
+        metrics
+            .set(
+                "agentx_provider_pool_utilization",
+                worker.provider_pool_utilization(),
+            )
+            .await;
+        metrics
+            .set(
+                "agentx_provider_circuit_open",
+                worker.provider_open_circuits() as f64,
+            )
+            .await;
         let sample = async {
-            let ready: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_attempts WHERE status='queued'").fetch_one(&pool).await?;
-            let oldest: f64 = sqlx::query_scalar("SELECT CAST(COALESCE(MAX(TIMESTAMPDIFF(MICROSECOND,created_at,UTC_TIMESTAMP(6))),0)/1000000.0 AS DOUBLE) FROM node_attempts WHERE status='queued'").fetch_one(&pool).await?;
-            let active: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_attempts WHERE status='running' AND locked_until>UTC_TIMESTAMP(6)").fetch_one(&pool).await?;
+            let acquire_started = std::time::Instant::now();
+            let mut connection = pool.acquire().await?;
+            metrics.observe_mysql_pool_wait(acquire_started.elapsed()).await;
+            let ready: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_attempts WHERE status='queued'").fetch_one(&mut *connection).await?;
+            let oldest: f64 = sqlx::query_scalar("SELECT CAST(COALESCE(MAX(TIMESTAMPDIFF(MICROSECOND,created_at,UTC_TIMESTAMP(6))),0)/1000000.0 AS DOUBLE) FROM node_attempts WHERE status='queued'").fetch_one(&mut *connection).await?;
+            let active: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_attempts WHERE status='running' AND locked_until>UTC_TIMESTAMP(6)").fetch_one(&mut *connection).await?;
             Ok::<_, sqlx::Error>((ready, oldest, active))
         }.await;
         match sample {
@@ -620,7 +635,7 @@ async fn collect_worker_metrics(
         }
         metrics
             .set(
-                "agentx_mysql_pool_waiters",
+                "agentx_mysql_pool_busy_connections",
                 pool.size().saturating_sub(pool.num_idle() as u32) as f64,
             )
             .await;

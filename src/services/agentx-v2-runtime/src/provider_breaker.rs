@@ -92,6 +92,15 @@ impl ProviderBreaker {
         }
     }
 
+    pub fn open_count(&self) -> usize {
+        self.entries
+            .lock()
+            .expect("provider breaker lock")
+            .values()
+            .filter(|entry| matches!(entry.state, BreakerState::Open { .. }))
+            .count()
+    }
+
     pub fn failure_threshold() -> u32 {
         FAILURE_THRESHOLD
     }
@@ -107,6 +116,7 @@ impl ProviderBreaker {
 pub struct FairnessLimiter {
     semaphores: Mutex<HashMap<String, std::sync::Arc<tokio::sync::Semaphore>>>,
     per_key: usize,
+    peak_inflight: std::sync::atomic::AtomicUsize,
 }
 
 impl FairnessLimiter {
@@ -130,7 +140,17 @@ impl FairnessLimiter {
                 .or_insert_with(|| std::sync::Arc::new(tokio::sync::Semaphore::new(self.per_key)))
                 .clone()
         };
-        semaphore.clone().try_acquire_owned().ok()
+        let permit = semaphore.clone().try_acquire_owned().ok()?;
+        self.peak_inflight.fetch_max(
+            self.per_key.saturating_sub(semaphore.available_permits()),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        Some(permit)
+    }
+    pub fn peak_utilization(&self) -> f64 {
+        self.peak_inflight
+            .load(std::sync::atomic::Ordering::Relaxed) as f64
+            / self.per_key.max(1) as f64
     }
 }
 

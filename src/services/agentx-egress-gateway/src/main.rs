@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    agentx_service_kit::install_tls_provider();
     let lifecycle = agentx_service_kit::ServiceLifecycle::default();
     let metrics = agentx_service_kit::MetricsRegistry::default();
     let health = agentx_service_kit::HealthRegistry::default();

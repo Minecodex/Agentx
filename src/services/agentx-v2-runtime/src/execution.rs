@@ -208,43 +208,74 @@ pub async fn recover_dispatches(
     pool: &sqlx::MySqlPool,
     limit: u32,
 ) -> RuntimeResult<Vec<WorkerTaskV1>> {
-    let mut tx = pool.begin().await?;
-    timeout_expired_attempts(&mut tx, limit).await?;
-    sqlx::query("UPDATE runtime_commands SET status='pending',locked_by=NULL,locked_until=NULL WHERE status='processing' AND locked_until<=UTC_TIMESTAMP(6)")
-        .execute(&mut *tx).await?;
-    sqlx::query("UPDATE worker_leases l JOIN node_attempts a ON a.id=l.node_attempt_id SET l.released_at=COALESCE(l.released_at,UTC_TIMESTAMP(6)) WHERE a.status='running' AND a.locked_until<=UTC_TIMESTAMP(6)")
-        .execute(&mut *tx).await?;
-    sqlx::query("UPDATE node_attempts SET status='queued',lease_token=NULL,worker_instance_id=NULL,locked_until=NULL,heartbeat_at=NULL WHERE status='running' AND locked_until<=UTC_TIMESTAMP(6)")
-        .execute(&mut *tx).await?;
-    sqlx::query("UPDATE quota_reservations SET status='expired',release_reason='reservation_expired',settled_at=UTC_TIMESTAMP(6) WHERE status='active' AND expires_at<=UTC_TIMESTAMP(6)")
-        .execute(&mut *tx).await?;
-    let rows = sqlx::query("SELECT o.id,o.payload_json FROM execution_outbox o JOIN node_attempts a ON a.id=o.attempt_id AND a.tenant_id=o.tenant_id WHERE o.message_type='dispatch_node' AND o.status='published' AND a.status='queued' AND o.published_at<=DATE_SUB(UTC_TIMESTAMP(6),INTERVAL 5 SECOND) ORDER BY o.published_at,o.id LIMIT ? FOR UPDATE SKIP LOCKED")
-        .bind(limit.clamp(1, 100)).fetch_all(&mut *tx).await?;
-    let mut messages = Vec::with_capacity(rows.len());
-    for row in rows {
-        let outbox_id: Uuid = row.try_get("id")?;
+    timeout_expired_attempts(pool, limit).await?;
+    // Read candidates without range locks. A broad UPDATE of an empty expiry
+    // range can still lock live leases and the gaps used by new dispatches.
+    let commands: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM runtime_commands WHERE status='processing' AND locked_until<=UTC_TIMESTAMP(6) ORDER BY locked_until,id LIMIT ?")
+        .bind(limit.clamp(1, 100)).fetch_all(pool).await?;
+    for id in commands {
+        sqlx::query("UPDATE runtime_commands SET status='pending',locked_by=NULL,locked_until=NULL WHERE id=? AND status='processing' AND locked_until<=UTC_TIMESTAMP(6)")
+            .bind(id).execute(pool).await?;
+    }
+    let attempts: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM node_attempts WHERE status='running' AND locked_until<=UTC_TIMESTAMP(6) ORDER BY locked_until,id LIMIT ?")
+        .bind(limit.clamp(1, 100)).fetch_all(pool).await?;
+    for id in attempts {
+        let mut tx = pool.begin().await?;
+        let tenant: Option<Uuid> = sqlx::query_scalar("SELECT tenant_id FROM node_attempts WHERE id=? AND status='running' AND locked_until<=UTC_TIMESTAMP(6) FOR UPDATE SKIP LOCKED")
+            .bind(id).fetch_optional(&mut *tx).await?;
+        if let Some(tenant) = tenant {
+            sqlx::query("UPDATE worker_leases SET released_at=COALESCE(released_at,UTC_TIMESTAMP(6)) WHERE tenant_id=? AND node_attempt_id=? AND released_at IS NULL")
+                .bind(tenant).bind(id).execute(&mut *tx).await?;
+            sqlx::query("UPDATE node_attempts SET status='queued',lease_token=NULL,worker_instance_id=NULL,locked_until=NULL,heartbeat_at=NULL WHERE id=? AND status='running' AND locked_until<=UTC_TIMESTAMP(6)")
+                .bind(id).execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
+    }
+    let reservations: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM quota_reservations WHERE status='active' AND expires_at<=UTC_TIMESTAMP(6) ORDER BY expires_at,id LIMIT ?")
+        .bind(limit.clamp(1, 100)).fetch_all(pool).await?;
+    for id in reservations {
+        sqlx::query("UPDATE quota_reservations SET status='expired',release_reason='reservation_expired',settled_at=UTC_TIMESTAMP(6) WHERE id=? AND status='active' AND expires_at<=UTC_TIMESTAMP(6)")
+            .bind(id).execute(pool).await?;
+    }
+    // Historical published rows are metadata candidates, not a batch of
+    // payloads to sort and lock. Recheck each selected outbox/attempt by key
+    // so concurrent recovery or a Worker claim cannot cause stale dispatch.
+    let outboxes: Vec<Uuid> = sqlx::query_scalar("SELECT o.id FROM execution_outbox o FORCE INDEX(idx_execution_outbox_recovery) JOIN node_attempts a ON a.id=o.attempt_id AND a.tenant_id=o.tenant_id WHERE o.message_type='dispatch_node' AND o.status='published' AND a.status='queued' AND o.published_at<=DATE_SUB(UTC_TIMESTAMP(6),INTERVAL 5 SECOND) ORDER BY o.published_at,o.id LIMIT ?")
+        .bind(limit.clamp(1, 100)).fetch_all(pool).await?;
+    let mut messages = Vec::with_capacity(outboxes.len());
+    for outbox_id in outboxes {
+        let mut tx = pool.begin().await?;
+        let payload: Option<Value> = sqlx::query_scalar("SELECT o.payload_json FROM execution_outbox o JOIN node_attempts a ON a.id=o.attempt_id AND a.tenant_id=o.tenant_id WHERE o.id=? AND o.message_type='dispatch_node' AND o.status='published' AND a.status='queued' AND o.published_at<=DATE_SUB(UTC_TIMESTAMP(6),INTERVAL 5 SECOND) FOR UPDATE SKIP LOCKED")
+            .bind(outbox_id).fetch_optional(&mut *tx).await?;
+        let Some(payload) = payload else {
+            tx.rollback().await?;
+            continue;
+        };
         sqlx::query("UPDATE execution_outbox SET published_at=UTC_TIMESTAMP(6) WHERE id=? AND status='published'")
             .bind(outbox_id).execute(&mut *tx).await?;
-        messages.push(
-            serde_json::from_value(row.try_get("payload_json")?)
-                .map_err(|error| RuntimeError::Internal(error.into()))?,
-        );
+        let message = serde_json::from_value(payload)
+            .map_err(|error| RuntimeError::Internal(error.into()))?;
+        tx.commit().await?;
+        messages.push(message);
     }
-    tx.commit().await?;
     Ok(messages)
 }
 
-async fn timeout_expired_attempts(
-    tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
-    limit: u32,
-) -> RuntimeResult<()> {
-    let rows = sqlx::query(
-        "SELECT e.tenant_id,e.id execution_id,e.work_package_id,e.invocation_id,r.state_version,r.context_json,r.machine_state_json FROM workflow_executions e JOIN execution_runtime_state r ON r.tenant_id=e.tenant_id AND r.execution_id=e.id WHERE e.status IN ('queued','running','waiting','suspended') AND EXISTS(SELECT 1 FROM node_attempts a WHERE a.tenant_id=e.tenant_id AND a.execution_id=e.id AND a.status IN ('queued','running') AND a.deadline_at IS NOT NULL AND a.deadline_at<=UTC_TIMESTAMP(6)) ORDER BY e.started_at,e.id LIMIT ? FOR UPDATE SKIP LOCKED",
+async fn timeout_expired_attempts(pool: &sqlx::MySqlPool, limit: u32) -> RuntimeResult<()> {
+    let candidates: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT e.id FROM workflow_executions e WHERE e.status IN ('queued','running','waiting','suspended') AND EXISTS(SELECT 1 FROM node_attempts a WHERE a.tenant_id=e.tenant_id AND a.execution_id=e.id AND a.status IN ('queued','running') AND a.deadline_at IS NOT NULL AND a.deadline_at<=UTC_TIMESTAMP(6)) ORDER BY e.started_at,e.id LIMIT ?",
     )
     .bind(limit.clamp(1, 100))
-    .fetch_all(&mut **tx)
+    .fetch_all(pool)
     .await?;
-    for row in rows {
+    for execution_id in candidates {
+        let mut tx = pool.begin().await?;
+        let row = sqlx::query("SELECT e.tenant_id,e.id execution_id,e.work_package_id,e.invocation_id,r.state_version,r.context_json,r.machine_state_json FROM workflow_executions e JOIN execution_runtime_state r ON r.tenant_id=e.tenant_id AND r.execution_id=e.id WHERE e.id=? AND e.status IN ('queued','running','waiting','suspended') AND EXISTS(SELECT 1 FROM node_attempts a WHERE a.tenant_id=e.tenant_id AND a.execution_id=e.id AND a.status IN ('queued','running') AND a.deadline_at IS NOT NULL AND a.deadline_at<=UTC_TIMESTAMP(6)) FOR UPDATE SKIP LOCKED")
+            .bind(execution_id).fetch_optional(&mut *tx).await?;
+        let Some(row) = row else {
+            tx.commit().await?;
+            continue;
+        };
         let tenant_id: Uuid = row.try_get("tenant_id")?;
         let execution_id: Uuid = row.try_get("execution_id")?;
         let state_version: u64 = row.try_get("state_version")?;
@@ -254,17 +285,17 @@ async fn timeout_expired_attempts(
                 .map_err(|error| RuntimeError::Internal(error.into()))?;
         machine.timeout();
         sqlx::query("UPDATE node_attempts SET status='timed_out',error_code='NODE_EXECUTION_TIMED_OUT',error_message='Node execution exceeded its operation deadline',locked_until=NULL,heartbeat_at=NULL,ended_at=UTC_TIMESTAMP(6) WHERE tenant_id=? AND execution_id=? AND status IN ('queued','running')")
-            .bind(tenant_id).bind(execution_id).execute(&mut **tx).await?;
+            .bind(tenant_id).bind(execution_id).execute(&mut *tx).await?;
         sqlx::query("UPDATE node_executions SET status='timed_out',error_code='NODE_EXECUTION_TIMED_OUT',error_message='Node execution exceeded its operation deadline',ended_at=UTC_TIMESTAMP(6) WHERE tenant_id=? AND execution_id=? AND status IN ('ready','queued','running','waiting')")
-            .bind(tenant_id).bind(execution_id).execute(&mut **tx).await?;
+            .bind(tenant_id).bind(execution_id).execute(&mut *tx).await?;
         sqlx::query("UPDATE worker_leases SET released_at=COALESCE(released_at,UTC_TIMESTAMP(6)) WHERE tenant_id=? AND node_attempt_id IN (SELECT id FROM node_attempts WHERE tenant_id=? AND execution_id=?)")
-            .bind(tenant_id).bind(tenant_id).bind(execution_id).execute(&mut **tx).await?;
+            .bind(tenant_id).bind(tenant_id).bind(execution_id).execute(&mut *tx).await?;
         sqlx::query("UPDATE execution_runtime_state SET state_version=?,machine_state_json=? WHERE tenant_id=? AND execution_id=?")
             .bind(state_version + 1)
             .bind(serde_json::to_value(&machine).map_err(|error| RuntimeError::Internal(error.into()))?)
-            .bind(tenant_id).bind(execution_id).execute(&mut **tx).await?;
+            .bind(tenant_id).bind(execution_id).execute(&mut *tx).await?;
         crate::engine_persistence::finish_execution(
-            tx,
+            &mut tx,
             tenant_id,
             execution_id,
             row.try_get("work_package_id")?,
@@ -274,6 +305,7 @@ async fn timeout_expired_attempts(
             &context,
         )
         .await?;
+        tx.commit().await?;
     }
     Ok(())
 }

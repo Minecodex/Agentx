@@ -843,6 +843,15 @@ fn build_model_evaluators(
             agentx_runtime_contracts::RuntimeEvaluatorV1::DeterministicRule { .. } => None,
         })
         .map(|(evaluator_id, resource_id, prompt_object_id)| {
+            let evaluation_schema = serde_json::json!({
+                "type":"object", "additionalProperties":false,
+                "required":["passed","score","reason"],
+                "properties":{
+                    "passed":{"type":"boolean"},
+                    "score":{"type":"number","minimum":0,"maximum":1},
+                    "reason":{"type":"string"}
+                }
+            });
             let definition: WorkflowDefinition = serde_json::from_value(serde_json::json!({
                 "schemaVersion":"8.0",
                 "start":{"inputs":{},"contexts":{}},
@@ -852,7 +861,7 @@ fn build_model_evaluators(
                     "type":"model",
                     "typeVersion":1,
                     "name":"Model Evaluator",
-                    "parameters":{"prompt":{"kind":"template","segments":[{"kind":"text","text":"runtime_object"}]},"responseMode":"json_schema","structuredSchema":{"type":"object","additionalProperties":true}},
+                    "parameters":{"prompt":{"kind":"template","segments":[{"kind":"text","text":"runtime_object"}]},"responseMode":"json_schema","structuredSchema":evaluation_schema},
                     "contextWrites":[],
                     "resourceReferences":[{
                         "resourceType":"model",
@@ -867,7 +876,7 @@ fn build_model_evaluators(
                     {"id":"start-evaluate","sourceNodeId":"__start__","sourceHandle":"main","targetNodeId":"evaluate","targetHandle":"main","order":0},
                     {"id":"evaluate-end","sourceNodeId":"evaluate","sourceHandle":"main","targetNodeId":"__exit__","targetHandle":"main","order":0}
                 ],
-                "end":{"outputs":{"evaluation":{"schema":{"type":"object"},"required":true}}},
+                "end":{"outputs":{"evaluation":{"schema":evaluation_schema,"required":true}}},
                 "settings":{"activationBudget":4,"executionOrder":"deterministic"}
             }))
             .map_err(|error| BuildError::Compilation(error.to_string()))?;
@@ -1389,6 +1398,34 @@ mod tests {
         );
         first.verify(&work_package_key.verifying_key()).unwrap();
         assert!(first.verify(&bundle_key.verifying_key()).is_err());
+    }
+
+    #[test]
+    fn model_evaluator_rejects_empty_malformed_and_out_of_range_verdicts() {
+        let spec = agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Evaluation {
+            dataset_version_id: Uuid::now_v7(),
+            profile_version_id: Uuid::now_v7(),
+            cases: vec![],
+            evaluators: vec![agentx_runtime_contracts::RuntimeEvaluatorV1::Model {
+                evaluator_id: Uuid::now_v7(),
+                resource_id: Uuid::now_v7(),
+                prompt_object_id: Uuid::now_v7(),
+            }],
+        };
+        let executions = build_model_evaluators(&spec, &NodeRegistry::m5_defaults()).unwrap();
+        let schema = &executions[0].definition["nodes"][0]["parameters"]["structuredSchema"];
+        let validator = jsonschema::validator_for(schema).unwrap();
+        assert!(validator.is_valid(&json!({"passed":true,"score":0.95,"reason":"matches"})));
+        assert!(validator.is_valid(&json!({"passed":false,"score":0,"reason":"does not match"})));
+        for invalid in [
+            json!({}),
+            json!({"passed":"true","score":1,"reason":"bad type"}),
+            json!({"passed":true,"score":2,"reason":"bad score"}),
+            json!({"passed":true,"score":1}),
+            json!({"passed":true,"score":1,"reason":"ok","usage":{}}),
+        ] {
+            assert!(!validator.is_valid(&invalid), "{invalid}");
+        }
     }
 
     #[test]

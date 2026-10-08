@@ -9,13 +9,13 @@ spec:
       serviceAccountName: workflow-runtime
       automountServiceAccountToken: false
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
-      restartPolicy: OnFailure
+      restartPolicy: Never
       initContainers:
         - name: wait-for-runtime-mysql
           image: mysql:8.4
           securityContext: { allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 999, runAsGroup: 999, capabilities: { drop: [ALL] } }
           command: [sh, -ec]
-          args: ['until MYSQL_PWD="$AGENTX_RUNTIME_MYSQL_PASSWORD" mysql --connect-timeout=5 {{ if eq .Values.global.environment "production" }}--ssl-mode=VERIFY_IDENTITY --ssl-ca=/etc/agentx-ca/mysql.pem{{ else }}--ssl-mode=DISABLED --get-server-public-key{{ end }} -h "$AGENTX_RUNTIME_MYSQL_HOST" -u "$AGENTX_RUNTIME_MYSQL_USER" -e "SELECT 1" agentx_runtime >/dev/null 2>&1; do sleep 2; done']
+          args: ['until MYSQL_PWD="$AGENTX_RUNTIME_MYSQL_PASSWORD" mysql --connect-timeout=5 {{ if .Values.global.components.runtimeMysql.caSecretName }}--ssl-mode=VERIFY_IDENTITY --ssl-ca=/etc/agentx-ca/mysql.pem{{ else }}--ssl-mode=DISABLED --get-server-public-key{{ end }} -h "$AGENTX_RUNTIME_MYSQL_HOST" -u "$AGENTX_RUNTIME_MYSQL_USER" -e "SELECT 1" agentx_runtime >/dev/null 2>&1; do sleep 2; done']
           env:
             - { name: AGENTX_RUNTIME_MYSQL_HOST, value: {{ .Values.global.components.runtimeMysql.host | quote }} }
             - { name: AGENTX_RUNTIME_MYSQL_USER, value: {{ .Values.global.components.runtimeMysql.migrateUser | quote }} }

@@ -19,6 +19,9 @@ spec:
       containers:
         - name: mysql
           image: mysql:8.4
+{{- if .Values.global.components.controlMysql.caSecretName }}
+          args: [--ssl-ca=/tls/ca.crt, --ssl-cert=/tls/tls.crt, --ssl-key=/tls/tls.key, --require_secure_transport=ON]
+{{- end }}
           securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
           env:
             - { name: MYSQL_DATABASE, value: {{ .Values.global.components.controlMysql.database | quote }} }
@@ -32,10 +35,17 @@ spec:
             exec: { command: [sh, -ec, 'mysqladmin ping -h 127.0.0.1 -uroot -p"$(cat /run/secrets/agentx/root-password)"'] }
             periodSeconds: 5
           volumeMounts:
+{{- if .Values.global.components.controlMysql.caSecretName }}
+            - { name: tls, mountPath: /tls, readOnly: true }
+{{- end }}
             - { name: data, mountPath: /var/lib/mysql }
             - { name: init, mountPath: /docker-entrypoint-initdb.d, readOnly: true }
             - { name: mysql-secrets, mountPath: /run/secrets/agentx, readOnly: true }
       volumes:
+{{- if .Values.global.components.controlMysql.caSecretName }}
+        - name: tls
+          secret: { secretName: {{ .Values.global.components.controlMysql.caSecretName }} }
+{{- end }}
         - name: init
           configMap: { name: control-mysql-init, defaultMode: 0555 }
         - name: mysql-secrets

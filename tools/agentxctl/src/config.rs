@@ -3,7 +3,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use ipnet::IpNet;
 use regex::Regex;
 use serde_json::{Map, Value};
-use std::{collections::BTreeMap, path::PathBuf, str::FromStr};
+use std::{collections::BTreeMap, net::IpAddr, path::PathBuf, str::FromStr};
 
 pub const TARGETS: [&str; 4] = ["dependencies", "control", "runtime", "observability"];
 
@@ -100,6 +100,44 @@ impl DeploymentConfig {
         serde_yaml::to_string(&self.values).context("serialize deployment values")
     }
 
+    pub fn ingress_service_type(&self) -> &str {
+        if self.environment() == "production" {
+            return "LoadBalancer";
+        }
+        if self.environment() == "test" || self.namespace("dependencies").starts_with("agentx-e2e-")
+        {
+            "ClusterIP"
+        } else {
+            self.string("/global/ingress/serviceType")
+                .unwrap_or("LoadBalancer")
+        }
+    }
+
+    pub fn ingress_url(&self, plane: &str) -> String {
+        let tls = !self
+            .string(&format!("/global/ingress/{plane}TlsSecretName"))
+            .unwrap_or("")
+            .is_empty();
+        let host = self
+            .string(&format!("/global/ingress/{plane}Host"))
+            .unwrap();
+        let scheme = if tls { "https" } else { "http" };
+        let port = if self.ingress_service_type() == "NodePort" {
+            format!(
+                ":{}",
+                self.u64(if tls {
+                    "/global/ingress/httpsNodePort"
+                } else {
+                    "/global/ingress/httpNodePort"
+                })
+                .unwrap()
+            )
+        } else {
+            String::new()
+        };
+        format!("{scheme}://{host}{port}")
+    }
+
     fn scoped(mut self, run_id: Option<&str>) -> Result<Self> {
         let Some(run_id) = run_id else {
             return Ok(self);
@@ -145,6 +183,7 @@ impl DeploymentConfig {
             ("/global/components/runtimeMysql/host", "runtime"),
             ("/global/components/runtimeRedis/url", "runtime"),
             ("/global/components/secretProvider/endpoint", "dependencies"),
+            ("/global/components/sandbox/endpoint", "dependencies"),
             ("/global/components/clickhouse/url", "runtime"),
             ("/global/components/objectStorage/endpoint", "dependencies"),
         ] {
@@ -169,6 +208,10 @@ impl DeploymentConfig {
             Some("nodePort" | "privateLoadBalancer")
         ) {
             let port = deterministic_e2e_node_port(&normalized);
+            *self
+                .values
+                .pointer_mut("/global/network/egressGateway/sandboxAccess/mode")
+                .unwrap() = "nodePort".into();
             *self
                 .values
                 .pointer_mut("/global/network/egressGateway/sandboxAccess/endpoint")
@@ -196,6 +239,14 @@ impl DeploymentConfig {
         if self.environment() == "production" {
             self.validate_production()?;
         }
+        self.validate_tls()?;
+        if self.string("/global/ingress/serviceType") == Some("NodePort") {
+            let http = self.u64("/global/ingress/httpNodePort");
+            let https = self.u64("/global/ingress/httpsNodePort");
+            if http.is_none() || https.is_none() || http == https {
+                bail!("NodePort ingress requires distinct httpNodePort and httpsNodePort");
+            }
+        }
         let ports = self
             .array("/global/network/egressGateway/allowedPublicPorts")
             .unwrap();
@@ -216,6 +267,11 @@ impl DeploymentConfig {
         let sandbox_port = self
             .u64("/global/network/egressGateway/sandboxAccess/port")
             .unwrap();
+        if self.string("/global/network/egressGateway/sandboxAccess/mode") == Some("nodePort")
+            && !(30_000..=32_767).contains(&sandbox_port)
+        {
+            bail!("sandbox NodePort must be in the range 30000..32767");
+        }
         if sandbox_endpoint.port_or_known_default() != Some(sandbox_port as u16) {
             bail!("sandbox Egress endpoint port must match sandboxAccess.port");
         }
@@ -263,7 +319,70 @@ impl DeploymentConfig {
         Ok(())
     }
 
+    fn validate_tls(&self) -> Result<()> {
+        for (name, field, scheme) in [
+            ("runtimeRedis", "url", "rediss"),
+            ("objectStorage", "endpoint", "https"),
+            ("secretProvider", "endpoint", "https"),
+            ("sandbox", "endpoint", "https"),
+            ("clickhouse", "url", "https"),
+        ] {
+            let base = format!("/global/components/{name}");
+            let endpoint = url::Url::parse(self.string(&format!("{base}/{field}")).unwrap())?;
+            if self.string(&format!("{base}/caSecretName")).is_some() && endpoint.scheme() != scheme
+            {
+                bail!("{name} caSecretName requires a {scheme}:// endpoint");
+            }
+            let bundled = matches!(
+                self.string(&format!("{base}/mode")),
+                Some("bundled" | "bundled-minio")
+            ) || name == "secretProvider" && self.environment() != "production";
+            if bundled
+                && endpoint.scheme() == scheme
+                && self.string(&format!("{base}/caSecretName")).is_none()
+            {
+                bail!("bundled {name} TLS requires caSecretName");
+            }
+        }
+        for name in ["controlMysql", "runtimeMysql"] {
+            let base = format!("/global/components/{name}");
+            if self.string(&format!("{base}/mode")) == Some("bundled") {
+                let tls = self.string(&format!("{base}/caSecretName")).is_some();
+                let mode = self.string(&format!("{base}/tlsMode"));
+                if tls && mode != Some("verify_identity") || !tls && mode != Some("disabled") {
+                    bail!("bundled {name} TLS requires both verify_identity and caSecretName");
+                }
+            }
+        }
+        if let Some(upstream) = self.string("/global/components/sandbox/localProxyUpstream") {
+            let endpoint =
+                url::Url::parse(self.string("/global/components/sandbox/endpoint").unwrap())?;
+            let expected = format!("opensandbox.{}.svc", self.namespace("dependencies"));
+            if self.environment() == "production"
+                || endpoint.scheme() != "https"
+                || endpoint.host_str() != Some(&expected)
+                || endpoint.port_or_known_default() != Some(8443)
+                || self
+                    .string("/global/components/sandbox/caSecretName")
+                    .is_none()
+                || self.bool("/global/components/sandbox/secureAccess") != Some(true)
+                || !upstream.starts_with("http://")
+            {
+                bail!(
+                    "local OpenSandbox TLS proxy requires local/test, its namespace Service on HTTPS 8443, secureAccess, CA and an HTTP upstream"
+                );
+            }
+        }
+        Ok(())
+    }
+
     fn validate_production(&self) -> Result<()> {
+        if self
+            .string("/global/ingress/serviceType")
+            .is_some_and(|value| value != "LoadBalancer")
+        {
+            bail!("production ingress requires LoadBalancer");
+        }
         if self.string("/global/secrets/mode") != Some("existing-kubernetes") {
             bail!("production requires existing-kubernetes secrets");
         }
@@ -386,14 +505,47 @@ impl DeploymentConfig {
             ("networking.gke.io/load-balancer-type", "Internal"),
             ("cloud.google.com/load-balancer-type", "Internal"),
         ];
-        if !private.iter().any(|(key, value)| {
+        let cloud_private = private.iter().any(|(key, value)| {
             annotations
                 .and_then(|map| map.get(*key))
                 .and_then(Value::as_str)
                 == Some(*value)
-        }) {
+        });
+        let metallb_pool = annotations
+            .and_then(|map| map.get("metallb.io/address-pool"))
+            .and_then(Value::as_str);
+        let metallb_ip = annotations
+            .and_then(|map| map.get("metallb.io/loadBalancerIPs"))
+            .and_then(Value::as_str);
+        let valid_private = if metallb_pool.is_some() || metallb_ip.is_some() {
+            let endpoint = url::Url::parse(
+                self.string("/global/network/egressGateway/sandboxAccess/endpoint")
+                    .unwrap(),
+            )?;
+            metallb_pool.is_some_and(|pool| !pool.trim().is_empty())
+                && self
+                    .string("/global/network/egressGateway/sandboxAccess/loadBalancerClass")
+                    .is_some_and(|class| !class.trim().is_empty())
+                && metallb_ip.is_some_and(|address| {
+                    address.parse::<IpAddr>().is_ok_and(|ip| {
+                        let private = match ip {
+                            IpAddr::V4(ip) => ip.is_private(),
+                            IpAddr::V6(ip) => ip.is_unique_local(),
+                        };
+                        let endpoint_ip = match endpoint.host() {
+                            Some(url::Host::Ipv4(ip)) => Some(IpAddr::V4(ip)),
+                            Some(url::Host::Ipv6(ip)) => Some(IpAddr::V6(ip)),
+                            _ => None,
+                        };
+                        private && endpoint_ip == Some(ip)
+                    })
+                })
+        } else {
+            cloud_private
+        };
+        if !valid_private {
             bail!(
-                "production sandbox Egress requires a supported internal load balancer annotation"
+                "production sandbox Egress requires a supported internal load balancer annotation or a MetalLB class and pool with a matching private IP"
             );
         }
         let digests = self
@@ -458,6 +610,7 @@ mod tests {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         for name in [
             "local.yaml",
+            "local-tls.yaml",
             "dockerhub-beta.yaml",
             "production.example.yaml",
         ] {
@@ -492,6 +645,177 @@ mod tests {
         assert_eq!(
             config.string("/global/images/tag"),
             Some(concat!("v", env!("CARGO_PKG_VERSION")))
+        );
+    }
+
+    #[test]
+    fn local_tls_uses_scoped_identities_and_explicit_ingress_ports() {
+        let path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../deploy/values/local-tls.yaml");
+        let config = DeploymentConfig::load(&path, None).unwrap();
+        assert_eq!(
+            config.ingress_url("control"),
+            "https://agentx.localhost:30443"
+        );
+        let config = DeploymentConfig::load(path, Some("tls-contract")).unwrap();
+        assert_eq!(config.ingress_service_type(), "ClusterIP");
+        assert_eq!(
+            config.string("/global/components/sandbox/endpoint"),
+            Some("https://opensandbox.agentx-e2e-deps-tls-contract.svc:8443")
+        );
+        assert_eq!(
+            config.string("/global/network/egressGateway/sandboxAccess/mode"),
+            Some("nodePort")
+        );
+    }
+
+    #[test]
+    fn production_rejects_nodeport_and_missing_internal_annotations() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../deploy/values/production.example.yaml");
+        let base = DeploymentConfig::load(path, None).unwrap();
+        let mut named_like_e2e = base.clone();
+        *named_like_e2e
+            .values
+            .pointer_mut("/global/namespaces/dependencies")
+            .unwrap() = "agentx-e2e-production-deps".into();
+        assert_eq!(named_like_e2e.ingress_service_type(), "LoadBalancer");
+        let mut ingress = base.clone();
+        ingress
+            .values
+            .pointer_mut("/global/ingress")
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .insert("serviceType".into(), "NodePort".into());
+        assert!(
+            ingress
+                .validate_semantics()
+                .unwrap_err()
+                .to_string()
+                .contains("production ingress requires LoadBalancer")
+        );
+        let mut config = base.clone();
+        *config
+            .values
+            .pointer_mut("/global/network/egressGateway/sandboxAccess/mode")
+            .unwrap() = "nodePort".into();
+        assert!(
+            config
+                .validate_semantics()
+                .unwrap_err()
+                .to_string()
+                .contains("privateLoadBalancer")
+        );
+        let mut config = base;
+        *config
+            .values
+            .pointer_mut("/global/network/egressGateway/sandboxAccess/serviceAnnotations")
+            .unwrap() = serde_json::json!({});
+        assert!(
+            config
+                .validate_semantics()
+                .unwrap_err()
+                .to_string()
+                .contains("internal load balancer annotation")
+        );
+    }
+
+    #[test]
+    fn production_metallb_requires_an_explicit_matching_private_ip() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../deploy/values/production.example.yaml");
+        let base = DeploymentConfig::load(path, None).unwrap();
+        for (pool, ip, host, valid) in [
+            ("agentx-private", "172.18.255.241", "172.18.255.241", true),
+            ("agentx-private", "fd00::241", "[fd00::241]", true),
+            ("agentx-private", "8.8.8.8", "8.8.8.8", false),
+            ("agentx-private", "172.18.255.241", "172.18.255.242", false),
+            ("", "172.18.255.241", "172.18.255.241", false),
+            ("agentx-private", "", "172.18.255.241", false),
+        ] {
+            let mut config = base.clone();
+            config
+                .values
+                .pointer_mut("/global/network/egressGateway/sandboxAccess")
+                .unwrap()
+                .as_object_mut()
+                .unwrap()
+                .insert("loadBalancerClass".into(), "metallb".into());
+            *config
+                .values
+                .pointer_mut("/global/network/egressGateway/sandboxAccess/serviceAnnotations")
+                .unwrap() = serde_json::json!({
+                "metallb.io/address-pool":pool,
+                "metallb.io/loadBalancerIPs":ip,
+                "service.beta.kubernetes.io/aws-load-balancer-internal":"true"
+            });
+            *config
+                .values
+                .pointer_mut("/global/network/egressGateway/sandboxAccess/endpoint")
+                .unwrap() = format!("https://{host}:3129").into();
+            *config
+                .values
+                .pointer_mut("/global/network/egressGateway/sandboxAccess/port")
+                .unwrap() = 3129.into();
+            let result = config.validate_semantics();
+            assert_eq!(result.is_ok(), valid, "{result:?}");
+            if valid {
+                config
+                    .values
+                    .pointer_mut("/global/network/egressGateway/sandboxAccess")
+                    .unwrap()
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("loadBalancerClass");
+                assert!(config.validate_semantics().is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn bundled_tls_rejects_missing_ca_and_plaintext_urls() {
+        let path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../deploy/values/local-tls.yaml");
+        let base = DeploymentConfig::load(path, None).unwrap();
+        let mut mysql = base.clone();
+        *mysql
+            .values
+            .pointer_mut("/global/components/controlMysql/tlsMode")
+            .unwrap() = "preferred".into();
+        assert!(
+            mysql
+                .validate_semantics()
+                .unwrap_err()
+                .to_string()
+                .contains("verify_identity and caSecretName")
+        );
+        let mut config = base.clone();
+        config
+            .values
+            .pointer_mut("/global/components/runtimeRedis")
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .remove("caSecretName");
+        assert!(
+            config
+                .validate_semantics()
+                .unwrap_err()
+                .to_string()
+                .contains("TLS requires caSecretName")
+        );
+        let mut config = base;
+        *config
+            .values
+            .pointer_mut("/global/components/objectStorage/endpoint")
+            .unwrap() = "http://object-storage.agentx-tls-deps.svc:9000".into();
+        assert!(
+            config
+                .validate_semantics()
+                .unwrap_err()
+                .to_string()
+                .contains("https:// endpoint")
         );
     }
 

@@ -27,6 +27,8 @@
         {
           "enum": [
             "count",
+            "succeeded_count",
+            "failed_count",
             "duration_millis",
             "cost_micros",
             "input_tokens",

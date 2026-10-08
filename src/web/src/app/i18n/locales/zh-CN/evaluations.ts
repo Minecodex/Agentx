@@ -1,5 +1,5 @@
 const translations = {
-  "judgeModel": "评审模型 ID",
+"compare": "对比","compareRun": "对比 {{name}}","compareSelect": "选择评估运行","compareHint": "选择 2 至 5 次运行，第一项为基线。","compareCoverage": "已对齐 {{aligned}} / {{total}} 个用例","compareMetrics": "指标与相对基线变化","compareAbsent": "缺失","judgePromptLimit": "评估提示词不能超过 64 KiB","judgeAuthorization": "查看模型授权","judgeModel": "评估模型","metricLabels": {"total_cases": "全部用例", "completed_cases": "完成用例", "passed_rules": "通过规则", "failed_rules": "失败规则", "error_rules": "错误规则", "pass_rate": "通过率", "average_score": "平均评分", "total_cost_micros": "总费用（微单位）"},
   "judgePrompt": "评审提示词",
   "judgeHint": "评审子执行会以 JSON 输出 {passed, score, reason};提示词可引用 {{actualOutput}} 与 {{expectedOutput}}。",
   "judgeRequiredFields": "LLM 评审规则需要模型与提示词",
@@ -46,6 +46,9 @@ const translations = {
   "workflowVersion": "工作流版本",
   "dataset": "测试集",
   "visibility": "可见范围",
+  "private": "仅成员",
+  "department": "部门",
+  "company": "公司",
   "prerequisites": {
     "runDescription": "发起评测前需要准备完整、不可变的运行快照。",
     "workflowVersion": "至少一个已发布的工作流版本",
@@ -65,6 +68,7 @@ const translations = {
     "exact": "完全匹配",
     "contains": "包含文本",
     "regex": "正则匹配",
+    "llm_judge": "LLM Judge",
     "json_schema": "JSON Schema"
   }
 } as const

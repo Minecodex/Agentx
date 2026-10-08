@@ -1017,23 +1017,10 @@ async fn create_deployment(
         .bind(actor.tenant_id).bind(id).bind(trigger_revision).fetch_optional(&mut *tx).await?;
     let sequence: u64 = sqlx::query_scalar("SELECT CAST(COALESCE(MAX(sequence_number),0)+1 AS UNSIGNED) FROM application_deployments WHERE tenant_id=? AND application_id=? FOR UPDATE")
         .bind(actor.tenant_id).bind(id).fetch_one(&mut *tx).await?;
-    let all_complete = definition.end.completion == agentx_domain::WorkflowCompletion::AllComplete;
-    let output = json!({"type":"object","properties":definition.end.outputs.iter().map(|(name,value)| {
-        let mut schema = value.schema.clone();
-        if let Some(object) = schema.as_object_mut() {
-            object.insert("x-agentx-sensitive".into(), json!(value.sensitive));
-        }
-        if all_complete {
-            schema = json!({
-                "type":"array",
-                "items": if value.required { schema } else { json!({"anyOf":[schema,{"type":"null"}]}) }
-            });
-        }
-        (name.clone(), schema)
-    }).collect::<serde_json::Map<_,_>>(),"required":definition.end.outputs.iter().filter(|(_,value)|all_complete || value.required).map(|(name,_)|name.clone()).collect::<Vec<_>>(),"additionalProperties":false});
+    let (input_schema, output_schema) = application_webhooks::workflow_schemas(&definition);
     sqlx::query("INSERT INTO application_deployments(id,tenant_id,application_id,workflow_version_id,environment_id,sequence_number,input_schema_json,output_schema_json,session_version_policy,trigger_revision,trigger_manifest_hash,status,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,'building',?)")
         .bind(deployment_id).bind(actor.tenant_id).bind(id).bind(input.workflow_version_id).bind(input.environment_id).bind(sequence)
-        .bind(serde_json::to_value(&definition.start.inputs).map_err(ApiError::internal)?).bind(output).bind(input.session_version_policy).bind(trigger_revision).bind(trigger_manifest_hash).bind(actor.user_id).execute(&mut *tx).await?;
+        .bind(input_schema).bind(output_schema).bind(input.session_version_policy).bind(trigger_revision).bind(trigger_manifest_hash).bind(actor.user_id).execute(&mut *tx).await?;
     let expected: Option<u64> = sqlx::query_scalar(
         "SELECT version FROM application_deployment_heads WHERE tenant_id=? AND application_id=?",
     )

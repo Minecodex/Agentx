@@ -35,7 +35,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.8.13"
-      - run: uv run --frozen --group test python -m tools.scripts.release.verify_release --version "${{ github.ref_name }}"
+      - run: uv run --frozen --group test python -m tools.scripts.release.verify_release --version "${{ github.ref_name }}" --versions-only
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.1
@@ -65,8 +65,54 @@ jobs:
             .local/dist/agentxctl-*.sha256
             .local/dist/${{ matrix.standalone }}
 
-  publish:
+  certify:
     needs: build
+    runs-on: [self-hosted, macOS, agentx-e2e, docker-desktop]
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.13"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.18.4
+      - name: Require signing tools and previous Worker
+        env:
+          PREVIOUS_WORKER_IMAGE: ${{ vars.AGENTX_PREVIOUS_WORKER_IMAGE }}
+        run: uv run --frozen --group test python -c "import os,shutil; assert all(shutil.which(x) for x in ('cosign','syft','docker','kubectl','helm')); assert os.environ['PREVIOUS_WORKER_IMAGE']"
+      - run: cargo build --locked -p agentxctl -p agentx-backup-test-adapter
+      - run: corepack enable && pnpm install --frozen-lockfile
+      - name: Build the source-matched provider fixtures
+        run: cargo xtask images --values deploy/values/local.yaml --service echo-mcp --service echo-node
+      - name: Resolve and pin the exact source candidate
+        run: uv run --frozen --group test python -m tools.scripts.release.prepare_candidate --version "${{ github.ref_name }}" --binary target/debug/agentxctl --values deploy/values/dockerhub-beta.yaml --run-id "p7-${{ github.run_id }}-${{ github.run_attempt }}" --directory .local/dist
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Sign, attest and verify all 11 immutable images
+        run: uv run --frozen --group test python -m tools.scripts.release.supply_chain --receipts .local/dist/release-images-inspected.json --output .local/dist/supply-chain-evidence.json --certificate-identity "https://github.com/${{ github.workflow_ref }}" --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      - name: Complete the nine-domain E2E and two-hour capacity gate
+        env:
+          PREVIOUS_WORKER_IMAGE: ${{ vars.AGENTX_PREVIOUS_WORKER_IMAGE }}
+        run: uv run --frozen --group test pytest tests/e2e --values .local/dist/values.yaml --evidence-run-id "p7-${{ github.run_id }}-${{ github.run_attempt }}" --previous-worker-image "$PREVIOUS_WORKER_IMAGE" --junitxml=.local/artifacts/certification.xml --timeout=14400
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agentx-certification
+          path: |
+            .local/artifacts/certification.xml
+            .local/artifacts/e2e/p7-${{ github.run_id }}-${{ github.run_attempt }}
+            .local/dist/release-images-inspected.json
+            .local/dist/supply-chain-evidence.json
+            .local/dist/sboms
+
+  publish:
+    needs: [build, certify]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -84,9 +130,28 @@ jobs:
           pattern: agentxctl-*
           merge-multiple: true
           path: .local/dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: agentx-certification
+          path: .local
       - run: chmod +x .local/dist/agentxctl-linux-x86_64
+      - name: Install image verification tools
+        uses: sigstore/cosign-installer@v4.1.0
       - name: Verify all public Docker images before publishing the CLI
-        run: uv run --frozen --group test python -m tools.scripts.release.verify_release --version "${{ github.ref_name }}" --binary .local/dist/agentxctl-linux-x86_64 --output .local/dist/release-images.json
+        run: uv run --frozen --group test python -m tools.scripts.release.verify_release --version "${{ github.ref_name }}" --binary .local/dist/agentxctl-linux-x86_64 --identity .local/artifacts/e2e/p7-${{ github.run_id }}-${{ github.run_attempt }}/candidate-identity.json --certificate-identity "https://github.com/${{ github.workflow_ref }}" --certificate-oidc-issuer https://token.actions.githubusercontent.com --output .local/dist/release-images.json
+      - name: Require complete candidate-bound certification evidence
+        run: >-
+          uv run --frozen --group test python -m tools.scripts.release.release_summary
+          --evidence .local/artifacts/e2e/p7-${{ github.run_id }}-${{ github.run_attempt }} --dist .local/dist
+          --junit infrastructure=.local/artifacts/certification.xml
+          --junit publishing=.local/artifacts/certification.xml
+          --junit gateway=.local/artifacts/certification.xml
+          --junit runtime=.local/artifacts/certification.xml
+          --junit observability=.local/artifacts/certification.xml
+          --junit security=.local/artifacts/certification.xml
+          --junit upgrade=.local/artifacts/certification.xml
+          --junit product=.local/artifacts/certification.xml
+          --junit capacity=.local/artifacts/certification.xml
       - name: Upload complete artifacts and publish the draft
         env:
           GH_TOKEN: ${{ github.token }}

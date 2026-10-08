@@ -13,7 +13,10 @@ spec:
         - name: bootstrap
           image: hashicorp/vault:1.19
           env:
-            - { name: VAULT_ADDR, value: http://vault:8200 }
+            - { name: VAULT_ADDR, value: {{ .Values.global.components.secretProvider.endpoint | quote }} }
+{{- if .Values.global.components.secretProvider.caSecretName }}
+            - { name: VAULT_CACERT, value: /tls/ca.crt }
+{{- end }}
             - name: VAULT_TOKEN
               valueFrom: { secretKeyRef: { name: {{ .Values.global.secrets.dependencies }}, key: VAULT_DEV_ROOT_TOKEN_ID } }
             - name: CONTROL_VAULT_TOKEN
@@ -24,7 +27,7 @@ spec:
           args:
             - |
               until vault status >/dev/null 2>&1; do sleep 2; done
-              vault secrets enable -path=secret kv-v2 2>/dev/null || true
+              vault secrets list -format=json | grep -q '"secret/"' || vault secrets enable -path=secret kv-v2
               printf 'path "secret/data/tenants/+/webhooks/+" { capabilities = ["create", "update", "read"] }\n' | vault policy write agentx-control-webhook-writer -
               printf 'path "secret/data/tenants/+/runtime-credentials/+" { capabilities = ["create", "update"] }\n' | vault policy write agentx-control-runtime-credential-writer -
               printf 'path "secret/data/tenants/+/credentials/+" { capabilities = ["create", "update", "read"] }\npath "secret/destroy/tenants/+/credentials/+" { capabilities = ["update"] }\n' | vault policy write agentx-control-credential-manager -
@@ -33,4 +36,12 @@ spec:
               vault token lookup -- "$RUNTIME_VAULT_TOKEN" >/dev/null 2>&1 || vault token create -policy=agentx-runtime-secret-reader -id="$RUNTIME_VAULT_TOKEN" -orphan >/dev/null
               vault token lookup -- "$CONTROL_VAULT_TOKEN" >/dev/null
               vault token lookup -- "$RUNTIME_VAULT_TOKEN" >/dev/null
+{{- if .Values.global.components.secretProvider.caSecretName }}
+          volumeMounts: [{ name: tls, mountPath: /tls, readOnly: true }]
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ .Values.global.components.secretProvider.caSecretName }}
+            items: [{ key: ca.crt, path: ca.crt }]
+{{- end }}
 {{- end }}

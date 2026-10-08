@@ -125,3 +125,17 @@
 - RAGFlow fixture 镜像较大，首次拉取时间纳入 fixture 超时预算（参考 lightrag 600s 先例）；
 - gVisor/Kata 强隔离不在本线，矩阵中以"移交后续计划"标注，不伪装完成；
 - 历史容量脚本/故障注入脚本已删除，D4/D5 是重建不是恢复——按现行 `pytest tests/e2e` 编排规范写 Python，不引入新脚本形态。
+
+## 2026-10-07 审查修订与认证门禁
+
+容量入口已改为真实应用发布、认证调用和终态验证；全 401、零完成、缺指标均失败。七组指标由服务 /metrics、Runtime/Control SQL、MySQL performance_schema 和 Redis INFO/XINFO 持续采集。每个分级场景独立检查冻结的 p95/p99，不能用两小时低负载汇总稀释早期超标。200 节点工作流的边界 Exit 不生成 NodeAttempt，报告分别记录 workflowNodes 与实际执行行数。
+
+Gateway 负载生成器在临时 namespace 内复用现有 Python 镜像与 uv 冻结依赖，直连 Ready Pod；1/2/3/4 副本阶段记录各副本实际接受数与脚本/依赖摘要。本机 port-forward 的转发耗时不参与 Gateway 负载延迟测量。200 SSE 使用未完成调用与连接屏障，由实时 gauge 确认全部订阅同时在线后恢复 Worker，再验证重连、排空和订阅残留；不能把单 Pod 的 Service port-forward 或已完成调用回放写成扩容、在线容量证据。
+
+`--capacity-smoke` 为显式短跑，只能产生 incomplete 证据。正式认证要求冻结硬件、100 Execution、500 Node、200 SSE、1000 Case、200 节点、5000 Attempt、四服务独立 1/2/3/4 副本、不同镜像的 Worker 实际混跑及两小时连续采样。`--previous-worker-image` 必须提供真实可兼容旧镜像，不能把当前镜像换 tag 冒充旧版。
+
+候选证据共用 runId/sourceCommit/sourceTreeSha256/imageManifestSha256。最终汇总器要求九域 JUnit 全部非空、失败/错误/跳过为零，容量、PITR、Redis 重建、滚动升级及供应链专项报告与同一候选匹配。所有 11 镜像必须为摘要引用；旧 passed marker 先删除，缺证据不能发布。
+
+供应链必须实际调用 Cosign verify 和 verify-attestation，并核对签名/attestation subject、SPDX 文件与其规范化摘要。缺 Cosign/信任策略、缺镜像或篡改均阻断。本地 TLS Registry 使用显式公钥和 CA，以及 Cosign 3 的无公共 tlog signing config；公网发布采用固定 OIDC 证书身份与 issuer。inspect-only 和 skip-sign 不产生 passed。GitHub 发布工作流先在绑定硬件的 macOS self-hosted runner 完成全链认证，再由 publish job 重新验签和审查证据。
+
+本轮修复与验证结果见 [代码审查修复证据](evidence/p7-code-review-fixes.md)；代码完成不等于正式发布认证通过。

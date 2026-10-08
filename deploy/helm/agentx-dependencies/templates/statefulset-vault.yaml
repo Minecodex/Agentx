@@ -16,13 +16,32 @@ spec:
       containers:
         - name: vault
           image: hashicorp/vault:1.19
-          args: ["server", "-dev", "-dev-listen-address=0.0.0.0:8200"]
+          args: ["server", "-dev", "-dev-listen-address={{ if .Values.global.components.secretProvider.caSecretName }}127.0.0.1:18200{{ else }}0.0.0.0:8200{{ end }}"]
           env:
             - name: VAULT_DEV_ROOT_TOKEN_ID
               valueFrom: { secretKeyRef: { name: {{ .Values.global.secrets.dependencies }}, key: VAULT_DEV_ROOT_TOKEN_ID } }
-          ports: [{ name: http, containerPort: 8200 }]
-          readinessProbe: { httpGet: { path: "/v1/sys/health?standbyok=true", port: http }, periodSeconds: 5 }
+          ports: [{ name: vault-upstream, containerPort: {{ if .Values.global.components.secretProvider.caSecretName }}18200{{ else }}8200{{ end }} }]
+{{- if .Values.global.components.secretProvider.caSecretName }}
+          readinessProbe: { exec: { command: [vault, status, -address=http://127.0.0.1:18200] }, periodSeconds: 5 }
+{{- else }}
+          readinessProbe: { httpGet: { path: "/v1/sys/health?standbyok=true", port: vault-upstream }, periodSeconds: 5 }
+{{- end }}
           volumeMounts: [{ name: data, mountPath: /vault/file }]
+{{- if .Values.global.components.secretProvider.caSecretName }}
+        - name: tls-proxy
+          image: nginx:1.27-alpine
+          imagePullPolicy: {{ .Values.global.images.pullPolicy }}
+          ports: [{ name: http, containerPort: 8200 }]
+          readinessProbe: { httpGet: { path: "/v1/sys/health?standbyok=true", port: http, scheme: HTTPS }, periodSeconds: 5 }
+          volumeMounts:
+            - { name: config, mountPath: /etc/nginx/conf.d, readOnly: true }
+            - { name: tls, mountPath: /tls, readOnly: true }
+      volumes:
+        - name: config
+          configMap: { name: vault-tls-proxy }
+        - name: tls
+          secret: { secretName: {{ .Values.global.components.secretProvider.caSecretName }} }
+{{- end }}
   volumeClaimTemplates:
     - metadata: { name: data }
       spec: { accessModes: [ReadWriteOnce], resources: { requests: { storage: 1Gi } } }

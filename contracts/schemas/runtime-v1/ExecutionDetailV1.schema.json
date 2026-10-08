@@ -188,6 +188,11 @@
     "summary": {
       "$ref": "#/$defs/ExecutionSummaryV1"
     },
+    "traceEventCount": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
     "traceWatermark": {
       "format": "uint64",
       "minimum": 0,
@@ -206,7 +211,8 @@
     "summary",
     "stateVersion",
     "admissionEpoch",
-    "traceWatermark"
+    "traceWatermark",
+    "traceEventCount"
   ],
   "title": "ExecutionDetailV1",
   "type": "object"

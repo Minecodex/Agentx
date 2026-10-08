@@ -137,13 +137,16 @@ pub async fn sequence_one(
     _owner: Uuid,
 ) -> RuntimeResult<Option<SequencedEvent>> {
     let mut tx = pool.begin().await?;
-    let row = sqlx::query("SELECT id,tenant_id,execution_id,payload_json,event_type,aggregate_type,aggregate_id,aggregate_version,correlation_id,causation_id,created_at FROM execution_outbox WHERE status='pending' AND message_type='runtime_event' AND available_at<=UTC_TIMESTAMP(6) ORDER BY created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED")
+    let outbox_id: Option<Uuid> = sqlx::query_scalar("SELECT id FROM execution_outbox WHERE status='pending' AND message_type='runtime_event' AND available_at<=UTC_TIMESTAMP(6) ORDER BY created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED")
         .fetch_optional(&mut *tx).await?;
-    let Some(row) = row else {
+    let Some(outbox_id) = outbox_id else {
         tx.commit().await?;
         return Ok(None);
     };
-    let outbox_id: Uuid = row.try_get("id")?;
+    // Lock/order only the small identity row; a WorkPackage event can carry
+    // an output larger than MySQL's sort buffer. Read it by the claimed key.
+    let row = sqlx::query("SELECT id,tenant_id,execution_id,payload_json,event_type,aggregate_type,aggregate_id,aggregate_version,correlation_id,causation_id,created_at FROM execution_outbox WHERE id=?")
+        .bind(outbox_id).fetch_one(&mut *tx).await?;
     let tenant_id: Uuid = row.try_get("tenant_id")?;
     let execution_id: Option<Uuid> = row.try_get("execution_id")?;
     // SKIP LOCKED must apply only to the Outbox authority row. A LEFT JOIN in
@@ -151,7 +154,7 @@ pub async fn sequence_one(
     // columns and falsely quarantine a valid event. This consistent read does
     // not participate in claiming the Execution row.
     let execution = match execution_id {
-        Some(execution_id) => sqlx::query("SELECT invocation_id,application_id,workflow_id,workflow_version_id,bundle_id,trace_id,status,state_version,admission_epoch,trace_watermark,terminal_result_hash,terminal_result_object_id,error_json FROM workflow_executions WHERE tenant_id=? AND id=?")
+        Some(execution_id) => sqlx::query("SELECT invocation_id,application_id,workflow_id,workflow_version_id,bundle_id,trace_id,status,state_version,admission_epoch,CAST(COALESCE((SELECT MAX(t.sequence_number) FROM execution_events t WHERE t.tenant_id=workflow_executions.tenant_id AND t.execution_id=workflow_executions.id),0) AS UNSIGNED) trace_watermark,terminal_result_hash,terminal_result_object_id,error_json FROM workflow_executions WHERE tenant_id=? AND id=?")
             .bind(tenant_id)
             .bind(execution_id)
             .fetch_optional(&mut *tx)
@@ -571,7 +574,7 @@ async fn load_evaluation_report_from_pool(
     let mut total_cost_micros = 0_u64;
     for row in case_rows {
         let case_id: Uuid = row.try_get("id")?;
-        let rule_rows = sqlx::query("SELECT id,profile_rule_id,status,passed,CAST(score AS DOUBLE) score,detail_json,duration_ms,cost_micros FROM evaluation_rule_results WHERE tenant_id=? AND evaluation_run_case_id=? ORDER BY created_at,id")
+        let rule_rows = sqlx::query("SELECT id,profile_rule_id,evaluator_execution_id,status,passed,CAST(score AS DOUBLE) score,detail_json,duration_ms,cost_micros FROM evaluation_rule_results WHERE tenant_id=? AND evaluation_run_case_id=? ORDER BY created_at,id")
             .bind(tenant_id).bind(case_id).fetch_all(&state.pool).await?;
         let mut rules = Vec::with_capacity(rule_rows.len());
         for rule in rule_rows {
@@ -585,6 +588,7 @@ async fn load_evaluation_report_from_pool(
             rules.push(RuntimeEvaluationRuleResultV1 {
                 id: rule.try_get("id")?,
                 profile_rule_id: rule.try_get("profile_rule_id")?,
+                evaluator_execution_id: rule.try_get("evaluator_execution_id")?,
                 status,
                 passed: rule.try_get("passed")?,
                 score: rule.try_get("score")?,

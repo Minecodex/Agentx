@@ -19,4 +19,5 @@ time.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+jsonschema.workspace = true
 rand.workspace = true

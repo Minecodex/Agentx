@@ -986,7 +986,7 @@ def test_l3_send_message_idempotency_and_pod_crash_resilience(
             break
         time.sleep(2)
     assert any(
-        "batchSend" in item["path"] and (item["body"].get("msgParam") or {}).get("content") == "proactive push"
+        "batchSend" in item["path"] and json.loads(item["body"]["msgParam"]).get("content") == "proactive push"
         for item in _mock_received(deps_ns, "/dingtalk/")
     ), "im-mock did not record the official-API push"
 

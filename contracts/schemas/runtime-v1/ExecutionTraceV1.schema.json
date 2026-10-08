@@ -190,7 +190,17 @@
       "format": "uuid",
       "type": "string"
     },
+    "expectedEventCount": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
     "expectedWatermark": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "ingestedEventCount": {
       "format": "uint64",
       "minimum": 0,
       "type": "integer"
@@ -229,6 +239,8 @@
     "executionId",
     "ingestedWatermark",
     "expectedWatermark",
+    "ingestedEventCount",
+    "expectedEventCount",
     "complete",
     "degraded",
     "totalSpans",

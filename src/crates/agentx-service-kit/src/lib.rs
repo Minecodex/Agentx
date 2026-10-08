@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     env,
     net::SocketAddr,
     sync::{
@@ -29,6 +29,15 @@ use uuid::Uuid;
 #[derive(Clone, Copy, Debug)]
 pub struct RequestId(pub Uuid);
 
+/// Installs the explicit rustls CryptoProvider for the process. Feature
+/// unification across workspace and test dependencies can leave both ring
+/// and aws-lc-rs enabled, which disables rustls's automatic selection and
+/// panics on the first TLS connection in production (TLS-everywhere) mode.
+/// Services call this at the very top of `main`.
+pub fn install_tls_provider() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+}
+
 pub fn reqwest_client_builder_with_ca(ca_path_env: &str) -> Result<reqwest::ClientBuilder> {
     let mut builder = reqwest::Client::builder();
     if let Some(path) = env::var_os(ca_path_env).filter(|value| !value.is_empty()) {
@@ -46,7 +55,7 @@ pub struct HealthRegistry {
     dependencies: Arc<RwLock<BTreeMap<String, DependencyHealth>>>,
 }
 
-pub const METRIC_NAMES: [&str; 14] = [
+pub const METRIC_NAMES: [&str; 17] = [
     "agentx_queue_ready_items",
     "agentx_queue_oldest_ready_seconds",
     "agentx_active_leases",
@@ -54,7 +63,10 @@ pub const METRIC_NAMES: [&str; 14] = [
     "agentx_http_inflight_requests",
     "agentx_sse_connections",
     "agentx_drain_inflight",
-    "agentx_mysql_pool_waiters",
+    "agentx_mysql_pool_busy_connections",
+    "agentx_mysql_pool_wait_p95_ms",
+    "agentx_mysql_pool_wait_samples",
+    "agentx_provider_pool_utilization",
     "agentx_egress_active_tunnels",
     "agentx_egress_allowed_total",
     "agentx_egress_denied_total",
@@ -69,6 +81,7 @@ pub const ROLE_WATCHDOG_TIMEOUT_SECONDS: u64 = 90;
 #[derive(Clone, Default)]
 pub struct MetricsRegistry {
     values: Arc<RwLock<BTreeMap<&'static str, f64>>>,
+    mysql_pool_wait_samples: Arc<Mutex<VecDeque<f64>>>,
 }
 
 impl MetricsRegistry {
@@ -91,6 +104,38 @@ impl MetricsRegistry {
         *value = (*value + delta).max(0.0);
     }
 
+    /// Five-second pool probes retain a bounded distribution of actual
+    /// acquire waits. The sample count is exposed so missing data is visible.
+    pub async fn observe_mysql_pool_wait(&self, duration: Duration) {
+        let (p95, count) = {
+            let mut samples = self
+                .mysql_pool_wait_samples
+                .lock()
+                .expect("pool wait samples lock");
+            samples.push_back(duration.as_secs_f64() * 1000.0);
+            if samples.len() > 2048 {
+                samples.pop_front();
+            }
+            let mut sorted = samples.iter().copied().collect::<Vec<_>>();
+            sorted.sort_by(f64::total_cmp);
+            (
+                sorted[(sorted.len() * 95).div_ceil(100).saturating_sub(1)],
+                sorted.len(),
+            )
+        };
+        self.set("agentx_mysql_pool_wait_p95_ms", p95).await;
+        self.set("agentx_mysql_pool_wait_samples", count as f64)
+            .await;
+    }
+
+    pub async fn track(&self, name: &'static str) -> MetricGuard {
+        self.add(name, 1.0).await;
+        MetricGuard {
+            metrics: self.clone(),
+            name,
+        }
+    }
+
     async fn render(&self) -> String {
         let values = self.values.read().await;
         let mut output = String::new();
@@ -105,6 +150,23 @@ impl MetricsRegistry {
             output.push('\n');
         }
         output
+    }
+}
+
+pub struct MetricGuard {
+    metrics: MetricsRegistry,
+    name: &'static str,
+}
+
+impl Drop for MetricGuard {
+    fn drop(&mut self) {
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            let metrics = self.metrics.clone();
+            let name = self.name;
+            runtime.spawn(async move {
+                metrics.add(name, -1.0).await;
+            });
+        }
     }
 }
 
@@ -737,6 +799,44 @@ mod tests {
         .await;
         assert!(lifecycle.is_draining());
         assert!(metrics.render().await.contains("agentx_drain_inflight 0"));
+    }
+
+    #[tokio::test]
+    async fn pool_wait_samples_and_dropped_connections_remain_observable() {
+        let metrics = MetricsRegistry::default();
+        metrics.initialize().await;
+        for milliseconds in 1..=100 {
+            metrics
+                .observe_mysql_pool_wait(std::time::Duration::from_millis(milliseconds))
+                .await;
+        }
+        assert!(
+            metrics
+                .render()
+                .await
+                .contains("agentx_mysql_pool_wait_p95_ms 95\n")
+        );
+        assert!(
+            metrics
+                .render()
+                .await
+                .contains("agentx_mysql_pool_wait_samples 100\n")
+        );
+        let connection = metrics.track("agentx_sse_connections").await;
+        assert!(
+            metrics
+                .render()
+                .await
+                .contains("agentx_sse_connections 1\n")
+        );
+        drop(connection);
+        tokio::task::yield_now().await;
+        assert!(
+            metrics
+                .render()
+                .await
+                .contains("agentx_sse_connections 0\n")
+        );
     }
 
     #[tokio::test]

@@ -788,3 +788,76 @@ def test_vision_attachment_reaches_model_as_native_parts(
             f"WHERE i.id=UUID_TO_BIN('{refused['invocationId']}') ORDER BY a.attempt_number DESC LIMIT 1;",
         )
         assert node_error == "MODEL_INPUT_UNSUPPORTED", node_error
+
+
+def test_studio_debug_has_an_independent_durable_delta_cursor(installed_agentx, service_urls, streaming_application):
+    from tools.scripts.release.evidence import write_report
+
+    with httpx.Client(
+        base_url=service_urls["web"],
+        timeout=60,
+        headers={"Authorization": f"Bearer {streaming_application['token']}"},
+    ) as control:
+        application = control.get(f"/api/v1/applications/{streaming_application['applicationId']}")
+        application.raise_for_status()
+        workflow_id = application.json()["workflowId"]
+        draft = control.get(f"/api/v1/workflows/{workflow_id}/draft")
+        draft.raise_for_status()
+        debug = control.post(
+            f"/api/v1/workflows/{workflow_id}/debug-executions",
+            json={
+                "expectedRevision": draft.json()["revision"],
+                "mode": "full",
+                "targetNodeId": None,
+                "input": {"message": "durable debug tail"},
+                "context": {},
+                "overlayIds": [],
+                "sideEffectDecisions": {},
+                "idempotencyKey": f"debug-delta-{time.time_ns()}",
+            },
+        )
+        assert debug.status_code == 202, debug.text
+        execution = debug.json()["executionId"]
+        cursor = 0
+        frames = []
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            delta = control.get(f"/api/v1/executions/{execution}/model-deltas", params={"after": cursor, "limit": 1000})
+            assert delta.status_code == 200, delta.text
+            page = delta.json()
+            for frame in page["items"]:
+                assert frame["sequence"] > cursor, page
+                cursor = frame["sequence"]
+                frames.append(frame)
+            assert page["nextCursor"] == cursor, page
+            status = control.get(f"/api/v1/executions/{execution}")
+            assert status.status_code == 200, status.text
+            if status.json()["status"] == "succeeded" and not page["items"]:
+                break
+            assert status.json()["status"] not in {"failed", "cancelled"}, status.text
+            time.sleep(0.25)
+        assert frames and all(frame["payload"]["nodeKey"] == "stream_model" for frame in frames), frames
+        assert (
+            "".join(frame["payload"]["deltaText"] for frame in frames) == "M5 Agent completed after the MCP tool result"
+        ), frames
+        assert (
+            _runtime_mysql(
+                installed_agentx,
+                f"SELECT COUNT(*) FROM application_invocations WHERE execution_id=UUID_TO_BIN('{execution}');",
+            )
+            == "0"
+        )
+        unauthenticated = httpx.get(f"{service_urls['web']}/api/v1/executions/{execution}/model-deltas", timeout=30)
+        assert unauthenticated.status_code == 401, unauthenticated.text
+        write_report(
+            installed_agentx,
+            "product/studio-model-deltas.json",
+            {
+                "status": "passed",
+                "executionId": execution,
+                "frames": len(frames),
+                "cursor": cursor,
+                "independentOfInvocation": True,
+                "anonymousAccessDenied": True,
+            },
+        )

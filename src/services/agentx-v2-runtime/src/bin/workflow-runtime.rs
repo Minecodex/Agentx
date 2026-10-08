@@ -10,6 +10,7 @@ mod runtime_task_queue;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    agentx_service_kit::install_tls_provider();
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
     let _ = tracing_subscriber::fmt()
@@ -600,18 +601,19 @@ async fn trace_relay_loop(
             }
             last_stream_check = tokio::time::Instant::now();
         }
-        let Some(claim) = agentx_v2_runtime::trace_delivery::claim(&pool, owner).await? else {
+        let claims = agentx_v2_runtime::trace_delivery::claim(&pool, owner).await?;
+        if claims.is_empty() {
             tokio::time::sleep(Duration::from_millis(100)).await;
             progress.processed_since(started).await;
             continue;
-        };
-        match agentx_v2_runtime::trace_delivery::publish(&mut redis, &claim).await {
-            Ok(stream_id) => {
-                agentx_v2_runtime::trace_delivery::complete(&pool, &claim, &stream_id).await?;
+        }
+        match agentx_v2_runtime::trace_delivery::publish(&mut redis, &claims).await {
+            Ok(stream_ids) => {
+                agentx_v2_runtime::trace_delivery::complete(&pool, &claims, &stream_ids).await?;
             }
             Err(error) => {
-                tracing::warn!(%error,event_id=%claim.event_id,"Trace Relay publish failed");
-                agentx_v2_runtime::trace_delivery::fail(&pool, &claim, &error.to_string()).await?;
+                tracing::warn!(%error,events=claims.len(),"Trace Relay publish failed");
+                agentx_v2_runtime::trace_delivery::fail(&pool, &claims, &error.to_string()).await?;
             }
         }
         progress.processed_since(started).await;
@@ -730,6 +732,15 @@ async fn record_delivery_event(
         } else {
             "delivery.failed"
         };
+    if sqlx::query("SELECT id FROM application_invocations WHERE tenant_id=? AND id=? FOR UPDATE")
+        .bind(claim.tenant_id)
+        .bind(claim.invocation_id)
+        .fetch_one(&mut *tx)
+        .await
+        .is_err()
+    {
+        return;
+    }
     let next: Option<u64> = sqlx::query_scalar(
         "SELECT CAST(COALESCE(MAX(sequence_number),0)+1 AS UNSIGNED) FROM invocation_events WHERE tenant_id=? AND invocation_id=? FOR UPDATE",
     )
@@ -816,8 +827,11 @@ async fn collect_runtime_metrics(
 ) -> Result<()> {
     while !lifecycle.is_draining() {
         let sample = async {
-            let row = sqlx::query("SELECT COUNT(*) ready_items,CAST(COALESCE(MAX(TIMESTAMPDIFF(MICROSECOND,available_at,UTC_TIMESTAMP(6))),0)/1000000.0 AS DOUBLE) oldest_seconds FROM execution_outbox WHERE status='pending' AND available_at<=UTC_TIMESTAMP(6)").fetch_one(&pool).await?;
-            let active: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_attempts WHERE status='running' AND locked_until>UTC_TIMESTAMP(6)").fetch_one(&pool).await?;
+            let acquire_started = std::time::Instant::now();
+            let mut connection = pool.acquire().await?;
+            metrics.observe_mysql_pool_wait(acquire_started.elapsed()).await;
+            let row = sqlx::query("SELECT COUNT(*) ready_items,CAST(COALESCE(MAX(TIMESTAMPDIFF(MICROSECOND,available_at,UTC_TIMESTAMP(6))),0)/1000000.0 AS DOUBLE) oldest_seconds FROM execution_outbox WHERE status='pending' AND available_at<=UTC_TIMESTAMP(6)").fetch_one(&mut *connection).await?;
+            let active: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_attempts WHERE status='running' AND locked_until>UTC_TIMESTAMP(6)").fetch_one(&mut *connection).await?;
             Ok::<_, sqlx::Error>((sqlx::Row::try_get::<i64, _>(&row, "ready_items")?, sqlx::Row::try_get::<f64, _>(&row, "oldest_seconds")?, active))
         }.await;
         match sample {
@@ -849,7 +863,7 @@ async fn collect_runtime_metrics(
         }
         metrics
             .set(
-                "agentx_mysql_pool_waiters",
+                "agentx_mysql_pool_busy_connections",
                 pool.size().saturating_sub(pool.num_idle() as u32) as f64,
             )
             .await;

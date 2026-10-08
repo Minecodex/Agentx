@@ -314,30 +314,12 @@ pub async fn status(
             (name.into(), Value::String(image_reference(config, name)))
         })
         .collect();
-    let control_scheme = if config
-        .string("/global/ingress/controlTlsSecretName")
-        .unwrap_or("")
-        .is_empty()
-    {
-        "http"
-    } else {
-        "https"
-    };
-    let runtime_scheme = if config
-        .string("/global/ingress/runtimeTlsSecretName")
-        .unwrap_or("")
-        .is_empty()
-    {
-        "http"
-    } else {
-        "https"
-    };
     Ok(json!({
         "status":expected.unwrap_or("observed"), "environment":config.environment(), "namespaces":config.namespaces(),
         "releases":releases, "images":images,
         "endpoints":{
-            "control":format!("{control_scheme}://{}", config.string("/global/ingress/controlHost").unwrap()),
-            "runtime":format!("{runtime_scheme}://{}", config.string("/global/ingress/runtimeHost").unwrap()),
+            "control":config.ingress_url("control"),
+            "runtime":config.ingress_url("runtime"),
         }
     }))
 }
@@ -357,7 +339,7 @@ fn write_release_manifest(config: &DeploymentConfig) -> Result<std::path::PathBu
     jsonschema::validator_for(&schema)?
         .validate(&manifest)
         .map_err(|error| anyhow::anyhow!("release manifest validation failed: {error}"))?;
-    let output_dir = std::env::current_dir()?.join("artifacts/releases");
+    let output_dir = std::env::current_dir()?.join(".local/artifacts/releases");
     std::fs::create_dir_all(&output_dir)?;
     let output = output_dir.join(format!(
         "{}-{}.json",
@@ -878,6 +860,48 @@ mod tests {
                 .pointer("/metadata/labels/agentx.io~1ingress")
                 .and_then(Value::as_str),
             Some("allowed")
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_dependency_install_never_installs_apps_or_reports_ready() {
+        let executor = Arc::new(test_support::RecordingExecutor::new(|request| {
+            if request.command.starts_with(&[
+                "helm".into(),
+                "upgrade".into(),
+                "--install".into(),
+                "agentx-dependencies".into(),
+            ]) {
+                return Ok(test_support::result(
+                    request,
+                    1,
+                    "dependency bootstrap failed",
+                ));
+            }
+            standard_response(request)
+        }));
+        let assets = EmbeddedAssets::extract().unwrap();
+        let config = local_config(true);
+        let error = process::with_command_executor(
+            executor.clone(),
+            install(&config, &assets, &TARGETS, true, false),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("dependency bootstrap failed"));
+        let requests = executor.requests();
+        assert!(
+            !requests
+                .iter()
+                .any(|request| request.command.starts_with(&["helm".into(), "test".into()]))
+        );
+        assert!(
+            !requests.iter().any(|request| request.command.starts_with(&[
+                "helm".into(),
+                "upgrade".into(),
+                "--install".into(),
+                "agentx-control".into()
+            ]))
         );
     }
 

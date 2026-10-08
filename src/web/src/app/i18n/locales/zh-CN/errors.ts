@@ -2,6 +2,12 @@ const translations = {
   "requestFailed": "请求失败（{{code}}）",
   "requestFailedWithId": "请求暂时无法完成。请求 ID：{{requestId}}",
   "requiredField": "此项为必填项",
+  "pageLoad": {
+    "title": "页面暂时无法打开",
+    "description": "页面资源未能加载，请刷新后重试。如仍无法打开，请稍后再试。",
+    "reload": "刷新页面",
+    "home": "返回首页"
+  },
   "codes": {
     "INVALID_REQUEST_BODY": "提交内容存在缺失项或格式错误，请检查后重试。",
     "REQUIRED_FIELD": "此项为必填项。",
@@ -12,6 +18,15 @@ const translations = {
     "DEPARTMENT_NAME_EXISTS": "所选上级部门下已存在同名部门。",
     "USERNAME_EXISTS": "该用户名已被使用。",
     "ROLE_CODE_EXISTS": "该角色编码已存在。",
+    "APPLICATION_WORKFLOW_VERSION_REQUIRED": "请先为工作流创建版本，再配置渠道。",
+    "INVALID_WEBHOOK_REPLY_OUTPUT_FIELD": "开启回复后必须选择输出字段。",
+    "WEBHOOK_REPLY_OUTPUT_FIELD_UNKNOWN": "回复字段不在当前工作流输出中，请重新选择。",
+    "WEBHOOK_REQUIRED_INPUT_UNMAPPED": "请为所有必填工作流输入配置映射或固定值。",
+    "WEBHOOK_MAPPING_TARGET_UNKNOWN": "映射目标不在当前工作流输入中，请重新选择。",
+    "WEBHOOK_FIXED_INPUT_TARGET_UNKNOWN": "固定输入不在当前工作流输入中，请重新选择。",
+    "WEBHOOK_MAPPING_TYPE_MISMATCH": "消息来源是字符串，请选择字符串类型的输入。",
+    "WEBHOOK_MAPPING_CONFLICT": "映射目标重复或与固定输入冲突。",
+    "INVALID_WEBHOOK_SOURCE": "请选择有效的消息来源字段。",
     "APPLICATION_SLUG_EXISTS": "该应用 Slug 已存在。",
     "ENVIRONMENT_CODE_EXISTS": "该环境编码已存在。",
     "MCP_SERVER_NAME_EXISTS": "该 MCP Server 名称已存在。",

@@ -234,6 +234,16 @@ async fn create_knowledge(
     actor.require("knowledge:manage")?;
     require_department_scope(&state, &actor, input.owner_department_id).await?;
     require_connection(&state, &actor, "rag_connections", input.connection_id).await?;
+    let provider: String =
+        sqlx::query_scalar("SELECT provider FROM rag_connections WHERE tenant_id=? AND id=?")
+            .bind(actor.tenant_id)
+            .bind(input.connection_id)
+            .fetch_one(&state.pool)
+            .await?;
+    if provider == "lightrag" {
+        agentx_runtime_contracts::rag::validate_lightrag_workspace(&input.external_resource_id)
+            .map_err(|error| ApiError::bad_request(error.code, error.message))?;
+    }
     let id = Uuid::now_v7();
     sqlx::query("INSERT INTO rag_resources(id,tenant_id,connection_id,name,external_resource_id,owner_department_id) VALUES(?,?,?,?,?,?)").bind(id).bind(actor.tenant_id).bind(input.connection_id).bind(required_name(&input.name)?).bind(required_external(&input.external_resource_id)?).bind(input.owner_department_id).execute(&state.pool).await.map_err(|error|map_external_error(error,"KNOWLEDGE_EXTERNAL_RESOURCE_ID_EXISTS"))?;
     Ok((
@@ -601,7 +611,7 @@ async fn require_connection(
         Err(ApiError::not_found("Connection"))
     }
 }
-async fn require_resource(
+pub(crate) async fn require_resource(
     state: &ControlApiState,
     actor: &Actor,
     table: &str,
@@ -651,12 +661,41 @@ async fn delete_resource(
     id: Uuid,
 ) -> ApiResult<StatusCode> {
     require_resource(state, actor, table, id).await?;
-    let references:i64=sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM workflow_draft_resources WHERE tenant_id=? AND resource_type=? AND resource_id=?)+(SELECT COUNT(*) FROM workflow_version_resources WHERE tenant_id=? AND resource_type=? AND resource_id=?)").bind(actor.tenant_id).bind(resource_type).bind(id).bind(actor.tenant_id).bind(resource_type).bind(id).fetch_one(&state.pool).await?;
+    let mut tx = state.pool.begin().await?;
+    let lock_sql = match table {
+        "rag_resources" => "SELECT id FROM rag_resources WHERE tenant_id=? AND id=? FOR UPDATE",
+        "memory_namespaces" => {
+            "SELECT id FROM memory_namespaces WHERE tenant_id=? AND id=? FOR UPDATE"
+        }
+        _ => return Err(ApiError::internal("unsupported resource table")),
+    };
+    sqlx::query(lock_sql)
+        .bind(actor.tenant_id)
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Resource"))?;
+    let references:i64=sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM workflow_draft_resources WHERE tenant_id=? AND resource_type=? AND resource_id=?)+(SELECT COUNT(*) FROM workflow_version_resources WHERE tenant_id=? AND resource_type=? AND resource_id=?)").bind(actor.tenant_id).bind(resource_type).bind(id).bind(actor.tenant_id).bind(resource_type).bind(id).fetch_one(&mut *tx).await?;
     if references != 0 {
         return Err(ApiError::conflict(
             "RESOURCE_REFERENCED",
             "Resource is referenced",
         ));
+    }
+    if table == "rag_resources" {
+        let documents: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM knowledge_documents WHERE tenant_id=? AND rag_resource_id=?",
+        )
+        .bind(actor.tenant_id)
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if documents != 0 {
+            return Err(ApiError::conflict(
+                "RESOURCE_REFERENCED",
+                "Delete knowledge documents before deleting their resource",
+            ));
+        }
     }
     let sql = match table {
         "rag_resources" => "DELETE FROM rag_resources WHERE tenant_id=? AND id=?",
@@ -666,8 +705,9 @@ async fn delete_resource(
     sqlx::query(sql)
         .bind(actor.tenant_id)
         .bind(id)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
 async fn require_department_scope(

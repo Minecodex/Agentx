@@ -116,6 +116,7 @@ fn check(root: &Path, fast: bool) -> Result<()> {
     )?;
     for values in [
         "local.yaml",
+        "local-tls.yaml",
         "dockerhub-beta.yaml",
         "production.example.yaml",
     ] {
@@ -305,10 +306,40 @@ fn images(root: &Path, args: Images) -> Result<()> {
             bail!("unknown image service: {service}");
         }
     }
+    let source_hash = String::from_utf8(
+        output(
+            root,
+            "uv",
+            &[
+                "run",
+                "--frozen",
+                "--group",
+                "test",
+                "python",
+                "-m",
+                "tools.scripts.release.evidence",
+                "--print-source-tree-sha",
+            ],
+            true,
+        )?
+        .stdout,
+    )?;
+    let source_commit =
+        String::from_utf8(output(root, "git", &["rev-parse", "HEAD"], true)?.stdout)?;
     for service in &selected {
         let image = image_reference(&values, service);
         let mut command = Command::new("docker");
-        command.current_dir(root).arg("build");
+        command
+            .current_dir(root)
+            .arg("build")
+            .args([
+                "--label",
+                &format!("org.opencontainers.image.revision={}", source_commit.trim()),
+            ])
+            .args([
+                "--label",
+                &format!("io.agentx.source-tree-sha256={}", source_hash.trim()),
+            ]);
         if service == "web-console" {
             command.args([
                 "-f",

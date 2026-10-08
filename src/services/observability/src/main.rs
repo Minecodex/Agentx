@@ -324,6 +324,7 @@ type ApiResult<T> = std::result::Result<T, ApiError>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    agentx_service_kit::install_tls_provider();
     let state = AppState::from_env()?;
     let lifecycle = agentx_service_kit::ServiceLifecycle::default();
     let metrics = agentx_service_kit::MetricsRegistry::default();
@@ -582,9 +583,10 @@ async fn process_items(
     redis: &mut ConnectionManager,
     items: Vec<StreamId>,
 ) -> Result<()> {
+    let ids: Vec<String> = items.iter().map(|item| item.id.clone()).collect();
+    let mut traces = Vec::with_capacity(items.len());
     for item in items {
         let Some(value) = item.map.get("payload") else {
-            let _: u64 = redis.xack(TRACE_STREAM, TRACE_GROUP, &[&item.id]).await?;
             continue;
         };
         let payload_text = String::from_redis_value(value)?;
@@ -598,36 +600,82 @@ async fn process_items(
             envelope.attributes.is_object() && envelope.attributes.to_string().len() <= 16 * 1024,
             "Trace attributes exceed the reviewed object budget"
         );
-        let existing = existing_trace_hash(&state.clickhouse_consumer, envelope.event_id).await?;
-        match existing {
-            Some(hash) if hash != envelope.content_hash.as_str() => {
-                let mut insert = state.clickhouse_consumer.insert("trace_ingest_conflicts")?;
-                insert
-                    .write(&TraceConflictRow {
-                        event_id: envelope.event_id,
-                        tenant_id: envelope.tenant_id,
-                        execution_id: envelope.execution_id,
-                        existing_hash: hash,
-                        conflicting_hash: envelope.content_hash.to_string(),
-                        stream_id: item.id.clone(),
-                    })
-                    .await?;
-                insert.end().await?;
-                write_health(state, "degraded", &item.id, "TRACE_EVENT_HASH_CONFLICT").await?;
-            }
-            Some(_) => {}
-            None => {
-                let mut insert = state.clickhouse_consumer.insert("workflow_trace_events")?;
-                insert.write(&TraceRow::from(envelope)).await?;
-                insert.end().await?;
-                write_health(state, "ready", &item.id, "").await?;
-            }
-        }
-        let _: u64 = redis.xack(TRACE_STREAM, TRACE_GROUP, &[&item.id]).await?;
+        traces.push((item.id, envelope));
+    }
+    let conflicts = ingest_trace_batch(&state.clickhouse_consumer, &traces).await?;
+    if let Some(last) = ids.last() {
+        write_health(
+            state,
+            if conflicts > 0 { "degraded" } else { "ready" },
+            last,
+            if conflicts > 0 {
+                "TRACE_EVENT_HASH_CONFLICT"
+            } else {
+                ""
+            },
+        )
+        .await?;
+        // Replays remain pending until rows, conflicts and health are durable.
+        let _: u64 = redis.xack(TRACE_STREAM, TRACE_GROUP, &ids).await?;
     }
     Ok(())
 }
 
+async fn ingest_trace_batch(
+    clickhouse: &clickhouse::Client,
+    traces: &[(String, TraceEventEnvelopeV1)],
+) -> Result<usize> {
+    if traces.is_empty() {
+        return Ok(0);
+    }
+    let mut insert = clickhouse.insert("workflow_trace_events")?;
+    for (_, envelope) in traces {
+        insert.write(&TraceRow::from(envelope.clone())).await?;
+    }
+    insert.end().await?;
+    let ids: Vec<Uuid> = traces.iter().map(|(_, event)| event.event_id).collect();
+    // The existing ReplacingMergeTree key includes content_hash: same-hash
+    // replay deduplicates under FINAL; different hashes remain observable.
+    // Check after insertion so concurrent consumers cannot both miss a
+    // conflicting event by doing a pre-insert lookup against an empty table.
+    let collisions = clickhouse.query("WITH collisions AS (SELECT event_id,min(content_hash) existing_hash,max(content_hash) conflicting_hash FROM workflow_trace_events WHERE event_id IN ? GROUP BY event_id HAVING uniqExact(content_hash)>1) SELECT DISTINCT e.event_id,e.tenant_id,e.execution_id,c.existing_hash,c.conflicting_hash FROM workflow_trace_events e INNER JOIN collisions c ON c.event_id=e.event_id WHERE e.event_id IN ?")
+        .bind(&ids).bind(&ids).fetch_all::<TraceHashCollision>().await?;
+    if !collisions.is_empty() {
+        let stream_ids: HashMap<_, _> = traces
+            .iter()
+            .map(|(id, event)| (event.event_id, id))
+            .collect();
+        let mut insert = clickhouse.insert("trace_ingest_conflicts")?;
+        for collision in &collisions {
+            insert
+                .write(&TraceConflictRow {
+                    event_id: collision.event_id,
+                    tenant_id: collision.tenant_id,
+                    execution_id: collision.execution_id,
+                    existing_hash: collision.existing_hash.clone(),
+                    conflicting_hash: collision.conflicting_hash.clone(),
+                    stream_id: stream_ids[&collision.event_id].clone(),
+                })
+                .await?;
+        }
+        insert.end().await?;
+    }
+    Ok(collisions.len())
+}
+
+#[derive(clickhouse::Row, Deserialize)]
+struct TraceHashCollision {
+    #[serde(with = "clickhouse::serde::uuid")]
+    event_id: Uuid,
+    #[serde(with = "clickhouse::serde::uuid")]
+    tenant_id: Uuid,
+    #[serde(with = "clickhouse::serde::uuid")]
+    execution_id: Uuid,
+    existing_hash: String,
+    conflicting_hash: String,
+}
+
+#[cfg(test)]
 async fn existing_trace_hash(
     clickhouse: &clickhouse::Client,
     event_id: Uuid,
@@ -685,6 +733,7 @@ async fn write_health(state: &AppState, status: &str, stream_id: &str, error: &s
 #[serde(rename_all = "camelCase")]
 struct ExecutionTraceQuery {
     expected_watermark: u64,
+    expected_event_count: u64,
     limit: Option<u32>,
     cursor: Option<String>,
     node_execution_id: Option<Uuid>,
@@ -700,6 +749,7 @@ async fn execution_trace(
     let request_hash = content_hash(&json!({
         "operation":"execution-trace","executionId":execution_id,
         "expectedWatermark":query.expected_watermark,"limit":limit,"cursor":query.cursor,
+        "expectedEventCount":query.expected_event_count,
         "nodeExecutionId":query.node_execution_id
     }))
     .map_err(|error| ApiError::unavailable(error.to_string()))?;
@@ -777,17 +827,15 @@ async fn execution_trace(
             .await
             .map_err(|error| ApiError::unavailable(error.to_string()))?
     };
-    let watermark = state
-        .clickhouse_query
-        .query("SELECT max(execution_sequence) FROM workflow_trace_events FINAL WHERE tenant_id=? AND execution_id=? AND event_id NOT IN (SELECT event_id FROM trace_ingest_conflicts WHERE tenant_id=?)")
-        .with_option("query_id", format!("{query_id_text}-watermark"))
-        .with_option("max_execution_time", "5")
-        .bind(claims.tenant_id)
-        .bind(execution_id)
-        .bind(claims.tenant_id)
-        .fetch_one::<u64>()
-        .await
-        .map_err(|error| ApiError::unavailable(error.to_string()))?;
+    let (watermark, ingested_event_count) = trace_ingestion_snapshot(
+        &state.clickhouse_query,
+        claims.tenant_id,
+        execution_id,
+        query.expected_watermark,
+        &format!("{query_id_text}-watermark"),
+    )
+    .await
+    .map_err(|error| ApiError::unavailable(error.to_string()))?;
     let degraded = has_conflicts(&state, claims.tenant_id, Some(execution_id)).await?;
     let total_spans_sql = if query.node_execution_id.is_some() {
         "SELECT uniqExact(span_id) FROM workflow_trace_events FINAL WHERE tenant_id=? AND execution_id=? AND event_id NOT IN (SELECT event_id FROM trace_ingest_conflicts WHERE tenant_id=?) AND node_execution_id=?"
@@ -816,12 +864,15 @@ async fn execution_trace(
         .map_err(|error| ApiError::unavailable(error.to_string()))?;
     let mut spans = aggregate_spans(&events);
     spans.sort_by_key(|span| (span.started_at, span.span_id));
-    let complete = watermark >= query.expected_watermark;
+    let complete =
+        watermark >= query.expected_watermark && ingested_event_count == query.expected_event_count;
     let trace = ExecutionTraceV1 {
         api_version: 1,
         execution_id,
         ingested_watermark: watermark,
         expected_watermark: query.expected_watermark,
+        ingested_event_count,
+        expected_event_count: query.expected_event_count,
         complete,
         degraded,
         warning_code: (!complete).then(|| "TRACE_DELAYED".into()),
@@ -830,6 +881,25 @@ async fn execution_trace(
         spans,
     };
     Ok((StatusCode::OK, Json(trace)).into_response())
+}
+
+async fn trace_ingestion_snapshot(
+    client: &clickhouse::Client,
+    tenant_id: Uuid,
+    execution_id: Uuid,
+    expected_watermark: u64,
+    query_id: &str,
+) -> Result<(u64, u64)> {
+    Ok(client
+        .query("SELECT max(execution_sequence),uniqExactIf(event_id,execution_sequence<=?) FROM workflow_trace_events FINAL WHERE tenant_id=? AND execution_id=? AND event_id NOT IN (SELECT event_id FROM trace_ingest_conflicts WHERE tenant_id=?)")
+        .with_option("query_id", query_id)
+        .with_option("max_execution_time", "5")
+        .bind(expected_watermark)
+        .bind(tenant_id)
+        .bind(execution_id)
+        .bind(tenant_id)
+        .fetch_one::<(u64, u64)>()
+        .await?)
 }
 
 fn span_page_sql(has_cursor: bool, has_node_filter: bool) -> &'static str {
@@ -1113,6 +1183,7 @@ async fn query_aggregates(
                         | "errorCode"
                         | "provider"
                         | "resourceType"
+                        | "spanKind"
                 )
             })
         })
@@ -1135,7 +1206,7 @@ async fn query_aggregates(
     }
     let _permit = tenant_permit(&state, claims.tenant_id).await?;
     let query_id = Uuid::now_v7();
-    let sql = aggregate_query_sql(&request)?;
+    let sql = scoped_aggregate_query_sql(&request, &claims)?;
     let query_id_text = query_id.to_string();
     let query_result = tokio::time::timeout(
         Duration::from_secs(5),
@@ -1237,17 +1308,78 @@ fn dimension_sql(value: &ObservabilityDimensionV1) -> (&'static str, &'static st
         ObservabilityDimensionV1::SpanName => ("spanName", "span_name"),
     }
 }
-fn metric_sql(value: &ObservabilityMetricV1) -> (&'static str, &'static str) {
+fn metric_sql(value: &ObservabilityMetricV1, population: &str) -> (&'static str, String) {
+    let member = format!("span_kind='{population}'");
+    let calls = "span_kind='runtime_call'";
     match value {
-        ObservabilityMetricV1::Count => ("count", "count()"),
-        ObservabilityMetricV1::DurationMillis => ("durationMillis", "sum(ifNull(duration_ms,0))"),
-        ObservabilityMetricV1::CostMicros => ("costMicros", "sum(cost_micros)"),
-        ObservabilityMetricV1::InputTokens => ("inputTokens", "sum(ifNull(input_tokens,0))"),
-        ObservabilityMetricV1::OutputTokens => ("outputTokens", "sum(ifNull(output_tokens,0))"),
-        ObservabilityMetricV1::ErrorRate => ("errorRate", "avg(status='failed')"),
-        ObservabilityMetricV1::DurationP50 => ("durationP50", "quantile(0.5)(duration_ms)"),
-        ObservabilityMetricV1::DurationP95 => ("durationP95", "quantile(0.95)(duration_ms)"),
+        ObservabilityMetricV1::Count => ("count", format!("countIf({member})")),
+        ObservabilityMetricV1::SucceededCount => (
+            "succeededCount",
+            format!("countIf({member} AND status='succeeded')"),
+        ),
+        ObservabilityMetricV1::FailedCount => (
+            "failedCount",
+            format!("countIf({member} AND status IN ('failed','timed_out','outcome_unknown'))"),
+        ),
+        ObservabilityMetricV1::DurationMillis => (
+            "durationMillis",
+            format!("sumIf(ifNull(duration_ms,0),{member})"),
+        ),
+        ObservabilityMetricV1::CostMicros => ("costMicros", format!("sumIf(cost_micros,{calls})")),
+        ObservabilityMetricV1::InputTokens => (
+            "inputTokens",
+            format!("sumIf(ifNull(input_tokens,0),{calls})"),
+        ),
+        ObservabilityMetricV1::OutputTokens => (
+            "outputTokens",
+            format!("sumIf(ifNull(output_tokens,0),{calls})"),
+        ),
+        ObservabilityMetricV1::ErrorRate => (
+            "errorRate",
+            format!(
+                "if(countIf({member})=0,0,countIf({member} AND status IN ('failed','timed_out','outcome_unknown'))/countIf({member}))"
+            ),
+        ),
+        ObservabilityMetricV1::DurationP50 => (
+            "durationP50",
+            format!("quantileIf(0.5)(duration_ms,{member} AND isNotNull(duration_ms))"),
+        ),
+        ObservabilityMetricV1::DurationP95 => (
+            "durationP95",
+            format!("quantileIf(0.95)(duration_ms,{member} AND isNotNull(duration_ms))"),
+        ),
     }
+}
+
+fn scoped_aggregate_query_sql(
+    request: &ObservabilityAggregateRequestV1,
+    claims: &DelegationClaimsV1,
+) -> ApiResult<String> {
+    let mut sql = aggregate_query_sql(request)?;
+    if !claims.tenant_wide {
+        let allowed = claims
+            .workflow_ids
+            .iter()
+            .map(|id| format!("workflow_id=toUUID('{id}')"))
+            .chain(
+                claims
+                    .application_ids
+                    .iter()
+                    .map(|id| format!("application_id=toUUID('{id}')")),
+            )
+            .collect::<Vec<_>>();
+        let scope = if allowed.is_empty() {
+            "0".into()
+        } else {
+            allowed.join(" OR ")
+        };
+        sql = sql.replacen(
+            " AND event_id NOT IN",
+            &format!(" AND ({scope}) AND event_id NOT IN"),
+            1,
+        );
+    }
+    Ok(sql)
 }
 
 fn aggregate_query_sql(request: &ObservabilityAggregateRequestV1) -> ApiResult<String> {
@@ -1256,7 +1388,21 @@ fn aggregate_query_sql(request: &ObservabilityAggregateRequestV1) -> ApiResult<S
         .iter()
         .map(dimension_sql)
         .collect::<Vec<_>>();
-    let metrics = request.metrics.iter().map(metric_sql).collect::<Vec<_>>();
+    let population = request
+        .filters
+        .get("spanKind")
+        .and_then(Value::as_str)
+        .unwrap_or("execution");
+    if !matches!(population, "execution" | "node" | "runtime_call") {
+        return Err(ApiError::budget(
+            "spanKind must be execution, node or runtime_call",
+        ));
+    }
+    let metrics = request
+        .metrics
+        .iter()
+        .map(|metric| metric_sql(metric, population))
+        .collect::<Vec<_>>();
     let dimension_json = if dimensions.is_empty() {
         "'{}' dimensions".into()
     } else {
@@ -1273,7 +1419,7 @@ fn aggregate_query_sql(request: &ObservabilityAggregateRequestV1) -> ApiResult<S
         "toJSONString(map({})) metrics",
         metrics
             .iter()
-            .map(|(key, value)| format!("'{key}',toString({value})"))
+            .map(|(key, value)| format!("'{key}',toFloat64({value})"))
             .collect::<Vec<_>>()
             .join(",")
     );
@@ -1294,7 +1440,23 @@ fn aggregate_query_sql(request: &ObservabilityAggregateRequestV1) -> ApiResult<S
     sql.push_str(&dimension_json);
     sql.push(',');
     sql.push_str(&metric_json);
-    sql.push_str(" FROM workflow_trace_events FINAL WHERE tenant_id=? AND occurred_at>=fromUnixTimestamp64Micro(?) AND occurred_at<=fromUnixTimestamp64Micro(?) AND event_id NOT IN (SELECT event_id FROM trace_ingest_conflicts WHERE tenant_id=?)");
+    sql.push_str(" FROM workflow_trace_events FINAL WHERE tenant_id=? AND occurred_at>=fromUnixTimestamp64Micro(?) AND occurred_at<=fromUnixTimestamp64Micro(?) AND event_kind='finished' AND event_id NOT IN (SELECT event_id FROM trace_ingest_conflicts WHERE tenant_id=?)");
+    let billing = request.metrics.iter().any(|metric| {
+        matches!(
+            metric,
+            ObservabilityMetricV1::CostMicros
+                | ObservabilityMetricV1::InputTokens
+                | ObservabilityMetricV1::OutputTokens
+        )
+    });
+    sql.push_str(&format!(
+        " AND (span_kind='{population}'{} )",
+        if billing {
+            " OR span_kind='runtime_call'"
+        } else {
+            ""
+        }
+    ));
     sql.push_str(&filters);
     sql.push_str(&group);
     sql.push_str(" LIMIT ?");
@@ -1316,6 +1478,7 @@ fn aggregate_filter_sql(filters: &serde_json::Value) -> ApiResult<String> {
             .as_str()
             .ok_or_else(|| ApiError::budget("Aggregate filter values must be strings"))?;
         match key.as_str() {
+            "spanKind" if matches!(raw, "execution" | "node" | "runtime_call") => {}
             "workflowId" | "applicationId" => {
                 let id = Uuid::parse_str(raw)
                     .map_err(|_| ApiError::budget("Aggregate UUID filter is invalid"))?;
@@ -1467,7 +1630,21 @@ async fn connect_redis(settings: &RedisSettings) -> Result<ConnectionManager> {
                 anyhow::anyhow!("Observability Redis URL cannot carry the configured password")
             })?;
     }
-    let client = redis::Client::open(url.as_str())?;
+    let client = if let Some(path) =
+        env::var_os("AGENTX_OBSERVABILITY_REDIS_TLS_CA_PATH").filter(|path| !path.is_empty())
+    {
+        let pem = std::fs::read(path).context("failed reading Observability Redis CA")?;
+        anyhow::ensure!(!pem.is_empty(), "Observability Redis CA is empty");
+        redis::Client::build_with_tls(
+            url.as_str(),
+            redis::TlsCertificates {
+                root_cert: Some(pem),
+                client_tls: None,
+            },
+        )?
+    } else {
+        redis::Client::open(url.as_str())?
+    };
     Ok(tokio::time::timeout(Duration::from_secs(5), client.get_connection_manager()).await??)
 }
 

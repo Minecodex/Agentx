@@ -10,15 +10,17 @@ data:
     set -eu
     app_password="$(cat /run/secrets/agentx/app-password)"
     migrate_password="$(cat /run/secrets/agentx/migrate-password)"
+    test -n "$app_password"
+    test -n "$migrate_password"
     case "$app_password$migrate_password" in
       *[!A-Za-z0-9]*) echo "MySQL passwords must be alphanumeric" >&2; exit 1 ;;
     esac
     mysql --protocol=socket -uroot -p"$MYSQL_ROOT_PASSWORD" <<SQL
     CREATE DATABASE IF NOT EXISTS agentx_control;
-    CREATE USER IF NOT EXISTS 'control_app'@'%' IDENTIFIED BY '$app_password';
-    ALTER USER 'control_app'@'%' IDENTIFIED BY '$app_password';
-    CREATE USER IF NOT EXISTS 'control_migrate'@'%' IDENTIFIED BY '$migrate_password';
-    ALTER USER 'control_migrate'@'%' IDENTIFIED BY '$migrate_password';
+    CREATE USER IF NOT EXISTS 'control_app'@'%' IDENTIFIED BY '$app_password'{{ if .Values.global.components.controlMysql.caSecretName }} REQUIRE SSL{{ end }};
+    ALTER USER 'control_app'@'%' IDENTIFIED BY '$app_password'{{ if .Values.global.components.controlMysql.caSecretName }} REQUIRE SSL{{ end }};
+    CREATE USER IF NOT EXISTS 'control_migrate'@'%' IDENTIFIED BY '$migrate_password'{{ if .Values.global.components.controlMysql.caSecretName }} REQUIRE SSL{{ end }};
+    ALTER USER 'control_migrate'@'%' IDENTIFIED BY '$migrate_password'{{ if .Values.global.components.controlMysql.caSecretName }} REQUIRE SSL{{ end }};
     REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'control_app'@'%';
     REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'control_migrate'@'%';
     GRANT SELECT, INSERT, UPDATE, DELETE ON agentx_control.* TO 'control_app'@'%';

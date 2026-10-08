@@ -52,7 +52,7 @@ pub enum PartialExecutionMode {
     FromNode,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeAttempt {
     pub id: AttemptId,
@@ -62,7 +62,7 @@ pub struct RuntimeAttempt {
     pub error_message: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeActivation {
     pub id: NodeExecutionId,
@@ -80,14 +80,14 @@ pub struct NodeActivation {
     pub loop_frame: Option<Value>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "items", rename_all = "snake_case")]
 pub enum DeliveryKind {
     Data(Vec<Item>),
     ClosedWithoutData,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EdgeDelivery {
     pub id: Uuid,
@@ -165,7 +165,7 @@ pub struct ExecutionMachine {
     tolerated_failures: BTreeSet<NodeExecutionId>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EndDelivery {
     pub sequence: u64,

@@ -45,7 +45,7 @@ async function createKnowledge(page: Page, token: string, stamp: string) {
   const connectionId = ((await connection.json()) as { id: string }).id
   const resource = await page.request.post('/api/v1/knowledge/resources', {
     headers: { Authorization: `Bearer ${token}` },
-    data: { connectionId, name: `E2E Management Resource ${stamp}`, externalResourceId: `e2e-mgmt-${stamp}`, ownerDepartmentId: department.id },
+    data: { connectionId, name: `E2E Management Resource ${stamp}`, externalResourceId: `e2e_mgmt_${stamp}`, ownerDepartmentId: department.id },
   })
   if (resource.status() !== 201 && resource.status() !== 200) throw new Error(`resource: ${resource.status()} ${await resource.text()}`)
   const created = (await resource.json()) as { id: string }
@@ -73,12 +73,19 @@ test.describe.serial('Knowledge management', () => {
     // Upload a markdown document through the API (multipart).
     const content = `# E2E Knowledge Document\n\nThe secret codename for release ${stamp} is sapphire-orbit-${stamp}.`
     const upload = await uploadDocument(page, token, resourceId, `e2e-doc-${stamp}.md`, content)
-    if (upload.status() !== 201) throw new Error(`upload: ${upload.status()} ${await upload.text()}`)
-    const uploadBody = (await upload.json()) as { status: string; errorMessage?: string }
-    if (uploadBody.status !== 'indexed') throw new Error(`index failed: ${JSON.stringify(uploadBody)}`)
-    const document = (await upload.json()) as { status: string; externalDocumentId: unknown }
-    expect(document.status).toBe('indexed')
-    expect(document.externalDocumentId).toBeTruthy()
+    expect(upload.status()).toBe(202)
+    const uploadBody = await upload.json() as { id: string; status: string }
+    expect(['uploading', 'indexing']).toContain(uploadBody.status)
+    let document: { status: string; externalDocumentId: string; id: string } | undefined
+    await expect.poll(async () => {
+      const response = await page.request.get(`/api/v1/knowledge/resources/${resourceId}/documents`, { headers: { Authorization: `Bearer ${token}` } })
+      expect(response.status()).toBe(200)
+      document = (await response.json()).find((item: { id: string }) => item.id === uploadBody.id)
+      if (document?.status === 'failed') throw new Error(JSON.stringify(document))
+      return document?.status
+    }, { timeout: 300_000 }).toBe('indexed')
+    expect(document?.externalDocumentId).toBeTruthy()
+    const fileSource = `agentx_${uploadBody.id.replaceAll('-', '')}.txt`
 
     // Detail page: documents section lists the indexed document.
     await page.goto(`/knowledge/${resourceId}`)
@@ -106,14 +113,14 @@ test.describe.serial('Knowledge management', () => {
       await page.waitForTimeout(5_000)
     }
     expect(result?.documents?.length ?? 0).toBeGreaterThan(0)
-    expect(JSON.stringify(result)).toContain(`agentx-knowledge:e2e-mgmt-${stamp}`)
+    expect(JSON.stringify(result)).toContain(fileSource)
 
     // UI: hit-test panel renders chunk and score.
     await page.goto(`/knowledge/${resourceId}`)
     await expect(page.getByRole('heading', { name: '检索测试' })).toBeVisible()
     await page.getByPlaceholder('输入查询内容验证检索').fill(`release codename ${stamp}`)
     await page.getByRole('button', { name: '执行' }).click()
-    await expect(page.getByText(`agentx-knowledge:e2e-mgmt-${stamp}`)).toBeVisible({ timeout: 120_000 })
+    await expect(page.getByText(fileSource)).toBeVisible({ timeout: 120_000 })
     await page.screenshot({ path: testInfo.outputPath('knowledge-hit-testing.png'), fullPage: true })
   })
 })

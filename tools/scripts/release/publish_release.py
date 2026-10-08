@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -36,7 +37,46 @@ def main() -> None:
     images = json.loads(receipt.read_text(encoding="utf-8"))
     if images["version"] != version or len(images["images"]) != 11:
         raise ValueError("a complete image verification receipt is required")
-    files.append(str(receipt))
+    if (
+        images.get("status") != "passed"
+        or images.get("manifestSignatureVerified") is not True
+        or len(images.get("verifiedImages", [])) != 11
+    ):
+        raise ValueError("all image signatures and SPDX attestations must be verified")
+    summary_path = args.directory / "release-summary.json"
+    marker_path = args.directory / "release-gate.passed"
+    marker = json.loads(marker_path.read_text())
+    summary = json.loads(summary_path.read_text())
+    identity = images.get("identity")
+    from tools.scripts.release.evidence import validate_identity
+    from tools.scripts.release.release_summary import REQUIRED_JUNIT
+
+    validate_identity(identity)
+    expected_domains = {f"junit:{name}" for name in REQUIRED_JUNIT} | {
+        "capacity",
+        "backup-recovery",
+        "rolling-upgrade",
+        "supply-chain",
+    }
+    if (
+        marker.get("identity") != identity
+        or summary.get("identity") != identity
+        or marker.get("summarySha256") != hashlib.sha256(summary_path.read_bytes()).hexdigest()
+        or summary.get("overall") != "passed"
+        or set(summary.get("domains", {})) != expected_domains
+        or any(domain.get("status") != "passed" for domain in summary["domains"].values())
+    ):
+        raise ValueError("the complete release gate must pass for this exact candidate")
+    supply_path = args.directory / "supply-chain-evidence.json"
+    supply = json.loads(supply_path.read_text())
+    if (
+        supply.get("identity") != identity
+        or supply.get("status") != "passed"
+        or supply.get("trustScope") != "release-policy"
+        or supply.get("environment") != "release-ci"
+    ):
+        raise ValueError("public releases require the production signing policy")
+    files.extend((str(receipt), str(summary_path), str(marker_path), str(supply_path)))
     # A single tag-scoped workflow owns the draft. Never overwrite a public release.
     found = gh("release", "view", args.tag, "--json", "isDraft", check=False)
     if found.returncode == 0:

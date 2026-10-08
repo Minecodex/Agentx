@@ -4,7 +4,7 @@ use agentx_runtime_contracts::{
 };
 use redis::{AsyncCommands, aio::ConnectionManager};
 use serde_json::{Value, json};
-use sqlx::{Executor, MySql, Row, Transaction};
+use sqlx::{Executor, MySql, QueryBuilder, Row, Transaction};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -210,17 +210,31 @@ pub async fn enqueue_best_effort(tx: &mut Transaction<'_, MySql>, draft: TraceDr
     }
 }
 
-pub async fn enqueue(tx: &mut Transaction<'_, MySql>, draft: TraceDraft) -> RuntimeResult<u64> {
+pub async fn enqueue(tx: &mut Transaction<'_, MySql>, mut draft: TraceDraft) -> RuntimeResult<u64> {
     if !draft.attributes.is_object() || draft.attributes.to_string().len() > 16 * 1024 {
         return Err(RuntimeError::BadRequest(
             agentx_runtime_contracts::RuntimePublishErrorCodeV1::UnsupportedCapability,
             "Trace attributes exceed the reviewed object budget".into(),
         ));
     }
-    // Read the immutable Trace identity without locking the Runtime authority
-    // row. The sequence itself is allocated atomically below, immediately
-    // before the outbox writes, so Envelope construction no longer holds an
-    // execution-row lock across the initial read/modify/write cycle.
+    if draft.event_kind == TraceEventKindV1::Finished && draft.duration_ms.is_none() {
+        let timing = match draft.span_kind {
+            TraceSpanKindV1::Execution => Some(("SELECT CAST(GREATEST(TIMESTAMPDIFF(MICROSECOND,started_at,ended_at),0) DIV 1000 AS UNSIGNED) FROM workflow_executions WHERE tenant_id=? AND id=?", draft.execution_id)),
+            TraceSpanKindV1::Node => draft.node_execution_id.map(|id| ("SELECT CAST(GREATEST(TIMESTAMPDIFF(MICROSECOND,started_at,ended_at),0) DIV 1000 AS UNSIGNED) FROM node_executions WHERE tenant_id=? AND id=?", id)),
+            TraceSpanKindV1::Attempt => draft.attempt_id.map(|id| ("SELECT CAST(GREATEST(TIMESTAMPDIFF(MICROSECOND,started_at,ended_at),0) DIV 1000 AS UNSIGNED) FROM node_attempts WHERE tenant_id=? AND id=?", id)),
+            TraceSpanKindV1::RuntimeCall => draft.runtime_call_id.map(|id| ("SELECT CAST(GREATEST(TIMESTAMPDIFF(MICROSECOND,started_at,ended_at),0) DIV 1000 AS UNSIGNED) FROM runtime_calls WHERE tenant_id=? AND id=?", id)),
+            _ => None,
+        };
+        if let Some((query, id)) = timing {
+            draft.duration_ms = sqlx::query_scalar::<_, Option<u64>>(query)
+                .bind(draft.tenant_id)
+                .bind(id)
+                .fetch_optional(&mut **tx)
+                .await?
+                .flatten();
+        }
+    }
+    // Identity is immutable and does not need a Runtime authority lock.
     let identity = sqlx::query(
         "SELECT e.trace_id,e.workflow_id,i.application_id FROM workflow_executions e LEFT JOIN application_invocations i ON i.tenant_id=e.tenant_id AND i.id=e.invocation_id WHERE e.tenant_id=? AND e.id=?",
     )
@@ -231,23 +245,21 @@ pub async fn enqueue(tx: &mut Transaction<'_, MySql>, draft: TraceDraft) -> Runt
     let trace_id: Uuid = identity.try_get("trace_id")?;
     let workflow_id: Option<Uuid> = identity.try_get("workflow_id")?;
     let application_id: Option<Uuid> = identity.try_get("application_id")?;
-    let changed = sqlx::query(
-        "UPDATE workflow_executions SET trace_watermark=LAST_INSERT_ID(trace_watermark+1) WHERE tenant_id=? AND id=?",
-    )
-    .bind(draft.tenant_id)
-    .bind(draft.execution_id)
-    .execute(&mut **tx)
-    .await?;
-    if changed.rows_affected() != 1 {
-        return Err(RuntimeError::NotFound);
-    }
-    // LAST_INSERT_ID(expr) is scoped to the transaction's pinned MySQL
-    // connection and therefore returns exactly the value allocated above.
-    let sequence: u64 = sqlx::query_scalar("SELECT LAST_INSERT_ID()")
-        .fetch_one(&mut **tx)
-        .await?;
     let event_id = Uuid::now_v7();
     let occurred_at = draft.occurred_at;
+    let event_summary = json!({
+        "nodeExecutionId":draft.node_execution_id,"attemptId":draft.attempt_id,
+        "runtimeCallId":draft.runtime_call_id,"errorCode":draft.error_code,
+        "errorMessage":draft.error_message,
+        "attributes":draft.attributes
+    });
+    // A database cursor is an order position, not an event count. Allocation
+    // does not lock the Execution or another task's mutable authority row.
+    // Index, envelope and outbox still commit/roll back in this transaction.
+    let sequence = sqlx::query("INSERT INTO execution_events(tenant_id,execution_id,event_type,status,summary_json,occurred_at) VALUES(?,?,?,?,?,?)")
+        .bind(draft.tenant_id).bind(draft.execution_id).bind(&draft.event_type)
+        .bind(&draft.status).bind(event_summary).bind(occurred_at)
+        .execute(&mut **tx).await?.last_insert_id();
     let unsigned = json!({
         "schemaVersion":1,"eventId":event_id,"tenantId":draft.tenant_id,
         "executionId":draft.execution_id,"executionSequence":sequence,
@@ -268,12 +280,6 @@ pub async fn enqueue(tx: &mut Transaction<'_, MySql>, draft: TraceDraft) -> Runt
         "contentPreview":draft.content_preview,"occurredAt":occurred_at
     });
     let hash = content_hash(&unsigned).map_err(|error| RuntimeError::Internal(error.into()))?;
-    let event_summary = json!({
-        "nodeExecutionId":draft.node_execution_id,"attemptId":draft.attempt_id,
-        "runtimeCallId":draft.runtime_call_id,"errorCode":draft.error_code,
-        "errorMessage":draft.error_message,
-        "attributes":draft.attributes
-    });
     let envelope = TraceEventEnvelopeV1 {
         schema_version: 1,
         event_id,
@@ -325,10 +331,6 @@ pub async fn enqueue(tx: &mut Transaction<'_, MySql>, draft: TraceDraft) -> Runt
         .bind(event_id).bind(draft.tenant_id).bind(draft.execution_id).bind(sequence)
         .bind(serde_json::to_value(&envelope).map_err(|error|RuntimeError::Internal(error.into()))?)
         .bind(hash.as_str()).execute(&mut **tx).await?;
-    sqlx::query("INSERT INTO execution_events(tenant_id,execution_id,sequence_number,event_type,status,summary_json,occurred_at) VALUES(?,?,?,?,?,?,?)")
-        .bind(draft.tenant_id).bind(draft.execution_id).bind(sequence).bind(&envelope.event_type)
-        .bind(&envelope.status).bind(event_summary)
-        .bind(occurred_at).execute(&mut **tx).await?;
     Ok(sequence)
 }
 
@@ -340,59 +342,104 @@ pub struct TraceClaim {
     pub envelope: TraceEventEnvelopeV1,
 }
 
-pub async fn claim(pool: &sqlx::MySqlPool, owner_id: Uuid) -> RuntimeResult<Option<TraceClaim>> {
+pub async fn claim(pool: &sqlx::MySqlPool, owner_id: Uuid) -> RuntimeResult<Vec<TraceClaim>> {
     let mut tx = pool.begin().await?;
-    let row = sqlx::query("SELECT event_id,payload_json FROM trace_outbox WHERE status IN ('pending','failed') AND available_at<=UTC_TIMESTAMP(6) AND (locked_until IS NULL OR locked_until<=UTC_TIMESTAMP(6)) ORDER BY created_at,event_id LIMIT 1 FOR UPDATE SKIP LOCKED")
-        .fetch_optional(&mut *tx).await?;
-    let Some(row) = row else {
+    let ids: Vec<Uuid> = sqlx::query_scalar("SELECT event_id FROM trace_outbox WHERE status IN ('pending','failed') AND available_at<=UTC_TIMESTAMP(6) AND (locked_until IS NULL OR locked_until<=UTC_TIMESTAMP(6)) ORDER BY created_at,event_id LIMIT 100 FOR UPDATE SKIP LOCKED")
+        .fetch_all(&mut *tx).await?;
+    if ids.is_empty() {
         tx.commit().await?;
-        return Ok(None);
-    };
-    let event_id: Uuid = row.try_get("event_id")?;
-    sqlx::query("UPDATE trace_outbox SET status='pending',locked_by=?,locked_until=DATE_ADD(UTC_TIMESTAMP(6),INTERVAL 30 SECOND),heartbeat_at=UTC_TIMESTAMP(6),fencing_token=fencing_token+1,attempt_count=attempt_count+1 WHERE event_id=? AND (locked_until IS NULL OR locked_until<=UTC_TIMESTAMP(6))")
-        .bind(owner_id).bind(event_id).execute(&mut *tx).await?;
-    let fencing_token: u64 =
-        sqlx::query_scalar("SELECT fencing_token FROM trace_outbox WHERE event_id=?")
-            .bind(event_id)
-            .fetch_one(&mut *tx)
-            .await?;
+        return Ok(Vec::new());
+    }
+    let mut update =
+        QueryBuilder::<MySql>::new("UPDATE trace_outbox SET status='pending',locked_by=");
+    update.push_bind(owner_id).push(",locked_until=DATE_ADD(UTC_TIMESTAMP(6),INTERVAL 30 SECOND),heartbeat_at=UTC_TIMESTAMP(6),fencing_token=fencing_token+1,attempt_count=attempt_count+1 WHERE event_id IN (");
+    for (index, id) in ids.iter().enumerate() {
+        if index > 0 {
+            update.push(",");
+        }
+        update.push_bind(*id);
+    }
+    update.push(")").build().execute(&mut *tx).await?;
+    let mut select = QueryBuilder::<MySql>::new(
+        "SELECT event_id,fencing_token,payload_json FROM trace_outbox WHERE event_id IN (",
+    );
+    for (index, id) in ids.iter().enumerate() {
+        if index > 0 {
+            select.push(",");
+        }
+        select.push_bind(*id);
+    }
+    let rows = select.push(")").build().fetch_all(&mut *tx).await?;
     tx.commit().await?;
-    let envelope = serde_json::from_value(row.try_get("payload_json")?)
-        .map_err(|error| RuntimeError::Internal(error.into()))?;
-    Ok(Some(TraceClaim {
-        event_id,
-        owner_id,
-        fencing_token,
-        envelope,
-    }))
+    rows.into_iter()
+        .map(|row| {
+            Ok(TraceClaim {
+                event_id: row.try_get("event_id")?,
+                owner_id,
+                fencing_token: row.try_get("fencing_token")?,
+                envelope: serde_json::from_value(row.try_get("payload_json")?)
+                    .map_err(|error| RuntimeError::Internal(error.into()))?,
+            })
+        })
+        .collect()
 }
 
-pub async fn publish(redis: &mut ConnectionManager, claim: &TraceClaim) -> RuntimeResult<String> {
-    let payload = serde_json::to_string(&claim.envelope)
-        .map_err(|error| RuntimeError::Internal(error.into()))?;
-    let stream_id = redis::cmd("XADD")
-        .arg(TRACE_STREAM)
-        .arg("*")
-        .arg("event_id")
-        .arg(claim.event_id.to_string())
-        .arg("content_hash")
-        .arg(claim.envelope.content_hash.as_str())
-        .arg("payload")
-        .arg(payload)
-        .query_async::<String>(redis)
+pub async fn publish(
+    redis: &mut ConnectionManager,
+    claims: &[TraceClaim],
+) -> RuntimeResult<Vec<String>> {
+    if claims.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut pipeline = redis::pipe();
+    for claim in claims {
+        let payload = serde_json::to_string(&claim.envelope)
+            .map_err(|error| RuntimeError::Internal(error.into()))?;
+        pipeline
+            .cmd("XADD")
+            .arg(TRACE_STREAM)
+            .arg("*")
+            .arg("event_id")
+            .arg(claim.event_id.to_string())
+            .arg("content_hash")
+            .arg(claim.envelope.content_hash.as_str())
+            .arg("payload")
+            .arg(payload);
+    }
+    pipeline
+        .query_async(redis)
         .await
-        .map_err(|error| RuntimeError::Internal(error.into()))?;
-    Ok(stream_id)
+        .map_err(|error| RuntimeError::Internal(error.into()))
 }
 
 pub async fn complete(
     pool: &sqlx::MySqlPool,
-    claim: &TraceClaim,
-    stream_id: &str,
+    claims: &[TraceClaim],
+    stream_ids: &[String],
 ) -> RuntimeResult<()> {
-    let changed = sqlx::query("UPDATE trace_outbox SET status='streamed',stream_id=?,streamed_at=UTC_TIMESTAMP(6),locked_by=NULL,locked_until=NULL,heartbeat_at=NULL,last_error=NULL WHERE event_id=? AND locked_by=? AND fencing_token=? AND locked_until>UTC_TIMESTAMP(6) AND status='pending'")
-        .bind(stream_id).bind(claim.event_id).bind(claim.owner_id).bind(claim.fencing_token).execute(pool).await?;
-    if changed.rows_affected() != 1 {
+    if claims.len() != stream_ids.len() {
+        return Err(RuntimeError::Internal(anyhow::anyhow!(
+            "Trace publish receipt count does not match claims"
+        )));
+    }
+    if claims.is_empty() {
+        return Ok(());
+    }
+    let mut update = QueryBuilder::<MySql>::new(
+        "UPDATE trace_outbox SET status='streamed',stream_id=CASE event_id ",
+    );
+    for (claim, stream_id) in claims.iter().zip(stream_ids) {
+        update
+            .push("WHEN ")
+            .push_bind(claim.event_id)
+            .push(" THEN ")
+            .push_bind(stream_id.clone())
+            .push(" ");
+    }
+    update.push("END,streamed_at=UTC_TIMESTAMP(6),locked_by=NULL,locked_until=NULL,heartbeat_at=NULL,last_error=NULL WHERE locked_until>UTC_TIMESTAMP(6) AND status='pending' AND (");
+    push_claim_predicates(&mut update, claims);
+    let changed = update.push(")").build().execute(pool).await?;
+    if changed.rows_affected() != claims.len() as u64 {
         return Err(RuntimeError::Conflict(
             agentx_runtime_contracts::RuntimePublishErrorCodeV1::IdempotencyConflict,
             "Trace Outbox Lease was lost".into(),
@@ -401,18 +448,42 @@ pub async fn complete(
     Ok(())
 }
 
-pub async fn fail(pool: &sqlx::MySqlPool, claim: &TraceClaim, error: &str) -> RuntimeResult<()> {
+pub async fn fail(pool: &sqlx::MySqlPool, claims: &[TraceClaim], error: &str) -> RuntimeResult<()> {
+    if claims.is_empty() {
+        return Ok(());
+    }
     let message = error.chars().take(1000).collect::<String>();
-    let delay = (1_u64 << claim.fencing_token.min(6)).min(60);
-    let changed = sqlx::query("UPDATE trace_outbox SET status='failed',available_at=DATE_ADD(UTC_TIMESTAMP(6),INTERVAL ? SECOND),locked_by=NULL,locked_until=NULL,heartbeat_at=NULL,last_error=? WHERE event_id=? AND locked_by=? AND fencing_token=? AND locked_until>UTC_TIMESTAMP(6)")
-        .bind(delay).bind(message).bind(claim.event_id).bind(claim.owner_id).bind(claim.fencing_token).execute(pool).await?;
-    if changed.rows_affected() != 1 {
+    let mut update = QueryBuilder::<MySql>::new(
+        "UPDATE trace_outbox SET status='failed',available_at=TIMESTAMPADD(SECOND,LEAST(1 << LEAST(fencing_token,6),60),UTC_TIMESTAMP(6)),locked_by=NULL,locked_until=NULL,heartbeat_at=NULL,last_error=",
+    );
+    update
+        .push_bind(message)
+        .push(" WHERE locked_until>UTC_TIMESTAMP(6) AND status='pending' AND (");
+    push_claim_predicates(&mut update, claims);
+    let changed = update.push(")").build().execute(pool).await?;
+    if changed.rows_affected() != claims.len() as u64 {
         return Err(RuntimeError::Conflict(
             agentx_runtime_contracts::RuntimePublishErrorCodeV1::IdempotencyConflict,
             "Trace Outbox Lease was lost".into(),
         ));
     }
     Ok(())
+}
+
+fn push_claim_predicates(query: &mut QueryBuilder<'_, MySql>, claims: &[TraceClaim]) {
+    for (index, claim) in claims.iter().enumerate() {
+        if index > 0 {
+            query.push(" OR ");
+        }
+        query
+            .push("(event_id=")
+            .push_bind(claim.event_id)
+            .push(" AND locked_by=")
+            .push_bind(claim.owner_id)
+            .push(" AND fencing_token=")
+            .push_bind(claim.fencing_token)
+            .push(")");
+    }
 }
 
 pub async fn ensure_stream(redis: &mut ConnectionManager) -> RuntimeResult<bool> {

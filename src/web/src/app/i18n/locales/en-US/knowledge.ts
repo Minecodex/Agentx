@@ -1,4 +1,5 @@
 const translations = {
+  "deleteDocumentDescription": "Remove the platform record and source file reference? The external index remains and must be cleaned up in the provider.",
   "create": "Connect knowledge",
   "addResource": "Add knowledge resource",
   "connection": "Existing connection",

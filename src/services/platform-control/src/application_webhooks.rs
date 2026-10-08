@@ -79,6 +79,51 @@ pub(crate) fn default_channel_mode() -> String {
     "callback".into()
 }
 
+pub(crate) fn workflow_schemas(definition: &agentx_domain::WorkflowDefinition) -> (Value, Value) {
+    let all_complete = definition.end.completion == agentx_domain::WorkflowCompletion::AllComplete;
+    let properties = definition.end.outputs.iter().map(|(name, value)| {
+        let mut schema = value.schema.clone();
+        if let Some(object) = schema.as_object_mut() {
+            object.insert("x-agentx-sensitive".into(), json!(value.sensitive));
+        }
+        if all_complete {
+            schema = json!({"type":"array", "items": if value.required { schema } else { json!({"anyOf":[schema,{"type":"null"}]}) }});
+        }
+        (name.clone(), schema)
+    }).collect::<serde_json::Map<_, _>>();
+    let required = definition
+        .end
+        .outputs
+        .iter()
+        .filter(|(_, value)| all_complete || value.required)
+        .map(|(name, _)| name)
+        .collect::<Vec<_>>();
+    (
+        definition.start.inputs.clone(),
+        json!({"type":"object", "properties":properties, "required":required, "additionalProperties":false}),
+    )
+}
+
+async fn configuration_schemas(
+    state: &ControlApiState,
+    tenant_id: Uuid,
+    application_id: Uuid,
+) -> ApiResult<(Value, Value)> {
+    let deployment = sqlx::query("SELECT d.input_schema_json,d.output_schema_json FROM application_deployment_heads h JOIN application_deployments d ON d.tenant_id=h.tenant_id AND d.id=h.deployment_id WHERE h.tenant_id=? AND h.application_id=? AND d.status='active'")
+        .bind(tenant_id).bind(application_id).fetch_optional(&state.pool).await?;
+    if let Some(deployment) = deployment {
+        return Ok((
+            deployment.try_get("input_schema_json")?,
+            deployment.try_get("output_schema_json")?,
+        ));
+    }
+    let definition = sqlx::query_scalar::<_, Value>("SELECT v.definition_json FROM applications a JOIN workflow_versions v ON v.tenant_id=a.tenant_id AND v.workflow_id=a.workflow_id WHERE a.tenant_id=? AND a.id=? ORDER BY v.version_number DESC LIMIT 1")
+        .bind(tenant_id).bind(application_id).fetch_optional(&state.pool).await?
+        .ok_or_else(|| ApiError::unprocessable("APPLICATION_WORKFLOW_VERSION_REQUIRED", "Create a Workflow version before configuring channels"))?;
+    let definition = serde_json::from_value(definition).map_err(ApiError::internal)?;
+    Ok(workflow_schemas(&definition))
+}
+
 pub(crate) fn parse_provider(
     value: Option<String>,
 ) -> ApiResult<agentx_runtime_contracts::WebhookProviderV1> {
@@ -163,12 +208,31 @@ pub(crate) async fn validate(
             }
         }
     }
-    let deployment: Option<Value> = sqlx::query_scalar("SELECT input_schema_json FROM application_deployments WHERE tenant_id=? AND application_id=? AND status='active' ORDER BY sequence_number DESC LIMIT 1")
-        .bind(actor.tenant_id).bind(application_id).fetch_optional(&state.pool).await?;
-    let properties = deployment
-        .as_ref()
-        .and_then(|schema| schema.get("properties"))
-        .and_then(Value::as_object);
+    let (input_schema, output_schema) =
+        configuration_schemas(state, actor.tenant_id, application_id).await?;
+    validate_bindings(
+        provider_type,
+        &input_schema,
+        &output_schema,
+        reply,
+        mappings,
+        fixed_inputs,
+    )
+}
+
+fn validate_bindings(
+    provider_type: &str,
+    input_schema: &Value,
+    output_schema: &Value,
+    reply: Option<&agentx_runtime_contracts::WebhookReplyConfigV1>,
+    mappings: &[WebhookInputMappingV1],
+    fixed_inputs: &Value,
+) -> ApiResult<()> {
+    let empty = serde_json::Map::new();
+    let properties = input_schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .unwrap_or(&empty);
     let mut targets = std::collections::HashSet::new();
     for mapping in mappings {
         // Standardized Trigger Context fields, or raw.<dotted.path> passthrough
@@ -206,7 +270,7 @@ pub(crate) async fn validate(
                 "Webhook missing policy is invalid",
             ));
         }
-        if let Some(properties) = properties {
+        {
             let Some(property) = properties.get(&mapping.target) else {
                 return Err(ApiError::unprocessable(
                     "WEBHOOK_MAPPING_TARGET_UNKNOWN",
@@ -224,24 +288,20 @@ pub(crate) async fn validate(
         }
     }
     if let Some(reply) = reply.filter(|reply| reply.enabled) {
-        let output_schema: Option<Value> = sqlx::query_scalar(
-            "SELECT output_schema_json FROM application_deployments WHERE tenant_id=? AND application_id=? AND status='active' ORDER BY sequence_number DESC LIMIT 1",
-        )
-        .bind(actor.tenant_id)
-        .bind(application_id)
-        .fetch_optional(&state.pool)
-        .await?;
-        if let Some(properties) = output_schema
-            .as_ref()
-            .and_then(|schema| schema.get("properties"))
+        if !output_schema
+            .get("properties")
             .and_then(Value::as_object)
+            .is_some_and(|properties| properties.contains_key(&reply.output_field))
         {
-            if !properties.contains_key(&reply.output_field) {
-                return Err(ApiError::unprocessable(
-                    "WEBHOOK_REPLY_OUTPUT_FIELD_UNKNOWN",
-                    "Reply output field is not in the active Deployment output schema",
-                ));
-            }
+            return Err(ApiError::unprocessable(
+                "WEBHOOK_REPLY_OUTPUT_FIELD_UNKNOWN",
+                "Reply output field is not in the Workflow output schema",
+            )
+            .with_field_error(
+                "reply.outputField",
+                "WEBHOOK_REPLY_OUTPUT_FIELD_UNKNOWN",
+                "Select an existing Workflow output field",
+            ));
         }
     }
     if let Some(fixed) = fixed_inputs.as_object() {
@@ -258,7 +318,7 @@ pub(crate) async fn validate(
                     "Fixed input conflicts with a mapped source",
                 ));
             }
-            if let Some(properties) = properties {
+            {
                 let Some(property) = properties.get(target) else {
                     return Err(ApiError::unprocessable(
                         "WEBHOOK_FIXED_INPUT_TARGET_UNKNOWN",
@@ -275,15 +335,18 @@ pub(crate) async fn validate(
         }
     }
     if provider_type != "agentx" {
-        if let Some(schema) = deployment.as_ref() {
-            if let Some(required) = schema.get("required").and_then(Value::as_array) {
-                for field in required.iter().filter_map(Value::as_str) {
-                    if !targets.contains(field) {
-                        return Err(ApiError::unprocessable(
-                            "WEBHOOK_REQUIRED_INPUT_UNMAPPED",
-                            "Every required Workflow Start Input must be mapped or fixed",
-                        ));
-                    }
+        if let Some(required) = input_schema.get("required").and_then(Value::as_array) {
+            for field in required.iter().filter_map(Value::as_str) {
+                if !targets.contains(field) {
+                    return Err(ApiError::unprocessable(
+                        "WEBHOOK_REQUIRED_INPUT_UNMAPPED",
+                        "Every required Workflow Start Input must be mapped or fixed",
+                    )
+                    .with_field_error(
+                        "inputMappings",
+                        "WEBHOOK_REQUIRED_INPUT_UNMAPPED",
+                        format!("Required Workflow input '{field}' must be mapped or fixed"),
+                    ));
                 }
             }
         }

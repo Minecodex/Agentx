@@ -33,6 +33,7 @@ from tests.e2e.product.test_channel_delivery import (
 )
 from tests.e2e.runtime.test_agent_attachments import _runtime_mysql
 from tests.e2e.support import run
+from tools.scripts.release.evidence import evidence_identity
 
 pytestmark = [pytest.mark.cluster, pytest.mark.upgrade]
 
@@ -166,6 +167,7 @@ def test_real_pitr_drill_restores_recovery_point(
         "schemaVersionObserved": observed,
     }
     report = {
+        "identity": evidence_identity(installed_agentx),
         "schemaVersion": 1,
         "drill": "real-pitr",
         "backupSeconds": round(backup_seconds, 1),
@@ -309,6 +311,7 @@ def test_redis_loss_rebuild_keeps_service_alive(
     assert status == "succeeded", f"invocation after Redis loss never completed: {status}"
 
     report = {
+        "identity": evidence_identity(installed_agentx),
         "schemaVersion": 1,
         "drill": "redis-loss-rebuild",
         "rebuildSeconds": round(rebuild_seconds, 1),

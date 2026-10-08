@@ -2,9 +2,9 @@
 
 ## 1. 目标与边界
 
-三件事，全部是"后端已有或数据已有、产品面缺失"的还账项：
+三件事，补齐产品面并修复实际执行链路：
 
-1. **llm_judge 进 UI**：后端契约完整、前端未暴露；
+1. **llm_judge 进 UI**：模型、prompt、结构化评分、真实成本/耗时和子执行 Trace 全链可用；
 2. **评测对比报告**：跨 Run/版本对比（`docs/05-platform-business.md` §12 已宣称、未实现）；
 3. **Insights 聚合页**：错误分布、成本趋势、成功率、节点耗时四类图（ClickHouse 聚合 API 已有、无 BFF 无页面）。
 
@@ -12,10 +12,10 @@
 
 ## 2. 现状事实
 
-### 2.1 llm_judge：后端完整、UI 缺失
+### 2.1 llm_judge：原有链路与审查修复
 
 - 后端接受并校验 `llm_judge`（`configuration.modelId` UUID + `configuration.prompt` ≤64KiB，`dataset_api.rs:863-880`）；缺模型授权时 422 `MODEL_EVALUATOR_GRANT_REQUIRED`（`work_packages.rs:1396-1399`）；
-- 执行链完整：prompt 上传为不可变对象 → bundle-builder 合成 2 节点 judge workflow（`agentx-bundle-builder/src/lib.rs:827-910`）→ runtime 子执行（`work_package_execution.rs:296-496`）→ `converge_model_evaluator` 评分回写（:498-593，`detail.modelResult` 已带完整 judge 输出）；
+- prompt 上传为不可变对象 → bundle-builder 合成 2 节点 judge workflow → Runtime 子执行 → `converge_model_evaluator` 评分回写。审查发现旧结构化 schema 只有空 object，未要求任何评分字段；固定 prompt 也被混入普通输入。这两个缺陷已修复，见末尾审查修订；
 - 前端 Profile 对话框规则类型只有 `['exact','contains','regex','json_schema']`（`evaluation-profile-dialog.tsx:75`），configuration 是裸 JSON textarea（:77）；i18n 同步缺 llm_judge（`locales/*/evaluations.ts:59-64`）。
 
 ### 2.2 评测对比：无任何 API
@@ -40,7 +40,7 @@
 - Profile 对话框：规则类型下拉加 `llm_judge`；选中时 configuration 区从 JSON textarea 切换为专用表单——模型选择器（复用 `/models` 列表，只列可授权模型）+ prompt 多行编辑器（64KiB 前置校验、支持 `{{actualOutput}}`/`{{expectedOutput}}` 插入按钮）+ 结构化输出说明（judge 需输出 `{passed, score, reason}`）；
 - 保存前调用既有校验；`MODEL_EVALUATOR_GRANT_REQUIRED`（start 时 422）在 Run 启动处映射为可读文案 + 指向资源授权页；
 - 报告页 rule 行对 `evaluatorType==='llm_judge'` 展开 `detail.modelResult`（judge 的完整结构化输出：passed/score/reason）；
-- 后端**零改动**（契约已冻结）——唯一例外（勘察新增）：judge 子执行 Trace 链接当前不可达——`evaluator_execution_id` 只存在于运行库，投影事件 `RuntimeEvaluationRuleResultV1` 不携带该字段、控制库恒 NULL。最低成本修复：runtime 在 `converge_model_evaluator` 写 `detail_json` 时补 `evaluatorExecutionId`（一行；detail 是自由 JSON，不动冻结契约，projector 自动透传）。
+- `RuntimeEvaluationRuleResultV1` 显式携带 `evaluatorExecutionId`，Runtime 事件导出、快照和 Control 投影均传递该字段；报告读取该权威字段。评分模型输出仅包含 `passed`（boolean）、`score`（0–1）、`reason`（string），不允许额外字段；成本与耗时读取 RuntimeCall/Execution，避免相信模型自报 usage。
 
 ### 3.2 C2 观测面维度修复（Insights 与失败分布的共同前置）
 
@@ -92,7 +92,7 @@
 
 - [x] Profile 对话框规则类型 + 专用配置表单（模型选择器/prompt 编辑器/变量插入/64KiB 校验）；
 - [x] i18n 双语词条；`MODEL_EVALUATOR_GRANT_REQUIRED` 文案与授权页跳转；
-- [x] 报告页 llm_judge 结果展示（modelResult 展开组件）；runtime `converge_model_evaluator` 的 detail_json 补 `evaluatorExecutionId`（Trace 链接修复，见 §3.1 唯一例外）；
+- [x] 报告页 llm_judge 结果展示（modelResult 展开组件）；显式投影 `evaluatorExecutionId`、严格评分 schema、固定 prompt 与变量、真实成本/耗时；
 - [x] vitest 表单测试（校验路径、类型切换）。
 
 门禁：前端测试、Playwright 评测域回归。
@@ -150,3 +150,12 @@
 - A/B 实验、线上流量对照、CI 集成回归门禁；
 - Trace 数据回填历史；Prometheus/Grafana 集成（roadmap 首期边界）；
 - 自绘图表（统一 recharts，避免两套图形体系）。
+
+## 2026-10-07 审查修订
+
+- compare 接收 CSV runIds（2–5 个不同 UUID），复用单次报告 SQL 与授权校验；按 caseKey 和 ruleKey 对齐，显示缺失项、评分、状态、耗时、成本和相对基线变化。列表勾选进入详情 compare Tab。
+- judge 模型选择使用真实模型别名列表，prompt 上限 64 KiB。RuntimeEvaluationRuleResultV1 显式携带 evaluatorExecutionId，事件导出、快照与 Control 投影均保存该字段，报告与比较页可跳转 judge 子执行 Trace。
+- judge 原生 JSON Schema 必须返回 boolean passed、0–1 score 和 string reason。Worker 校验不可变 prompt 对象，将其作为 system message；actualOutput/expectedOutput 变量只替换一遍，case 数据同时以 JSON user message 传入。无有效 prompt 或 case 字段直接失败，不保留旧 instruction/raw-text 兼容入口。
+- 每个 case 的 durationMs 来自目标 Execution；case 成本为目标 RuntimeCall 加全部 judge RuntimeCall 的成本。judge 规则的 durationMs/costMicros 来自该子执行及其调用，不读取模型输出中的 usage。
+- Insights 默认聚合终态 Execution；node/tool 过滤使用相应 Node/RuntimeCall 人口，成本和 token 仅累计 RuntimeCall，耗时从真实时间戳派生。ClickHouse 数值按浮点解码；响应 metrics 使用 camelCase 键，新增 succeededCount/failedCount，Dashboard 成功率据此计算。
+- 查询必须使用 QueryScopeTicket 中的工作流/应用范围，空范围不放行。工具 spanName 为实际 MCP 工具名，错误图可以跳转携带 errorCodes 的执行列表；该过滤参与 SQL 和 cursor filter hash。

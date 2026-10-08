@@ -13,7 +13,7 @@ spec:
     spec:
       serviceAccountName: platform-control
       automountServiceAccountToken: false
-      restartPolicy: OnFailure
+      restartPolicy: Never
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
       initContainers:
 {{ include "agentx.control.schemaGate" (list . "controlMigration") | nindent 8 }}
@@ -48,4 +48,3 @@ spec:
 {{ include "agentx.control.caVolume" . | nindent 8 }}
 
 {{- end }}
-

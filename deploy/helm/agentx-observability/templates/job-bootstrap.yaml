@@ -13,7 +13,7 @@ spec:
     spec:
       serviceAccountName: observability
       automountServiceAccountToken: false
-      restartPolicy: OnFailure
+      restartPolicy: Never
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
       initContainers:
 {{ include "agentx.observability.schemaGate" . | nindent 8 }}
@@ -37,4 +37,3 @@ spec:
 {{ include "agentx.observability.caVolume" . | nindent 8 }}
 
 {{- end }}
-

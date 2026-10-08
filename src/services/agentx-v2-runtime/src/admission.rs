@@ -8,11 +8,9 @@
 //!   rejection (quota.rs) — admission overload is a different failure and
 //!   answers 429 + Retry-After.
 
-use std::time::Duration;
-
 use uuid::Uuid;
 
-use crate::error::RuntimeError;
+use crate::error::{RuntimeError, RuntimeResult};
 
 /// Concurrent non-terminal invocations one tenant may keep in flight.
 fn max_running_per_tenant() -> i64 {
@@ -51,55 +49,39 @@ pub fn rejection_count() -> i64 {
     REJECTIONS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-pub struct AdmissionReject {
-    pub running: i64,
-    pub queued: i64,
-}
-
-impl AdmissionReject {
-    pub fn retry_after(&self) -> Duration {
-        Duration::from_secs(retry_after_seconds() as u64)
-    }
-}
-
-/// Overload admission check: counts the tenant's in-flight invocations and
-/// queued node attempts. Storage failures fail open — availability of the
-/// intake beats a spurious rejection when MySQL blips.
-pub async fn check(pool: &sqlx::MySqlPool, tenant_id: Uuid) -> Result<(), AdmissionReject> {
-    let running: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM application_invocations WHERE tenant_id=? AND status='running'",
+/// Queue and running work both consume the admission budget. Storage
+/// failures propagate; an unavailable watermark cannot authorize intake.
+pub async fn check(pool: &sqlx::MySqlPool, tenant_id: Uuid) -> RuntimeResult<()> {
+    let (running, queued): (i64, i64) = sqlx::query_as(
+        "SELECT (SELECT COUNT(*) FROM application_invocations WHERE tenant_id=? AND status IN ('queued','running')) running,(SELECT COUNT(*) FROM node_attempts WHERE tenant_id=? AND status='queued') queued",
     )
     .bind(tenant_id)
-    .fetch_one(pool)
-    .await
-    .unwrap_or(0);
-    if running > max_running_per_tenant() {
-        return Err(AdmissionReject { running, queued: 0 });
-    }
-    let queued: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM node_attempts a JOIN workflow_executions e ON e.tenant_id=a.tenant_id AND e.id=a.execution_id WHERE e.tenant_id=? AND a.status='queued'",
-    )
     .bind(tenant_id)
     .fetch_one(pool)
-    .await
-    .unwrap_or(0);
-    if queued > queue_watermark() {
-        return Err(AdmissionReject { running, queued });
+    .await?;
+    if overloaded(running, queued, max_running_per_tenant(), queue_watermark()) {
+        record_rejection();
+        return Err(RuntimeError::AdmissionRejected {
+            retry_after_seconds: retry_after_seconds(),
+        });
     }
     Ok(())
 }
 
-/// Maps an admission rejection to the 429 transport error. The Retry-After
-/// hint travels in the message channel; the response layer emits the header.
-pub fn to_error(reject: &AdmissionReject) -> RuntimeError {
-    RuntimeError::AdmissionRejected {
-        retry_after_seconds: reject.retry_after().as_secs() as u32,
-    }
+fn overloaded(running: i64, queued: i64, max_running: i64, max_queued: i64) -> bool {
+    running >= max_running || queued >= max_queued
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn full_budget_rejects_the_next_invocation() {
+        assert!(!overloaded(499, 1999, 500, 2000));
+        assert!(overloaded(500, 0, 500, 2000));
+        assert!(overloaded(0, 2000, 500, 2000));
+    }
 
     #[test]
     fn thresholds_come_from_environment_with_safe_defaults() {

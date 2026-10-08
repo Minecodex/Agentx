@@ -40,7 +40,7 @@ export function Select({ value, onValueChange, options, placeholder, className, 
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
         <SelectPrimitive.Content
-          className="z-[230] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-xl border border-border bg-surface p-1 text-foreground shadow-xl outline-none"
+          className="z-[230] max-h-[min(20rem,var(--radix-select-content-available-height))] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-xl border border-border bg-surface p-1 text-foreground shadow-xl outline-none"
           position="popper"
           sideOffset={6}
         >

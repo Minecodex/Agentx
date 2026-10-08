@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    agentx_service_kit::install_tls_provider();
     if env::var_os("AGENTX_EGRESS_SMOKE_ASSERT_DIRECT_BLOCKED").is_some() {
         assert_direct_public_egress_blocked().await?;
         println!(

@@ -191,6 +191,7 @@ pub struct ExecutionSearchRequestV1 {
     pub trigger_types: Vec<String>,
     pub trigger_name: Option<String>,
     pub statuses: Vec<String>,
+    pub error_codes: Vec<String>,
     pub session_mode: ExecutionSessionModeV1,
     #[schemars(with = "Option<String>")]
     #[serde(with = "time::serde::rfc3339::option")]
@@ -316,6 +317,7 @@ pub struct ExecutionDetailV1 {
     pub state_version: u64,
     pub admission_epoch: u64,
     pub trace_watermark: u64,
+    pub trace_event_count: u64,
     pub parent_execution_id: Option<Uuid>,
     pub work_package_id: Option<Uuid>,
     pub input: Option<Value>,
@@ -677,6 +679,8 @@ pub struct ExecutionTraceV1 {
     pub execution_id: Uuid,
     pub ingested_watermark: u64,
     pub expected_watermark: u64,
+    pub ingested_event_count: u64,
+    pub expected_event_count: u64,
     pub complete: bool,
     pub degraded: bool,
     pub warning_code: Option<String>,
@@ -689,6 +693,8 @@ pub struct ExecutionTraceV1 {
 #[serde(rename_all = "snake_case")]
 pub enum ObservabilityMetricV1 {
     Count,
+    SucceededCount,
+    FailedCount,
     DurationMillis,
     CostMicros,
     InputTokens,

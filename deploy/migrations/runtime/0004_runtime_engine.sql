@@ -212,6 +212,10 @@ ALTER TABLE workflow_executions
     ADD COLUMN terminal_result_json JSON NULL AFTER error_json,
     ADD COLUMN terminal_result_hash CHAR(71) NULL AFTER terminal_result_json,
     ADD COLUMN terminal_result_object_id BINARY(16) NULL AFTER terminal_result_hash,
+    ADD COLUMN terminal_result_size_bytes BIGINT UNSIGNED GENERATED ALWAYS AS (JSON_STORAGE_SIZE(terminal_result_json)) STORED,
+    ADD COLUMN input_size_bytes BIGINT UNSIGNED GENERATED ALWAYS AS (JSON_STORAGE_SIZE(input_json)) STORED,
+    ADD KEY idx_runtime_terminal_externalize (terminal_result_object_id, terminal_result_size_bytes, id),
+    ADD KEY idx_runtime_execution_input_size (input_size_bytes, tenant_id, id),
     ADD COLUMN retention_deleted_at TIMESTAMP(6) NULL AFTER terminal_result_object_id,
     ADD KEY idx_runtime_execution_package (tenant_id, work_package_id, created_at),
     ADD KEY idx_runtime_execution_parent (tenant_id, parent_execution_id, created_at);

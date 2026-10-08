@@ -17,6 +17,7 @@ import { useToast } from '../../shared/ui/toast'
 import { useExecutionArtifactDownload } from '../traces/use-execution-artifact-download'
 import { ChatMappingDialog } from './chat-mapping-dialog'
 import type { ChatMapping, PlaygroundConfig, PlaygroundDeployment } from './playground-types'
+import { artifactPartType } from './playground-types'
 import { useInvocationEvents } from './use-invocation-events'
 
 const terminal = new Set(['completed', 'failed', 'cancelled'])
@@ -71,7 +72,7 @@ export function ConversationTestWorkspace({ application, deployment, sessionId, 
   })
   const saveMapping = useMutation({ mutationFn: (mapping: ChatMapping | null) => apiRequest<PlaygroundConfig>(`/applications/${application.id}/deployments/${deployment.id}/playground-config`, { method: 'PUT', body: jsonBody({ expectedVersion: config.data?.version ?? 0, mapping }) }), onSuccess: (value) => { queryClient.setQueryData(['playground-config', application.id, deployment.id], value); setMappingOpen(false) }, onError: (error: Error) => showToast(error.message) })
   const send = useMutation({
-    mutationFn: () => gatewayRequest<GatewayInvocation>(`/sessions/${sessionId}/messages`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: jsonBody({ parts: [{ partType: 'text', content: message }, ...files.map((file) => ({ partType: 'file', content: file, artifactId: file.artifactId }))] }) }),
+    mutationFn: () => gatewayRequest<GatewayInvocation>(`/sessions/${sessionId}/messages`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: jsonBody({ parts: [{ partType: 'text', content: message }, ...files.map((file) => ({ partType: artifactPartType(file.contentType), content: file, artifactId: file.artifactId }))] }) }),
     onSuccess: async (value) => {
       setInvocationId(value.id)
       setMessage('')

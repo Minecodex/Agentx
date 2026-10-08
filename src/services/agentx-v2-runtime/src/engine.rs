@@ -875,8 +875,11 @@ pub async fn claim_worker_attempt(
             "Worker is not registered or its capability heartbeat expired",
         ));
     }
+    // The Attempt is the claim authority. Snapshot/context reads must not
+    // lock the Workflow row while resolving parameters, blocking Trace or
+    // other independent claims for the same Execution.
     let row = sqlx::query(
-        "SELECT a.id,a.tenant_id,a.execution_id,a.node_execution_id,a.capability,a.worker_protocol_version,a.input_json,a.fencing_token,a.deadline_at,n.node_id,n.node_type,n.node_version,n.run_index,n.iteration_index,e.input_json execution_input_json,e.invocation_id,n.loop_frame_json,s.compiled_ir_json,s.resource_snapshot_json,s.execution_context_json,s.runtime_settings_json,r.context_json FROM node_attempts a JOIN node_executions n ON n.id=a.node_execution_id JOIN workflow_executions e ON e.id=a.execution_id JOIN execution_snapshots s ON s.execution_id=a.execution_id JOIN execution_runtime_state r ON r.execution_id=a.execution_id WHERE a.id=? AND a.status='queued' AND (a.locked_until IS NULL OR a.locked_until<=UTC_TIMESTAMP(6)) AND (a.deadline_at IS NULL OR a.deadline_at>UTC_TIMESTAMP(6)) FOR UPDATE",
+        "SELECT a.id,a.tenant_id,a.execution_id,a.node_execution_id,a.capability,a.worker_protocol_version,a.input_json,a.fencing_token,a.deadline_at,n.node_id,n.node_type,n.node_version,n.run_index,n.iteration_index,e.input_json execution_input_json,e.invocation_id,n.loop_frame_json,s.compiled_ir_json,s.resource_snapshot_json,s.execution_context_json,s.runtime_settings_json,r.context_json FROM node_attempts a JOIN node_executions n ON n.id=a.node_execution_id JOIN workflow_executions e ON e.id=a.execution_id JOIN execution_snapshots s ON s.execution_id=a.execution_id JOIN execution_runtime_state r ON r.execution_id=a.execution_id WHERE a.id=? AND a.status='queued' AND (a.locked_until IS NULL OR a.locked_until<=UTC_TIMESTAMP(6)) AND (a.deadline_at IS NULL OR a.deadline_at>UTC_TIMESTAMP(6)) FOR UPDATE OF a",
     )
     .bind(task.attempt_id)
     .fetch_optional(&mut *tx)
@@ -981,7 +984,11 @@ pub async fn claim_worker_attempt(
             .unwrap_or(Value::Null),
         row.try_get::<Option<Value>, _>("execution_input_json")?
             .unwrap_or(Value::Null),
-        load_output_namespace(&mut tx, task.tenant_id, task.execution_id).await?,
+        if parameter_resolution::reads_outputs(&raw_parameters) {
+            load_output_namespace(&mut tx, task.tenant_id, task.execution_id).await?
+        } else {
+            json!({})
+        },
         context.clone(),
         crate::execution_context::with_node(
             row.try_get("execution_context_json")?,
@@ -1009,6 +1016,7 @@ pub async fn claim_worker_attempt(
         },
         task: task.clone(),
         node_type,
+        node_key: compiled_node.key.clone(),
         invocation_id: row.try_get("invocation_id")?,
         node_version,
         run_index: row.try_get("run_index")?,
@@ -1159,7 +1167,7 @@ async fn submit_worker_result_resolved(
         let node = &machine.workflow().nodes[activation.node_index];
         let delivery_node = matches!(node.node_type.as_str(), "reply_message" | "send_message")
             .then(|| (node.node_type.clone(), node.key.clone()));
-        if let Some((node_type, node_key)) = delivery_node.as_ref()
+        if let Some((node_type, _node_key)) = delivery_node.as_ref()
             && effective_status == WorkerResultStatusV1::Succeeded
         {
             let intent = effective_outputs
@@ -1174,8 +1182,7 @@ async fn submit_worker_result_resolved(
                     tenant_id,
                     execution_id,
                     invocation_id,
-                    attempt_id: result.attempt_id,
-                    node_key,
+                    node_execution_id: node_execution_id.as_uuid(),
                     node_type,
                     intent: &intent,
                 },

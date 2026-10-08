@@ -893,6 +893,7 @@ pub struct RuntimeApprovalButtonV1 {
 pub struct RuntimeEvaluationRuleResultV1 {
     pub id: Uuid,
     pub profile_rule_id: Uuid,
+    pub evaluator_execution_id: Option<Uuid>,
     pub status: String,
     pub passed: Option<bool>,
     pub score: Option<f64>,

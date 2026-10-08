@@ -174,31 +174,31 @@ pub(crate) async fn reserve(
     .await?
     {
         let limit: rust_decimal::Decimal = policy.try_get("hard_limit")?;
-        let active: rust_decimal::Decimal = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(amount),0) FROM quota_reservations WHERE tenant_id=? AND dimension_key=? AND status='active' AND expires_at>UTC_TIMESTAMP(6)",
-        )
-        .bind(tenant_id)
-        .bind(dimension)
-        .fetch_one(&mut **tx)
-        .await?;
-        let committed = if dimension == "artifact_bytes" {
-            sqlx::query_scalar(
-                "SELECT COALESCE(SUM(size_bytes),0) FROM artifacts WHERE tenant_id=? AND deleted_at IS NULL",
-            )
-            .bind(tenant_id)
-            .fetch_one(&mut **tx)
-            .await?
-        } else if let Some(period_seconds) = policy.try_get::<Option<u64>, _>("period_seconds")? {
-            sqlx::query_scalar(
-                "SELECT COALESCE(SUM(amount),0) FROM quota_usage_ledger WHERE tenant_id=? AND dimension_key=? AND occurred_at>=TIMESTAMPADD(SECOND,-CAST(? AS SIGNED),UTC_TIMESTAMP(6))",
+        // One statement gives active reservations and committed usage the
+        // same read view, even if a concurrent settlement changes both tables.
+        let (active, committed): (rust_decimal::Decimal, rust_decimal::Decimal) =
+            if dimension == "artifact_bytes" {
+            sqlx::query_as(
+                "SELECT (SELECT COALESCE(SUM(amount),0) FROM quota_reservations WHERE tenant_id=? AND dimension_key=? AND status='active' AND expires_at>UTC_TIMESTAMP(6)),(SELECT COALESCE(SUM(size_bytes),0) FROM artifacts WHERE tenant_id=? AND deleted_at IS NULL)",
             )
             .bind(tenant_id)
             .bind(dimension)
-            .bind(period_seconds)
+            .bind(tenant_id)
             .fetch_one(&mut **tx)
             .await?
         } else {
-            rust_decimal::Decimal::ZERO
+            let period_seconds = policy.try_get::<Option<u64>, _>("period_seconds")?;
+            sqlx::query_as(
+                "SELECT (SELECT COALESCE(SUM(amount),0) FROM quota_reservations WHERE tenant_id=? AND dimension_key=? AND status='active' AND expires_at>UTC_TIMESTAMP(6)),(SELECT COALESCE(SUM(amount),0) FROM quota_usage_ledger WHERE tenant_id=? AND dimension_key=? AND ? IS NOT NULL AND occurred_at>=TIMESTAMPADD(SECOND,-CAST(? AS SIGNED),UTC_TIMESTAMP(6)))",
+            )
+            .bind(tenant_id)
+            .bind(dimension)
+            .bind(tenant_id)
+            .bind(dimension)
+            .bind(period_seconds)
+            .bind(period_seconds)
+            .fetch_one(&mut **tx)
+            .await?
         };
         if active + committed + rust_decimal::Decimal::from(amount) > limit {
             return Err(RuntimeError::BadRequest(
@@ -438,14 +438,14 @@ pub(crate) async fn release_attempt(
     attempt_id: Uuid,
     reason: &str,
 ) -> RuntimeResult<()> {
-    sqlx::query(
-        "UPDATE quota_reservations SET status='released',settled_amount=0,release_reason=?,settled_at=UTC_TIMESTAMP(6) WHERE tenant_id=? AND scope_type='attempt' AND scope_id=? AND status='active'",
+    let ids: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM quota_reservations WHERE tenant_id=? AND scope_type='attempt' AND scope_id=? AND status='active' ORDER BY id",
     )
-    .bind(reason)
     .bind(tenant_id)
     .bind(attempt_id.to_string())
-    .execute(&mut **tx)
+    .fetch_all(&mut **tx)
     .await?;
+    release_reservations(tx, &ids, reason).await?;
     Ok(())
 }
 
@@ -455,15 +455,29 @@ pub(crate) async fn release_execution(
     execution_id: Uuid,
     reason: &str,
 ) -> RuntimeResult<()> {
-    sqlx::query(
-        "UPDATE quota_reservations SET status='released',settled_amount=0,release_reason=?,settled_at=UTC_TIMESTAMP(6) WHERE tenant_id=? AND ((scope_type='execution' AND scope_id=?) OR (scope_type='attempt' AND scope_id IN (SELECT CAST(BIN_TO_UUID(id) AS CHAR) COLLATE utf8mb4_0900_ai_ci FROM node_attempts WHERE tenant_id=? AND execution_id=?))) AND status='active'",
+    let ids: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM quota_reservations WHERE tenant_id=? AND ((scope_type='execution' AND scope_id=?) OR (scope_type='attempt' AND scope_id IN (SELECT CAST(BIN_TO_UUID(id) AS CHAR) COLLATE utf8mb4_0900_ai_ci FROM node_attempts WHERE tenant_id=? AND execution_id=?))) AND status='active' ORDER BY id",
     )
-    .bind(reason)
     .bind(tenant_id)
     .bind(execution_id.to_string())
     .bind(tenant_id)
     .bind(execution_id)
-    .execute(&mut **tx)
+    .fetch_all(&mut **tx)
     .await?;
+    release_reservations(tx, &ids, reason).await?;
+    Ok(())
+}
+
+async fn release_reservations(
+    tx: &mut Transaction<'_, MySql>,
+    ids: &[Uuid],
+    reason: &str,
+) -> RuntimeResult<()> {
+    // Lock primary keys in a stable order, as expiry recovery does. In
+    // particular, an attempt with no budget must never lock another scope.
+    for id in ids {
+        sqlx::query("UPDATE quota_reservations SET status='released',settled_amount=0,release_reason=?,settled_at=UTC_TIMESTAMP(6) WHERE id=? AND status='active'")
+            .bind(reason).bind(id).execute(&mut **tx).await?;
+    }
     Ok(())
 }

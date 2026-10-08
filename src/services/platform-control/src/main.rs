@@ -54,6 +54,7 @@ mod governance_api;
 mod iam_api;
 mod insights_api;
 mod knowledge_document_api;
+mod knowledge_indexing;
 mod mcp_api;
 mod model_api;
 mod openapi_contract;
@@ -122,6 +123,7 @@ struct AdmissionEvent {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    agentx_service_kit::install_tls_provider();
     if let Some(path) = openapi_contract::requested_output()? {
         return openapi_contract::write(&path);
     }
@@ -195,10 +197,19 @@ async fn main() -> Result<()> {
         "AGENTX_CONTROL_ROLES selected no implemented role"
     );
     let router = if roles.contains("api") {
-        control_api::router(control_api::ControlApiState::from_env(
+        let api_state = control_api::ControlApiState::from_env(
             publisher.pool.clone(),
             publisher.control_objects.clone(),
-        )?)
+        )?;
+        let indexing_state = api_state.clone();
+        let indexing_lifecycle = lifecycle.clone();
+        let indexing_progress =
+            role_health::watchdog("knowledge-indexing", &health, &lifecycle, &metrics).await;
+        tasks.spawn(async move {
+            knowledge_indexing::run_loop(indexing_state, indexing_lifecycle, indexing_progress)
+                .await
+        });
+        control_api::router(api_state)
     } else {
         Router::new()
     };

@@ -661,6 +661,341 @@
         ],
         "type": "object"
       },
+      "CanvasPlugin": {
+        "additionalProperties": false,
+        "properties": {
+          "defaultVersionId": {
+            "oneOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nodeCount": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "packageId": {
+            "type": "string"
+          },
+          "sourceType": {
+            "enum": [
+              "builtin",
+              "imported"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/CanvasPluginVersion"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "packageId",
+          "displayName",
+          "description",
+          "sourceType",
+          "defaultVersionId",
+          "version",
+          "versions",
+          "nodeCount",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "CanvasPluginAuditItem": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "actorUserId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "detail": {},
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "actorUserId",
+          "action",
+          "detail",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "CanvasPluginImport": {
+        "additionalProperties": false,
+        "properties": {
+          "bundleDigest": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "installedVersionId": {
+            "oneOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "issues": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nodeTypes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "packageId": {
+            "type": "string"
+          },
+          "packageVersion": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "installed",
+              "failed",
+              "cancelled"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "bundleDigest",
+          "packageId",
+          "packageVersion",
+          "displayName",
+          "description",
+          "nodeTypes",
+          "issues",
+          "installedVersionId",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "CanvasPluginInstallRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "bundleDigest": {
+            "type": "string"
+          },
+          "enable": {
+            "type": "boolean"
+          },
+          "setDefault": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "bundleDigest",
+          "enable",
+          "setDefault"
+        ],
+        "type": "object"
+      },
+      "CanvasPluginPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CanvasPlugin"
+            },
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "pageSize": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "type": "object"
+      },
+      "CanvasPluginReferences": {
+        "additionalProperties": false,
+        "properties": {
+          "deployments": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "drafts": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "executions": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "workflowVersions": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "drafts",
+          "workflowVersions",
+          "deployments",
+          "executions",
+          "total"
+        ],
+        "type": "object"
+      },
+      "CanvasPluginUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "defaultVersionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "defaultVersionId",
+          "expectedRevision"
+        ],
+        "type": "object"
+      },
+      "CanvasPluginVersion": {
+        "additionalProperties": false,
+        "properties": {
+          "bundleDigest": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nodeTypes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "packageVersion": {
+            "type": "string"
+          },
+          "sdkApiVersion": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "enabled",
+              "disabled"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "packageVersion",
+          "bundleDigest",
+          "status",
+          "sdkApiVersion",
+          "nodeTypes",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "CanvasPluginVersionUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "expectedRevision"
+        ],
+        "type": "object"
+      },
       "CaseInput": {
         "properties": {
           "caseKey": {
@@ -1277,6 +1612,17 @@
           "alias": {
             "type": "string"
           },
+          "capabilities": {
+            "description": "Input modality capabilities",
+            "items": {
+              "enum": [
+                "vision",
+                "audio"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
           "connectionName": {
             "type": "string"
           },
@@ -1288,17 +1634,6 @@
             ]
           },
           "defaultParameters": {},
-          "capabilities": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "vision",
-                "audio"
-              ]
-            },
-            "description": "Input modality capabilities"
-          },
           "endpoint": {
             "type": "string"
           },
@@ -2123,6 +2458,191 @@
           "sourceName",
           "relation",
           "immutable"
+        ],
+        "type": "object"
+      },
+      "DeliveryDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "attemptCount": {
+            "type": "integer"
+          },
+          "channelBindingId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "hasCredentialSnapshot": {
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "invocationId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "lastErrorCode": {
+            "nullable": true,
+            "type": "string"
+          },
+          "lastErrorMessage": {
+            "nullable": true,
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "providerMessageId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "delivering",
+              "delivered",
+              "failed",
+              "dead"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "type": "object"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "executionId",
+          "channelBindingId",
+          "provider",
+          "origin",
+          "status",
+          "attemptCount",
+          "payload",
+          "target",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "DeliveryPage": {
+        "properties": {
+          "apiVersion": {
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeliverySummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "items"
+        ],
+        "type": "object"
+      },
+      "DeliverySummary": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "attemptCount": {
+            "type": "integer"
+          },
+          "channelBindingId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "invocationId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "lastErrorCode": {
+            "nullable": true,
+            "type": "string"
+          },
+          "lastErrorMessage": {
+            "nullable": true,
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "providerMessageId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "delivering",
+              "delivered",
+              "failed",
+              "dead"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "executionId",
+          "channelBindingId",
+          "provider",
+          "origin",
+          "status",
+          "attemptCount",
+          "payload",
+          "createdAt",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -2959,6 +3479,11 @@
           "status": {
             "type": "string"
           },
+          "traceEventCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "traceId": {
             "format": "uuid",
             "type": "string"
@@ -3301,6 +3826,70 @@
           "workflowId",
           "draftId",
           "definitionHash"
+        ],
+        "type": "object"
+      },
+      "KnowledgeDocument": {
+        "additionalProperties": false,
+        "properties": {
+          "contentType": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "errorCode": {
+            "nullable": true,
+            "type": "string"
+          },
+          "errorMessage": {
+            "nullable": true,
+            "type": "string"
+          },
+          "externalDocumentId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "indexedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ragResourceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "uploading",
+              "indexing",
+              "indexed",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "ragResourceId",
+          "name",
+          "contentType",
+          "sizeBytes",
+          "status",
+          "version",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -3968,6 +4557,17 @@
             "minimum": 0,
             "type": "integer"
           },
+          "capabilities": {
+            "description": "Input modality capabilities",
+            "items": {
+              "enum": [
+                "vision",
+                "audio"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
           "connectionCheckedAt": {
             "format": "date-time",
             "type": [
@@ -3989,17 +4589,6 @@
             ]
           },
           "defaultParameters": {},
-          "capabilities": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "vision",
-                "audio"
-              ]
-            },
-            "description": "Input modality capabilities"
-          },
           "deploymentId": {
             "format": "uuid",
             "type": "string"
@@ -4439,6 +5028,47 @@
         ],
         "type": "object"
       },
+      "NodeProviderOptionsPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                },
+                "manifest": {},
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
       "NodeProviderOptionsResponse": {
         "properties": {
           "items": {
@@ -4634,6 +5264,127 @@
           "publishStatus",
           "errorCode",
           "errorMessage"
+        ],
+        "type": "object"
+      },
+      "PluginResolveDefinitionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "configuration": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "upstreamContracts": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "configuration",
+          "upstreamContracts"
+        ],
+        "type": "object"
+      },
+      "PluginResolvedDefinition": {
+        "additionalProperties": false,
+        "properties": {
+          "inputPorts": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "main",
+                    "error"
+                  ],
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "variadic": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name",
+                "kind"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "issues": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "outputPortSchemas": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "outputPorts": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "main",
+                    "error"
+                  ],
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "variadic": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name",
+                "kind"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "outputSchema": {},
+          "status": {
+            "enum": [
+              "complete",
+              "incomplete",
+              "invalid"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
         ],
         "type": "object"
       },
@@ -5343,6 +6094,28 @@
           "deletedCount",
           "createdAt"
         ],
+        "type": "object"
+      },
+      "RetrievalTestResult": {
+        "properties": {
+          "citations": {
+            "items": {},
+            "type": "array"
+          },
+          "documents": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "recordIds": {
+            "items": {},
+            "type": "array"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "ReviewResourceGrantRequest": {
@@ -6637,7 +7410,17 @@
             "format": "uuid",
             "type": "string"
           },
+          "expectedEventCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "expectedWatermark": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ingestedEventCount": {
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -6683,7 +7466,9 @@
           "degraded",
           "totalSpans",
           "expectedWatermark",
-          "ingestedWatermark"
+          "ingestedWatermark",
+          "expectedEventCount",
+          "ingestedEventCount"
         ],
         "type": "object"
       },
@@ -7160,6 +7945,17 @@
           "alias": {
             "type": "string"
           },
+          "capabilities": {
+            "description": "Input modality capabilities",
+            "items": {
+              "enum": [
+                "vision",
+                "audio"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
           "connectionName": {
             "type": "string"
           },
@@ -7171,17 +7967,6 @@
             ]
           },
           "defaultParameters": {},
-          "capabilities": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "vision",
-                "audio"
-              ]
-            },
-            "description": "Input modality capabilities"
-          },
           "endpoint": {
             "type": "string"
           },
@@ -7450,6 +8235,9 @@
             ],
             "type": "string"
           },
+          "reply": {
+            "$ref": "#/components/schemas/WebhookReplyConfig"
+          },
           "status": {
             "type": "string"
           },
@@ -7457,9 +8245,6 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
-          },
-          "reply": {
-            "$ref": "#/components/schemas/WebhookReplyConfig"
           }
         },
         "required": [
@@ -7712,6 +8497,26 @@
         ],
         "type": "object"
       },
+      "WebhookReplyConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "outputField": {
+            "type": "string"
+          },
+          "template": {
+            "maxLength": 1000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "outputField"
+        ],
+        "type": "object"
+      },
       "WebhookResponse": {
         "properties": {
           "channelMode": {
@@ -7790,6 +8595,9 @@
           "publicId": {
             "type": "string"
           },
+          "reply": {
+            "$ref": "#/components/schemas/WebhookReplyConfig"
+          },
           "secret": {
             "type": [
               "string",
@@ -7803,9 +8611,6 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
-          },
-          "reply": {
-            "$ref": "#/components/schemas/WebhookReplyConfig"
           }
         },
         "required": [
@@ -8009,6 +8814,9 @@
       },
       "WorkflowResponse": {
         "properties": {
+          "canEdit": {
+            "type": "boolean"
+          },
           "description": {
             "type": [
               "string",
@@ -8064,9 +8872,6 @@
           },
           "visibility": {
             "type": "string"
-          },
-          "canEdit": {
-            "type": "boolean"
           }
         },
         "required": [
@@ -8135,794 +8940,6 @@
           "createdAt"
         ],
         "type": "object"
-      },
-      "CanvasPluginVersion": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "id",
-          "packageVersion",
-          "bundleDigest",
-          "status",
-          "sdkApiVersion",
-          "nodeTypes",
-          "createdAt"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "packageVersion": {
-            "type": "string"
-          },
-          "bundleDigest": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "enabled",
-              "disabled"
-            ]
-          },
-          "sdkApiVersion": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "nodeTypes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "CanvasPlugin": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "id",
-          "packageId",
-          "displayName",
-          "description",
-          "sourceType",
-          "defaultVersionId",
-          "version",
-          "versions",
-          "nodeCount",
-          "updatedAt"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "packageId": {
-            "type": "string"
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "sourceType": {
-            "type": "string",
-            "enum": [
-              "builtin",
-              "imported"
-            ]
-          },
-          "defaultVersionId": {
-            "oneOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "version": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "versions": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CanvasPluginVersion"
-            }
-          },
-          "nodeCount": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "CanvasPluginPage": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "items",
-          "page",
-          "pageSize",
-          "total"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CanvasPlugin"
-            }
-          },
-          "page": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "pageSize": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0
-          }
-        }
-      },
-      "CanvasPluginImport": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "id",
-          "status",
-          "bundleDigest",
-          "packageId",
-          "packageVersion",
-          "displayName",
-          "description",
-          "nodeTypes",
-          "issues",
-          "installedVersionId",
-          "expiresAt"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "ready",
-              "installed",
-              "failed",
-              "cancelled"
-            ]
-          },
-          "bundleDigest": {
-            "type": "string"
-          },
-          "packageId": {
-            "type": "string"
-          },
-          "packageVersion": {
-            "type": "string"
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "nodeTypes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "issues": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "installedVersionId": {
-            "oneOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "expiresAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "CanvasPluginReferences": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "drafts",
-          "workflowVersions",
-          "deployments",
-          "executions",
-          "total"
-        ],
-        "properties": {
-          "drafts": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "workflowVersions": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "deployments": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "executions": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0
-          }
-        }
-      },
-      "CanvasPluginInstallRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "bundleDigest",
-          "enable",
-          "setDefault"
-        ],
-        "properties": {
-          "bundleDigest": {
-            "type": "string"
-          },
-          "enable": {
-            "type": "boolean"
-          },
-          "setDefault": {
-            "type": "boolean"
-          }
-        }
-      },
-      "CanvasPluginUpdateRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "defaultVersionId",
-          "expectedRevision"
-        ],
-        "properties": {
-          "defaultVersionId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "expectedRevision": {
-            "type": "integer",
-            "minimum": 1
-          }
-        }
-      },
-      "CanvasPluginVersionUpdateRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "enabled",
-          "expectedRevision"
-        ],
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
-          "expectedRevision": {
-            "type": "integer",
-            "minimum": 1
-          }
-        }
-      },
-      "CanvasPluginAuditItem": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "id",
-          "actorUserId",
-          "action",
-          "detail",
-          "createdAt"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "actorUserId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "action": {
-            "type": "string"
-          },
-          "detail": {},
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "PluginResolvedDefinition": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "status"
-        ],
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "complete",
-              "incomplete",
-              "invalid"
-            ]
-          },
-          "inputPorts": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "name",
-                "kind"
-              ],
-              "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string",
-                  "enum": [
-                    "main",
-                    "error"
-                  ]
-                },
-                "required": {
-                  "type": "boolean"
-                },
-                "variadic": {
-                  "type": "boolean"
-                }
-              }
-            }
-          },
-          "outputPorts": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "name",
-                "kind"
-              ],
-              "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string",
-                  "enum": [
-                    "main",
-                    "error"
-                  ]
-                },
-                "required": {
-                  "type": "boolean"
-                },
-                "variadic": {
-                  "type": "boolean"
-                }
-              }
-            }
-          },
-          "outputSchema": {},
-          "outputPortSchemas": {
-            "type": "object",
-            "additionalProperties": {}
-          },
-          "issues": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "path",
-                "code",
-                "message"
-              ],
-              "properties": {
-                "path": {
-                  "type": "string"
-                },
-                "code": {
-                  "type": "string"
-                },
-                "message": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      },
-      "PluginResolveDefinitionRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "configuration",
-          "upstreamContracts"
-        ],
-        "properties": {
-          "configuration": {
-            "type": "object",
-            "additionalProperties": true
-          },
-          "upstreamContracts": {
-            "type": "object",
-            "additionalProperties": true
-          }
-        }
-      },
-      "NodeProviderOptionsPage": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "items"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "additionalProperties": true,
-              "required": [
-                "value",
-                "label"
-              ],
-              "properties": {
-                "value": {
-                  "type": "string"
-                },
-                "label": {
-                  "type": "string"
-                },
-                "description": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "manifest": {}
-              }
-            }
-          },
-          "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "WebhookReplyConfig": {
-        "type": "object",
-        "required": [
-          "enabled",
-          "outputField"
-        ],
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
-          "outputField": {
-            "type": "string"
-          },
-          "template": {
-            "type": "string",
-            "maxLength": 1000
-          }
-        },
-        "additionalProperties": false
-      },
-      "DeliverySummary": {
-        "type": "object",
-        "required": [
-          "id",
-          "executionId",
-          "channelBindingId",
-          "provider",
-          "origin",
-          "status",
-          "attemptCount",
-          "payload",
-          "createdAt",
-          "updatedAt"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "applicationId": {
-            "type": "string",
-            "format": "uuid",
-            "nullable": true
-          },
-          "invocationId": {
-            "type": "string",
-            "format": "uuid",
-            "nullable": true
-          },
-          "executionId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "channelBindingId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "provider": {
-            "type": "string"
-          },
-          "origin": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "delivering",
-              "delivered",
-              "failed",
-              "dead"
-            ]
-          },
-          "attemptCount": {
-            "type": "integer"
-          },
-          "lastErrorCode": {
-            "type": "string",
-            "nullable": true
-          },
-          "lastErrorMessage": {
-            "type": "string",
-            "nullable": true
-          },
-          "providerMessageId": {
-            "type": "string",
-            "nullable": true
-          },
-          "payload": {
-            "type": "object"
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "string"
-          }
-        },
-        "additionalProperties": false
-      },
-      "DeliveryDetail": {
-        "type": "object",
-        "required": [
-          "id",
-          "executionId",
-          "channelBindingId",
-          "provider",
-          "origin",
-          "status",
-          "attemptCount",
-          "payload",
-          "target",
-          "createdAt",
-          "updatedAt"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "applicationId": {
-            "type": "string",
-            "format": "uuid",
-            "nullable": true
-          },
-          "invocationId": {
-            "type": "string",
-            "format": "uuid",
-            "nullable": true
-          },
-          "executionId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "channelBindingId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "provider": {
-            "type": "string"
-          },
-          "origin": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "delivering",
-              "delivered",
-              "failed",
-              "dead"
-            ]
-          },
-          "attemptCount": {
-            "type": "integer"
-          },
-          "lastErrorCode": {
-            "type": "string",
-            "nullable": true
-          },
-          "lastErrorMessage": {
-            "type": "string",
-            "nullable": true
-          },
-          "providerMessageId": {
-            "type": "string",
-            "nullable": true
-          },
-          "payload": {
-            "type": "object"
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "string"
-          },
-          "target": {
-            "type": "object"
-          },
-          "hasCredentialSnapshot": {
-            "type": "boolean"
-          }
-        },
-        "additionalProperties": false
-      },
-      "DeliveryPage": {
-        "type": "object",
-        "required": [
-          "apiVersion",
-          "items"
-        ],
-        "properties": {
-          "apiVersion": {
-            "type": "integer"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DeliverySummary"
-            }
-          }
-        }
-      },
-      "KnowledgeDocument": {
-        "type": "object",
-        "required": [
-          "id",
-          "ragResourceId",
-          "name",
-          "contentType",
-          "sizeBytes",
-          "status",
-          "version",
-          "createdAt"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "ragResourceId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "name": {
-            "type": "string"
-          },
-          "contentType": {
-            "type": "string"
-          },
-          "sizeBytes": {
-            "type": "integer"
-          },
-          "externalDocumentId": {
-            "type": "string",
-            "nullable": true
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "uploading",
-              "indexing",
-              "indexed",
-              "failed"
-            ]
-          },
-          "errorCode": {
-            "type": "string",
-            "nullable": true
-          },
-          "errorMessage": {
-            "type": "string",
-            "nullable": true
-          },
-          "indexedAt": {
-            "type": "string",
-            "nullable": true
-          },
-          "version": {
-            "type": "integer"
-          },
-          "createdAt": {
-            "type": "string"
-          }
-        },
-        "additionalProperties": false
-      },
-      "RetrievalTestResult": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "type": "string"
-          },
-          "documents": {
-            "type": "array",
-            "items": {
-              "type": "object"
-            }
-          },
-          "citations": {
-            "type": "array",
-            "items": {}
-          },
-          "recordIds": {
-            "type": "array",
-            "items": {}
-          }
-        }
       }
     },
     "x-uniqueness-error-examples": {
@@ -10099,14 +10116,14 @@
         },
         "responses": {
           "201": {
-            "description": "Validated plugin import",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CanvasPluginImport"
                 }
               }
-            }
+            },
+            "description": "Validated plugin import"
           }
         },
         "tags": [
@@ -10152,14 +10169,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Plugin import",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CanvasPluginImport"
                 }
               }
-            }
+            },
+            "description": "Plugin import"
           }
         },
         "tags": [
@@ -10181,41 +10198,41 @@
             }
           }
         ],
-        "responses": {
-          "201": {
-            "description": "Installed canvas plugin",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CanvasPlugin"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Idempotent installed canvas plugin",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CanvasPlugin"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "canvas_plugins"
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CanvasPluginInstallRequest"
               }
             }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasPlugin"
+                }
+              }
+            },
+            "description": "Idempotent installed canvas plugin"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasPlugin"
+                }
+              }
+            },
+            "description": "Installed canvas plugin"
           }
-        }
+        },
+        "tags": [
+          "canvas_plugins"
+        ]
       }
     },
     "/api/v1/canvas-plugin-sdk/template": {
@@ -10223,15 +10240,15 @@
         "operationId": "download_canvas_plugin_template",
         "responses": {
           "200": {
-            "description": "Canvas plugin SDK template",
             "content": {
               "application/octet-stream": {
                 "schema": {
-                  "type": "string",
-                  "format": "binary"
+                  "format": "binary",
+                  "type": "string"
                 }
               }
-            }
+            },
+            "description": "Canvas plugin SDK template"
           }
         },
         "tags": [
@@ -10242,57 +10259,57 @@
     "/api/v1/canvas-plugins": {
       "get": {
         "operationId": "list_canvas_plugins",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "enum": [
+                "enabled",
+                "disabled"
+              ],
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Canvas plugin page",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CanvasPluginPage"
                 }
               }
-            }
+            },
+            "description": "Canvas plugin page"
           }
         },
         "tags": [
           "canvas_plugins"
-        ],
-        "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1
-            }
-          },
-          {
-            "name": "pageSize",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100
-            }
-          },
-          {
-            "name": "search",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "enabled",
-                "disabled"
-              ]
-            }
-          }
         ]
       }
     },
@@ -10334,14 +10351,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Canvas plugin",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CanvasPlugin"
                 }
               }
-            }
+            },
+            "description": "Canvas plugin"
           }
         },
         "tags": [
@@ -10361,31 +10378,65 @@
             }
           }
         ],
-        "responses": {
-          "200": {
-            "description": "Updated canvas plugin",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CanvasPlugin"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "canvas_plugins"
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CanvasPluginUpdateRequest"
               }
             }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasPlugin"
+                }
+              }
+            },
+            "description": "Updated canvas plugin"
           }
-        }
+        },
+        "tags": [
+          "canvas_plugins"
+        ]
+      }
+    },
+    "/api/v1/canvas-plugins/{id}/audit": {
+      "get": {
+        "operationId": "list_canvas_plugin_audit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CanvasPluginAuditItem"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Canvas plugin audit events"
+          }
+        },
+        "tags": [
+          "canvas_plugins"
+        ]
       }
     },
     "/api/v1/canvas-plugins/{id}/references": {
@@ -10404,14 +10455,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Plugin reference summary",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CanvasPluginReferences"
                 }
               }
-            }
+            },
+            "description": "Plugin reference summary"
           }
         },
         "tags": [
@@ -10473,31 +10524,31 @@
             }
           }
         ],
-        "responses": {
-          "200": {
-            "description": "Updated plugin version",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CanvasPlugin"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "canvas_plugins"
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CanvasPluginVersionUpdateRequest"
               }
             }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasPlugin"
+                }
+              }
+            },
+            "description": "Updated plugin version"
           }
-        }
+        },
+        "tags": [
+          "canvas_plugins"
+        ]
       }
     },
     "/api/v1/canvas-plugins/{id}/versions/{version_id}/download": {
@@ -10525,15 +10576,15 @@
         ],
         "responses": {
           "200": {
-            "description": "Immutable plugin package",
             "content": {
               "application/octet-stream": {
                 "schema": {
-                  "type": "string",
-                  "format": "binary"
+                  "format": "binary",
+                  "type": "string"
                 }
               }
-            }
+            },
+            "description": "Immutable plugin package"
           }
         },
         "tags": [
@@ -10952,6 +11003,157 @@
         },
         "tags": [
           "deletion"
+        ]
+      }
+    },
+    "/api/v1/deliveries": {
+      "get": {
+        "operationId": "listDeliveries",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "applicationId",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "invocationId",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "executionId",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "enum": [
+                "pending",
+                "delivering",
+                "delivered",
+                "failed",
+                "dead"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryPage"
+                }
+              }
+            },
+            "description": "Delivery page"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "applications"
+        ]
+      }
+    },
+    "/api/v1/deliveries/{delivery_id}": {
+      "get": {
+        "operationId": "getDelivery",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "delivery_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryDetail"
+                }
+              }
+            },
+            "description": "Delivery detail"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "applications"
+        ]
+      }
+    },
+    "/api/v1/deliveries/{delivery_id}/retry": {
+      "post": {
+        "operationId": "retryDelivery",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "delivery_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Replayed delivery"
+          },
+          "404": {
+            "description": "Dead letter not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "applications"
         ]
       }
     },
@@ -11418,6 +11620,42 @@
         ]
       }
     },
+    "/api/v1/evaluations/compare": {
+      "get": {
+        "operationId": "compareEvaluations",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "runIds",
+            "required": true,
+            "schema": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 5,
+              "minItems": 2,
+              "type": "array"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Comparison report"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "evaluations"
+        ]
+      }
+    },
     "/api/v1/evaluations/{id}/cancel": {
       "post": {
         "operationId": "cancel_evaluation",
@@ -11578,6 +11816,14 @@
               "minimum": 1,
               "type": "integer"
             }
+          },
+          {
+            "description": "Comma-separated execution error codes (maximum 50)",
+            "in": "query",
+            "name": "errorCodes",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -11736,6 +11982,107 @@
         ]
       }
     },
+    "/api/v1/executions/{id}/model-deltas": {
+      "get": {
+        "operationId": "getExecutionModelDeltas",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "payload": {
+                            "properties": {
+                              "attemptId": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "deltaText": {
+                                "type": "string"
+                              },
+                              "nodeKey": {
+                                "type": "string"
+                              },
+                              "reasoningDeltaText": {
+                                "nullable": true,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "attemptId",
+                              "nodeKey",
+                              "deltaText"
+                            ],
+                            "type": "object"
+                          },
+                          "sequence": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "sequence",
+                          "payload"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Execution model delta cursor page"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
     "/api/v1/executions/{id}/nodes": {
       "get": {
         "operationId": "list_nodes",
@@ -11773,6 +12120,62 @@
         },
         "tags": [
           "runtime_operations"
+        ]
+      }
+    },
+    "/api/v1/executions/{id}/plugin-manifests/{node_type}/versions/{version}": {
+      "get": {
+        "operationId": "get_execution_plugin_manifest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "node_type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bundleDigest",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDefinitionDetail"
+                }
+              }
+            },
+            "description": "Execution-authorized immutable plugin manifest"
+          }
+        },
+        "tags": [
+          "executions"
         ]
       }
     },
@@ -11910,6 +12313,99 @@
         },
         "tags": [
           "operations"
+        ]
+      }
+    },
+    "/api/v1/insights/aggregates": {
+      "post": {
+        "operationId": "queryInsightsAggregates",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "dimensions": {
+                    "items": {
+                      "enum": [
+                        "hour",
+                        "day",
+                        "workflow",
+                        "application",
+                        "status",
+                        "error_code",
+                        "provider",
+                        "resource_type",
+                        "span_name"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "filters": {
+                    "type": "object"
+                  },
+                  "from": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "limit": {
+                    "maximum": 1000,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "metrics": {
+                    "items": {
+                      "enum": [
+                        "count",
+                        "duration_millis",
+                        "cost_micros",
+                        "input_tokens",
+                        "output_tokens",
+                        "error_rate",
+                        "duration_p50",
+                        "duration_p95",
+                        "succeeded_count",
+                        "failed_count"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "to": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "to",
+                  "metrics",
+                  "dimensions"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Aggregate rows"
+          },
+          "422": {
+            "description": "Budget exceeded"
+          },
+          "503": {
+            "description": "Degraded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "runtime"
         ]
       }
     },
@@ -12072,6 +12568,201 @@
         "responses": {},
         "tags": [
           "external_resources"
+        ]
+      }
+    },
+    "/api/v1/knowledge/resources/{id}/documents": {
+      "get": {
+        "operationId": "listKnowledgeDocuments",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeDocument"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Documents"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "knowledge"
+        ]
+      },
+      "post": {
+        "operationId": "uploadKnowledgeDocument",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "format": "binary",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeDocument"
+                }
+              }
+            },
+            "description": "Source stored; durable external indexing accepted"
+          },
+          "422": {
+            "description": "Type/size/limit/duplicate rejection"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/v1/knowledge/resources/{id}/documents/{document_id}": {
+      "delete": {
+        "operationId": "deleteKnowledgeDocument",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/v1/knowledge/resources/{id}/retrieval-test": {
+      "post": {
+        "operationId": "knowledgeRetrievalTest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  },
+                  "topK": {
+                    "maximum": 20,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "query"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetrievalTestResult"
+                }
+              }
+            },
+            "description": "Hits"
+          },
+          "422": {
+            "description": "Provider rejection"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "knowledge"
         ]
       }
     },
@@ -12867,39 +13558,39 @@
             }
           },
           {
+            "in": "query",
             "name": "search",
-            "in": "query",
             "schema": {
               "type": "string"
             }
           },
           {
+            "in": "query",
             "name": "limit",
-            "in": "query",
             "schema": {
-              "type": "integer",
+              "maximum": 100,
               "minimum": 1,
-              "maximum": 100
+              "type": "integer"
             }
           },
           {
+            "in": "query",
             "name": "cursor",
-            "in": "query",
             "schema": {
               "type": "string"
             }
           },
           {
+            "in": "query",
             "name": "parameters",
-            "in": "query",
             "schema": {
               "type": "string"
             }
           },
           {
-            "name": "resourceReferences",
-            "in": "query",
             "description": "JSON array of exact node resource references available to the design-time Provider.",
+            "in": "query",
+            "name": "resourceReferences",
             "schema": {
               "type": "string"
             }
@@ -12907,14 +13598,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Dynamic provider options",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NodeProviderOptionsPage"
                 }
               }
-            }
+            },
+            "description": "Dynamic provider options"
           }
         },
         "tags": [
@@ -12945,31 +13636,31 @@
             }
           }
         ],
-        "responses": {
-          "200": {
-            "description": "Resolved per-node plugin contract",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PluginResolvedDefinition"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "catalog"
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PluginResolveDefinitionRequest"
               }
             }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginResolvedDefinition"
+                }
+              }
+            },
+            "description": "Resolved per-node plugin contract"
           }
-        }
+        },
+        "tags": [
+          "catalog"
+        ]
       }
     },
     "/api/v1/notifications": {
@@ -14563,6 +15254,132 @@
         ]
       }
     },
+    "/api/v1/workflows/{id}/draft/resolve-plugins": {
+      "post": {
+        "operationId": "resolveWorkflowPluginDefinitions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "definition": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "definition"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "nodes": {
+                      "additionalProperties": {
+                        "properties": {
+                          "inputPorts": {
+                            "items": {
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "issues": {
+                            "items": {
+                              "properties": {
+                                "code": {
+                                  "type": "string"
+                                },
+                                "message": {
+                                  "type": "string"
+                                },
+                                "path": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "path",
+                                "code",
+                                "message"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "outputPortSchemas": {
+                            "additionalProperties": true,
+                            "type": "object"
+                          },
+                          "outputPorts": {
+                            "items": {
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "outputSchema": {},
+                          "status": {
+                            "enum": [
+                              "complete",
+                              "incomplete",
+                              "invalid"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "status"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "nodes"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Effective contracts keyed by node id"
+          },
+          "403": {
+            "description": "Workflow access denied"
+          },
+          "422": {
+            "description": "Invalid plugin definition"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Resolve plugin contracts for an unsaved Workflow using the save-time dependency order",
+        "tags": [
+          "Workflows"
+        ]
+      }
+    },
     "/api/v1/workflows/{id}/draft/validate": {
       "post": {
         "operationId": "validate_draft",
@@ -14953,693 +15770,6 @@
         "tags": [
           "workflows"
         ]
-      }
-    },
-    "/api/v1/canvas-plugins/{id}/audit": {
-      "get": {
-        "operationId": "list_canvas_plugin_audit",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Canvas plugin audit events",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CanvasPluginAuditItem"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "canvas_plugins"
-        ]
-      }
-    },
-    "/api/v1/executions/{id}/plugin-manifests/{node_type}/versions/{version}": {
-      "get": {
-        "operationId": "get_execution_plugin_manifest",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "node_type",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "version",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 1
-            }
-          },
-          {
-            "name": "bundleDigest",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Execution-authorized immutable plugin manifest",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NodeDefinitionDetail"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "executions"
-        ]
-      }
-    },
-    "/api/v1/workflows/{id}/draft/resolve-plugins": {
-      "post": {
-        "operationId": "resolveWorkflowPluginDefinitions",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "definition": {
-                    "additionalProperties": true,
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "definition"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "nodes": {
-                      "additionalProperties": {
-                        "properties": {
-                          "inputPorts": {
-                            "items": {
-                              "type": "object"
-                            },
-                            "type": "array"
-                          },
-                          "issues": {
-                            "items": {
-                              "properties": {
-                                "code": {
-                                  "type": "string"
-                                },
-                                "message": {
-                                  "type": "string"
-                                },
-                                "path": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "path",
-                                "code",
-                                "message"
-                              ],
-                              "type": "object"
-                            },
-                            "type": "array"
-                          },
-                          "outputPortSchemas": {
-                            "additionalProperties": true,
-                            "type": "object"
-                          },
-                          "outputPorts": {
-                            "items": {
-                              "type": "object"
-                            },
-                            "type": "array"
-                          },
-                          "outputSchema": {},
-                          "status": {
-                            "enum": [
-                              "complete",
-                              "incomplete",
-                              "invalid"
-                            ],
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "status"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "nodes"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Effective contracts keyed by node id"
-          },
-          "403": {
-            "description": "Workflow access denied"
-          },
-          "422": {
-            "description": "Invalid plugin definition"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "summary": "Resolve plugin contracts for an unsaved Workflow using the save-time dependency order",
-        "tags": [
-          "Workflows"
-        ]
-      }
-    },
-    "/api/v1/deliveries": {
-      "get": {
-        "operationId": "listDeliveries",
-        "tags": [
-          "applications"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "applicationId",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "invocationId",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "executionId",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "pending",
-                "delivering",
-                "delivered",
-                "failed",
-                "dead"
-              ]
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Delivery page",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeliveryPage"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden"
-          }
-        }
-      }
-    },
-    "/api/v1/deliveries/{delivery_id}": {
-      "get": {
-        "operationId": "getDelivery",
-        "tags": [
-          "applications"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "delivery_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Delivery detail",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeliveryDetail"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found"
-          }
-        }
-      }
-    },
-    "/api/v1/deliveries/{delivery_id}/retry": {
-      "post": {
-        "operationId": "retryDelivery",
-        "tags": [
-          "applications"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "delivery_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Replayed delivery"
-          },
-          "404": {
-            "description": "Dead letter not found"
-          }
-        }
-      }
-    },
-    "/api/v1/knowledge/resources/{id}/documents": {
-      "get": {
-        "operationId": "listKnowledgeDocuments",
-        "tags": [
-          "knowledge"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Documents",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/KnowledgeDocument"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "operationId": "uploadKnowledgeDocument",
-        "tags": [
-          "knowledge"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "file": {
-                    "type": "string",
-                    "format": "binary"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Indexed document",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KnowledgeDocument"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Type/size/limit/duplicate rejection"
-          }
-        }
-      }
-    },
-    "/api/v1/knowledge/resources/{id}/documents/{document_id}": {
-      "delete": {
-        "operationId": "deleteKnowledgeDocument",
-        "tags": [
-          "knowledge"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "document_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Deleted"
-          },
-          "404": {
-            "description": "Not found"
-          }
-        }
-      }
-    },
-    "/api/v1/knowledge/resources/{id}/retrieval-test": {
-      "post": {
-        "operationId": "knowledgeRetrievalTest",
-        "tags": [
-          "knowledge"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "query"
-                ],
-                "properties": {
-                  "query": {
-                    "type": "string"
-                  },
-                  "topK": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 20
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Hits",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RetrievalTestResult"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Provider rejection"
-          }
-        }
-      }
-    },
-    "/api/v1/evaluations/compare": {
-      "get": {
-        "operationId": "compareEvaluations",
-        "tags": [
-          "evaluations"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "runIds",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "format": "uuid"
-              },
-              "minItems": 2,
-              "maxItems": 5
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Comparison report"
-          }
-        }
-      }
-    },
-    "/api/v1/insights/aggregates": {
-      "post": {
-        "operationId": "queryInsightsAggregates",
-        "tags": [
-          "runtime"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "from",
-                  "to",
-                  "metrics",
-                  "dimensions"
-                ],
-                "properties": {
-                  "from": {
-                    "type": "string",
-                    "format": "date-time"
-                  },
-                  "to": {
-                    "type": "string",
-                    "format": "date-time"
-                  },
-                  "metrics": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "enum": [
-                        "count",
-                        "duration_millis",
-                        "cost_micros",
-                        "input_tokens",
-                        "output_tokens",
-                        "error_rate",
-                        "duration_p50",
-                        "duration_p95"
-                      ]
-                    }
-                  },
-                  "dimensions": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "enum": [
-                        "hour",
-                        "day",
-                        "workflow",
-                        "application",
-                        "status",
-                        "error_code",
-                        "provider",
-                        "resource_type",
-                        "span_name"
-                      ]
-                    }
-                  },
-                  "filters": {
-                    "type": "object"
-                  },
-                  "limit": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 1000
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Aggregate rows"
-          },
-          "422": {
-            "description": "Budget exceeded"
-          },
-          "503": {
-            "description": "Degraded"
-          }
-        }
       }
     }
   },

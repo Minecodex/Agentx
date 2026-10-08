@@ -11,7 +11,6 @@ use axum::{
     extract::{Multipart, Path, State},
     http::StatusCode,
 };
-use secrecy::ExposeSecret;
 use serde::Serialize;
 use serde_json::{Value, json};
 use sqlx::Row;
@@ -76,8 +75,10 @@ async fn require_resource(
     resource_id: Uuid,
 ) -> ApiResult<sqlx::mysql::MySqlRow> {
     actor.require("knowledge:view")?;
+    crate::external_resource_api::require_resource(state, actor, "rag_resources", resource_id)
+        .await?;
     let row = sqlx::query(
-        "SELECT r.id,r.name,r.external_resource_id,r.sync_status,r.version,c.provider,c.endpoint,c.health_path,c.credential_id FROM rag_resources r JOIN rag_connections c ON c.id=r.connection_id WHERE r.tenant_id=? AND r.id=?",
+        "SELECT r.id,r.name,r.external_resource_id,r.sync_status,r.version,c.provider,c.endpoint,c.health_path,c.credential_id FROM rag_resources r JOIN rag_connections c ON c.tenant_id=r.tenant_id AND c.id=r.connection_id WHERE r.tenant_id=? AND r.id=?",
     )
     .bind(actor.tenant_id)
     .bind(resource_id)
@@ -128,18 +129,49 @@ async fn upload_document(
             "Knowledge documents accept text, markdown, CSV and JSON",
         ));
     }
+    if std::str::from_utf8(&bytes)
+        .ok()
+        .is_none_or(|text| text.trim().is_empty())
+    {
+        return Err(ApiError::bad_request(
+            "KNOWLEDGE_DOCUMENT_INVALID",
+            "Knowledge documents must contain non-empty UTF-8 text",
+        ));
+    }
     if bytes.len() > MAX_DOCUMENT_SIZE {
         return Err(ApiError::unprocessable(
             "KNOWLEDGE_DOCUMENT_TOO_LARGE",
             "Knowledge documents are limited to 8 MiB",
         ));
     }
-    let counts = sqlx::query(
-        "SELECT COUNT(*) document_count,CAST(COALESCE(SUM(size_bytes),0) AS SIGNED) total_bytes FROM knowledge_documents WHERE tenant_id=? AND rag_resource_id=? AND status<>'failed'",
+    let store = MySqlControlArtifactStore::new(state.pool.clone(), state.control_objects.clone());
+    let mut snapshot =
+        crate::knowledge_indexing::snapshot(&state, actor.tenant_id, &resource, 0).await?;
+    let stored = ArtifactStore::put(
+        &store,
+        ArtifactWrite {
+            tenant_id: TenantId::from_uuid(actor.tenant_id),
+            content_type: content_type.clone(),
+            content: bytes.clone(),
+        },
+    )
+    .await
+    .map_err(ApiError::internal)?;
+    let document_id = Uuid::now_v7();
+    let mut tx = state.pool.begin().await?;
+    let current_version: u64 = sqlx::query_scalar(
+        "SELECT version FROM rag_resources WHERE tenant_id=? AND id=? FOR UPDATE",
     )
     .bind(actor.tenant_id)
     .bind(resource_id)
-    .fetch_one(&state.pool)
+    .fetch_one(&mut *tx)
+    .await?;
+    let counts = sqlx::query(
+        "SELECT COUNT(*) document_count,CAST(COALESCE(SUM(size_bytes),0) AS SIGNED) total_bytes FROM knowledge_documents WHERE tenant_id=? AND rag_resource_id=?",
+    )
+    .bind(actor.tenant_id)
+    .bind(resource_id)
+    .fetch_one(&mut *tx)
     .await?;
     if counts.try_get::<i64, _>("document_count")? >= MAX_DOCUMENTS_PER_RESOURCE as i64 {
         return Err(ApiError::unprocessable(
@@ -161,7 +193,7 @@ async fn upload_document(
     .bind(actor.tenant_id)
     .bind(resource_id)
     .bind(sha256_hex(&bytes))
-    .fetch_optional(&state.pool)
+    .fetch_optional(&mut *tx)
     .await?;
     if duplicate.is_some() {
         return Err(ApiError::unprocessable(
@@ -169,21 +201,9 @@ async fn upload_document(
             "The same document content already exists on this knowledge resource",
         ));
     }
-    let store = MySqlControlArtifactStore::new(state.pool.clone(), state.control_objects.clone());
-    let stored = ArtifactStore::put(
-        &store,
-        ArtifactWrite {
-            tenant_id: TenantId::from_uuid(actor.tenant_id),
-            content_type: content_type.clone(),
-            content: bytes.clone(),
-        },
-    )
-    .await
-    .map_err(ApiError::internal)?;
-    let document_id = Uuid::now_v7();
-    let mut tx = state.pool.begin().await?;
+    snapshot["index_version"] = json!(current_version + 1);
     sqlx::query(
-        "INSERT INTO knowledge_documents(id,tenant_id,rag_resource_id,name,content_type,size_bytes,sha256,artifact_id,status,created_by) VALUES(?,?,?,?,?,?,?,?, 'uploading',?)",
+        "INSERT INTO knowledge_documents(id,tenant_id,rag_resource_id,name,content_type,size_bytes,sha256,artifact_id,index_snapshot_json,status,created_by) VALUES(?,?,?,?,?,?,?,?,?, 'uploading',?)",
     )
     .bind(document_id)
     .bind(actor.tenant_id)
@@ -193,6 +213,7 @@ async fn upload_document(
     .bind(bytes.len() as u64)
     .bind(stored.sha256.trim_start_matches("sha256:"))
     .bind(stored.id.as_uuid())
+    .bind(&snapshot)
     .bind(actor.user_id)
     .execute(&mut *tx)
     .await?;
@@ -204,59 +225,14 @@ async fn upload_document(
     .bind(document_id.to_string())
     .execute(&mut *tx)
     .await?;
-    sqlx::query("UPDATE knowledge_documents SET status='indexing' WHERE tenant_id=? AND id=?")
-        .bind(actor.tenant_id)
-        .bind(document_id)
-        .execute(&mut *tx)
-        .await?;
     sqlx::query("UPDATE rag_resources SET sync_status='syncing',version=version+1 WHERE tenant_id=? AND id=?")
         .bind(actor.tenant_id)
         .bind(resource_id)
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
-    let external_resource_id: String = resource.try_get("external_resource_id")?;
-    let index_version: u64 = resource.try_get("version")?;
-    match index_document(
-        &state,
-        &actor,
-        &resource,
-        &external_resource_id,
-        index_version + 1,
-        &stored.content,
-    )
-    .await
-    {
-        Ok(external_document_id) => {
-            sqlx::query("UPDATE knowledge_documents SET status='indexed',external_document_id=?,indexed_at=UTC_TIMESTAMP(6),error_code=NULL,error_message=NULL WHERE tenant_id=? AND id=?")
-                .bind(&external_document_id)
-                .bind(actor.tenant_id)
-                .bind(document_id)
-                .execute(&state.pool)
-                .await?;
-            sqlx::query("UPDATE rag_resources SET sync_status='synced' WHERE tenant_id=? AND id=?")
-                .bind(actor.tenant_id)
-                .bind(resource_id)
-                .execute(&state.pool)
-                .await?;
-        }
-        Err(error) => {
-            let message = error.to_string();
-            sqlx::query("UPDATE knowledge_documents SET status='failed',error_code='KNOWLEDGE_INDEX_FAILED',error_message=? WHERE tenant_id=? AND id=?")
-                .bind(message.chars().take(1000).collect::<String>())
-                .bind(actor.tenant_id)
-                .bind(document_id)
-                .execute(&state.pool)
-                .await?;
-            sqlx::query("UPDATE rag_resources SET sync_status='failed' WHERE tenant_id=? AND id=?")
-                .bind(actor.tenant_id)
-                .bind(resource_id)
-                .execute(&state.pool)
-                .await?;
-        }
-    }
     let document = load_document(&state, actor.tenant_id, document_id).await?;
-    Ok((StatusCode::CREATED, Json(document)))
+    Ok((StatusCode::ACCEPTED, Json(document)))
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -325,28 +301,36 @@ async fn delete_document(
 ) -> ApiResult<StatusCode> {
     actor.require("knowledge:manage")?;
     require_resource(&state, &actor, resource_id).await?;
-    let changed = sqlx::query(
-        "DELETE FROM knowledge_documents WHERE tenant_id=? AND rag_resource_id=? AND id=?",
-    )
-    .bind(actor.tenant_id)
-    .bind(resource_id)
-    .bind(document_id)
-    .execute(&state.pool)
-    .await?;
-    if changed.rows_affected() != 1 {
-        return Err(ApiError::not_found("Knowledge document"));
+    let mut tx = state.pool.begin().await?;
+    sqlx::query("SELECT id FROM rag_resources WHERE tenant_id=? AND id=? FOR UPDATE")
+        .bind(actor.tenant_id)
+        .bind(resource_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    let status: String = sqlx::query_scalar("SELECT status FROM knowledge_documents WHERE tenant_id=? AND rag_resource_id=? AND id=? FOR UPDATE")
+        .bind(actor.tenant_id).bind(resource_id).bind(document_id).fetch_optional(&mut *tx).await?.ok_or_else(||ApiError::not_found("Knowledge document"))?;
+    if matches!(status.as_str(), "uploading" | "indexing") {
+        return Err(ApiError::conflict(
+            "KNOWLEDGE_DOCUMENT_BUSY",
+            "Wait for indexing to finish before removing its source record",
+        ));
     }
-    // The external index is the segmentation source of truth; cleanup of the
-    // external copy stays a provider-side operation (plan7 05 §3.2).
-    sqlx::query(
-        "UPDATE rag_resources SET version=version+1 WHERE tenant_id=? AND id=? AND NOT EXISTS(SELECT 1 FROM knowledge_documents WHERE tenant_id=? AND rag_resource_id=? AND status IN ('indexing','uploading'))",
-    )
-    .bind(actor.tenant_id)
-    .bind(resource_id)
-    .bind(actor.tenant_id)
-    .bind(resource_id)
-    .execute(&state.pool)
-    .await?;
+    sqlx::query("DELETE FROM artifact_references WHERE tenant_id=? AND owner_type='knowledge_document' AND owner_id=?")
+        .bind(actor.tenant_id).bind(document_id.to_string()).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM knowledge_documents WHERE tenant_id=? AND rag_resource_id=? AND id=?")
+        .bind(actor.tenant_id)
+        .bind(resource_id)
+        .bind(document_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE rag_resources SET version=version+1 WHERE tenant_id=? AND id=?")
+        .bind(actor.tenant_id)
+        .bind(resource_id)
+        .execute(&mut *tx)
+        .await?;
+    crate::knowledge_indexing::refresh_resource_status(&mut tx, actor.tenant_id, resource_id)
+        .await?;
+    tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -385,7 +369,7 @@ async fn retrieval_test(
     let input = json!({"query": query, "top_k": top_k});
     let (path, body, secret_header) = agentx_runtime_contracts::rag::rag_query_request(
         &provider,
-        "query",
+        "retrieve",
         &namespace,
         &index_version.to_string(),
         &input,
@@ -400,6 +384,9 @@ async fn retrieval_test(
         .post(&url)
         .timeout(std::time::Duration::from_secs(20))
         .json(&body);
+    if provider == "lightrag" {
+        builder = builder.header("LIGHTRAG-WORKSPACE", &namespace);
+    }
     if let Some(secret) = secret.as_deref() {
         builder = match secret_header {
             "authorization" => builder.bearer_auth(secret),
@@ -434,40 +421,8 @@ async fn retrieval_test(
             format!("Knowledge provider returned HTTP {status}"),
         ));
     }
-    let normalized = agentx_runtime_contracts::rag::finalize_rag_value(&provider, payload)
+    let normalized = agentx_runtime_contracts::rag::finalize_retrieval_value(&provider, payload)
         .map_err(|error| ApiError::unprocessable(error.code, error.message))?;
-    // LightRAG /query passes through unchanged and returns
-    // {response, references:[...]} with chunk contents attached via the
-    // include_chunk_content flag; surface those references as the canonical
-    // documents so hit-testing shows chunks for both providers.
-    let normalized = if provider == agentx_runtime_contracts::rag::RAG_PROVIDER_LIGHT_RAG
-        && normalized.get("documents").is_none()
-    {
-        let documents: Vec<serde_json::Value> = normalized
-            .get("references")
-            .and_then(Value::as_array)
-            .map(|references| {
-                references
-                    .iter()
-                    .map(|reference| {
-                        serde_json::json!({
-                            "documentId": reference.get("file_path").cloned().unwrap_or_else(|| serde_json::json!(null)),
-                            "chunkId": reference.get("reference_id").cloned().unwrap_or_else(|| serde_json::json!(null)),
-                            "content": reference.get("content").cloned().unwrap_or_else(|| serde_json::json!(null)),
-                        })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        serde_json::json!({
-            "text": normalized.get("response").cloned().unwrap_or_else(|| serde_json::json!(null)),
-            "documents": documents,
-            "citations": [],
-            "recordIds": [],
-        })
-    } else {
-        normalized
-    };
     let hits = normalized
         .get("documents")
         .and_then(Value::as_array)
@@ -514,50 +469,17 @@ async fn record_retrieval_test(
     .await;
 }
 
-/// Reads the channel credential from Vault (Control read path, plan7 05 §2).
 async fn vault_secret(
     state: &ControlApiState,
     actor: &Actor,
     credential_id: Option<Uuid>,
 ) -> ApiResult<Option<String>> {
-    let Some(credential_id) = credential_id else {
-        return Ok(None);
-    };
-    let secret_ref: Option<String> = sqlx::query_scalar(
-        "SELECT v.secret_ref FROM credentials c JOIN credential_secret_versions v ON v.tenant_id=c.tenant_id AND v.credential_id=c.id AND v.version_number=c.current_secret_version WHERE c.tenant_id=? AND c.id=?",
-    )
-    .bind(actor.tenant_id)
-    .bind(credential_id)
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(ApiError::internal)?;
-    let Some(secret_ref) = secret_ref else {
-        return Ok(None);
-    };
-    let response = state
-        .http
-        .get(format!(
-            "{}/v1/{}/data/{}",
-            state.vault_endpoint,
-            state.vault_mount.trim_matches('/'),
-            secret_ref.trim_start_matches('/')
-        ))
-        .header("X-Vault-Token", state.vault_token.expose_secret())
-        .send()
+    let reference =
+        crate::knowledge_indexing::credential_snapshot(state, actor.tenant_id, credential_id)
+            .await?;
+    crate::knowledge_indexing::read_secret(state, &reference)
         .await
-        .map_err(|_| ApiError::unavailable("VAULT_UNAVAILABLE", "Credential could not be read"))?;
-    if !response.status().is_success() {
-        return Err(ApiError::unavailable(
-            "VAULT_UNAVAILABLE",
-            "Credential could not be read",
-        ));
-    }
-    let payload: Value = response.json().await.map_err(ApiError::internal)?;
-    let raw = payload
-        .pointer("/data/data/value")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    Ok(raw)
+        .map_err(|_| ApiError::unavailable("VAULT_UNAVAILABLE", "Credential could not be read"))
 }
 
 /// Control may only reach cluster-internal dependency endpoints over plain
@@ -572,57 +494,4 @@ fn validate_dependencies_http(url: &str) -> ApiResult<()> {
         ));
     }
     Ok(())
-}
-
-async fn index_document(
-    state: &ControlApiState,
-    actor: &Actor,
-    resource: &sqlx::mysql::MySqlRow,
-    namespace: &str,
-    index_version: u64,
-    content: &[u8],
-) -> Result<String, anyhow::Error> {
-    let endpoint: String = resource.try_get("endpoint")?;
-    let (path, mut body, secret_header) = agentx_runtime_contracts::rag::rag_query_request(
-        "lightrag",
-        "insert",
-        namespace,
-        &index_version.to_string(),
-        &json!({}),
-    )
-    .map_err(|error| anyhow::anyhow!("{}: {}", error.code, error.message))?;
-    // LightRAG v0.20 contract: single `text` + required `file_source`
-    // (batch `texts` array no longer exists on documents/text).
-    body["text"] = json!(String::from_utf8_lossy(content).into_owned());
-    body["file_source"] = json!(format!("agentx-knowledge:{namespace}"));
-    let url = format!("{}/{}", endpoint.trim_end_matches('/'), path);
-    let parsed = reqwest::Url::parse(&url)
-        .map_err(|error| anyhow::anyhow!("knowledge endpoint is invalid: {error}"))?;
-    anyhow::ensure!(
-        matches!(parsed.scheme(), "http" | "https"),
-        "knowledge endpoint must use http or https"
-    );
-    let secret = vault_secret(state, actor, resource.try_get("credential_id")?)
-        .await
-        .map_err(|_| anyhow::anyhow!("credential could not be read"))?;
-    let mut builder = state
-        .http
-        .post(&url)
-        .timeout(std::time::Duration::from_secs(60))
-        .json(&body);
-    if let Some(secret) = secret.as_deref() {
-        builder = match secret_header {
-            "authorization" => builder.bearer_auth(secret),
-            _ => builder.header("x-api-key", secret),
-        };
-    }
-    let response = builder.send().await?;
-    let status = response.status();
-    let _payload: Value = response.json().await.unwrap_or(Value::Null);
-    if !status.is_success() {
-        anyhow::bail!("indexing endpoint returned HTTP {status}");
-    }
-    // LightRAG documents/text acks carry no stable batch id; the workspace
-    // plus content hash remain the reconciliation identity.
-    Ok(format!("workspace:{namespace}:{}", sha256_hex(content)))
 }

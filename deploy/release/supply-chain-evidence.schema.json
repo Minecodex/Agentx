@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentx.local/schemas/supply-chain-evidence-v1.json",
+  "$id": "https://agentx.local/schemas/supply-chain-evidence-v2.json",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,33 +12,44 @@
     "isolationLevel",
     "version",
     "sourceCommit",
+    "identity",
+    "receipt",
+    "receiptSha256",
     "generatedAt",
     "imageCount",
     "signedImageCount",
     "attestedImageCount",
-    "manifestSignatureVerified"
+    "verifiedImageCount",
+    "manifestSignatureVerified",
+    "images"
   ],
   "properties": {
     "schemaVersion": {
-      "const": "agentx.io/supply-chain-evidence/v1"
+      "const": "agentx.io/supply-chain-evidence/v2"
     },
     "status": {
       "const": "passed"
     },
     "environment": {
-      "const": "local-docker-desktop"
+      "enum": [
+        "local-tls-registry",
+        "release-ci"
+      ]
     },
     "registry": {
-      "const": "local-tls"
+      "enum": [
+        "local-tls",
+        "docker.io"
+      ]
     },
     "trustScope": {
-      "const": "local-only"
+      "enum": [
+        "local-key-and-ca",
+        "release-policy"
+      ]
     },
     "isolationLevel": {
-      "enum": [
-        "standard",
-        "strong"
-      ]
+      "const": "signed-and-attested"
     },
     "version": {
       "type": "string",
@@ -48,30 +59,130 @@
       "type": "string",
       "pattern": "^[a-f0-9]{40}$"
     },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sourceCommit",
+        "sourceTreeSha256",
+        "imageManifestSha256"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceCommit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "sourceTreeSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "imageManifestSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "receipt": {
+      "type": "string",
+      "pattern": "^[^/\\\\]+\\.json$"
+    },
+    "receiptSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
     "generatedAt": {
       "type": "string",
       "format": "date-time"
     },
     "imageCount": {
-      "description": "imageCount covers the 11-image release contract (8 resident services + 3 jobs)",
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 11
+      "const": 11
     },
     "signedImageCount": {
-      "description": "signedImageCount covers the 11-image release contract (8 resident services + 3 jobs)",
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 11
+      "const": 11
     },
     "attestedImageCount": {
-      "description": "attestedImageCount covers the 11-image release contract (8 resident services + 3 jobs)",
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 11
+      "const": 11
+    },
+    "verifiedImageCount": {
+      "const": 11
     },
     "manifestSignatureVerified": {
       "const": true
+    },
+    "images": {
+      "type": "array",
+      "minItems": 11,
+      "maxItems": 11,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "image",
+          "digest",
+          "sbom",
+          "sbomSha256",
+          "attestedSbomCanonicalSha256"
+        ],
+        "properties": {
+          "image": {
+            "type": "string",
+            "pattern": "@sha256:[a-f0-9]{64}$"
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "sbom": {
+            "type": "string",
+            "pattern": "^sboms/[^/]+\\.spdx\\.json$"
+          },
+          "sbomSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "attestedSbomCanonicalSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "environment": {
+            "const": "release-ci"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "registry": {
+            "const": "docker.io"
+          },
+          "trustScope": {
+            "const": "release-policy"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "registry": {
+            "const": "local-tls"
+          },
+          "trustScope": {
+            "const": "local-key-and-ca"
+          }
+        }
+      }
+    }
+  ]
 }

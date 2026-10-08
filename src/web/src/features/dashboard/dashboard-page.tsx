@@ -33,15 +33,15 @@ export function DashboardPage() {
   const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0)
   const insights = useQuery({
     queryKey: ['dashboard-insights', startOfDay.toISOString()],
-    queryFn: () => apiRequest<{ rows?: AggregateRow[] }>('/insights/aggregates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: startOfDay.toISOString(), to: new Date().toISOString(), metrics: ['count', 'error_rate', 'cost_micros'], dimensions: ['day'], limit: 1, filters: {} }) }),
+    queryFn: () => apiRequest<{ rows?: AggregateRow[] }>('/insights/aggregates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: startOfDay.toISOString(), to: new Date().toISOString(), metrics: ['count', 'succeeded_count', 'failed_count', 'cost_micros'], dimensions: [], limit: 1, filters: {} }) }),
     retry: false, refetchInterval: 30_000,
   })
   const running = useQuery({ queryKey: ['dashboard-running'], queryFn: () => apiRequest<{ total?: number }>('/executions?statuses=running&limit=1'), retry: false, refetchInterval: 30_000 })
   const row = insights.data?.rows?.[0]?.metrics
   const executionsToday = row?.count ?? value0(summary.data?.executionsToday)
-  const failedToday = row && row.count ? Math.round(row.count * (row.error_rate ?? 0)) : value0(summary.data?.failedToday)
-  const succeededToday = row ? Math.max(0, executionsToday - failedToday) : value0(summary.data?.succeededToday)
-  const costMicrosToday = row?.cost_micros ?? value0(summary.data?.costMicrosToday)
+  const failedToday = row ? row.failedCount ?? 0 : value0(summary.data?.failedToday)
+  const succeededToday = row ? row.succeededCount ?? 0 : value0(summary.data?.succeededToday)
+  const costMicrosToday = row?.costMicros ?? value0(summary.data?.costMicrosToday)
   const runningExecutions = running.data?.total ?? value0(summary.data?.runningExecutions)
   const value = summary.data
   const total = succeededToday + failedToday

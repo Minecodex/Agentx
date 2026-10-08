@@ -354,7 +354,7 @@ struct VaultReadResponse {
 
 #[derive(Deserialize)]
 struct VaultReadValue {
-    value: Value,
+    data: serde_json::Map<String, Value>,
 }
 
 async fn read_webhook_secret_fields(
@@ -366,7 +366,7 @@ async fn read_webhook_secret_fields(
         .get(format!(
             "{}/v1/{}/data/{}?version={}",
             state.vault_endpoint,
-            state.vault_mount.trim_matches('/'),
+            reference.mount.trim_matches('/'),
             reference.path,
             reference.version
         ))
@@ -385,7 +385,17 @@ async fn read_webhook_secret_fields(
         ));
     }
     let response: VaultReadResponse = response.json().await.map_err(ApiError::internal)?;
-    Ok(response.data.value.as_object().cloned())
+    let payload = response
+        .data
+        .data
+        .get(&reference.key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            ApiError::unavailable("VAULT_UNAVAILABLE", "Webhook Secret could not be read")
+        })?;
+    Ok(Some(
+        serde_json::from_str(payload).map_err(ApiError::internal)?,
+    ))
 }
 
 pub(super) async fn list_webhook_provider_templates(

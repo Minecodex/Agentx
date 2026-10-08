@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
-type Secret = BTreeMap<String, String>;
+pub(crate) type Secret = BTreeMap<String, String>;
 
 fn password() -> String {
     rand::thread_rng()
@@ -65,7 +65,7 @@ async fn get_secret(namespace: &str, name: &str) -> Result<Option<Secret>> {
     Ok(Some(output))
 }
 
-async fn apply_secret(namespace: &str, name: &str, data: &Secret) -> Result<()> {
+pub(crate) async fn apply_secret(namespace: &str, name: &str, data: &Secret) -> Result<()> {
     let payload = json!({
         "apiVersion": "v1", "kind": "Secret",
         "metadata": {"name": name, "namespace": namespace, "labels": {"app.kubernetes.io/managed-by": "agentxctl"}},
@@ -90,7 +90,10 @@ pub async fn ensure_local_secrets(config: &DeploymentConfig, targets: &[&str]) -
     let selected: BTreeSet<_> = targets.iter().copied().collect();
     let canonical_name = config.string("/global/secrets/dependencies").unwrap();
     let dependencies = config.namespace("dependencies");
-    if let Some(existing) = get_secret(dependencies, canonical_name).await? {
+    if let Some(mut existing) = get_secret(dependencies, canonical_name).await? {
+        if crate::local_tls::ensure_material(config, &mut existing)? {
+            apply_secret(dependencies, canonical_name, &existing).await?;
+        }
         return publish_mirrors(config, &existing, &selected).await;
     }
     if !selected.contains("dependencies") {
@@ -252,6 +255,7 @@ pub async fn ensure_local_secrets(config: &DeploymentConfig, targets: &[&str]) -
     ] {
         canonical.insert(key.into(), value);
     }
+    crate::local_tls::ensure_material(config, &mut canonical)?;
     apply_secret(dependencies, canonical_name, &canonical).await?;
     publish_mirrors(config, &canonical, &selected).await
 }
@@ -442,6 +446,7 @@ async fn publish_mirrors(
         )
         .await?;
     }
+    crate::local_tls::publish(config, canonical, targets).await?;
     Ok(())
 }
 

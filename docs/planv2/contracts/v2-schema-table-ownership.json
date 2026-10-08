@@ -562,5 +562,17 @@
     "cross_plane_contract": "retrieval test history receipts",
     "retention_and_delete_rule": "retained for the latest 100 tests per resource",
     "owning_task": "plan7 P7-E"
+  },
+  {
+    "table": "execution_model_deltas",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-worker durable model delta sink",
+    "allowed_readers": [
+      "runtime-gateway scoped execution query API",
+      "workflow-runtime retention sweeper"
+    ],
+    "cross_plane_contract": "Execution model-deltas API, independent cursor and QueryScopeTicketV1",
+    "retention_and_delete_rule": "deleted with the owning workflow execution by Runtime retention; no ClickHouse or Trace projection",
+    "owning_task": "plan7 P7-B"
   }
 ]

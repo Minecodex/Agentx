@@ -89,7 +89,12 @@ def attack_app(installed_agentx: dict[str, str], service_urls: dict[str, str]) -
             time.sleep(2)
         else:
             raise AssertionError("attack app mapping did not publish")
-    return {"token": token, "applicationId": application_id, "channel": channel, "slug": f"attack-{installed_agentx['run_id']}"}
+    return {
+        "token": token,
+        "applicationId": application_id,
+        "channel": channel,
+        "slug": f"attack-{installed_agentx['run_id']}",
+    }
 
 
 def test_foreign_resource_ids_are_not_enumerable(service_urls: dict[str, str], attack_app: dict[str, Any]) -> None:

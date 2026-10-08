@@ -11,6 +11,7 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    agentx_service_kit::install_tls_provider();
     let mut arguments = std::env::args().skip(1);
     if arguments.next().as_deref() == Some("openapi") {
         let path = arguments
@@ -34,6 +35,7 @@ async fn main() -> Result<()> {
     let probe_state = state.clone();
     let probe_health = health.clone();
     let probe_lifecycle = lifecycle.clone();
+    let probe_metrics = metrics.clone();
     let probe_progress = agentx_service_kit::RoleProgressWatchdog::start(
         "dependency-probe",
         Duration::from_secs(agentx_service_kit::ROLE_WATCHDOG_TIMEOUT_SECONDS),
@@ -45,7 +47,16 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         while !probe_lifecycle.is_draining() {
             let started = std::time::Instant::now();
-            match sqlx::query("SELECT 1").execute(&probe_state.pool).await {
+            let probe = async {
+                let acquire_started = std::time::Instant::now();
+                let mut connection = probe_state.pool.acquire().await?;
+                probe_metrics
+                    .observe_mysql_pool_wait(acquire_started.elapsed())
+                    .await;
+                sqlx::query("SELECT 1").execute(&mut *connection).await
+            }
+            .await;
+            match probe {
                 Ok(_) => probe_health.set_status("runtime_mysql", "ready").await,
                 Err(error) => {
                     probe_health
@@ -151,6 +162,10 @@ async fn main() -> Result<()> {
         .route(
             "/internal/runtime/v1/query/executions/{id}/nodes/{node_execution_id}",
             get(agentx_v2_runtime::query::get_execution_node),
+        )
+        .route(
+            "/internal/runtime/v1/query/executions/{id}/model-deltas",
+            get(agentx_v2_runtime::query::get_execution_model_deltas),
         )
         .route(
             "/internal/runtime/v1/query/executions/{id}/events",

@@ -494,10 +494,12 @@ CREATE TABLE checkpoints (
     state_hash VARCHAR(96) NOT NULL,
     payload_json JSON NULL,
     payload_artifact_id BINARY(16) NULL,
+    payload_size_bytes BIGINT UNSIGNED GENERATED ALWAYS AS (JSON_STORAGE_SIZE(payload_json)) STORED,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
     UNIQUE KEY uq_checkpoint_sequence (execution_id, sequence_number),
-    KEY idx_checkpoint_timeline (tenant_id, execution_id, created_at)
+    KEY idx_checkpoint_timeline (tenant_id, execution_id, created_at),
+    KEY idx_checkpoint_externalize (payload_artifact_id, payload_size_bytes, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE credential_secret_versions (
@@ -599,7 +601,8 @@ CREATE TABLE evaluation_rule_results (
     completed_at TIMESTAMP(6) NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uq_evaluation_case_rule (tenant_id, evaluation_run_case_id, profile_rule_id),
-    KEY idx_evaluation_rule_status (tenant_id, status, created_at)
+    KEY idx_evaluation_rule_status (tenant_id, status, created_at),
+    KEY idx_evaluation_rule_evaluator (tenant_id, evaluator_execution_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE evaluation_run_cases (
@@ -620,7 +623,8 @@ CREATE TABLE evaluation_run_cases (
     PRIMARY KEY (id),
     UNIQUE KEY uq_evaluation_run_case (tenant_id, evaluation_run_id, source_case_id),
     UNIQUE KEY uq_evaluation_case_command (target_command_id),
-    KEY idx_evaluation_case_status (tenant_id, evaluation_run_id, status)
+    KEY idx_evaluation_case_status (tenant_id, evaluation_run_id, status),
+    KEY idx_evaluation_case_target (tenant_id, target_execution_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE evaluation_runs (
@@ -681,12 +685,13 @@ CREATE TABLE execution_end_deliveries (
 CREATE TABLE execution_events (
     tenant_id BINARY(16) NOT NULL,
     execution_id BINARY(16) NOT NULL,
-    sequence_number BIGINT UNSIGNED NOT NULL,
+    sequence_number BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     event_type VARCHAR(64) NOT NULL,
     status VARCHAR(32) NOT NULL,
     summary_json JSON NOT NULL,
     occurred_at TIMESTAMP(6) NOT NULL,
-    PRIMARY KEY (tenant_id, execution_id, sequence_number)
+    PRIMARY KEY (tenant_id, execution_id, sequence_number),
+    UNIQUE KEY uq_execution_event_cursor (sequence_number)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE execution_outbox (
@@ -707,7 +712,8 @@ CREATE TABLE execution_outbox (
     last_error VARCHAR(1000) NULL,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
-    KEY idx_execution_outbox_pending (status, available_at, locked_until, created_at)
+    KEY idx_execution_outbox_pending (status, available_at, locked_until, created_at),
+    KEY idx_execution_outbox_recovery (message_type, status, published_at, id, attempt_id, tenant_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE execution_snapshots (
@@ -763,6 +769,7 @@ CREATE TABLE node_attempts (
     locked_until TIMESTAMP(6) NULL,
     deadline_at TIMESTAMP(6) NULL,
     input_json JSON NULL,
+    input_size_bytes BIGINT UNSIGNED GENERATED ALWAYS AS (JSON_STORAGE_SIZE(input_json)) STORED,
     output_json JSON NULL,
     log_artifact_id BINARY(16) NULL,
     error_code VARCHAR(128) NULL,
@@ -774,7 +781,8 @@ CREATE TABLE node_attempts (
     UNIQUE KEY uq_node_attempt_number (node_execution_id, attempt_number),
     UNIQUE KEY uq_node_attempt_idempotency (tenant_id, idempotency_key),
     KEY idx_node_attempt_execution (tenant_id, execution_id, created_at),
-    KEY idx_node_attempt_lease (status, locked_until, created_at)
+    KEY idx_node_attempt_lease (status, locked_until, created_at),
+    KEY idx_node_attempt_input_size (input_size_bytes, tenant_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE node_executions (
@@ -906,6 +914,7 @@ CREATE TABLE quota_reservations (
     settled_at TIMESTAMP(6) NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uq_quota_reservation_scope (tenant_id, dimension_key, scope_type, scope_id),
+    KEY idx_quota_reservation_owner (tenant_id, scope_type, scope_id, status),
     KEY idx_quota_reservation_reaper (status, expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -1032,6 +1041,7 @@ CREATE TABLE runtime_calls (
     PRIMARY KEY (id),
     UNIQUE KEY uq_runtime_call_idempotency (tenant_id, idempotency_key),
     KEY idx_runtime_call_node (tenant_id, node_execution_id, iteration_index, call_index),
+    KEY idx_runtime_call_execution (tenant_id, execution_id),
     KEY idx_runtime_call_resource (tenant_id, resource_type, resource_id, started_at),
     KEY idx_runtime_call_tool_execution (tenant_id, call_kind, resource_id, execution_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -1279,7 +1289,6 @@ CREATE TABLE worker_leases (
     expires_at TIMESTAMP(6) NOT NULL,
     released_at TIMESTAMP(6) NULL,
     PRIMARY KEY (node_attempt_id),
-    UNIQUE KEY uq_worker_lease_token (lease_token),
     KEY idx_worker_lease_reaper (expires_at, released_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 

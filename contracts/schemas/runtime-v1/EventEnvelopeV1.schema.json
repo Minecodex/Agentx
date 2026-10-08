@@ -197,6 +197,13 @@
             "null"
           ]
         },
+        "evaluatorExecutionId": {
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "id": {
           "format": "uuid",
           "type": "string"

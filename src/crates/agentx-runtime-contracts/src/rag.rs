@@ -8,6 +8,21 @@ use serde_json::{Value, json};
 pub const RAG_PROVIDER_LIGHT_RAG: &str = "lightrag";
 pub const RAG_PROVIDER_RAGFLOW: &str = "ragflow";
 
+pub fn validate_lightrag_workspace(namespace: &str) -> Result<(), RagProtocolError> {
+    if namespace.is_empty()
+        || namespace.len() > 128
+        || !namespace
+            .bytes()
+            .all(|value| value.is_ascii_alphanumeric() || value == b'_')
+    {
+        return Err(RagProtocolError::new(
+            "RAG_WORKSPACE_INVALID",
+            "LightRAG workspaces must contain 1 to 128 ASCII letters, digits or underscores",
+        ));
+    }
+    Ok(())
+}
+
 /// Pure protocol failure; surfaces carry it in their own error shapes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RagProtocolError {
@@ -60,7 +75,7 @@ pub fn rag_query_request(
     input: &Value,
 ) -> Result<(String, Value, &'static str), RagProtocolError> {
     if provider == RAG_PROVIDER_RAGFLOW {
-        if operation != "query" {
+        if !matches!(operation, "query" | "retrieve") {
             return Err(RagProtocolError::new(
                 "RAG_OPERATION_UNSUPPORTED",
                 "RAGFlow knowledge connections support query only",
@@ -88,7 +103,14 @@ pub fn rag_query_request(
             "authorization",
         ));
     }
-    if !matches!(operation, "query" | "insert") {
+    if provider != RAG_PROVIDER_LIGHT_RAG {
+        return Err(RagProtocolError::new(
+            "RAG_PROVIDER_UNSUPPORTED",
+            "Unknown RAG provider",
+        ));
+    }
+    validate_lightrag_workspace(namespace)?;
+    if !matches!(operation, "query" | "insert" | "retrieve") {
         return Err(RagProtocolError::new(
             "RAG_OPERATION_UNSUPPORTED",
             format!("LightRAG protocol does not support the {operation} operation here"),
@@ -103,19 +125,46 @@ pub fn rag_query_request(
         if let Some(top_k) = object.remove("topK") {
             object.insert("top_k".into(), top_k);
         }
-        object
-            .entry("workspace".to_owned())
-            .or_insert_with(|| json!(namespace));
-        object
-            .entry("indexVersion".to_owned())
-            .or_insert_with(|| json!(index_version));
+        // The resource binding owns isolation; caller input cannot select a
+        // different provider workspace or a different frozen index version.
+        object.insert("workspace".into(), json!(namespace));
+        object.insert("indexVersion".into(), json!(index_version));
+    }
+    if operation == "retrieve" {
+        body["mode"] = json!("naive");
+        body["chunk_top_k"] = json!(rag_top_k(input));
     }
     let path = if operation == "insert" {
         "documents/text"
+    } else if operation == "retrieve" {
+        "query/data"
     } else {
         "query"
     };
     Ok((path.into(), body, "x-api-key"))
+}
+
+/// Structured retrieval does not generate an answer or invent hit scores.
+pub fn finalize_retrieval_value(provider: &str, value: Value) -> Result<Value, RagProtocolError> {
+    if provider == RAG_PROVIDER_RAGFLOW {
+        return finalize_rag_value(provider, value);
+    }
+    if value["status"] != "success" {
+        return Err(RagProtocolError::new(
+            "PROVIDER_REJECTED",
+            "LightRAG retrieval failed",
+        ));
+    }
+    let chunks = value
+        .pointer("/data/chunks")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            RagProtocolError::new("PROVIDER_REJECTED", "LightRAG retrieval omitted chunks")
+        })?;
+    let documents = chunks.iter().map(|chunk| json!({"documentId":chunk.get("doc_id").or_else(||chunk.get("file_path")),"chunkId":chunk.get("chunk_id"),"content":chunk.get("content"),"score":chunk.get("score")})).collect::<Vec<_>>();
+    Ok(
+        json!({"text":"","documents":documents,"citations":value.pointer("/data/references"),"recordIds":chunks.iter().filter_map(|chunk|chunk["chunk_id"].as_str()).collect::<Vec<_>>() }),
+    )
 }
 
 /// Normalizes a successful provider response value into the canonical rag
@@ -172,14 +221,14 @@ mod tests {
         let (path, body, header) = rag_query_request(
             RAG_PROVIDER_LIGHT_RAG,
             "query",
-            "ns-1",
+            "ns_1",
             "v3",
-            &json!({"query": "hello"}),
+            &json!({"query": "hello", "workspace": "other_department", "indexVersion": "latest"}),
         )
         .unwrap();
         assert_eq!(path, "query");
         assert_eq!(header, "x-api-key");
-        assert_eq!(body["workspace"], json!("ns-1"));
+        assert_eq!(body["workspace"], json!("ns_1"));
         assert_eq!(body["indexVersion"], json!("v3"));
     }
 

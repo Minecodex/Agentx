@@ -118,27 +118,27 @@ send_message（L3）
 
 ### 3.6 渠道配置扩展（L1）
 
-`application_webhooks.channel_config_json` 增加：
+创建/编辑渠道 API 使用独立的 `reply` 字段，Control 存入 `application_webhooks.reply_config_json`：
 
 ```json
-{ "mode": "...", "fields": { ... },
-  "reply": { "enabled": true, "outputField": "answer", "template": "{{output.answer}}" } }
+{ "reply": { "enabled": true, "outputField": "answer", "template": "{{output.answer}}" } }
 ```
 
-- Control 校验 `outputField` 必须存在于当前 Workflow Start/输出 Schema 映射；`template` 只允许引用输出字段的变量模板；
+- Control 校验 `outputField` 必须存在于应用活跃 Deployment 的输出 Schema；首次应用部署前使用绑定工作流最新不可变 Workflow Version 的输入/输出 Schema。没有已发布版本时拒绝保存渠道。模板变量采用 `{{output.字段名}}`；模板留空时直接回复所选输出字段；
 - 发布 Deployment 时随 trigger 清单一起冻结（复用 plan4 §15.1 的 revision 机制），Runtime 用冻结快照投递。注意（勘察新增）：`RuntimeTriggerConfigurationV1` 是 `deny_unknown_fields`（contracts gateway.rs:121-141），`reply` 段落需要**三处联动**——契约 Webhook 变体加 `#[serde(default)] reply: Option<WebhookReplyConfigV1>`、`webhook_bindings` 迁移加 `reply_config_json` 列、`publish.rs apply_trigger_bindings`（:1076-1082 的快照列 upsert）写入该列；configuration_hash 自动覆盖新字段，revision 机制无需改。
 
 ### 3.7 API 与前端
 
 ```text
-GET  /api/v1/applications/{id}/deliveries            -- 投递记录列表（经 BFF 查 Runtime query API）
+GET  /api/v1/deliveries?applicationId={id}           -- 投递记录列表（经 BFF 查 Runtime query API）
 GET  /api/v1/deliveries/{deliveryId}                 -- 详情（含 attempts、provider_message_id）
-POST /api/v1/deliveries/{deliveryId}:retry           -- 死信重放（权限 application:manage）
+POST /api/v1/deliveries/{deliveryId}/retry           -- 死信重放（权限 application:manage）
 ```
 
 前端：
 
-- Application 详情页"渠道对接"Tab 增加"回复设置"区（L1 开关、输出字段选择、模板编辑）；
+- Application 详情页"渠道对接"Tab 的表单使用“开启回复”开关；开启后才展示必填的输出字段下拉框与可选的多行回复模板文本框。输出字段与输入映射均来自同一工作流版本，切换开关时保留尚未保存的字段内容；
+- 输入映射下拉框包含全部工作流输入；新建时仅创建必填输入行，来源留空，用户必须明确填写映射或改用固定输入。可选输入按需添加，已占用的目标不可重复选择；
 - 新增"投递记录"入口（或并入"会话"Tab）：状态筛选、失败原因、重试按钮；
 - 节点面板 integrate 分组加入 `reply_message`/`send_message`，参数表单走 Manifest 动态渲染。
 
@@ -219,3 +219,9 @@ POST /api/v1/deliveries/{deliveryId}:retry           -- 死信重放（权限 ap
 - 把 sessionWebhook 或平台凭证变成 Workflow 输入或映射来源；
 - 引入社区 IM SDK；
 - Dify/n8n 出站节点兼容。
+
+## 2026-10-07 审查修订
+
+- 钉钉官方 API 使用 x-acs-dingtalk-access-token，msgParam 为 JSON 字符串；飞书使用 bearer tenant_access_token，content 为 JSON 字符串；企业微信以 GET 获取 token、URL 编码凭证与 token、agentid 为正整数。成功判定同时验证 HTTP 和平台业务码，DingTalk 的 processQueryKey 成功响应无需伪造 code=0。
+- send_message/reply_message 的幂等 origin 绑定实际 node_execution_id 和该激活内的消息序号；循环的不同激活产生独立 outbox 行，同一激活重试复用同一 ID。lease/fencing 结算使用静态 SQL。
+- 严格 IM mock 拒绝错误请求格式；真实集群测试覆盖三平台与重复循环激活，既有 L1/L2/L3、退避、死信重放和进程强杀场景继续运行。

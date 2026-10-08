@@ -46,6 +46,8 @@ pub(crate) mod output;
 pub(crate) mod plugin;
 #[path = "worker_runtime_provider.rs"]
 mod provider;
+#[path = "worker_runtime_stream.rs"]
+mod stream;
 
 #[cfg(test)]
 use output::system_prompt;
@@ -259,7 +261,10 @@ impl RuntimeWorker {
             .clamp(1, 64);
         let plugin_artifacts = Arc::new(plugin::PluginArtifactCache::from_env());
         let plugin_trace = plugin::PluginTraceSink::new(pool.clone(), objects.clone());
-        let deltas = crate::worker_runtime_delta::ModelDeltaSink::start(pool.clone(), None);
+        let deltas = crate::worker_runtime_delta::ModelDeltaSink::start(
+            pool.clone(),
+            crate::sse_wakeup::SseWakeup::disabled(),
+        );
         Ok(Self {
             provider_breaker: crate::provider_breaker::ProviderBreaker::shared(),
             provider_limiter: crate::provider_breaker::FairnessLimiter::shared(),
@@ -304,9 +309,21 @@ impl RuntimeWorker {
     /// Attaches a live delta sink plus the redis client used for SSE wakeup
     /// publication (plan7 P7-B); production workers call this after
     /// construction.
-    pub fn with_delta_sink(mut self, pool: MySqlPool, redis: Option<redis::Client>) -> Self {
-        self.deltas = crate::worker_runtime_delta::ModelDeltaSink::start(pool, redis);
+    pub fn with_delta_sink(
+        mut self,
+        pool: MySqlPool,
+        wakeup: crate::sse_wakeup::SseWakeup,
+    ) -> Self {
+        self.deltas = crate::worker_runtime_delta::ModelDeltaSink::start(pool, wakeup);
         self
+    }
+
+    pub fn provider_open_circuits(&self) -> usize {
+        self.provider_breaker.open_count()
+    }
+
+    pub fn provider_pool_utilization(&self) -> f64 {
+        self.provider_limiter.peak_utilization()
     }
 
     pub fn plugin_parallelism(&self) -> usize {
@@ -326,7 +343,9 @@ impl RuntimeWorker {
         let execution = self.execute_claim(claim).await;
         // Deltas must land before the attempt settles; the terminal event
         // would otherwise cut the SSE stream ahead of pending frames.
-        self.deltas.flush().await;
+        if let Err(message) = self.deltas.flush(claim.task.attempt_id).await {
+            return WorkerExecution::failed("MODEL_DELTA_PERSISTENCE_FAILED", message, true);
+        }
         execution
     }
 
@@ -507,7 +526,7 @@ impl RuntimeWorker {
                 false,
             );
         };
-        let input = if expected_kind == RuntimeResourceKindV1::Model {
+        let (input, prompt) = if expected_kind == RuntimeResourceKindV1::Model {
             match self.model_input(claim).await {
                 Ok(input) => input,
                 Err(error) => {
@@ -519,12 +538,21 @@ impl RuntimeWorker {
                 }
             }
         } else {
-            first_input(claim).unwrap_or(Value::Null)
+            (first_input(claim).unwrap_or(Value::Null), None)
         };
-        self.execute_provider_call(claim, binding, input, 0).await
+        let resolved_claim = prompt.map(|prompt| {
+            let mut resolved = claim.clone();
+            resolved.node_parameters["prompt"] = Value::String(prompt);
+            resolved
+        });
+        self.execute_provider_call(resolved_claim.as_ref().unwrap_or(claim), binding, input, 0)
+            .await
     }
 
-    async fn model_input(&self, claim: &ClaimedWorkerAttempt) -> anyhow::Result<Value> {
+    async fn model_input(
+        &self,
+        claim: &ClaimedWorkerAttempt,
+    ) -> anyhow::Result<(Value, Option<String>)> {
         let target = first_input(claim).unwrap_or(Value::Null);
         let Some(prompt_object_id) = claim
             .node_parameters
@@ -533,18 +561,14 @@ impl RuntimeWorker {
             .and_then(Value::as_str)
             .and_then(|value| Uuid::parse_str(value).ok())
         else {
-            return Ok(target);
+            return Ok((target, None));
         };
         let bytes = self
             .load_runtime_object(claim.task.tenant_id, prompt_object_id)
             .await?;
-        let prompt = serde_json::from_slice::<Value>(&bytes)
-            .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned()));
-        Ok(json!({
-            "prompt": prompt,
-            "target": target,
-            "promptObjectId": prompt_object_id,
-        }))
+        let prompt = serde_json::from_slice::<Value>(&bytes)?;
+        let (input, prompt) = output::evaluator_model_input(&prompt, &target)?;
+        Ok((input, Some(prompt)))
     }
 
     async fn load_runtime_object(
@@ -1043,14 +1067,24 @@ impl RuntimeWorker {
                         .and_then(Value::as_str)
                     && !text.is_empty()
                 {
-                    delta_sink.emit(
-                        claim.task.tenant_id,
-                        claim.invocation_id,
-                        claim.task.attempt_id,
-                        "",
-                        text,
-                        None,
-                    );
+                    if let Err(message) = delta_sink
+                        .emit(
+                            claim.task.tenant_id,
+                            claim.task.execution_id,
+                            claim.invocation_id,
+                            claim.task.attempt_id,
+                            &claim.node_key,
+                            text,
+                            None,
+                        )
+                        .await
+                    {
+                        return WorkerExecution::failed(
+                            "MODEL_DELTA_PERSISTENCE_FAILED",
+                            message,
+                            true,
+                        );
+                    }
                 }
                 return WorkerExecution::succeeded(value);
             }
@@ -1091,6 +1125,11 @@ impl RuntimeWorker {
         };
         let mut endpoint = endpoint.to_owned();
         let mut headers = HeaderMap::new();
+        if kind == "rag" && binding.is_some_and(|binding| matches!(&binding.configuration, RuntimeResourceConfigurationV1::Rag { provider, .. } if provider == "lightrag")) {
+            if let Some(workspace) = request.get("workspace").and_then(Value::as_str) {
+                headers.insert("LIGHTRAG-WORKSPACE", reqwest::header::HeaderValue::from_str(workspace).expect("validated LightRAG workspace"));
+            }
+        }
         let mut secret_redactions = Vec::new();
         headers.insert(
             "Idempotency-Key",
@@ -1252,8 +1291,10 @@ impl RuntimeWorker {
                 let request = request.clone();
                 let timeout_ms = claim.timeout_ms;
                 let claim_tenant = claim.task.tenant_id;
+                let execution_id = claim.task.execution_id;
                 let invocation_id = claim.invocation_id;
                 let attempt_id = claim.task.attempt_id;
+                let node_key = claim.node_key.clone();
                 let first_token = std::sync::Arc::clone(&first_token_ms);
                 Box::pin(async move {
                     let requested_at = std::time::Instant::now();
@@ -1281,11 +1322,12 @@ impl RuntimeWorker {
                             "model stream endpoint returned HTTP {status}: {body}"
                         )));
                     }
-                    let mut sink = delta_sink.clone();
+                    let sink = delta_sink.clone();
                     let mut first_token_seen = false;
-                    let aggregated = output::aggregate_openai_sse_stream(
+                    let aggregated = stream::aggregate_openai_sse_stream(
                         stream.response,
-                        &mut move |text: &str, reasoning: Option<&str>| {
+                        &request,
+                        &mut move |text: String, reasoning: Option<String>| {
                             if !first_token_seen {
                                 first_token_seen = true;
                                 first_token.store(
@@ -1293,7 +1335,20 @@ impl RuntimeWorker {
                                     std::sync::atomic::Ordering::Relaxed,
                                 );
                             }
-                            sink.emit(claim_tenant, invocation_id, attempt_id, "", text, reasoning);
+                            let sink = sink.clone();
+                            let node_key = node_key.clone();
+                            async move {
+                                sink.emit(
+                                    claim_tenant,
+                                    execution_id,
+                                    invocation_id,
+                                    attempt_id,
+                                    &node_key,
+                                    &text,
+                                    reasoning.as_deref(),
+                                )
+                                .await
+                            }
                         },
                     )
                     .await;

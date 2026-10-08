@@ -30,6 +30,7 @@ export function EvaluationsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const { showToast } = useToast()
+  const [selectedRuns, setSelectedRuns] = useState<string[]>([])
   const [runOpen, setRunOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const activeTab = searchParams.get('tab') === 'profiles' ? 'profiles' : 'runs'
@@ -46,13 +47,14 @@ export function EvaluationsPage() {
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['evaluation-profiles'] }); showToast(t('evaluations.created')) },
   })
   const runColumns = useMemo<Array<ColumnDef<EvaluationRun>>>(() => [
+    { id: 'compare', header: t('evaluations.compare'), cell: ({ row }) => <input aria-label={t('evaluations.compareRun', { name: row.original.name })} checked={selectedRuns.includes(row.original.id)} disabled={!selectedRuns.includes(row.original.id) && selectedRuns.length >= 5} onChange={(event) => setSelectedRuns((current) => event.target.checked ? [...current, row.original.id] : current.filter((id) => id !== row.original.id))} type="checkbox" /> },
     { accessorKey: 'name', header: t('evaluations.report'), cell: ({ row }) => <EntityCell detail={row.original.workflowName} icon={FlaskConical} name={row.original.name} /> },
     { accessorKey: 'workflowName', header: t('evaluations.workflowVersion') },
     { accessorKey: 'datasetName', header: t('evaluations.dataset') },
     { accessorKey: 'resultCount', header: t('evaluations.results') },
     { accessorKey: 'status', header: t('common.status'), cell: ({ row }) => <StatusBadge label={localizedValue(t, 'common', row.original.status)} status={row.original.status === 'completed' ? 'completed' : row.original.status === 'created' ? 'draft' : row.original.status === 'cancelled' ? 'inactive' : row.original.status as 'running' | 'failed'} /> },
     { id: 'actions', header: '', cell: ({ row }) => <Button asChild size="sm" variant="ghost"><Link to={`/evaluations/${row.original.id}`}>{t('evaluations.report')}</Link></Button> },
-  ], [t])
+  ], [selectedRuns, t])
   const runFields: EntityFormField[] = [
     { name: 'name', label: t('common.name'), required: true },
     { name: 'workflowVersionId', label: t('evaluations.workflowVersion'), type: 'select', required: true, options: options(workflowVersions.data) },
@@ -68,7 +70,7 @@ export function EvaluationsPage() {
   return <>
     <Tabs onValueChange={(value) => setSearchParams(value === 'profiles' ? { tab: 'profiles' } : {})} value={activeTab}>
       <div className="px-8 pt-7"><TabsList className="border-b border-border"><TabsTrigger value="runs">{t('evaluations.title')}</TabsTrigger><TabsTrigger value="profiles">{t('evaluations.profiles')}</TabsTrigger></TabsList></div>
-      <TabsContent value="runs"><ListPage action={auth.hasPermission('evaluation:manage') ? <PrerequisiteAction description={t('evaluations.prerequisites.runDescription')} loading={workflowVersions.isLoading || datasetVersions.isLoading || profiles.isLoading} onReady={() => setRunOpen(true)} requirements={prerequisites}><Plus className="size-4" />{t('evaluations.create')}</PrerequisiteAction> : undefined} columns={runColumns} data={runs.data ?? []} description={t('evaluations.description')} getSearchText={(row) => `${row.name} ${row.workflowName} ${row.datasetName}`} getStatus={(row) => row.status === 'created' ? 'draft' : row.status === 'cancelled' ? 'inactive' : row.status as 'completed' | 'running' | 'failed'} searchPlaceholder={t('evaluations.search')} statusOptions={[{ value: 'draft', label: t('common.draft') }, { value: 'completed', label: t('common.completed') }, { value: 'inactive', label: t('common.inactive') }]} title={t('evaluations.title')} /></TabsContent>
+      <TabsContent value="runs"><ListPage action={<div className="flex items-center gap-2"><Button disabled={selectedRuns.length < 2} onClick={() => navigate(`/evaluations/${selectedRuns[0]}?${new URLSearchParams({ tab: 'compare', runIds: selectedRuns.join(',') })}`)} variant="secondary">{t('evaluations.compare')} ({selectedRuns.length}/5)</Button>{auth.hasPermission('evaluation:manage') ? <PrerequisiteAction description={t('evaluations.prerequisites.runDescription')} loading={workflowVersions.isLoading || datasetVersions.isLoading || profiles.isLoading} onReady={() => setRunOpen(true)} requirements={prerequisites}><Plus className="size-4" />{t('evaluations.create')}</PrerequisiteAction> : undefined}</div>} columns={runColumns} data={runs.data ?? []} description={t('evaluations.description')} getSearchText={(row) => `${row.name} ${row.workflowName} ${row.datasetName}`} getStatus={(row) => row.status === 'created' ? 'draft' : row.status === 'cancelled' ? 'inactive' : row.status as 'completed' | 'running' | 'failed'} searchPlaceholder={t('evaluations.search')} statusOptions={[{ value: 'draft', label: t('common.draft') }, { value: 'completed', label: t('common.completed') }, { value: 'inactive', label: t('common.inactive') }]} title={t('evaluations.title')} /></TabsContent>
       <TabsContent className="px-8 py-6" value="profiles"><ProfileSection action={auth.hasPermission('evaluation_profile:manage') && <Button onClick={() => setProfileOpen(true)} size="sm"><Plus className="size-4" />{t('evaluations.newProfile')}</Button>} canDelete={auth.hasPermission('evaluation_profile:delete')} onDeleted={async () => { await queryClient.invalidateQueries({ queryKey: ['evaluation-profiles'] }); showToast(t('evaluations.deleted')) }} profiles={profiles.data ?? []} /></TabsContent>
     </Tabs>
     {runOpen && <EntityFormDialog cancelLabel={t('common.cancel')} fields={runFields} onClose={() => setRunOpen(false)} onSubmit={(values) => createRun.mutateAsync(values).then(() => undefined)} open submitLabel={t('common.save')} title={t('evaluations.run')} />}

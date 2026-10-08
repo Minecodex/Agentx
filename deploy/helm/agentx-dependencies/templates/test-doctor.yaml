@@ -16,20 +16,51 @@ spec:
       containers:
         - name: health
           image: curlimages/curl:8.12.1
-          args: ["--fail", "--silent", "http://agentx-egress-gateway:8080/health/ready"]
+          args: ["--fail", "--silent", "--show-error", "http://agentx-egress-gateway:8080/health/ready"]
           resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { cpu: 100m, memory: 64Mi } }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, runAsNonRoot: true, runAsUser: 101, runAsGroup: 102, capabilities: { drop: [ALL] } }
 {{- if ne .Values.global.environment "production" }}
         - name: vault-health
           image: curlimages/curl:8.12.1
-          args: ["--fail", "--silent", "http://vault:8200/v1/sys/health"]
+          args: ["--fail", "--silent", "--show-error", {{ printf "%s/v1/sys/health" .Values.global.components.secretProvider.endpoint | quote }}{{ if .Values.global.components.secretProvider.caSecretName }}, "--cacert", "/tls/vault.pem"{{ end }}]
+{{- if .Values.global.components.secretProvider.caSecretName }}
+          volumeMounts: [{ name: tls, mountPath: /tls, readOnly: true }]
+{{- end }}
+          resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { cpu: 100m, memory: 64Mi } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, runAsNonRoot: true, runAsUser: 101, runAsGroup: 102, capabilities: { drop: [ALL] } }
+{{- end }}
+{{- range $role := list "control" "runtime" }}
+        - name: vault-{{ $role }}-auth
+          image: curlimages/curl:8.12.1
+          env:
+            - name: VAULT_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ $.Values.global.secrets.dependencies }}, key: {{ upper $role }}_VAULT_TOKEN } }
+          args: ["--fail", "--silent", "--show-error", "--output", "/dev/null", "--header", "X-Vault-Token:$(VAULT_TOKEN)", {{ printf "%s/v1/auth/token/lookup-self" $.Values.global.components.secretProvider.endpoint | quote }}{{ if $.Values.global.components.secretProvider.caSecretName }}, "--cacert", "/tls/vault.pem"{{ end }}]
+{{- if $.Values.global.components.secretProvider.caSecretName }}
+          volumeMounts: [{ name: tls, mountPath: /tls, readOnly: true }]
+{{- end }}
           resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { cpu: 100m, memory: 64Mi } }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, runAsNonRoot: true, runAsUser: 101, runAsGroup: 102, capabilities: { drop: [ALL] } }
 {{- end }}
 {{- if eq .Values.global.components.objectStorage.mode "bundled-minio" }}
         - name: object-storage-health
           image: curlimages/curl:8.12.1
-          args: ["--fail", "--silent", "http://object-storage:9000/minio/health/ready"]
+          args: ["--fail", "--silent", "--show-error", {{ printf "%s/minio/health/ready" .Values.global.components.objectStorage.endpoint | quote }}{{ if .Values.global.components.objectStorage.caSecretName }}, "--cacert", "/tls/s3.pem"{{ end }}]
+{{- if .Values.global.components.objectStorage.caSecretName }}
+          volumeMounts: [{ name: tls, mountPath: /tls, readOnly: true }]
+{{- end }}
           resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { cpu: 100m, memory: 64Mi } }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, runAsNonRoot: true, runAsUser: 101, runAsGroup: 102, capabilities: { drop: [ALL] } }
+{{- end }}
+{{- if or .Values.global.components.secretProvider.caSecretName .Values.global.components.objectStorage.caSecretName }}
+      volumes:
+        - name: tls
+          projected:
+            sources:
+{{- if .Values.global.components.secretProvider.caSecretName }}
+              - secret: { name: {{ .Values.global.components.secretProvider.caSecretName }}, items: [{ key: ca.crt, path: vault.pem }] }
+{{- end }}
+{{- if .Values.global.components.objectStorage.caSecretName }}
+              - secret: { name: {{ .Values.global.components.objectStorage.caSecretName }}, items: [{ key: ca.crt, path: s3.pem }] }
+{{- end }}
 {{- end }}

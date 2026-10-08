@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import os
+import re
 import socket
 import socketserver
 import threading
@@ -14,16 +15,56 @@ from pathlib import Path
 
 import httpx
 import pytest
+import yaml
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding as asymmetric_padding
 
-from tests.e2e.support import ManagedProcess, agentxctl, deployment_config, redact, run, start_process
+from tests.e2e.support import (
+    ManagedProcess,
+    RestartingPortForward,
+    agentxctl,
+    deployment_config,
+    redact,
+    run,
+    start_process,
+)
+from tools.scripts.release.evidence import write_identity
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--values", action="store", default=os.getenv("AGENTX_E2E_VALUES"))
     parser.addoption("--keep-on-failure", action="store_true", default=False)
     parser.addoption("--scale-down-development", action="store_true", default=False)
+    parser.addoption(
+        "--capacity-smoke", action="store_true", default=False, help="short capacity validation; never release evidence"
+    )
+    parser.addoption(
+        "--previous-worker-image", help="distinct compatible Worker image for the mixed-version capacity matrix"
+    )
+    parser.addoption("--evidence-run-id", help="candidate run ID from prepare_candidate")
+
+
+@pytest.hookimpl(wrapper=True, tryfirst=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
+    report = yield
+    report.sections = [(name, redact(content)) for name, content in report.sections]
+    if report.failed:
+        report.longrepr = redact(str(report.longrepr))
+        context = item.funcargs.get("installed_agentx")
+        if context:
+            directory = Path(context["artifact_dir"]) / "failures"
+            directory.mkdir(exist_ok=True)
+            filename = re.sub(r"[^a-zA-Z0-9_.-]", "_", item.nodeid)[:180]
+            (directory / f"{filename}-{report.when}.txt").write_text(report.longrepr, encoding="utf-8")
+    return report
+
+
+@pytest.fixture(scope="session", autouse=True)
+def release_evidence_properties(pytestconfig: pytest.Config, record_testsuite_property):
+    pytestconfig._agentx_evidence_properties = {}
+    yield
+    for key, value in pytestconfig._agentx_evidence_properties.items():
+        record_testsuite_property(f"agentx.{key}", value)
 
 
 @pytest.fixture(scope="session")
@@ -35,8 +76,8 @@ def deployment_values(pytestconfig: pytest.Config) -> Path:
 
 
 @pytest.fixture(scope="session")
-def run_id() -> str:
-    return uuid.uuid4().hex[:10]
+def run_id(pytestconfig: pytest.Config) -> str:
+    return pytestconfig.getoption("--evidence-run-id") or uuid.uuid4().hex[:10]
 
 
 def _timeline(timeline: list[str], message: str) -> None:
@@ -70,12 +111,26 @@ def _scale_development(values: Path, enabled: bool) -> dict[tuple[str, str], int
 
 
 def _restore_development(replicas: dict[tuple[str, str], int]) -> None:
+    failures: list[str] = []
     for (namespace, name), count in replicas.items():
-        run(
+        result = run(
             ("kubectl", "-n", namespace, "scale", f"deployment/{name}", f"--replicas={count}"),
             check=False,
             timeout=60,
         )
+        if result.returncode:
+            failures.append(f"{namespace}/{name}: scale failed")
+    for (namespace, name), count in replicas.items():
+        if count:
+            result = run(
+                ("kubectl", "-n", namespace, "rollout", "status", f"deployment/{name}", "--timeout=300s"),
+                check=False,
+                timeout=330,
+            )
+            if result.returncode:
+                failures.append(f"{namespace}/{name}: rollout failed")
+    if failures:
+        raise RuntimeError("development restoration failed: " + "; ".join(failures))
 
 
 def _collect_artifacts(context: dict[str, str], artifact_dir: Path, timeline: list[str]) -> None:
@@ -90,7 +145,7 @@ def _collect_artifacts(context: dict[str, str], artifact_dir: Path, timeline: li
                 namespace,
                 "logs",
                 "-l",
-                f"agentx.io/plane={plane}",
+                "agentx.io/plane in (runtime,observability)" if plane == "runtime" else f"agentx.io/plane={plane}",
                 "--all-containers=true",
                 "--prefix=true",
                 "--tail=1000",
@@ -109,10 +164,27 @@ def installed_agentx(
     run_id: str,
     pytestconfig: pytest.Config,
     request: pytest.FixtureRequest,
+    opensandbox_server: None,
+) -> Iterator[dict[str, str]]:
+    yield from _installed_environment(
+        deployment_values,
+        run_id,
+        pytestconfig,
+        request,
+        scale_development=pytestconfig.getoption("--scale-down-development"),
+    )
+
+
+def _installed_environment(
+    deployment_values: Path,
+    run_id: str,
+    pytestconfig: pytest.Config,
+    request: pytest.FixtureRequest,
+    *,
+    scale_development: bool,
 ) -> Iterator[dict[str, str]]:
     timeline: list[str] = []
     failures_before = request.session.testsfailed
-    development = _scale_development(deployment_values, pytestconfig.getoption("--scale-down-development"))
     config = deployment_config(deployment_values, run_id=run_id)
     artifact_dir = Path(__file__).resolve().parents[2] / ".local" / "artifacts" / "e2e" / run_id
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -127,27 +199,6 @@ def installed_agentx(
         "--output",
         "json",
     )
-    try:
-        installed = run(install_command, timeout=3600)
-    except Exception:
-        run(
-            (
-                agentxctl(),
-                "uninstall",
-                "--values",
-                deployment_values,
-                "--run-id",
-                run_id,
-                "--purge-data",
-                "--yes",
-            ),
-            check=False,
-            timeout=1200,
-        )
-        _restore_development(development)
-        raise
-    (artifact_dir / "install.json").write_text(redact(installed.stdout), encoding="utf-8")
-    _timeline(timeline, "install and Helm Doctor completed")
     context = {
         "values": str(deployment_values),
         "run_id": run_id,
@@ -157,34 +208,99 @@ def installed_agentx(
         "artifact_dir": str(artifact_dir),
         "root": str(Path(__file__).resolve().parents[2]),
     }
+    development = _scale_development(deployment_values, scale_development)
+    installation_ready = False
     try:
+        try:
+            installed = run(install_command, timeout=3600)
+        except Exception as error:
+            (artifact_dir / "install-error.txt").write_text(redact(str(error)), encoding="utf-8")
+            raise
+        (artifact_dir / "install.json").write_text(redact(installed.stdout), encoding="utf-8")
+        _timeline(timeline, "install and Helm Doctor completed")
+        rendered = run(
+            (agentxctl(), "render", "--values", deployment_values, "--run-id", run_id, "--target", "all"), timeout=300
+        ).stdout
+        configured_services = yaml.safe_load(deployment_values.read_text())["global"]["images"]["services"]
+        image_refs = []
+        for image in re.findall(r"^\s+image:\s*[\"']?([^\s\"']+)", rendered, re.MULTILINE):
+            service = image.rsplit("/", 1)[-1].split("@", 1)[0].split(":", 1)[0]
+            if service.removeprefix("agentx-") in configured_services or service in configured_services:
+                image_refs.append(image)
+        assert len(set(image_refs)) == 11, "candidate identity requires all 11 rendered application images"
+        identity = write_identity(context, image_refs)
+        if not pytestconfig._agentx_evidence_properties:
+            pytestconfig._agentx_evidence_properties.update(identity)
+        installation_ready = True
         yield context
     finally:
-        failed = request.session.testsfailed > failures_before
+        failed = not installation_ready or request.session.testsfailed > failures_before
         _timeline(timeline, f"test session completed failed={str(failed).lower()}")
-        _collect_artifacts(context, artifact_dir, timeline)
-        keep = failed and pytestconfig.getoption("--keep-on-failure")
-        if not keep:
-            _timeline(timeline, "purge started")
-            result = run(
-                (
-                    agentxctl(),
-                    "uninstall",
-                    "--values",
-                    deployment_values,
-                    "--run-id",
-                    run_id,
-                    "--purge-data",
-                    "--yes",
-                    "--output",
-                    "json",
-                ),
-                check=False,
-                timeout=1200,
-            )
-            (artifact_dir / "uninstall.json").write_text(redact(result.stdout + result.stderr), encoding="utf-8")
-        _restore_development(development)
-        (artifact_dir / "timeline.txt").write_text("\n".join(timeline) + "\n", encoding="utf-8")
+        try:
+            try:
+                _collect_artifacts(context, artifact_dir, timeline)
+            finally:
+                keep = failed and pytestconfig.getoption("--keep-on-failure")
+                if not keep:
+                    _timeline(timeline, "purge started")
+                    result = run(
+                        (
+                            agentxctl(),
+                            "uninstall",
+                            "--values",
+                            deployment_values,
+                            "--run-id",
+                            run_id,
+                            "--purge-data",
+                            "--yes",
+                            "--output",
+                            "json",
+                        ),
+                        check=False,
+                        timeout=1200,
+                    )
+                    (artifact_dir / "uninstall.json").write_text(
+                        redact(result.stdout + result.stderr), encoding="utf-8"
+                    )
+                    if result.returncode:
+                        raise RuntimeError(f"E2E namespace cleanup failed; see {artifact_dir / 'uninstall.json'}")
+        finally:
+            try:
+                _restore_development(development)
+            finally:
+                (artifact_dir / "timeline.txt").write_text("\n".join(timeline) + "\n", encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def tls_agentx(
+    installed_agentx: dict[str, str],
+    deployment_values: Path,
+    pytestconfig: pytest.Config,
+    request: pytest.FixtureRequest,
+) -> Iterator[dict[str, str]]:
+    """Use the same installer; pause the primary E2E services for the TLS run."""
+    source = yaml.safe_load(deployment_values.read_text(encoding="utf-8"))
+    if source["global"]["components"]["runtimeMysql"]["tlsMode"] == "verify_identity":
+        yield installed_agentx
+        return
+    root = Path(installed_agentx["root"])
+    values = yaml.safe_load((root / "deploy/values/local-tls.yaml").read_text(encoding="utf-8"))
+    values["global"]["images"] = source["global"]["images"]
+    original = values["global"]["namespaces"].copy()
+    for plane in ("control", "runtime", "dependencies"):
+        values["global"]["namespaces"][plane] = installed_agentx[f"{plane}_namespace"]
+    document = yaml.safe_dump(values, sort_keys=False)
+    for plane, namespace in original.items():
+        document = document.replace(f".{namespace}.svc", f".{values['global']['namespaces'][plane]}.svc")
+    path = Path(installed_agentx["artifact_dir"]) / "tls-values.yaml"
+    path.write_text(document, encoding="utf-8")
+    yield from _installed_environment(
+        path,
+        f"tls-{installed_agentx['run_id']}",
+        pytestconfig,
+        request,
+        scale_development=True,
+    )
 
 
 # RAGFlow v0.20.0 ships this RSA public key inside the image (conf/public.pem,
@@ -285,7 +401,23 @@ def _ragflow_preset(installed_agentx: dict[str, str]) -> dict[str, str]:
 def e2e_providers(installed_agentx: dict[str, str]) -> dict[str, str]:
     namespace = installed_agentx["dependencies_namespace"]
     fixture = Path(installed_agentx["root"]) / "deploy" / "kustomize" / "e2e-fixtures" / "runtime-providers"
-    run(("kubectl", "-n", namespace, "apply", "-k", fixture), timeout=300)
+    ragflow_enabled = not os.getenv("AGENTX_E2E_RAGFLOW_DISABLE")
+    rendered = run(("kubectl", "kustomize", fixture), timeout=120).stdout
+    documents = [document for document in yaml.safe_load_all(rendered) if document]
+    images = yaml.safe_load(Path(installed_agentx["values"]).read_text())["global"]["images"]
+    if images["registry"] == "agentx" and not images.get("repositoryPrefix"):
+        for document in documents:
+            if document["kind"] == "Deployment" and document["metadata"]["name"] in {"echo-mcp", "echo-node"}:
+                document["spec"]["template"]["spec"]["containers"][0]["image"] = (
+                    f"agentx/{document['metadata']['name']}:{images['tag']}"
+                )
+    if not ragflow_enabled:
+        documents = [
+            document
+            for document in documents
+            if not document["metadata"]["name"].startswith(("ragflow", "agentx-ragflow"))
+        ]
+    run(("kubectl", "-n", namespace, "apply", "-f", "-"), input_text=yaml.safe_dump_all(documents), timeout=300)
     run(
         (
             "kubectl",
@@ -302,7 +434,6 @@ def e2e_providers(installed_agentx: dict[str, str]) -> dict[str, str]:
     # capacity runs can opt out via AGENTX_E2E_RAGFLOW_DISABLE=1 because the
     # stack (server + ES + MySQL + MinIO) is too heavy to coexist with a
     # dedicated capacity window on a single-node cluster.
-    ragflow_enabled = not os.getenv("AGENTX_E2E_RAGFLOW_DISABLE")
     deployments = ["echo-mcp", "echo-node", "lightrag", "mem0", "mem0-postgres"]
     if ragflow_enabled:
         deployments += ["ragflow-es", "ragflow-mysql", "ragflow-redis", "ragflow-minio", "ragflow"]
@@ -364,7 +495,7 @@ def _opensandbox_healthy() -> bool:
 
 
 @pytest.fixture(scope="session")
-def opensandbox_server(installed_agentx: dict[str, str]) -> Iterator[None]:
+def opensandbox_server(run_id: str) -> Iterator[None]:
     """Start the OpenSandbox lifecycle server when it is not already running.
 
     Removes the manual pre-start step: the server runs as a host process via
@@ -375,8 +506,9 @@ def opensandbox_server(installed_agentx: dict[str, str]) -> Iterator[None]:
     if _opensandbox_healthy():
         yield
         return
-    root = Path(installed_agentx["root"])
-    artifact_dir = Path(installed_agentx["artifact_dir"])
+    root = Path(__file__).resolve().parents[2]
+    artifact_dir = root / ".local" / "artifacts" / "e2e" / run_id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
     template = (root / "deploy" / "opensandbox" / "docker" / "config.local.toml").read_text(encoding="utf-8")
     config = template.replace("port = 8080", "port = 18080").replace(
         'path = "/data/opensandbox.db"',
@@ -491,7 +623,7 @@ def service_urls(installed_agentx: dict[str, str]) -> Iterator[dict[str, str]]:
     artifact_dir = Path(installed_agentx["artifact_dir"])
     web_port, runtime_port, sandbox_manager_port = _free_port(), _free_port(), _free_port()
     forwards = [
-        start_process(
+        RestartingPortForward(
             (
                 "kubectl",
                 "-n",
@@ -503,7 +635,7 @@ def service_urls(installed_agentx: dict[str, str]) -> Iterator[dict[str, str]]:
             stdout_path=artifact_dir / "port-forward-web.log",
             stderr_path=artifact_dir / "port-forward-web-error.log",
         ),
-        start_process(
+        RestartingPortForward(
             (
                 "kubectl",
                 "-n",
@@ -515,7 +647,7 @@ def service_urls(installed_agentx: dict[str, str]) -> Iterator[dict[str, str]]:
             stdout_path=artifact_dir / "port-forward-runtime.log",
             stderr_path=artifact_dir / "port-forward-runtime-error.log",
         ),
-        start_process(
+        RestartingPortForward(
             (
                 "kubectl",
                 "-n",

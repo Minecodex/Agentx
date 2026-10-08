@@ -5,7 +5,7 @@ use agentx_runtime::{
 };
 use agentx_runtime_contracts::{RuntimeAuthorizationSnapshotV1, RuntimeResourceBindingV1};
 use serde_json::{Map, Value, json};
-use sqlx::{MySql, Row, Transaction};
+use sqlx::{MySql, QueryBuilder, Row, Transaction};
 use uuid::Uuid;
 
 use crate::{
@@ -989,23 +989,52 @@ pub(super) async fn persist_lineage(
     delivery_id: Uuid,
     items: &[Item],
 ) -> RuntimeResult<()> {
-    for (target_index, item) in items.iter().enumerate() {
+    let mut batch = Vec::with_capacity(256);
+    for (index, item) in items.iter().enumerate() {
         for source in &item.lineage {
-            sqlx::query(
-                "INSERT IGNORE INTO item_lineage(tenant_id,execution_id,delivery_id,target_item_index,source_node_execution_id,source_run_index,source_output_index,source_item_index) VALUES(?,?,?,?,?,?,?,?)",
-            )
-            .bind(tenant_id)
-            .bind(execution_id)
-            .bind(delivery_id)
-            .bind(target_index as u32)
-            .bind(source.node_execution_id.as_uuid())
-            .bind(source.run_index)
-            .bind(source.output_index)
-            .bind(source.item_index)
-            .execute(&mut **tx)
-            .await?;
+            batch.push((
+                index as u32,
+                source.node_execution_id.as_uuid(),
+                source.run_index,
+                source.output_index,
+                source.item_index,
+            ));
+            if batch.len() == 256 {
+                persist_lineage_batch(tx, tenant_id, execution_id, delivery_id, &batch).await?;
+                batch.clear();
+            }
         }
     }
+    if !batch.is_empty() {
+        persist_lineage_batch(tx, tenant_id, execution_id, delivery_id, &batch).await?;
+    }
+    Ok(())
+}
+
+async fn persist_lineage_batch(
+    tx: &mut Transaction<'_, MySql>,
+    tenant_id: Uuid,
+    execution_id: Uuid,
+    delivery_id: Uuid,
+    rows: &[(u32, Uuid, u32, u32, u32)],
+) -> RuntimeResult<()> {
+    let mut query = QueryBuilder::<MySql>::new(
+        "INSERT IGNORE INTO item_lineage(tenant_id,execution_id,delivery_id,target_item_index,source_node_execution_id,source_run_index,source_output_index,source_item_index) ",
+    );
+    query.push_values(
+        rows.iter().copied(),
+        |mut row, (target, source, run, output, item)| {
+            row.push_bind(tenant_id)
+                .push_bind(execution_id)
+                .push_bind(delivery_id)
+                .push_bind(target)
+                .push_bind(source)
+                .push_bind(run)
+                .push_bind(output)
+                .push_bind(item);
+        },
+    );
+    query.build().execute(&mut **tx).await?;
     Ok(())
 }
 
@@ -1016,6 +1045,13 @@ pub(super) async fn insert_invocation_event(
     event_type: &str,
     payload: Value,
 ) -> RuntimeResult<()> {
+    // Every writer (model deltas, terminal state and delivery) serializes on
+    // the same parent row before allocating the next SSE cursor.
+    sqlx::query("SELECT id FROM application_invocations WHERE tenant_id=? AND id=? FOR UPDATE")
+        .bind(tenant_id)
+        .bind(invocation_id)
+        .fetch_one(&mut **tx)
+        .await?;
     let next: u64 = sqlx::query_scalar(
         "SELECT CAST(COALESCE(MAX(sequence_number),0)+1 AS UNSIGNED) FROM invocation_events WHERE tenant_id=? AND invocation_id=? FOR UPDATE",
     )
@@ -1134,8 +1170,7 @@ pub(super) struct NodeDeliveryIntent<'a> {
     pub tenant_id: Uuid,
     pub execution_id: Uuid,
     pub invocation_id: Option<Uuid>,
-    pub attempt_id: Uuid,
-    pub node_key: &'a str,
+    pub node_execution_id: Uuid,
     pub node_type: &'a str,
     pub intent: &'a Value,
 }
@@ -1148,8 +1183,7 @@ pub(super) async fn enqueue_node_delivery(
         tenant_id,
         execution_id,
         invocation_id,
-        attempt_id,
-        node_key,
+        node_execution_id,
         node_type,
         intent,
     } = *delivery;
@@ -1165,8 +1199,8 @@ pub(super) async fn enqueue_node_delivery(
             "reply/send content resolved to empty text".into(),
         )));
     }
-    let origin = format!("node:{node_key}");
-    let delivery_id = agentx_runtime_contracts::deterministic_uuid(attempt_id, origin.as_bytes());
+    let origin = format!("node:{node_execution_id}:0");
+    let delivery_id = agentx_runtime_contracts::deterministic_uuid(execution_id, origin.as_bytes());
     let payload = json!({"text": content});
     let (binding_id, application_id, provider, credential_ref, target) = if node_type
         == "reply_message"
@@ -1228,7 +1262,12 @@ pub(super) async fn enqueue_node_delivery(
             "sessionWebhook": context.get("sessionWebhook").and_then(Value::as_str),
             "sessionWebhookExpiresAt": context.get("sessionWebhookExpiresAt").and_then(Value::as_i64),
         });
-        if target.get("conversationId").is_none() && target.get("senderId").is_none() {
+        if target
+            .get("conversationId")
+            .and_then(Value::as_str)
+            .is_none()
+            && target.get("senderId").and_then(Value::as_str).is_none()
+        {
             return Ok(Err((
                 "REPLY_TARGET_UNRESOLVED",
                 "trigger context carries no conversation or sender".into(),
@@ -1272,7 +1311,12 @@ pub(super) async fn enqueue_node_delivery(
             "conversationType": if intent.get("targetConversationId").is_some() { Some("group") } else { None },
             "senderId": intent.get("senderId").and_then(Value::as_str),
         });
-        if target.get("conversationId").is_none() && target.get("senderId").is_none() {
+        if target
+            .get("conversationId")
+            .and_then(Value::as_str)
+            .is_none()
+            && target.get("senderId").and_then(Value::as_str).is_none()
+        {
             return Ok(Err((
                 "SEND_CHANNEL_UNRESOLVED",
                 "send_message carries neither conversation nor sender target".into(),

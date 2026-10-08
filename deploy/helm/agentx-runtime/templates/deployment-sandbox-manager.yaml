@@ -6,7 +6,7 @@ spec:
   strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 1, maxSurge: 1 } }
   selector: { matchLabels: { app.kubernetes.io/name: sandbox-manager } }
   template:
-    metadata: { labels: { app.kubernetes.io/name: sandbox-manager, agentx.io/plane: runtime, agentx.io/runtime-data: mysql, agentx.io/metrics: enabled } }
+    metadata: { labels: { app.kubernetes.io/name: sandbox-manager, agentx.io/plane: runtime, agentx.io/runtime-data: mysql, agentx.io/metrics: enabled, agentx.io/opensandbox-health: allowed } }
     spec:
       serviceAccountName: sandbox-manager
       automountServiceAccountToken: false
@@ -64,12 +64,12 @@ spec:
           lifecycle: { preStop: { httpGet: { path: /health/drain, port: admin, scheme: HTTP } } }
           volumeMounts:
             - { name: egress-ca, mountPath: /var/run/agentx-egress-ca, readOnly: true }
-{{- if eq .Values.global.environment "production" }}
+{{- if include "agentx.runtime.hasCa" . }}
 {{ include "agentx.runtime.caMount" . | nindent 12 }}
 {{- end }}
       volumes:
         - name: egress-ca
           secret: { secretName: {{ .Values.global.network.egressGateway.sandboxAccess.caSecretName }}, optional: false }
-{{- if eq .Values.global.environment "production" }}
+{{- if include "agentx.runtime.hasCa" . }}
 {{ include "agentx.runtime.caVolume" . | nindent 8 }}
 {{- end }}

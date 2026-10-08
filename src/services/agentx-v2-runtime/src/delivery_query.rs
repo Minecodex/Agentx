@@ -89,7 +89,8 @@ pub async fn search_deliveries(
     .into_iter()
     .enumerate()
     {
-        let statement = format!("{sql} AND (? IS NULL OR application_id=?) AND (? IS NULL OR invocation_id=?) AND (? IS NULL OR execution_id=?) AND (? IS NULL OR status=?) ORDER BY created_at DESC LIMIT ?");
+        let status_column = if index == 0 { "status" } else { "'dead'" };
+        let statement = format!("{sql} AND (? IS NULL OR application_id=?) AND (? IS NULL OR invocation_id=?) AND (? IS NULL OR execution_id=?) AND (? IS NULL OR {status_column}=?) ORDER BY created_at DESC LIMIT ?");
         let query = sqlx::query(&statement)
             .bind(request.tenant_id)
             .bind(request.application_id).bind(request.application_id)

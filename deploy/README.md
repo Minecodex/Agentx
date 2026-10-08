@@ -36,6 +36,7 @@ Kustomize只管理可选Addon与E2E Fixture，不拥有核心资源。OpenSandbo
 常规集群命令未提供 `--values` 时使用与 CLI 版本严格绑定的内嵌 `dockerhub-beta.yaml`，用于单文件快速部署。自定义和 production 部署必须显式提供 `--values`。顶层固定为 `global`、`control`、`runtime`、`observability`、`dependencies`。
 
 - `local.yaml`：本地镜像、bundled状态依赖、自动生成Secret。
+- `local-tls.yaml`：本地 TLS 验收；ctl 管理 bundled 依赖、服务证书、Ingress 和初始化 Job。
 - `dockerhub-beta.yaml`：公开Beta镜像和本地依赖。
 - `production.example.yaml`：外部状态依赖、TLS、existing Secret、镜像摘要示例。
 
@@ -148,3 +149,23 @@ uv run --frozen --group test pytest tests/e2e --values deploy/values/local.yaml 
 ```
 
 pytest负责临时Kubernetes环境、port-forward、故障注入、证据收集和调用TypeScript Playwright。Python不是部署依赖，也不进入Agentx业务容器。
+
+开发、TLS 验收和生产都使用相同安装命令，仅 Values 不同：
+
+```bash
+agentxctl install --values deploy/values/local.yaml
+agentxctl install --values deploy/values/local-tls.yaml
+agentxctl install --values values/production.yaml
+```
+
+本地 TLS 配置使用显式 NodePort；将 Ingress Host 解析到可达节点，并按 Docker 网络配置 Sandbox 的 `sourceCidrs`。证书由 ctl 的 Rust 密钥库签发和复用，无需 Homebrew/OpenSSL、seed Namespace 或 Python 资源安装脚本。OpenSandbox 仍独立安装，本地 TLS 代理的 `localProxyUpstream` 指向其 HTTP 生命周期服务。生产依赖和 Secret 由平台预置，ctl 执行同样的验证、Helm 安装、等待与 Doctor，禁止生产 NodePort 例外。
+
+TLS 临时集群验收仍只有 pytest 编排入口：
+
+```bash
+cargo xtask images --values deploy/values/local-tls.yaml
+uv run --frozen --group test pytest tests/e2e/infrastructure \
+  --values deploy/values/local-tls.yaml --scale-down-development
+```
+
+验收覆盖新 Namespace 安装、实际 TLS Doctor、错误 CA 拒绝与恢复、重复升级证书复用和初始化 Job 完成；普通 local Values 的完整 E2E 也会通过独立 TLS Fixture 运行这一组场景。

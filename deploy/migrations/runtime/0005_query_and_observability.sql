@@ -100,7 +100,6 @@ ALTER TABLE runtime_user_application_grants
     ADD COLUMN can_query BOOLEAN NOT NULL DEFAULT FALSE AFTER can_invoke;
 
 ALTER TABLE workflow_executions
-    ADD COLUMN trace_watermark BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER state_version,
     ADD COLUMN initiator_user_id BINARY(16) NULL AFTER trigger_type,
     ADD COLUMN initiator_user_name VARCHAR(255) NULL AFTER initiator_user_id,
     ADD COLUMN initiator_department_id BINARY(16) NULL AFTER initiator_user_name,

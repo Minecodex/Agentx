@@ -84,37 +84,76 @@ fn text_of(payload: &Value) -> Result<String, DeliverySendError> {
         .ok_or_else(|| DeliverySendError::rejected("delivery payload has no text".into()))
 }
 
+enum DeliveryAuth<'a> {
+    Bearer(&'a str),
+    DingTalk(&'a str),
+}
+
 async fn send_json(
     http: &ProviderHttpClient,
     url: &str,
     suffixes: &[&str],
     tenant_id: Uuid,
     request_id: Uuid,
-    bearer: Option<&str>,
+    auth: Option<DeliveryAuth<'_>>,
     body: Value,
+) -> Result<(u16, Value), DeliverySendError> {
+    send_request(
+        http,
+        reqwest::Method::POST,
+        url,
+        suffixes,
+        tenant_id,
+        request_id,
+        auth,
+        Some(body),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn send_request(
+    http: &ProviderHttpClient,
+    method: reqwest::Method,
+    url: &str,
+    suffixes: &[&str],
+    tenant_id: Uuid,
+    request_id: Uuid,
+    auth: Option<DeliveryAuth<'_>>,
+    body: Option<Value>,
 ) -> Result<(u16, Value), DeliverySendError> {
     allowed_host(url, suffixes)?;
     let mut builder = http
-        .post(
+        .request(
+            method,
             url,
             EgressRequestContext::request(tenant_id, request_id),
             Duration::from_secs(15),
         )
-        .map_err(|error| DeliverySendError::unavailable(error.to_string()))?
-        .json(&body);
-    if let Some(token) = bearer {
-        builder = builder.bearer_auth(token);
+        .map_err(|_| DeliverySendError::rejected("invalid delivery endpoint".into()))?;
+    if let Some(body) = body {
+        builder = builder.json(&body);
+    }
+    match auth {
+        Some(DeliveryAuth::Bearer(token)) => builder = builder.bearer_auth(token),
+        Some(DeliveryAuth::DingTalk(token)) => {
+            builder = builder.header("x-acs-dingtalk-access-token", token)
+        }
+        None => {}
     }
     let response = builder.send().await.map_err(|error| {
         if error.is_connect() || error.is_timeout() {
-            DeliverySendError::unavailable(error.to_string())
+            DeliverySendError::unavailable("delivery connection unavailable or timed out".into())
         } else {
-            DeliverySendError::rejected(error.to_string())
+            DeliverySendError::rejected("delivery request failed or was denied".into())
         }
     })?;
     let status = response.status().as_u16();
     let parsed = response.json::<Value>().await.map_err(|error| {
-        DeliverySendError::unavailable(format!("unreadable provider response: {error}"))
+        DeliverySendError::unavailable(format!(
+            "unreadable provider response: {}",
+            error.without_url()
+        ))
     })?;
     Ok((status, parsed))
 }
@@ -166,10 +205,17 @@ const WECOM_SUFFIXES: &[&str] = &["qyapi.weixin.qq.com"];
 /// Base for the official DingTalk robot API; overridable so isolated E2E
 /// environments can point the token/send calls at the in-cluster mock.
 fn dingtalk_api_base() -> String {
-    std::env::var("AGENTX_DELIVERY_DINGTALK_API_BASE")
+    api_base(
+        "AGENTX_DELIVERY_DINGTALK_API_BASE",
+        "https://api.dingtalk.com",
+    )
+}
+
+fn api_base(variable: &str, default: &str) -> String {
+    std::env::var(variable)
         .ok()
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "https://api.dingtalk.com".into())
+        .unwrap_or_else(|| default.into())
 }
 
 async fn send_dingtalk(
@@ -255,7 +301,7 @@ async fn send_dingtalk(
             })?;
         (
             format!("{}/v1.0/robot/groupMessages/send", dingtalk_api_base()),
-            json!({"robotCode": robot_code, "openConversationId": conversation_id, "msgKey": "sampleText", "msgParam": {"content": text}}),
+            json!({"robotCode": robot_code, "openConversationId": conversation_id, "msgKey": "sampleText", "msgParam": json!({"content": text}).to_string()}),
         )
     } else {
         let sender_id = claim
@@ -265,7 +311,7 @@ async fn send_dingtalk(
             .ok_or_else(|| DeliverySendError::rejected("direct delivery has no senderId".into()))?;
         (
             format!("{}/v1.0/robot/oToMessages/batchSend", dingtalk_api_base()),
-            json!({"robotCode": robot_code, "userIds": [sender_id], "msgKey": "sampleText", "msgParam": {"content": text}}),
+            json!({"robotCode": robot_code, "userIds": [sender_id], "msgKey": "sampleText", "msgParam": json!({"content": text}).to_string()}),
         )
     };
     let (status, body) = send_json(
@@ -274,7 +320,7 @@ async fn send_dingtalk(
         DINGTALK_SUFFIXES,
         claim.tenant_id,
         claim.id,
-        Some(&token),
+        Some(DeliveryAuth::DingTalk(&token)),
         request.1,
     )
     .await?;
@@ -306,7 +352,10 @@ async fn send_feishu(
     };
     let (status, body) = send_json(
         http,
-        "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+        &format!(
+            "{}/open-apis/auth/v3/tenant_access_token/internal",
+            api_base("AGENTX_DELIVERY_FEISHU_API_BASE", "https://open.feishu.cn")
+        ),
         FEISHU_SUFFIXES,
         claim.tenant_id,
         claim.id,
@@ -333,12 +382,12 @@ async fn send_feishu(
         })?;
     let (status, body) = send_json(
         http,
-        "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
+        &format!("{}/open-apis/im/v1/messages?receive_id_type=chat_id", api_base("AGENTX_DELIVERY_FEISHU_API_BASE", "https://open.feishu.cn")),
         FEISHU_SUFFIXES,
         claim.tenant_id,
         claim.id,
-        Some(&token),
-        json!({"receive_id": conversation_id, "msg_type": "text", "content": {"text": text}}),
+        Some(DeliveryAuth::Bearer(&token)),
+        json!({"receive_id": conversation_id, "msg_type": "text", "content": json!({"text": text}).to_string()}),
     )
     .await?;
     let message_id = body
@@ -358,7 +407,11 @@ async fn send_wecom(
     let credential = credential_json(vault, claim).await?;
     let corp_id = credential.get("corpId").and_then(Value::as_str);
     let corp_secret = credential.get("corpSecret").and_then(Value::as_str);
-    let agent_id = credential.get("agentId").and_then(Value::as_i64);
+    let agent_id = credential
+        .get("agentId")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0);
     let (corp_id, corp_secret, agent_id) = match (corp_id, corp_secret, agent_id) {
         (Some(c), Some(s), Some(a)) => (c, s, a),
         _ => {
@@ -367,17 +420,25 @@ async fn send_wecom(
             ));
         }
     };
-    let token_url = format!(
-        "https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={corp_id}&corpsecret={corp_secret}"
+    let base = api_base(
+        "AGENTX_DELIVERY_WECOM_API_BASE",
+        "https://qyapi.weixin.qq.com",
     );
-    let (status, body) = send_json(
+    let mut token_url = reqwest::Url::parse(&format!("{base}/cgi-bin/gettoken"))
+        .map_err(|_| DeliverySendError::rejected("invalid wecom API base".into()))?;
+    token_url
+        .query_pairs_mut()
+        .append_pair("corpid", corp_id)
+        .append_pair("corpsecret", corp_secret);
+    let (status, body) = send_request(
         http,
-        &token_url,
+        reqwest::Method::GET,
+        token_url.as_str(),
         WECOM_SUFFIXES,
         claim.tenant_id,
         claim.id,
         None,
-        json!({}),
+        None,
     )
     .await?;
     if status != 200 || body.get("errcode").and_then(Value::as_i64) != Some(0) {
@@ -395,9 +456,14 @@ async fn send_wecom(
         .get("senderId")
         .and_then(Value::as_str)
         .ok_or_else(|| DeliverySendError::rejected("wecom delivery has no senderId".into()))?;
+    let mut send_url = reqwest::Url::parse(&format!("{base}/cgi-bin/message/send"))
+        .map_err(|_| DeliverySendError::rejected("invalid wecom API base".into()))?;
+    send_url
+        .query_pairs_mut()
+        .append_pair("access_token", &token);
     let (status, body) = send_json(
         http,
-        &format!("https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={token}"),
+        send_url.as_str(),
         WECOM_SUFFIXES,
         claim.tenant_id,
         claim.id,
@@ -406,7 +472,7 @@ async fn send_wecom(
     )
     .await?;
     classify_platform_response(status, &body, "errcode", &["0"])?;
-    Ok(None)
+    Ok(body.get("msgid").and_then(Value::as_str).map(str::to_owned))
 }
 
 /// Maps a platform response to success/retryable/permanent using the HTTP
@@ -434,14 +500,22 @@ fn classify_platform_response(
         _ => String::new(),
     });
     let code = code.unwrap_or_default();
-    if status < 300 && (code.is_empty() || success_codes.contains(&code.as_str())) {
+    let official_dingtalk_success = code_field == "code"
+        && code.is_empty()
+        && body
+            .get("processQueryKey")
+            .and_then(Value::as_str)
+            .is_some();
+    if (200..300).contains(&status)
+        && (success_codes.contains(&code.as_str()) || official_dingtalk_success)
+    {
         return Ok(body
             .get("message_id")
             .or_else(|| body.pointer("/data/message_id"))
             .and_then(Value::as_str)
             .map(str::to_owned));
     }
-    if code == "429" {
+    if matches!(code.as_str(), "429" | "45009" | "99991400") {
         return Err(DeliverySendError::rate_limited(format!(
             "provider rate limited: {body}"
         )));

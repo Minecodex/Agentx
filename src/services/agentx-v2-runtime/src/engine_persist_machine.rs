@@ -1,9 +1,9 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use agentx_node_protocol::Item;
 use agentx_runtime::{ActivationStatus, DeliveryKind, ExecutionMachine};
 use serde_json::Value;
-use sqlx::{MySql, Transaction};
+use sqlx::{MySql, Row, Transaction};
 use uuid::Uuid;
 
 use crate::{
@@ -39,11 +39,52 @@ pub(super) async fn persist_machine(
         machine,
         checkpoint_type,
     } = request;
+    let stored = sqlx::query("SELECT state_version,machine_state_json FROM execution_runtime_state WHERE tenant_id=? AND execution_id=? FOR UPDATE")
+        .bind(tenant_id).bind(execution_id).fetch_optional(&mut **tx).await?;
+    let current_version = stored
+        .as_ref()
+        .map(|row| row.try_get::<u64, _>("state_version"))
+        .transpose()?;
+    if current_version.is_some_and(|version| version.checked_add(1) != Some(state_version)) {
+        return Err(lease_conflict("Execution Runtime state CAS failed"));
+    }
+    let previous: Option<ExecutionMachine> = stored
+        .as_ref()
+        .map(|row| -> RuntimeResult<_> {
+            serde_json::from_value(row.try_get("machine_state_json")?)
+                .map_err(|error| RuntimeError::Internal(error.into()))
+        })
+        .transpose()?;
+    let previous_deliveries: BTreeMap<_, _> = previous
+        .as_ref()
+        .into_iter()
+        .flat_map(|machine| machine.deliveries())
+        .map(|delivery| (delivery.id, delivery))
+        .collect();
+    let previous_ends: BTreeMap<_, _> = previous
+        .as_ref()
+        .into_iter()
+        .flat_map(|machine| machine.end_deliveries())
+        .map(|delivery| (delivery.sequence, delivery))
+        .collect();
+    let mut changed_sources = BTreeSet::new();
     for activation in machine.activations() {
+        if previous
+            .as_ref()
+            .and_then(|machine| machine.activation(activation.id))
+            == Some(activation)
+        {
+            continue;
+        }
+        changed_sources.insert(activation.id);
         let node = &machine.workflow().nodes[activation.node_index];
         upsert_activation(tx, tenant_id, execution_id, activation, node).await?;
     }
     for delivery in machine.deliveries() {
+        if previous_deliveries.get(&delivery.id).copied() == Some(delivery) {
+            continue;
+        }
+        changed_sources.insert(delivery.source_node_execution_id);
         let connection = &machine.workflow().connections[delivery.connection_index];
         let (kind, items) = match &delivery.kind {
             agentx_runtime::DeliveryKind::Data(items) => ("data", Some(items)),
@@ -74,6 +115,10 @@ pub(super) async fn persist_machine(
         }
     }
     for delivery in machine.end_deliveries() {
+        if previous_ends.get(&delivery.sequence).copied() == Some(delivery) {
+            continue;
+        }
+        changed_sources.insert(delivery.source_node_execution_id);
         sqlx::query(
             "INSERT IGNORE INTO execution_end_deliveries(tenant_id,execution_id,sequence_number,source_node_execution_id,source_node_id,source_port,target_port,target_exit_id,payload_json) VALUES(?,?,?,?,?,?,?,?,?)",
         )
@@ -94,9 +139,10 @@ pub(super) async fn persist_machine(
     // aggregate selected from completed body rounds. Persist the aggregate as
     // the Loop node's public output so node result views match downstream data.
     for activation in machine.activations() {
-        if machine.workflow().nodes[activation.node_index]
-            .loop_body
-            .is_none()
+        if !changed_sources.contains(&activation.id)
+            || machine.workflow().nodes[activation.node_index]
+                .loop_body
+                .is_none()
         {
             continue;
         }
@@ -162,17 +208,7 @@ pub(super) async fn persist_machine(
         .unwrap_or(0);
     let frontier_json =
         serde_json::to_value(frontier).map_err(|error| RuntimeError::Internal(error.into()))?;
-    let current_version: Option<u64> = sqlx::query_scalar(
-        "SELECT state_version FROM execution_runtime_state WHERE tenant_id=? AND execution_id=? FOR UPDATE",
-    )
-    .bind(tenant_id)
-    .bind(execution_id)
-    .fetch_optional(&mut **tx)
-    .await?;
     if let Some(current_version) = current_version {
-        if current_version.checked_add(1) != Some(state_version) {
-            return Err(lease_conflict("Execution Runtime state CAS failed"));
-        }
         let changed = sqlx::query(
             "UPDATE execution_runtime_state SET state_version=?,context_version=?,delivery_sequence=?,activation_count=?,activation_budget=?,current_frontier_json=?,context_json=?,machine_state_json=?,machine_state_hash=? WHERE tenant_id=? AND execution_id=? AND state_version=?",
         )

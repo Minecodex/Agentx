@@ -532,6 +532,7 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
             let slow = model_name.as_str() == "echo-slow-stream";
             let usage_frame = usage.clone();
             let model_for_stream = model_name.clone();
+            let last_index = tokens.len().saturating_sub(1);
             let stream = futures_util::stream::iter(tokens.into_iter().enumerate()).then(
                 move |(index, token)| {
                     let usage_for_frame = usage_frame.clone();
@@ -545,11 +546,12 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
                             "choices":[{"index":0,"delta":{"content":token},"finish_reason":null}]
                         });
                         let mut frame_text = format!("data: {frame}\n\n");
-                        if index == 4 && include_usage {
-                            frame_text.push_str(&format!(
-                                "data: {}\n\ndata: [DONE]\n\n",
-                                json!({"id":"m5-stream","model":model_in_frame,"choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":usage_for_frame})
-                            ));
+                        if index == last_index && !abort {
+                            let mut finished = json!({"id":"m5-stream","model":model_in_frame,"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]});
+                            if include_usage {
+                                finished["usage"] = usage_for_frame;
+                            }
+                            frame_text.push_str(&format!("data: {finished}\n\ndata: [DONE]\n\n"));
                         }
                         Ok::<Bytes, std::io::Error>(Bytes::from(frame_text))
                     }
@@ -640,6 +642,29 @@ mod tests {
             ),
             json!({"answer":"structured-value","count":1})
         );
+    }
+
+    #[tokio::test]
+    async fn usage_less_stream_emits_finish_and_done_after_all_content() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer m5-model-secret"),
+        );
+        let response = chat_completions(headers, Json(json!({"model":"echo-no-usage","stream":true,"messages":[{"role":"user","content":"hello"}]}))).await;
+        let mut stream = response.into_body().into_data_stream();
+        let mut frames: Vec<Bytes> = Vec::new();
+        while let Some(frame) = stream.next().await {
+            frames.push(frame.unwrap());
+        }
+        let text = frames
+            .iter()
+            .map(|frame| std::str::from_utf8(frame).unwrap())
+            .collect::<String>();
+        assert_eq!(text.matches("[DONE]").count(), 1);
+        assert_eq!(text.matches("\"finish_reason\":\"stop\"").count(), 1);
+        assert!(!text.contains("\"usage\""));
+        assert!(text.ends_with("data: [DONE]\n\n"));
     }
 
     #[tokio::test]

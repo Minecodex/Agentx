@@ -11,10 +11,12 @@ Behaviors: ok (default), rate-limit (429 / errcode 429), unauthorized
 (401/60011), not-found (404 / errcode 500 invalid chat id). Requests are
 logged so the E2E can assert the mock received the reply.
 """
+
 import json
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 RECEIVED = []
 LOCK = threading.Lock()
@@ -74,8 +76,37 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         body = self._read_body()
         path = self.path
+        route = urlsplit(path).path
+        if "gettoken" in route:
+            return self._reply(405, {"errcode": 400, "errmsg": "GET required"})
+        if "oToMessages/batchSend" in route or "groupMessages/send" in route:
+            if self.headers.get("x-acs-dingtalk-access-token") != "dt-mock-token":
+                return self._reply(401, {"code": 401, "msg": "DingTalk access-token header required"})
+            try:
+                content = json.loads(body["msgParam"])
+                if not isinstance(body["msgParam"], str) or not isinstance(content["content"], str):
+                    raise ValueError("invalid msgParam")
+            except (KeyError, TypeError, ValueError):
+                return self._reply(400, {"code": 400, "msg": "msgParam must be serialized JSON"})
+        if route.startswith("/feishu/") and "/im/v1/messages" in route:
+            if self.headers.get("Authorization") != "Bearer t-mock":
+                return self._reply(401, {"code": 401, "msg": "tenant access token required"})
+            try:
+                if not isinstance(body["content"], str) or not isinstance(json.loads(body["content"])["text"], str):
+                    raise ValueError("invalid message content")
+            except (KeyError, TypeError, ValueError):
+                return self._reply(400, {"code": 400, "msg": "content must be serialized JSON"})
+        if route.startswith("/wecom/"):
+            if parse_qs(urlsplit(path).query).get("access_token") != ["wx-mock"]:
+                return self._reply(401, {"errcode": 40001, "errmsg": "access_token required"})
+            if (
+                not isinstance(body.get("agentid"), int)
+                or isinstance(body.get("agentid"), bool)
+                or body["agentid"] <= 0
+            ):
+                return self._reply(400, {"errcode": 400, "errmsg": "agentid must be a positive JSON integer"})
         behavior = resolve_behavior(path)
-        record({"path": path, "behavior": behavior, "body": body, "at": time.time()})
+        record({"method": "POST", "path": path, "behavior": behavior, "body": body, "at": time.time()})
 
         if path.startswith("/dingtalk/"):
             # Official robot API subpaths (token then batch/group send).
@@ -88,7 +119,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self._reply(429, {"code": 429, "msg": "too many requests"})
                 if behavior == "not-found":
                     return self._reply(200, {"code": 404, "msg": "conversation not found"})
-                return self._reply(200, {"code": 0, "message_id": "dt-mock-official-1", "processQueryKey": "dt-official-pqk"})
+                return self._reply(
+                    200, {"code": 0, "message_id": "dt-mock-official-1", "processQueryKey": "dt-official-pqk"}
+                )
             if behavior in ("rate-limit", "flaky"):
                 return self._reply(429, {"errcode": 429, "errmsg": "too many requests"})
             if behavior == "slow":
@@ -101,7 +134,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._reply(200, {"errcode": 500, "errmsg": "invalid conversation"})
             # sessionWebhook & official API success shapes (message_id matches
             # the delivery client's provider-message extraction key)
-            return self._reply(200, {"errcode": 0, "errmsg": "ok", "message_id": "dt-mock-1", "processQueryKey": "dt-mock-pqk"})
+            return self._reply(
+                200, {"errcode": 0, "errmsg": "ok", "message_id": "dt-mock-1", "processQueryKey": "dt-mock-pqk"}
+            )
 
         if path.startswith("/feishu/"):
             if "tenant_access_token" in path:
@@ -132,6 +167,14 @@ class Handler(BaseHTTPRequestHandler):
         return self._reply(404, {"error": "unknown mock path"})
 
     def do_GET(self):
+        parsed = urlsplit(self.path)
+        if parsed.path.startswith("/wecom/") and parsed.path.endswith("/cgi-bin/gettoken"):
+            params = parse_qs(parsed.query)
+            if not params.get("corpid") or not params.get("corpsecret"):
+                return self._reply(400, {"errcode": 400, "errmsg": "credentials required"})
+            record({"method": "GET", "path": parsed.path, "behavior": "ok", "body": {}, "at": time.time()})
+            return self._reply(200, {"errcode": 0, "access_token": "wx-mock"})
+
         if self.path == "/health":
             return self._reply(200, {"status": "ok"})
         if self.path == "/received":

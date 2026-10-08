@@ -31,8 +31,11 @@ pub async fn collect_control_metrics(
 ) -> Result<()> {
     while !lifecycle.is_draining() {
         let sample = async {
-            let row = sqlx::query("SELECT COUNT(*) ready_items,CAST(COALESCE(MAX(TIMESTAMPDIFF(MICROSECOND,available_at,UTC_TIMESTAMP(6))),0)/1000000.0 AS DOUBLE) oldest_seconds FROM outbox WHERE status IN ('pending','failed') AND available_at<=UTC_TIMESTAMP(6)").fetch_one(&pool).await?;
-            let active: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM publish_attempts WHERE locked_until>UTC_TIMESTAMP(6)").fetch_one(&pool).await?;
+            let acquire_started = std::time::Instant::now();
+            let mut connection = pool.acquire().await?;
+            metrics.observe_mysql_pool_wait(acquire_started.elapsed()).await;
+            let row = sqlx::query("SELECT COUNT(*) ready_items,CAST(COALESCE(MAX(TIMESTAMPDIFF(MICROSECOND,available_at,UTC_TIMESTAMP(6))),0)/1000000.0 AS DOUBLE) oldest_seconds FROM outbox WHERE status IN ('pending','failed') AND available_at<=UTC_TIMESTAMP(6)").fetch_one(&mut *connection).await?;
+            let active: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM publish_attempts WHERE locked_until>UTC_TIMESTAMP(6)").fetch_one(&mut *connection).await?;
             Ok::<_, sqlx::Error>((
                 row.try_get::<i64, _>("ready_items")?,
                 row.try_get::<f64, _>("oldest_seconds")?,

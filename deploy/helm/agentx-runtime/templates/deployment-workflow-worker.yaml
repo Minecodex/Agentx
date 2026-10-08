@@ -73,7 +73,7 @@ spec:
           volumeMounts:
             - { name: plugin-work, mountPath: /var/run/agentx/plugin-work }
             - { name: plugin-cache, mountPath: /var/run/agentx/plugin-cache }
-{{- if eq .Values.global.environment "production" }}
+{{- if include "agentx.runtime.hasCa" . }}
 {{ include "agentx.runtime.caMount" . | nindent 12 }}
 {{- end }}
       volumes:
@@ -81,6 +81,6 @@ spec:
           emptyDir: { sizeLimit: 512Mi }
         - name: plugin-cache
           emptyDir: { sizeLimit: 256Mi }
-{{- if eq .Values.global.environment "production" }}
+{{- if include "agentx.runtime.hasCa" . }}
 {{ include "agentx.runtime.caVolume" . | nindent 8 }}
 {{- end }}

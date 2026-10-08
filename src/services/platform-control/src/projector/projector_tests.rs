@@ -222,6 +222,7 @@ async fn project_evaluation_retention_and_notification(
     sqlx::query("INSERT INTO evaluation_runs(id,tenant_id,name,workflow_version_id,dataset_version_id,evaluation_profile_version_id,work_package_id,intent_version,parameters_json,status,created_by,owner_department_id) VALUES(?,?,?,?,?,?,?,1,JSON_OBJECT(),'created',?,?)")
         .bind(evaluation_id).bind(tenant_id).bind("Projection test").bind(Uuid::now_v7()).bind(Uuid::now_v7()).bind(Uuid::now_v7()).bind(package_id).bind(user_id).bind(Uuid::now_v7()).execute(&projector.pool).await.unwrap();
     let case_id = Uuid::now_v7();
+    let judge_execution_id = Uuid::now_v7();
     let report = RuntimeEvaluationReportV1 {
         cases: vec![RuntimeEvaluationCaseResultV1 {
             id: case_id,
@@ -237,6 +238,7 @@ async fn project_evaluation_retention_and_notification(
             rules: vec![RuntimeEvaluationRuleResultV1 {
                 id: Uuid::now_v7(),
                 profile_rule_id: Uuid::now_v7(),
+                evaluator_execution_id: Some(judge_execution_id),
                 status: "passed".into(),
                 passed: Some(true),
                 score: Some(1.0),
@@ -274,6 +276,11 @@ async fn project_evaluation_retention_and_notification(
     )
     .await
     .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, Option<Uuid>>("SELECT evaluator_execution_id FROM evaluation_rule_results WHERE tenant_id=? AND evaluation_run_case_id=?")
+            .bind(tenant_id).bind(case_id).fetch_one(&projector.pool).await.unwrap(),
+        Some(judge_execution_id)
+    );
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM evaluation_case_projection WHERE tenant_id=? AND evaluation_run_id=? AND projection_generation=1")
             .bind(tenant_id).bind(evaluation_id).fetch_one(&projector.pool).await.unwrap(),

@@ -176,3 +176,10 @@ delivery.completed / delivery.failed                     -- 由 P7-A 复用同�
 - token delta 进 ClickHouse；
 - 工具调用参数的增量流式渲染；
 - n8n/Dify 节点级流式兼容。
+
+## 2026-10-07 审查修订
+
+- 原生 Chat SSE 保留 Provider 的 tool call ID，支持分片 UTF-8、CRLF/LF、多行 data 与 arguments 拼接。只有 finish_reason 和 `[DONE]` 完整到达才成功；截断、错误帧及未完成的工具调用失败。Provider 未返回 usage 时，以 prompt 与输出估算并明确 usage_estimated。
+- delta 通过有界异步通道回压；50 ms 或 24 字符触发写入，结算前 flush 等待真实写入结果。丢帧或存储失败不再继续标记成功。Invocation 事件以父行锁串行分配 cursor，避免结算、delivery 与 delta 的 MAX(sequence) 竞态。
+- 手动调试没有 Invocation，使用 Runtime 的 execution_model_deltas 表和独立 cursor；Control BFF 只转发已签名 Query Scope。Studio 持续读取该端点并在终态排空，显示文本、推理尾部和读取错误。该流不占用 Trace 水位，不投影到 ClickHouse；执行 retention 同时删除。
+- Playground 依据上传响应的 MIME 类型生成 image/audio/file part，原生图片内容可进入具备 vision 能力的模型节点。

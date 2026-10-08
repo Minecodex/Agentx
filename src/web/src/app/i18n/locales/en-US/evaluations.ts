@@ -1,5 +1,5 @@
 const translations = {
-  "judgeModel": "Judge model ID",
+"compare": "Compare","compareRun": "Compare {{name}}","compareSelect": "Select evaluation runs","compareHint": "Select 2 to 5 runs. The first run is the baseline.","compareCoverage": "Aligned {{aligned}} of {{total}} cases","compareMetrics": "Metrics and baseline deltas","compareAbsent": "Absent","judgePromptLimit": "Judge prompts must not exceed 64 KiB","judgeAuthorization": "Review model authorization","judgeModel": "Judge model","metricLabels": {"total_cases": "Total cases", "completed_cases": "Completed cases", "passed_rules": "Passed rules", "failed_rules": "Failed rules", "error_rules": "Error rules", "pass_rate": "Pass rate", "average_score": "Average score", "total_cost_micros": "Total cost (micros)"},
   "judgePrompt": "Judge prompt",
   "judgeHint": "The judge sub-execution returns {passed, score, reason}; the prompt may reference {{actualOutput}} and {{expectedOutput}}.",
   "judgeRequiredFields": "LLM judge rules need a model and a prompt",
@@ -46,6 +46,9 @@ const translations = {
   "workflowVersion": "Workflow version",
   "dataset": "Dataset",
   "visibility": "Visibility",
+  "private": "Members only",
+  "department": "Department",
+  "company": "Company",
   "prerequisites": {
     "runDescription": "Prepare a complete immutable snapshot before starting an evaluation.",
     "workflowVersion": "At least one published Workflow Version",
@@ -65,6 +68,7 @@ const translations = {
     "exact": "Exact match",
     "contains": "Contains text",
     "regex": "Regular expression",
+    "llm_judge": "LLM Judge",
     "json_schema": "JSON Schema"
   }
 } as const

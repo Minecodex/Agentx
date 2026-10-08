@@ -70,7 +70,7 @@ use object_store::{ObjectStore, memory::InMemory, path::Path as ObjectPath};
 use rand::rngs::OsRng;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use sqlx::{MySqlPool, Row, mysql::MySqlPoolOptions};
+use sqlx::{MySqlPool, Row};
 use testcontainers::{
     GenericImage, ImageExt,
     core::{IntoContainerPort, WaitFor},
@@ -87,6 +87,7 @@ const PUBLIC_KEY: &[u8] =
 
 struct Fixture {
     state: RuntimeState,
+    observer: MySqlPool,
     signing_key: SigningKey,
     work_package_signing_key: SigningKey,
     tenant_id: Uuid,
@@ -198,12 +199,31 @@ impl WorkerProvider for StubWorkerProvider {
                     "unexpected provider request in test".into(),
                 ));
             }
-            StubWorkerMode::Evaluator => json!({
-                "id":"fixture-evaluator-response",
-                "object":"chat.completion",
-                "choices":[{"index":0,"message":{"role":"assistant","content":"{\"passed\":true,\"score\":0.95,\"reason\":\"fixture accepted the target output\",\"usage\":{\"tokens\":7,\"costMicros\":23}}"},"finish_reason":"stop"}],
-                "usage":{"prompt_tokens":0,"completion_tokens":7,"total_tokens":7}
-            }),
+            StubWorkerMode::Evaluator => {
+                let prompt = body
+                    .pointer("/messages/0/content")
+                    .and_then(Value::as_str)
+                    .unwrap();
+                assert!(
+                    prompt.starts_with("Judge ")
+                        && prompt.ends_with("Return passed, score and reason."),
+                    "{body}"
+                );
+                assert!(!prompt.contains("{{actualOutput}}"));
+                let question: Value = serde_json::from_str(
+                    body.pointer("/messages/1/content")
+                        .and_then(Value::as_str)
+                        .unwrap(),
+                )
+                .unwrap();
+                assert_eq!(question["actualOutput"], question["expectedOutput"]);
+                json!({
+                    "id":"fixture-evaluator-response",
+                    "object":"chat.completion",
+                    "choices":[{"index":0,"message":{"role":"assistant","content":"{\"passed\":true,\"score\":0.95,\"reason\":\"fixture accepted the target output\"}"},"finish_reason":"stop"}],
+                    "usage":{"prompt_tokens":0,"completion_tokens":7,"total_tokens":7}
+                })
+            }
             StubWorkerMode::Agent(calls) if endpoint.ends_with("/chat/completions") => {
                 let index = calls.fetch_add(1, Ordering::SeqCst);
                 json!({
@@ -305,3 +325,6 @@ include!("runtime_slice/fork_sandbox_and_retention.rs");
 include!("runtime_slice/agent_attachments.rs");
 include!("runtime_slice/lifecycle_and_work_packages.rs");
 include!("runtime_slice/session_recovery_and_gc.rs");
+include!("runtime_slice/quota_concurrency.rs");
+include!("runtime_slice/incremental_persistence.rs");
+include!("runtime_slice/trace_batches.rs");

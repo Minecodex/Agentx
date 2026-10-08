@@ -82,6 +82,30 @@
                 "string",
                 "null"
               ]
+            },
+            "serviceType": {
+              "enum": [
+                "LoadBalancer",
+                "NodePort",
+                "ClusterIP"
+              ]
+            },
+            "httpNodePort": {
+              "type": "integer",
+              "minimum": 30000,
+              "maximum": 32767
+            },
+            "httpsNodePort": {
+              "type": "integer",
+              "minimum": 30000,
+              "maximum": 32767
+            },
+            "loadBalancerClass": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1
             }
           }
         },
@@ -161,6 +185,10 @@
                     "null"
                   ],
                   "minLength": 1
+                },
+                "localProxyUpstream": {
+                  "type": "string",
+                  "pattern": "^https?://"
                 }
               }
             },
@@ -944,6 +972,13 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "loadBalancerClass": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
         }
       }
     },

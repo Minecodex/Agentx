@@ -393,20 +393,22 @@ async fn next_legacy_sse_event(
     }
 }
 
-fn legacy_sse_boundary(buffer: &[u8]) -> Option<(usize, usize)> {
-    buffer
+pub(super) fn legacy_sse_boundary(buffer: &[u8]) -> Option<(usize, usize)> {
+    let crlf = buffer
         .windows(4)
         .position(|window| window == b"\r\n\r\n")
-        .map(|position| (position, 4))
-        .or_else(|| {
-            buffer
-                .windows(2)
-                .position(|window| window == b"\n\n")
-                .map(|position| (position, 2))
-        })
+        .map(|position| (position, 4));
+    let lf = buffer
+        .windows(2)
+        .position(|window| window == b"\n\n")
+        .map(|position| (position, 2));
+    [crlf, lf]
+        .into_iter()
+        .flatten()
+        .min_by_key(|(position, _)| *position)
 }
 
-fn parse_legacy_sse_event(event: &str) -> (String, String) {
+pub(super) fn parse_legacy_sse_event(event: &str) -> (String, String) {
     let mut kind = "message".to_owned();
     let mut data = String::new();
     for line in event.lines() {

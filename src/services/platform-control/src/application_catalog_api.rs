@@ -136,10 +136,6 @@ async fn create_application(
     .bind(id)
     .execute(&mut *tx)
     .await?;
-    let payload = json!({"applicationId":id,"workflowId":input.workflow_id});
-    let hash = agentx_runtime_contracts::content_hash(&payload).map_err(ApiError::internal)?;
-    sqlx::query("INSERT INTO outbox(id,tenant_id,event_type,aggregate_type,aggregate_id,payload_json,status,request_hash,idempotency_key) VALUES(?,?,?,?,?,?,'pending',?,?)")
-        .bind(Uuid::now_v7()).bind(actor.tenant_id).bind("ApplicationCreated").bind("application").bind(id.to_string()).bind(payload).bind(hash.as_str()).bind(format!("application-created:{id}")).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO audit_events(id,tenant_id,actor_user_id,action,target_type,target_id,request_id,detail_json) VALUES(?,?,?,?,?,?,?,?)")
         .bind(Uuid::now_v7()).bind(actor.tenant_id).bind(actor.user_id).bind("application.created").bind("application").bind(id.to_string()).bind(Uuid::now_v7()).bind(json!({"workflowId":input.workflow_id})).execute(&mut *tx).await?;
     tx.commit().await?;

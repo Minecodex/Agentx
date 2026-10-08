@@ -47,13 +47,14 @@ export function channelConfigFields(t: (key: string) => string, templates: Webho
   for (const template of templates) {
     if (template.provider === 'agentx') continue
     for (const field of template.fields) {
+      const keepSecret = field.sensitive && existing?.providerType === template.provider && effectiveChannelMode({ providerType: existing.providerType, channelMode: mode }) === template.mode
       fields.push({
         name: `channel_${field.key}`,
         label: t(`applications.channelFields.${field.key}`),
         type: field.sensitive ? 'password' : 'text',
-        required: field.required,
+        required: field.required && !keepSecret,
         defaultValue: !field.sensitive ? String((existing?.configFields ?? {})[field.key] ?? '') : '',
-        placeholder: field.sensitive && existing ? t('applications.channelSecretKeep') : '',
+        placeholder: keepSecret ? t('applications.channelSecretKeep') : '',
         visible: (values) => {
           const providerValue = values.providerType ?? provider
           const modeValue = streamCapable(providerValue) ? values.channelMode || 'callback' : 'callback'

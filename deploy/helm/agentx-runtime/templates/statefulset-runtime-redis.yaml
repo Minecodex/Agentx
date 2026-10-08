@@ -16,18 +16,25 @@ spec:
         - name: redis
           image: redis:7.4-alpine
           securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
-          args: [redis-server, --appendonly, "yes", --aclfile, /run/secrets/redis/users.acl]
+          args: [redis-server, --appendonly, "yes", --aclfile, /run/secrets/redis/users.acl{{ if .Values.global.components.runtimeRedis.caSecretName }}, --port, "0", --tls-port, "6379", --tls-cert-file, /tls/tls.crt, --tls-key-file, /tls/tls.key, --tls-ca-cert-file, /tls/ca.crt, --tls-auth-clients, "no"{{ end }}]
           env:
             - name: REDIS_PASSWORD
               valueFrom: { secretKeyRef: { name: {{ .Values.global.secrets.runtime }}, key: AGENTX_RUNTIME_REDIS_PASSWORD } }
           ports: [{ name: redis, containerPort: 6379 }]
           readinessProbe:
-            exec: { command: [sh, -ec, 'redis-cli -a "$REDIS_PASSWORD" ping'] }
+            exec: { command: [sh, -ec, 'redis-cli {{ if .Values.global.components.runtimeRedis.caSecretName }}--tls --cacert /tls/ca.crt {{ end }}-a "$REDIS_PASSWORD" ping'] }
             periodSeconds: 5
           volumeMounts:
+{{- if .Values.global.components.runtimeRedis.caSecretName }}
+            - { name: tls, mountPath: /tls, readOnly: true }
+{{- end }}
             - { name: data, mountPath: /data }
             - { name: redis-acl, mountPath: /run/secrets/redis, readOnly: true }
       volumes:
+{{- if .Values.global.components.runtimeRedis.caSecretName }}
+        - name: tls
+          secret: { secretName: {{ .Values.global.components.runtimeRedis.caSecretName }} }
+{{- end }}
         - name: redis-acl
           secret:
             secretName: agentx-runtime-secrets

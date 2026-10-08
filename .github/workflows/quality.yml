@@ -44,7 +44,7 @@ jobs:
       - run: uv sync --frozen --group test
       - run: cargo build -p agentxctl -p agentx-backup-test-adapter
       - run: corepack enable && pnpm install --frozen-lockfile
-      - run: uv run --frozen --group test pytest tests/e2e --values deploy/values/dockerhub-beta.yaml --timeout=7200
+      - run: uv run --frozen --group test pytest tests/e2e --values deploy/values/dockerhub-beta.yaml --capacity-smoke --timeout=7200
 
   kubernetes-e2e-windows:
     if: ${{ vars.AGENTX_E2E_WINDOWS_ENABLED == 'true' }}
@@ -59,4 +59,4 @@ jobs:
       - run: uv sync --frozen --group test
       - run: cargo build -p agentxctl -p agentx-backup-test-adapter
       - run: corepack enable; pnpm install --frozen-lockfile
-      - run: uv run --frozen --group test pytest tests/e2e --values deploy/values/dockerhub-beta.yaml --timeout=7200
+      - run: uv run --frozen --group test pytest tests/e2e --values deploy/values/dockerhub-beta.yaml --capacity-smoke --timeout=7200
