@@ -81,7 +81,7 @@ macro_rules! grantable_query {
             " SELECT tenant_id,id,CONVERT('credential' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci resource_type,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci name,CONVERT(credential_type USING utf8mb4) COLLATE utf8mb4_0900_ai_ci detail,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci status,owner_department_id,updated_at FROM credentials",
             " UNION ALL SELECT a.tenant_id,a.id,CONVERT('model' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(a.alias USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(CONCAT(d.connection_name,' / ',d.model_name) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(a.status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,d.owner_department_id,a.updated_at FROM model_aliases a JOIN model_deployments d ON d.id=a.deployment_id",
             " UNION ALL SELECT s.tenant_id,s.id,CONVERT('mcp_server' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(s.name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(sv.endpoint USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(s.status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,s.owner_department_id,s.updated_at FROM mcp_servers s JOIN mcp_server_versions sv ON sv.server_id=s.id AND sv.version_number=s.current_version_number",
-            " UNION ALL SELECT t.tenant_id,t.id,CONVERT('mcp_tool' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(t.title,t.name) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(CONCAT(s.name,' / ',t.name) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(IF(t.availability='available','active','unavailable') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,s.owner_department_id,t.updated_at FROM mcp_tools t JOIN mcp_servers s ON s.id=t.server_id",
+            " UNION ALL SELECT t.tenant_id,t.id,CONVERT('mcp_tool' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(t.title,t.name) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(CONCAT(s.name,' / ',t.name) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(IF(t.availability='available' AND p.enabled=TRUE AND s.status='active','active','unavailable') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,s.owner_department_id,GREATEST(t.updated_at,p.updated_at,s.updated_at) FROM mcp_tools t JOIN mcp_servers s ON s.id=t.server_id AND s.tenant_id=t.tenant_id JOIN mcp_tool_policies p ON p.tool_id=t.id AND p.tenant_id=t.tenant_id",
             " UNION ALL SELECT tenant_id,id,CONVERT('skill' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(description,'') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,owner_department_id,updated_at FROM skills",
             " UNION ALL SELECT tenant_id,id,CONVERT('rag' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(external_resource_id USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,owner_department_id,updated_at FROM rag_resources",
             " UNION ALL SELECT tenant_id,id,CONVERT('memory' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(external_namespace USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,owner_department_id,updated_at FROM memory_namespaces",
@@ -91,6 +91,15 @@ macro_rules! grantable_query {
         )
     };
 }
+
+#[path = "resource_request_audit.rs"]
+mod request_audit;
+#[path = "resource_request_validation.rs"]
+mod request_validation;
+#[path = "resource_requirements.rs"]
+mod requirements;
+pub(crate) use requirements::validate_skill_dependency;
+use requirements::{ensure_resource, expand_requirements};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -140,7 +149,7 @@ struct CreateGrantRequest {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct AuthorizationInput {
+pub(crate) struct AuthorizationInput {
     resource_type: String,
     resource_id: Uuid,
     resource_version_id: Option<Uuid>,
@@ -600,6 +609,7 @@ async fn department_resource_options(
             resource_id,
             version_id,
             owner_department_id,
+            "use",
         )
         .await?;
         let can_direct_grant =
@@ -828,9 +838,15 @@ async fn create_subject_request(
         )
     );
     let request = Uuid::now_v7();
+    let dependency_hash =
+        request_validation::dependency_hash(state, actor.tenant_id, &requirements)
+            .await?
+            .ok_or_else(|| {
+                ApiError::conflict("RESOURCE_GRANT_REQUEST_STALE", "Resource package changed")
+            })?;
     let mut tx = state.pool.begin().await?;
     sqlx::query("INSERT INTO resource_grant_requests(id,tenant_id,subject_type,subject_id,workflow_id,workflow_service_identity_id,primary_resource_type,primary_resource_id,primary_resource_version_id,operation_key,source_node_id,source_revision,request_message,dependency_hash,open_dedupe_key,requested_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .bind(request).bind(actor.tenant_id).bind(subject.kind()).bind(subject.id()).bind(subject.workflow()).bind(match subject { GrantSubject::WorkflowServiceIdentity { identity_id, .. } => Some(identity_id), GrantSubject::Department(_) => None }).bind(&input.resource_type).bind(input.resource_id).bind(input.resource_version_id).bind(&input.operation).bind(input.source_node_id).bind(input.source_revision).bind(input.message).bind(&hash).bind(&hash).bind(actor.user_id).execute(&mut *tx).await?;
+        .bind(request).bind(actor.tenant_id).bind(subject.kind()).bind(subject.id()).bind(subject.workflow()).bind(match subject { GrantSubject::WorkflowServiceIdentity { identity_id, .. } => Some(identity_id), GrantSubject::Department(_) => None }).bind(&input.resource_type).bind(input.resource_id).bind(input.resource_version_id).bind(&input.operation).bind(input.source_node_id).bind(input.source_revision).bind(input.message).bind(&dependency_hash).bind(&hash).bind(actor.user_id).execute(&mut *tx).await?;
     let mut departments = BTreeSet::new();
     for item in requirements {
         departments.insert(item.owner_department_id);
@@ -844,6 +860,7 @@ async fn create_subject_request(
         notify_department_reviewers(&mut tx, actor.tenant_id, review_id, request, department)
             .await?;
     }
+    request_audit::record(&mut tx, actor, request, "submitted").await?;
     tx.commit().await?;
     Ok((
         StatusCode::CREATED,
@@ -898,14 +915,17 @@ async fn cancel_request(
     Path(id): Path<Uuid>,
     Json(input): Json<CancelInput>,
 ) -> ApiResult<Json<Value>> {
+    let mut tx = state.pool.begin().await?;
     let result=sqlx::query("UPDATE resource_grant_requests SET status='cancelled',open_dedupe_key=NULL,resolved_at=UTC_TIMESTAMP(6),version=version+1 WHERE tenant_id=? AND id=? AND status='pending' AND version=? AND requested_by=?")
-        .bind(actor.tenant_id).bind(id).bind(input.expected_version).bind(actor.user_id).execute(&state.pool).await?;
+        .bind(actor.tenant_id).bind(id).bind(input.expected_version).bind(actor.user_id).execute(&mut *tx).await?;
     if result.rows_affected() != 1 {
         return Err(ApiError::conflict(
             "RESOURCE_GRANT_REQUEST_STATE_CONFLICT",
             "Resource grant request changed or cannot be cancelled",
         ));
     }
+    request_audit::record(&mut tx, &actor, id, "cancelled").await?;
+    tx.commit().await?;
     Ok(Json(load_request(&state, &actor, id).await?))
 }
 
@@ -943,6 +963,27 @@ async fn review(
         return Err(ApiError::forbidden("Department review scope is required"));
     }
     let mut tx = state.pool.begin().await?;
+    let request = request_validation::lock_pending(&mut tx, actor.tenant_id, id).await?;
+    if !request_validation::is_current(state, &mut tx, actor.tenant_id, &request).await? {
+        sqlx::query("UPDATE resource_grant_requests SET status='stale',open_dedupe_key=NULL,resolved_at=UTC_TIMESTAMP(6),version=version+1 WHERE tenant_id=? AND id=?")
+            .bind(actor.tenant_id).bind(id).execute(&mut *tx).await?;
+        request_audit::record(&mut tx, actor, id, "stale").await?;
+        notify_requester(
+            &mut tx,
+            actor.tenant_id,
+            id,
+            "resource_grant_request_stale",
+            "notifications.resourceGrantStale.title",
+            "notifications.resourceGrantStale.body",
+            "warning",
+        )
+        .await?;
+        tx.commit().await?;
+        return Err(ApiError::conflict(
+            "RESOURCE_GRANT_REQUEST_STALE",
+            "Resource package or requester changed; submit a new request",
+        ));
+    }
     let mut admission_commands = Vec::new();
     let changed=sqlx::query("UPDATE resource_grant_request_reviews SET status=?,reviewed_by=?,review_comment=?,reviewed_at=UTC_TIMESTAMP(6),version=version+1 WHERE tenant_id=? AND request_id=? AND owner_department_id=? AND status='pending' AND version=?")
         .bind(if approve{"approved"}else{"rejected"}).bind(actor.user_id).bind(input.comment).bind(actor.tenant_id).bind(id).bind(department).bind(input.expected_version).execute(&mut *tx).await?;
@@ -952,8 +993,20 @@ async fn review(
             "Department review changed",
         ));
     }
+    request_audit::record(
+        &mut tx,
+        actor,
+        id,
+        if approve {
+            "review_approved"
+        } else {
+            "review_rejected"
+        },
+    )
+    .await?;
     if !approve {
         sqlx::query("UPDATE resource_grant_requests SET status='rejected',open_dedupe_key=NULL,resolved_at=UTC_TIMESTAMP(6),version=version+1 WHERE tenant_id=? AND id=? AND status='pending'").bind(actor.tenant_id).bind(id).execute(&mut *tx).await?;
+        request_audit::record(&mut tx, actor, id, "rejected").await?;
         notify_requester(
             &mut tx,
             actor.tenant_id,
@@ -1019,6 +1072,7 @@ async fn finalize_approved(
         .collect::<Result<Vec<_>, sqlx::Error>>()?;
     let (granted, _) = insert_subject_grants(tx, actor, subject, requirements).await?;
     sqlx::query("UPDATE resource_grant_requests SET status='approved',open_dedupe_key=NULL,resolved_at=UTC_TIMESTAMP(6),version=version+1 WHERE tenant_id=? AND id=?").bind(actor.tenant_id).bind(id).execute(&mut **tx).await?;
+    request_audit::record(tx, actor, id, "approved").await?;
     let commands = match subject {
         GrantSubject::WorkflowServiceIdentity { identity_id, .. } if granted != 0 => {
             crate::runtime_admission::advance_service_identity(
@@ -1261,7 +1315,7 @@ async fn load_request(state: &ControlApiState, actor: &Actor, id: Uuid) -> ApiRe
             "reviewComment":review.try_get::<Option<String>,_>("review_comment")?,
             "version":review.try_get::<u64,_>("version")?,
             "canAct":can_act,
-            "reviewedAt":review.try_get::<Option<OffsetDateTime>,_>("reviewed_at")?
+            "reviewedAt":review.try_get::<Option<OffsetDateTime>,_>("reviewed_at")?.map(request_audit::timestamp).transpose()?
         }));
     }
     Ok(json!({
@@ -1285,192 +1339,10 @@ async fn load_request(state: &ControlApiState, actor: &Actor, id: Uuid) -> ApiRe
         "version":row.try_get::<u64,_>("version")?,
         "items":items,
         "reviews":reviews,
-        "history":[],
-        "createdAt":row.try_get::<OffsetDateTime,_>("created_at")?,
-        "updatedAt":row.try_get::<OffsetDateTime,_>("updated_at")?
+        "history":request_audit::history(state, actor.tenant_id, id).await?,
+        "createdAt":request_audit::timestamp(row.try_get("created_at")?)?,
+        "updatedAt":request_audit::timestamp(row.try_get("updated_at")?)?
     }))
-}
-
-async fn expand_requirements(
-    state: &ControlApiState,
-    tenant: Uuid,
-    input: &AuthorizationInput,
-) -> ApiResult<Vec<Requirement>> {
-    validate_operation(&input.operation)?;
-    let owner = ensure_resource(state, tenant, &input.resource_type, input.resource_id).await?;
-    let mut values = vec![Requirement {
-        resource_type: input.resource_type.clone(),
-        resource_id: input.resource_id,
-        resource_version_id: input.resource_version_id,
-        operation: input.operation.clone(),
-        required_by: None,
-        owner_department_id: owner,
-    }];
-    match input.resource_type.as_str() {
-        "model" => {
-            let credential: Option<Uuid> = sqlx::query_scalar("SELECT d.credential_id FROM model_aliases a JOIN model_deployments d ON d.tenant_id=a.tenant_id AND d.id=a.deployment_id WHERE a.tenant_id=? AND a.id=?")
-                .bind(tenant).bind(input.resource_id).fetch_optional(&state.pool).await?.flatten();
-            if let Some(credential) = credential {
-                push_requirement(
-                    state,
-                    tenant,
-                    &mut values,
-                    "credential",
-                    credential,
-                    "use",
-                    input.resource_id,
-                )
-                .await?;
-            }
-        }
-        "mcp_server" => {
-            let credential: Option<Uuid> = sqlx::query_scalar("SELECT sv.credential_id FROM mcp_servers s JOIN mcp_server_versions sv ON sv.tenant_id=s.tenant_id AND sv.server_id=s.id AND sv.version_number=s.current_version_number WHERE s.tenant_id=? AND s.id=?")
-                .bind(tenant).bind(input.resource_id).fetch_optional(&state.pool).await?.flatten();
-            if let Some(credential) = credential {
-                push_requirement(
-                    state,
-                    tenant,
-                    &mut values,
-                    "credential",
-                    credential,
-                    "use",
-                    input.resource_id,
-                )
-                .await?;
-            }
-        }
-        "mcp_tool" => {
-            let row = sqlx::query("SELECT t.server_id,sv.credential_id FROM mcp_tools t JOIN mcp_servers s ON s.tenant_id=t.tenant_id AND s.id=t.server_id JOIN mcp_server_versions sv ON sv.tenant_id=s.tenant_id AND sv.server_id=s.id AND sv.version_number=s.current_version_number WHERE t.tenant_id=? AND t.id=?")
-                .bind(tenant).bind(input.resource_id).fetch_one(&state.pool).await?;
-            let server: Uuid = row.try_get("server_id")?;
-            push_requirement(
-                state,
-                tenant,
-                &mut values,
-                "mcp_server",
-                server,
-                "use",
-                input.resource_id,
-            )
-            .await?;
-            if let Some(credential) = row.try_get::<Option<Uuid>, _>("credential_id")? {
-                push_requirement(
-                    state,
-                    tenant,
-                    &mut values,
-                    "credential",
-                    credential,
-                    "use",
-                    server,
-                )
-                .await?;
-            }
-        }
-        "rag" => {
-            let credential: Option<Uuid> = sqlx::query_scalar("SELECT c.credential_id FROM rag_resources r JOIN rag_connections c ON c.tenant_id=r.tenant_id AND c.id=r.connection_id WHERE r.tenant_id=? AND r.id=?")
-                .bind(tenant).bind(input.resource_id).fetch_optional(&state.pool).await?.flatten();
-            if let Some(credential) = credential {
-                push_requirement(
-                    state,
-                    tenant,
-                    &mut values,
-                    "credential",
-                    credential,
-                    "use",
-                    input.resource_id,
-                )
-                .await?;
-            }
-        }
-        "memory" => {
-            let credential: Option<Uuid> = sqlx::query_scalar("SELECT c.credential_id FROM memory_namespaces n JOIN memory_connections c ON c.tenant_id=n.tenant_id AND c.id=n.connection_id WHERE n.tenant_id=? AND n.id=?")
-                .bind(tenant).bind(input.resource_id).fetch_optional(&state.pool).await?.flatten();
-            if let Some(credential) = credential {
-                push_requirement(
-                    state,
-                    tenant,
-                    &mut values,
-                    "credential",
-                    credential,
-                    "use",
-                    input.resource_id,
-                )
-                .await?;
-            }
-        }
-        _ => {}
-    }
-    if input.resource_type == "skill" {
-        let version = if let Some(id) = input.resource_version_id {
-            Some(id)
-        } else {
-            sqlx::query_scalar("SELECT id FROM skill_versions WHERE tenant_id=? AND skill_id=? ORDER BY version_number DESC LIMIT 1").bind(tenant).bind(input.resource_id).fetch_optional(&state.pool).await?
-        };
-        if let Some(version) = version {
-            let rows=sqlx::query("SELECT resource_type,resource_id,resource_version_id,operation_key FROM skill_dependencies WHERE tenant_id=? AND skill_version_id=?").bind(tenant).bind(version).fetch_all(&state.pool).await?;
-            for row in rows {
-                let kind: String = row.try_get("resource_type")?;
-                let id: Uuid = row.try_get("resource_id")?;
-                let department = ensure_resource(state, tenant, &kind, id).await?;
-                values.push(Requirement {
-                    resource_type: kind,
-                    resource_id: id,
-                    resource_version_id: row.try_get("resource_version_id")?,
-                    operation: row.try_get("operation_key")?,
-                    required_by: Some(input.resource_id),
-                    owner_department_id: department,
-                });
-            }
-        }
-    }
-    let mut seen = BTreeSet::new();
-    values.retain(|item| {
-        seen.insert((
-            item.resource_type.clone(),
-            item.resource_id,
-            item.operation.clone(),
-        ))
-    });
-    Ok(values)
-}
-
-async fn push_requirement(
-    state: &ControlApiState,
-    tenant: Uuid,
-    values: &mut Vec<Requirement>,
-    resource_type: &str,
-    resource_id: Uuid,
-    operation: &str,
-    required_by: Uuid,
-) -> ApiResult<()> {
-    let owner = ensure_resource(state, tenant, resource_type, resource_id).await?;
-    values.push(Requirement {
-        resource_type: resource_type.into(),
-        resource_id,
-        resource_version_id: None,
-        operation: operation.into(),
-        required_by: Some(required_by),
-        owner_department_id: owner,
-    });
-    Ok(())
-}
-
-async fn ensure_resource(
-    state: &ControlApiState,
-    tenant: Uuid,
-    kind: &str,
-    id: Uuid,
-) -> ApiResult<Uuid> {
-    validate_kind(kind)?;
-    sqlx::query_scalar(grantable_query!(
-        "SELECT owner_department_id FROM grantable WHERE tenant_id=? AND resource_type=? AND id=? AND status='active'"
-    ))
-        .bind(tenant)
-        .bind(kind)
-        .bind(id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| ApiError::not_found("Active resource"))
 }
 
 async fn validate_mcp_dependency(
@@ -1573,6 +1445,7 @@ async fn current_resource_version(
     Ok(version)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn department_resource_authorized(
     state: &ControlApiState,
     tenant: Uuid,
@@ -1581,14 +1454,15 @@ async fn department_resource_authorized(
     resource_id: Uuid,
     resource_version_id: Option<Uuid>,
     owner_department_id: Uuid,
+    operation: &str,
 ) -> ApiResult<bool> {
     let owned: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM department_closure WHERE tenant_id=? AND ancestor_id=? AND descendant_id=?)")
         .bind(tenant).bind(department).bind(owner_department_id).fetch_one(&state.pool).await?;
     if owned {
         return Ok(true);
     }
-    Ok(sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM resource_grants WHERE tenant_id=? AND subject_type='department' AND subject_id=? AND resource_type=? AND resource_id=? AND operation_key IN ('use','manage') AND (resource_version_id IS NULL OR resource_version_id=?))")
-        .bind(tenant).bind(department).bind(resource_type).bind(resource_id).bind(resource_version_id).fetch_one(&state.pool).await?)
+    Ok(sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM resource_grants WHERE tenant_id=? AND subject_type='department' AND subject_id=? AND resource_type=? AND resource_id=? AND operation_key IN (?,'manage') AND (resource_version_id IS NULL OR resource_version_id=?))")
+        .bind(tenant).bind(department).bind(resource_type).bind(resource_id).bind(operation).bind(resource_version_id).fetch_one(&state.pool).await?)
 }
 
 pub(crate) async fn ensure_department_resource_authorized(
@@ -1608,6 +1482,7 @@ pub(crate) async fn ensure_department_resource_authorized(
         resource_id,
         resource_version_id,
         owner,
+        "use",
     )
     .await?
     {

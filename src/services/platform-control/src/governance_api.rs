@@ -563,30 +563,53 @@ pub(crate) async fn post_runtime_admission(
         },
     )
     .map_err(ApiError::internal)?;
-    let response = state
-        .http
-        .post(format!(
-            "{}/internal/runtime/v1/admission-commands:apply",
-            state.runtime_query_url
-        ))
-        .bearer_auth(token)
-        .json(command)
-        .send()
-        .await
-        .map_err(|error| {
+    for attempt in 0..3 {
+        let mut request = state
+            .http
+            .post(format!(
+                "{}/internal/runtime/v1/admission-commands:apply",
+                state.runtime_query_url
+            ))
+            .bearer_auth(&token)
+            .json(command);
+        if attempt > 0 {
+            // Retire a pooled connection to the old draining Pod. Admission
+            // commands keep the same idempotency key across these retries.
+            request = request.header(reqwest::header::CONNECTION, "close");
+        }
+        let response = request.send().await.map_err(|error| {
             tracing::warn!(%error,"Runtime governance command is unavailable");
             ApiError::unavailable("RUNTIME_UNAVAILABLE", "Runtime service is unavailable")
         })?;
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        tracing::warn!(%status,response_body=%body,"Runtime rejected governance command");
-        return Err(ApiError::conflict(
-            "RUNTIME_COMMAND_REJECTED",
-            "Runtime rejected the governance command",
-        ));
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            tracing::warn!(%status,response_body=%body,"Runtime rejected governance command");
+            if status == reqwest::StatusCode::SERVICE_UNAVAILABLE
+                && attempt < 2
+                && serde_json::from_str::<Value>(&body)
+                    .ok()
+                    .and_then(|value| value.get("code").and_then(Value::as_str).map(str::to_owned))
+                    .as_deref()
+                    == Some("SERVICE_DRAINING")
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                continue;
+            }
+            if status.is_server_error() {
+                return Err(ApiError::unavailable(
+                    "RUNTIME_UNAVAILABLE",
+                    "Runtime service is unavailable",
+                ));
+            }
+            return Err(ApiError::conflict(
+                "RUNTIME_COMMAND_REJECTED",
+                "Runtime rejected the governance command",
+            ));
+        }
+        return response.json().await.map_err(ApiError::internal);
     }
-    response.json().await.map_err(ApiError::internal)
+    unreachable!("each admission attempt returns or advances to a bounded retry")
 }
 
 async fn list_evaluations(

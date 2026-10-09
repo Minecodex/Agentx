@@ -64,6 +64,16 @@ P7-D3~D8（背压、容量、升级、恢复、供应链、发布审查）← �
 
 2026-10-07 审查修复的实现与实际验证结果见 [代码审查修复证据](evidence/p7-code-review-fixes.md)。下表保留 2026-09 历史验收记录，不能替代本轮候选的生产认证。
 
+2026-10-08 首批真实服务专项完成：Kimi 文本/SSE/Judge、CPU Embedding、LightRAG 文档及已发布应用读取新内容、Mem0 推断写入/跨会话召回/用户隔离、角色撤销、真实 Python Sandbox、Insights 与桌面基础均有复测通过证据。修复了租约调度、检索包络、文档配置版本、用户应用授权投影等问题；本地新镜像已升级，宿主机 80/443 仍待 Docker 特权端口映射的系统确认。范围、失败记录与剩余资源见 [真实服务验收报告](evidence/p7-live-provider-acceptance.md)，不能据此将 plan7 全量认证标记完成。
+
+2026-10-08 第二批专项补齐 Model／Credential 跨部门会签、拒绝／取消／撤销、配置与申请人变化后的失效、旧 Token 拒绝、同用户跨应用／Namespace 记忆隔离，以及真实知识／记忆 Agent → Python 组合链路。新增 8 个 pytest 场景经专项复测均有通过证据，含 1 个桌面浏览器场景；取消状态、依赖失效、审计历史与日期问题已修复，原始失败及磁盘恢复记录均保留，详见同一真实服务验收报告。
+
+2026-10-09 第三批完成现有资源足够的七类自动化专项：MCP／Skill 完整依赖与权限、非零成本、3–5 评测比较和 Judge 边界、真实服务故障恢复、Sandbox 取消/网络/STDIO Handle、桌面状态以及 Redis 准入。33 个不同 pytest 场景均有通过记录，最终门户内部 13 个 Playwright 用例通过；前端完整回归 428 项通过。修复了 Redis/Chat 准入、冻结 MCP 凭证、Skill 权限提升、Judge 凭证预检、执行详情范围、Gateway Drain 连接、活跃 Sandbox 取消及界面假零/未知标签等问题，见 [第三批自动化验收报告](evidence/p7-automatic-boundary-acceptance.md)。真实 IM、多模态、RAGFlow、生产强隔离和完整生产认证仍按报告保留，不能将专项覆盖写成 plan7 全量认证完成。
+
+同日首次检查本地 HTTPS 时，标准 443 因 Docker 特权辅助程序缺失而无法映射，macOS 默认信任也未接受现有 Agentx CA。用户完成端口辅助程序配置后，已启动持久 Envoy 入口，标准 80/443 的门户、API 与 Runtime 认证/CORS 经指定 CA 检查通过；系统默认 CA 信任仍未完成。初次失败与后续状态分别记录在 [本地 HTTPS 入口检查](evidence/p7-local-https-entry-check.md)。
+
+2026-10-09 调试台收尾：对话映射的空标题显示字段名，应用需保存并发布输入/输出映射后才能对话；网络失败显示明确的连接提示，没有 Request ID 时不再显示空标签，有服务端 ID 时保留供排查。37 项相关单测与专项临时 Kubernetes E2E 通过，包含实际映射发布、对话成功以及参数/会话请求被浏览器阻断时的界面检查；本地门户已更新。测试入口为 `tests/e2e/product/test_playground_errors.py`，证据在 `.local/artifacts/e2e/p7playground1009b/`。用户应用已保存 `question → result` 映射，浏览器已能创建会话；本次未发送真实模型问题或修改系统证书信任。
+
 2026-10-08 回顾又修复了 Trace 分页限幅与委托 Hash 不一致、发布门禁对非法数值误放行两类遗漏，并修正 IM mock 在 Python 优化模式下失效的协议校验。完整镜像候选 `d041bea6…` 通过相关回归，同日重新构建 11 个正式镜像、升级本地四个 Release，并通过新候选的隔离集群评测/Judge 桌面 UI 回归（`p7local1008ui`，1 passed；内部 Playwright 2 项）；部署与范围见 [本地重部署证据](evidence/p7-d-local-production-redeploy.md)。RAGFlow 管理面组合、Redis 水位专项、安全剩余场景及同 Run 九域/两小时/公网供应链认证仍未完成，plan7 当前不能标记全部完成。
 
 同日修复了门户升级后旧 JS 分块加载失败的问题，重建并部署门户镜像；前端 408 项回归与 4 个集群浏览器场景通过。后端沿用上述完整候选，详见 [工作流详情页资源加载修复](evidence/p7-web-asset-loading-fix.md)。

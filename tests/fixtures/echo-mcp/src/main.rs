@@ -119,7 +119,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/plan5/maybe-fail", get(plan5_maybe_fail))
         .route("/v2/runtime/model", post(v2_runtime_model))
         .route("/v2/runtime/mcp", post(v2_runtime_mcp))
-        .nest_service("/mcp", service);
+        .nest_service("/mcp", service)
+        .layer(axum::middleware::from_fn(require_mcp_bearer));
     let listener = tokio::net::TcpListener::bind(bind_addr).await?;
     tracing::info!(%bind_addr, "Echo MCP is listening");
 
@@ -130,6 +131,23 @@ async fn main() -> anyhow::Result<()> {
         })
         .await?;
     Ok(())
+}
+
+async fn require_mcp_bearer(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if request.uri().path().starts_with("/mcp")
+        && let Ok(token) = env::var("AGENTX_FIXTURE_MCP_AUTH_TOKEN")
+        && request
+            .headers()
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            != Some(format!("Bearer {token}").as_str())
+    {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    next.run(request).await
 }
 
 async fn plan5_items(headers: HeaderMap, AxumJson(body): AxumJson<Value>) -> AxumJson<Value> {
@@ -313,6 +331,16 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
         )
             .into_response();
     }
+    if request.get("model").and_then(Value::as_str) == Some("echo-unavailable") {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            AxumJson(json!({"error":{"message":"fixture provider unavailable"}})),
+        )
+            .into_response();
+    }
+    if request.get("model").and_then(Value::as_str) == Some("echo-timeout") {
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    }
     // plan7 P7-B B6 scenario 5: the vision fixture reports whether the
     // request carried native image_url content parts.
     if request.get("model").and_then(Value::as_str) == Some("echo-vision") {
@@ -485,6 +513,9 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
         .map(schema_example)
         .and_then(|value| serde_json::to_string(&value).ok());
     let content = tool_call.is_none().then(|| {
+        if request.get("model").and_then(Value::as_str) == Some("echo-invalid-judge") {
+            return "{\"passed\":\"invalid\",\"score\":2,\"reason\":42}".into();
+        }
         structured_content.unwrap_or_else(|| {
             if agent_purpose == "compaction" && p3_overflow_requested {
                 "P3_OVERFLOW_COMPACTED".into()

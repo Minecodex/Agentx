@@ -31,7 +31,14 @@ async fn v2_publish_execution_query_recovery_and_gc_are_fenced_and_idempotent() 
     quota_projection_claim_is_single_owner(&pool).await;
     trigger_claim_takeover_is_fenced(&pool).await;
 
-    let fixture = Fixture::new(pool, observer);
+    let redis_container = GenericImage::new("redis", "7.4-alpine")
+        .with_exposed_port(6379.tcp())
+        .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
+        .start().await.unwrap();
+    let redis_port = redis_container.get_host_port_ipv4(6379.tcp()).await.unwrap();
+    let redis = redis::Client::open(format!("redis://127.0.0.1:{redis_port}/"))
+        .unwrap().get_connection_manager().await.unwrap();
+    let fixture = Fixture::new(pool, observer, redis);
     command_claim_returns_only_the_current_batch(&fixture).await;
     authentication_failures_do_not_write_receipts(&fixture).await;
     let first = fixture.bundle(1).await;

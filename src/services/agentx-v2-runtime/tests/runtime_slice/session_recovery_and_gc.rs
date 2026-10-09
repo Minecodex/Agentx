@@ -1413,6 +1413,7 @@ async fn gc_object_delete_failure_is_recorded_and_retryable(fixture: &Fixture) {
         trust: fixture.state.trust.clone(),
         wakeups: Default::default(),
         vault: None,
+                admission_redis: fixture.state.admission_redis.clone(),
     };
     assert_eq!(mark_collectable(&state, run).await.unwrap(), 1);
     assert!(sweep_one(&state, run, Uuid::now_v7()).await.unwrap());
@@ -1502,6 +1503,7 @@ async fn ready_orphan_objects_are_swept_and_reuploadable(fixture: &Fixture) {
         trust: fixture.state.trust.clone(),
         wakeups: Default::default(),
         vault: None,
+                admission_redis: fixture.state.admission_redis.clone(),
     };
     let retry_run = Uuid::now_v7();
     assert_eq!(

@@ -55,7 +55,7 @@ pub struct HealthRegistry {
     dependencies: Arc<RwLock<BTreeMap<String, DependencyHealth>>>,
 }
 
-pub const METRIC_NAMES: [&str; 17] = [
+pub const METRIC_NAMES: [&str; 20] = [
     "agentx_queue_ready_items",
     "agentx_queue_oldest_ready_seconds",
     "agentx_active_leases",
@@ -74,6 +74,9 @@ pub const METRIC_NAMES: [&str; 17] = [
     // plan7 P7-D3: admission and provider health surfaces for capacity runs.
     "agentx_admission_rejections_total",
     "agentx_provider_circuit_open",
+    "agentx_redis_task_unread_items",
+    "agentx_redis_task_pending_items",
+    "agentx_redis_admission_available",
 ];
 pub const DRAIN_TIMEOUT_SECONDS: u64 = 45;
 pub const ROLE_WATCHDOG_TIMEOUT_SECONDS: u64 = 90;

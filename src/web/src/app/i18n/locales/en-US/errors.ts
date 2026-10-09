@@ -1,6 +1,7 @@
 const translations = {
   "requestFailed": "Request failed ({{code}})",
   "requestFailedWithId": "The request could not be completed. Request ID: {{requestId}}",
+  "requestUnavailable": "The request could not be completed. Please try again later.",
   "requiredField": "This field is required",
   "pageLoad": {
     "title": "This page could not be opened",
@@ -9,6 +10,7 @@ const translations = {
     "home": "Back to home"
   },
   "codes": {
+    "NETWORK_ERROR": "Unable to connect to the service. Check your network, the service address, or browser security warnings, then try again.",
     "INVALID_REQUEST_BODY": "The submitted form contains missing or invalid values.",
     "REQUIRED_FIELD": "This field is required.",
     "INVALID_FIELD": "This field has an invalid value.",

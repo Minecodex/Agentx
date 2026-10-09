@@ -26,7 +26,10 @@ export function apiErrorMessage(detail: ApiError, status = 400) {
   const key = `errors.codes.${detail.code}`
   if (i18n.exists(key)) return i18n.t(key)
   if (status >= 400 && status < 500 && detail.message) return detail.message
-  return i18n.t('errors.requestFailedWithId', { requestId: detail.requestId })
+  const requestId = detail.requestId?.trim()
+  return requestId
+    ? i18n.t('errors.requestFailedWithId', { requestId })
+    : i18n.t('errors.requestUnavailable')
 }
 
 setApiErrorTranslator(apiErrorMessage)

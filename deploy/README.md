@@ -12,7 +12,7 @@ Agentx 使用四个独立 Helm Release 管理核心资源，使用 Rust 原生 `
 
 Release 同时提供可直接下载的 Windows/Linux 单文件二进制和完整归档包。归档包含 `agentxctl`、三个 Values 示例和许可证；四个 Agentx Chart、JSON Schema、Docker Hub Beta Values、ingress-nginx Chart 与 Values 已嵌入二进制，安装时不会下载部署资源。
 
-当前版本为 [agentxctl-v0.0.4-beta](https://github.com/kakj-go/Agentx/releases/tag/agentxctl-v0.0.4-beta)，默认部署 `v0.0.4-beta` 镜像。下载和校验命令见 [README 快速部署](../README.md#快速部署-docker-hub-beta)。升级时下载新版 ctl 后运行 `upgrade`；旧二进制不会自动改用新版镜像，自定义 Values 的镜像标签也需同步更新。
+当前版本为 [agentxctl-v0.0.4-beta](https://github.com/Minecodex/Agentx/releases/tag/agentxctl-v0.0.4-beta)，默认部署 `v0.0.4-beta` 镜像。下载和校验命令见 [README 快速部署](../README.md#快速部署-docker-hub-beta)。升级时下载新版 ctl 后运行 `upgrade`；旧二进制不会自动改用新版镜像，自定义 Values 的镜像标签也需同步更新。
 
 ```bash
 agentxctl validate

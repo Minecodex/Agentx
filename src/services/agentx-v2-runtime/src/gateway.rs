@@ -220,7 +220,12 @@ async fn invoke(
     headers: &HeaderMap,
     request: InvocationRequestV1,
 ) -> RuntimeResult<(StatusCode, Json<InvocationResponseV1>)> {
-    crate::admission::check(&state.pool, caller.tenant_id).await?;
+    crate::admission::check(
+        &state.pool,
+        state.admission_redis.as_ref(),
+        caller.tenant_id,
+    )
+    .await?;
     let idempotency_key = idempotency_key(headers)?;
     let mode = request.response_mode.as_deref().unwrap_or("async");
     if !matches!(mode, "sync" | "async") {
@@ -304,6 +309,12 @@ async fn send_message(
             }
         }
     }
+    crate::admission::check(
+        &state.pool,
+        state.admission_redis.as_ref(),
+        caller.tenant_id,
+    )
+    .await?;
     let input = chat_message_payload(&request);
     let accepted = create_chat_runtime_invocation_tx(
         &mut tx,

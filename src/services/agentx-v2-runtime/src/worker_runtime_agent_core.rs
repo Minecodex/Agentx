@@ -1615,7 +1615,7 @@ impl<'a> AgentToolRouter<'a> {
                 }
                 let (path, request, secret_header) = match super::output::rag_query_request(
                     provider,
-                    "query",
+                    "retrieve",
                     namespace,
                     index_version,
                     &call.arguments,
@@ -1640,7 +1640,7 @@ impl<'a> AgentToolRouter<'a> {
                         Some(&binding),
                     ))
                 });
-                let execution = super::output::finalize_rag_response(provider, execution);
+                let execution = super::output::finalize_retrieval_response(provider, execution);
                 knowledge_result_from_execution(execution, binding.resource_id)
             }
             RuntimeResourceConfigurationV1::Memory {

@@ -850,6 +850,7 @@ pub(crate) async fn emit_user_admission(
         .to_string();
     sqlx::query("INSERT INTO outbox(id,tenant_id,event_type,aggregate_type,aggregate_id,payload_json,status,request_hash,idempotency_key) VALUES(?,?,?,?,?,?,'pending',?,?)")
         .bind(Uuid::now_v7()).bind(tenant).bind("RuntimeUserAdmissionChanged").bind("runtime_user_admission").bind(user.to_string()).bind(payload).bind(hash).bind(format!("user-admission:{user}:{token_version}")).execute(&mut **tx).await?;
+    crate::runtime_grants::emit_user_application_grants(tx, tenant, user).await?;
     Ok(())
 }
 async fn audit(

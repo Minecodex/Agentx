@@ -29,6 +29,7 @@ async fn main() -> Result<()> {
     let metrics = agentx_service_kit::MetricsRegistry::default();
     let health = agentx_service_kit::HealthRegistry::default();
     health.register("runtime_mysql", true).await;
+    health.register("runtime_redis", true).await;
     health.register("runtime_object_storage", true).await;
     health.set_status("runtime_mysql", "ready").await;
     health.set_status("runtime_object_storage", "ready").await;
@@ -78,6 +79,31 @@ async fn main() -> Result<()> {
                     tracing::warn!(%error, "Runtime Gateway object storage readiness probe failed");
                 }
             }
+            let queue = if let Some(redis) = &probe_state.admission_redis {
+                agentx_v2_runtime::redis_admission::snapshot(redis, 2000).await
+            } else {
+                Err(agentx_v2_runtime::error::RuntimeError::Unavailable)
+            };
+            probe_health
+                .set_status(
+                    "runtime_redis",
+                    if queue.is_ok() {
+                        "ready"
+                    } else {
+                        "unavailable"
+                    },
+                )
+                .await;
+            let (unread, pending, available) = agentx_v2_runtime::redis_admission::metrics();
+            probe_metrics
+                .set("agentx_redis_task_unread_items", unread as f64)
+                .await;
+            probe_metrics
+                .set("agentx_redis_task_pending_items", pending as f64)
+                .await;
+            probe_metrics
+                .set("agentx_redis_admission_available", available as f64)
+                .await;
             probe_progress.processed_since(started).await;
             tokio::select! {
                 () = probe_lifecycle.cancelled() => break,
@@ -254,6 +280,16 @@ async fn main() -> Result<()> {
         move |request: axum::http::Request<axum::body::Body>, next: axum::middleware::Next| {
             let metrics = admission_metrics.clone();
             async move {
+                let (unread, pending, available) = agentx_v2_runtime::redis_admission::metrics();
+                metrics
+                    .set("agentx_redis_task_unread_items", unread as f64)
+                    .await;
+                metrics
+                    .set("agentx_redis_task_pending_items", pending as f64)
+                    .await;
+                metrics
+                    .set("agentx_redis_admission_available", available as f64)
+                    .await;
                 let count = agentx_v2_runtime::admission::rejection_count();
                 metrics
                     .set("agentx_admission_rejections_total", count as f64)

@@ -110,6 +110,23 @@ describe('locale preference', () => {
     expect(new ApiClientError(500, { code: 'INTERNAL_ERROR', message: 'private detail', requestId: 'request-3' }).message).toBe('The request could not be completed. Request ID: request-3')
   })
 
+  it('explains network failures without displaying an empty request ID', async () => {
+    const detail = { code: 'NETWORK_ERROR', message: 'Failed to fetch', requestId: '' }
+    await i18n.changeLanguage('zh-CN')
+    expect(new ApiClientError(0, detail).message).toBe('无法连接服务。请检查网络、服务地址或浏览器的安全提示后重试。')
+
+    await i18n.changeLanguage('en-US')
+    expect(new ApiClientError(0, detail).message).toBe('Unable to connect to the service. Check your network, the service address, or browser security warnings, then try again.')
+  })
+
+  it('keeps unidentified server failures useful without exposing private details', async () => {
+    await i18n.changeLanguage('zh-CN')
+    expect(new ApiClientError(503, { code: 'INTERNAL_ERROR', message: 'private detail', requestId: '   ' }).message).toBe('请求暂时无法完成，请稍后重试。')
+
+    await i18n.changeLanguage('en-US')
+    expect(new ApiClientError(503, { code: 'INTERNAL_ERROR', message: 'private detail', requestId: '' }).message).toBe('The request could not be completed. Please try again later.')
+  })
+
   it('keeps business-domain translation structures aligned', () => {
     const zh = resources['zh-CN'].translation
     const en = resources['en-US'].translation

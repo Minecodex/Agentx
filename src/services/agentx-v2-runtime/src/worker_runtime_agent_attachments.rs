@@ -657,6 +657,26 @@ mod tests {
     }
 
     #[test]
+    fn lightrag_data_chunks_reach_agent_citations() {
+        let raw = WorkerExecution::succeeded(json!({
+            "status":"success",
+            "data":{"chunks":[{
+                "doc_id":"uploaded-document",
+                "chunk_id":"uploaded-chunk",
+                "content":"sapphire-orbit-real-provider"
+            }],"references":[]}
+        }));
+        let normalized = super::super::output::finalize_retrieval_response("lightrag", raw);
+        let result = knowledge_result_from_execution(normalized, Uuid::from_u128(1))
+            .expect("actual LightRAG retrieval envelope");
+        let structured: AgentKnowledgeSearchResultV1 =
+            serde_json::from_value(result.structured_result.expect("structured result")).unwrap();
+        assert_eq!(structured.citations.len(), 1);
+        assert_eq!(structured.citations[0].document_id, "uploaded-document");
+        assert!(result.content.contains("sapphire-orbit-real-provider"));
+    }
+
+    #[test]
     fn knowledge_results_freeze_citations_and_untrusted_prompt_boundary() {
         let resource_id = Uuid::from_u128(1);
         let result = knowledge_result_from_execution(

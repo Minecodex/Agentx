@@ -1222,6 +1222,7 @@ async fn execute_provider_command(
             })?,
         );
     }
+    wait_execd_ready(state, &endpoint, &headers).await?;
     let mut envs = serde_json::Map::new();
     if egress_mode == SandboxEgressModeV1::TcpProxy {
         let (proxy, ca) = sandbox_proxy_environment(sandbox_request, ttl_seconds)?;
@@ -1324,6 +1325,53 @@ fn extract_code_result(stdout: &str) -> Result<(String, Value), ProviderError> {
         });
     }
     Ok((diagnostics.to_owned(), value))
+}
+
+async fn wait_execd_ready(
+    state: &SandboxManagerState,
+    endpoint: &reqwest::Url,
+    headers: &HeaderMap,
+) -> Result<(), ProviderError> {
+    let ping = endpoint.join("ping").map_err(|error| ProviderError {
+        message: format!("invalid OpenSandbox health endpoint: {error}"),
+        outcome_unknown: false,
+    })?;
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+    let mut last_error = "no health response".to_owned();
+    while tokio::time::Instant::now() < deadline {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        match tokio::time::timeout(
+            remaining.min(std::time::Duration::from_secs(2)),
+            state
+                .client
+                .get(ping.clone())
+                .headers(headers.clone())
+                .send(),
+        )
+        .await
+        {
+            Ok(Ok(response)) if response.status() == reqwest::StatusCode::OK => return Ok(()),
+            Ok(Ok(response)) if response.status().is_server_error() => {
+                last_error = format!("HTTP {}", response.status());
+            }
+            Ok(Ok(response)) => {
+                return Err(ProviderError {
+                    message: format!(
+                        "OpenSandbox health check returned HTTP {}",
+                        response.status()
+                    ),
+                    outcome_unknown: false,
+                });
+            }
+            Ok(Err(error)) => last_error = error.to_string(),
+            Err(_) => last_error = "health request timed out".into(),
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    Err(ProviderError {
+        message: format!("OpenSandbox execd was not healthy within 30 seconds: {last_error}"),
+        outcome_unknown: false,
+    })
 }
 
 fn parse_command_stream(body: &str) -> Result<(String, String, i64), ProviderError> {

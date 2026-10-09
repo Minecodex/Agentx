@@ -79,7 +79,9 @@ class ManagedProcess:
         self.stderr_handle.close()
 
 
-def start_process(command: Sequence[str | Path], *, stdout_path: Path, stderr_path: Path) -> ManagedProcess:
+def start_process(
+    command: Sequence[str | Path], *, stdout_path: Path, stderr_path: Path, env: dict[str, str] | None = None
+) -> ManagedProcess:
     stdout_path.parent.mkdir(parents=True, exist_ok=True)
     stdout_handle = stdout_path.open("w", encoding="utf-8")
     stderr_handle = stderr_path.open("w", encoding="utf-8")
@@ -94,6 +96,7 @@ def start_process(command: Sequence[str | Path], *, stdout_path: Path, stderr_pa
         encoding="utf-8",
         errors="replace",
         shell=False,
+        env={**os.environ, **(env or {})},
         **kwargs,
     )
     return ManagedProcess(process, stdout_handle, stderr_handle)

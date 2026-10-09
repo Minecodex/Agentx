@@ -499,7 +499,7 @@ def opensandbox_server(run_id: str) -> Iterator[None]:
     """Start the OpenSandbox lifecycle server when it is not already running.
 
     Removes the manual pre-start step: the server runs as a host process via
-    uvx (pinned 0.2.2, matching the documented local baseline) with a derived
+    uv tool run (pinned 0.2.2, matching the documented local baseline) with a derived
     config that listens on the conventional 18080 port. An already-running
     server (started per deploy/opensandbox/README.md) is reused as-is.
     """
@@ -509,16 +509,25 @@ def opensandbox_server(run_id: str) -> Iterator[None]:
     root = Path(__file__).resolve().parents[2]
     artifact_dir = root / ".local" / "artifacts" / "e2e" / run_id
     artifact_dir.mkdir(parents=True, exist_ok=True)
+    allowed_volumes = artifact_dir / "sandbox-host-volumes"
+    allowed_volumes.mkdir(exist_ok=True)
     template = (root / "deploy" / "opensandbox" / "docker" / "config.local.toml").read_text(encoding="utf-8")
-    config = template.replace("port = 8080", "port = 18080").replace(
-        'path = "/data/opensandbox.db"',
-        f'path = "{artifact_dir / "opensandbox.db"}"',
+    config = (
+        template.replace("port = 8080", "port = 18080")
+        .replace('host_ip = "host.docker.internal"', 'host_ip = "127.0.0.1"')
+        .replace("allowed_host_paths = []", f'allowed_host_paths = ["{allowed_volumes.as_posix()}"]')
+        .replace(
+            'path = "/data/opensandbox.db"',
+            f'path = "{artifact_dir / "opensandbox.db"}"',
+        )
     )
     config_path = artifact_dir / "opensandbox.local.toml"
     config_path.write_text(config, encoding="utf-8")
     server = start_process(
         (
-            "uvx",
+            "uv",
+            "tool",
+            "run",
             "--from",
             "opensandbox-server==0.2.2",
             "opensandbox-server",
@@ -527,6 +536,7 @@ def opensandbox_server(run_id: str) -> Iterator[None]:
         ),
         stdout_path=artifact_dir / "opensandbox-server.log",
         stderr_path=artifact_dir / "opensandbox-server-error.log",
+        env={"NO_PROXY": "*", "no_proxy": "*"},
     )
     try:
         deadline = time.monotonic() + 180

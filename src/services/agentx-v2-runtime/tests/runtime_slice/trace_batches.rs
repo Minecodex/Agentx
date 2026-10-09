@@ -32,8 +32,17 @@ async fn trace_batches_are_disjoint_fenced_and_published(pool: &MySqlPool) {
     }
     tx.commit().await.unwrap();
     let (first, second) = tokio::join!(claim(pool, Uuid::now_v7()), claim(pool, Uuid::now_v7()));
-    let first = first.unwrap();
-    let second = second.unwrap();
+    let mut first = first.unwrap();
+    let mut second = second.unwrap();
+    // SKIP LOCKED may return an empty batch while the other transaction is
+    // still committing its selection. Claim the remaining rows after both
+    // commits; the live first leases must stay exclusive.
+    if first.is_empty() {
+        first = claim(pool, Uuid::now_v7()).await.unwrap();
+    }
+    if second.is_empty() {
+        second = claim(pool, Uuid::now_v7()).await.unwrap();
+    }
     assert_eq!(first.len() + second.len(), 151);
     assert!(first.len() <= 100 && second.len() <= 100 && !first.is_empty() && !second.is_empty());
     let ids: BTreeSet<_> = first

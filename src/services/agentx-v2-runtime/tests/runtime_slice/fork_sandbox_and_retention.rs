@@ -847,6 +847,10 @@ async fn sandbox_manager_is_fenced_and_idempotent(fixture: &Fixture) {
             }),
         )
         .route(
+            "/v1/sandboxes/{id}/proxy/44772/ping",
+            get(|| async { axum::http::StatusCode::OK }),
+        )
+        .route(
             "/v1/sandboxes/{id}/proxy/44772/command",
             post(move |Json(body): Json<Value>| {
                 let command_block = command_block.clone();
@@ -1584,6 +1588,7 @@ async fn retention_dry_run_reference_block_and_object_sweep_are_fenced(fixture: 
         trust: fixture.state.trust.clone(),
         wakeups: Default::default(),
         vault: None,
+                admission_redis: fixture.state.admission_redis.clone(),
     };
     assert!(
         run_retention_once(&failing_state, Uuid::now_v7())

@@ -9,7 +9,7 @@ Agentx 使用 [OpenSandbox](https://github.com/opensandbox-group/OpenSandbox) �
 - `[server].api_key`，禁止无认证启动。
 - `[runtime].type = "docker"` 和固定版本的 execd image。
 - `[docker].network_mode = "bridge"`、`no_new_privileges = true`、capability drop、PID 和端口范围限制。
-- `[egress].image`，使 `networkPolicy` 可以按默认拒绝策略生效。
+- `[egress].image` 与 `mode = "dns+nft"`，使 `networkPolicy` 同时限制 DNS 和直接 IP 连接；`dns` 仅过滤域名，不能满足默认拒绝网络要求。模式说明见 [OpenSandbox 官方文档](https://github.com/opensandbox-group/OpenSandbox/blob/main/docs/components/egress.md)。
 - `[storage].allowed_host_paths` 设置为专用非空目录白名单；OpenSandbox 0.2.2 的空数组表示不限制主机目录，不能作为拒绝策略。
 - `[server].max_sandbox_timeout_seconds`，限制单 Sandbox TTL。
 

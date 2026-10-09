@@ -65,11 +65,15 @@ Bootstrap Admin 是 Company Admin，可以管理全部部门、用户和角色�
 
 授权控制面使用统一“资源授权”列表聚合 Credential、Model、MCP Server、MCP Tool、Skill、RAG 和 Memory。资源详情页只负责配置、版本和连接诊断，不再各自维护授权面板。统一列表可按资源类型筛选，并分别向 Department 或 Workflow Service Identity 授予 `view/use/read/write/manage`。
 
-发布时进行完整检查，运行时再次校验。资源授权被撤销后，新执行不能继续使用该资源。MCP Tool 的依赖链固定为 `MCP Tool → MCP Server → Credential`，三类资源必须逐项授权，任一 Grant 都不能隐式传递给下一项。
+发布时进行完整检查，运行时再次校验。资源授权被撤销后，新执行不能继续使用该资源。MCP Tool 的依赖链为 `MCP Tool Version → MCP Server Version → Credential`，按所选不可变版本展开，不以当前连接配置替换旧版本依赖。STDIO MCP 还包括版本化 Sandbox Profile 与环境变量 Credential。完整依赖包必须逐项授权，任一 Grant 都不能隐式传递给下一项。
 
 Workflow Studio 的资源选择器列出当前用户可见的全部有效资源，并按资源对 Workflow Service Identity 的状态显示 `authorized/grantable/requestable/pending/rejected/unavailable`。资源选项按 `resourceType + operation` 独立查询，API 支持搜索和分页；Company 数据范围角色、部门闭包和已有 Department View Grant 使用同一套可见性规则。只有 `authorized` 可选择；有工作流编辑权、`resource:grant` 且能授权完整依赖包的用户可以在画布确认后直接原子授权，其他编辑者可以提交设计期资源授权申请。直接授权和审批通过都只刷新资源状态，不自动修改 Draft 或选择资源。
 
 设计期资源授权申请与运行时 `approval_tasks` 相互独立。申请只接受主资源、操作、来源节点、Draft Revision 和可选说明，完整依赖包必须由服务端展开；Model 与 Credential、MCP Tool 与 MCP Server/Credential、Skill 与递归依赖都逐项授权。同部门资源合并为一个 Review，跨部门必须全部会签；任一部门拒绝则整包拒绝，全部通过后在一个事务内创建全部 Grant。直接授权、申请和审批动作均使用 Idempotency Key；审批还携带预期 Review Version，并重新校验资源状态、依赖指纹、工作流状态和申请人编辑权，变化后标记 `stale`，不得按旧依赖授权。
+
+审批和取消以申请主记录串行化；终态申请不能再改变部门 Review。依赖指纹绑定完整授权包及当前资源配置，知识文档内容变化不改变配置指纹。提交、部门决定、最终通过、拒绝、取消和失效动作与业务状态在同一事务写入既有审计表，申请详情返回真实历史及 RFC 3339 时间。当前资源 Grant 不包含到期时间；`stale` 表示申请依据已失效，资源撤销和用户 Token 撤销各自执行权威校验。
+
+IAM 创建用户、变更部门/角色/角色权限及停用用户时，User Admission 与该用户对既有 Application 的调用/查询 Grant 在同一 Control 事务中写入 Outbox。Application Grant 使用该应用单调递增的 Admission Epoch；不以用户 Token Version 替代应用 Epoch。权限投影沿用发布时的统一可见性与角色规则，使新用户能够访问已发布的授权应用，撤销权限后的新登录 Token 也无法继续调用。
 
 部门 Review 由其管理范围内同时拥有 `department_admin`、`approval:act` 和 `resource:grant` 的有效用户处理；没有有效部门审批人时由 Company Admin 兜底。审批人不需要目标工作流的管理权限，只看到申请用途与必要的脱敏上下文。待审批中心以“运行审批”和“资源授权”两个页签分别承载两套状态机。
 
@@ -109,7 +113,7 @@ API 格式描述供应商接受的模型调用协议，不等同于内部 Provid
 
 平台不提供人工创建 Tool 的入口。用户接入 MCP Server 后，控制面通过 `initialize` 和分页 `tools/list` 自动发现 MCP Tool；同名且 Schema Hash 相同的结果幂等复用，Schema 变化产生不可变 Tool Version，未再次发现的 Tool 标记为 unavailable。
 
-M2.1 支持 Streamable HTTP 和 Legacy SSE，不支持 stdio。MCP Server 固化传输、Endpoint、Credential Reference 和非敏感配置 Hash；MCP Tool 固化名称、输入输出 Schema、Annotation 和 Schema Hash。用户只能设置 Tool 的启停、调试开关、超时和副作用等级，不能修改服务端声明的 Schema。界面将 JSON Schema 渲染为字段树，直接展示字段名、类型、必填、说明、约束和嵌套结构，原始 JSON 不作为默认阅读界面。
+支持 Streamable HTTP、Legacy SSE 和在 OpenSandbox 内运行的 STDIO。MCP Server 固化传输、Endpoint、Credential Reference 和非敏感配置 Hash；STDIO 另固化 Sandbox Profile Version 与环境变量 Credential Reference。MCP Tool 固化名称、输入输出 Schema、Annotation 和 Schema Hash。用户只能设置 Tool 的启停、调试开关、超时和副作用等级，不能修改服务端声明的 Schema。界面将 JSON Schema 渲染为字段树，直接展示字段名、类型、必填、说明、约束和嵌套结构，原始 JSON 不作为默认阅读界面。
 
 调试调用需要 `mcp:debug`、资源可见性、参数 Schema 校验和危险操作确认。审计只保存参数 Hash、状态和耗时，不保存请求参数、响应正文或 Secret。Workflow Service Identity 必须分别获得 MCP Server、MCP Tool 和 Credential 的 Grant；Server 可见性不能替代 Tool 使用权限。
 
@@ -124,6 +128,8 @@ Skill Definition 描述业务身份和生命周期；Alias 是租户内唯一的
 Markdown 使用开源 MDXEditor/Lexical 富文本界面编辑，用户通过标题、加粗、列表、链接和表格等可视化控件生成标准 Markdown，不需要掌握 Markdown 语法。编辑器可从当前 Skill 文件树选择目标并插入标准相对链接。移动或重命名文件时服务端同步重写内部相对链接；删除被引用文件会被拒绝。发布前通过 Markdown AST 校验引用，Skill Version 固化每个文件的路径、Artifact、Content Hash、引用目标 Hash，以及 Model、MCP Tool、Credential、Skill、RAG 和 Memory 依赖。ZIP 只用于当前工作区导入导出，不是 Skill 的持久化模型。
 
 Workflow Draft 可以选择 Skill Definition 和目标版本；发布时必须固化 Skill Version，并检查所有直接和递归依赖对 Workflow Service Identity 均已授权。Skill Grant 不能隐式授予其 MCP Tool、Model 或 Credential 权限，任一依赖授权被撤销后，新执行不得继续加载该 Skill。
+
+发布 Skill Version 时，其所属部门必须能使用完整依赖包，其他部门或工作流的 Grant 不构成发布权限。逐项按依赖声明的操作校验；Memory 的 `read` Grant 不能授权 `write`，`manage` 可以覆盖所需操作。
 
 仅包含 Prompt 和静态资产的 Skill 可由 Agent Runtime 直接加载；包含 Python、JavaScript、Shell 或其他不可信代码的能力必须通过 OpenSandbox 执行，并沿用平台的超时、资源配额、默认拒绝网络和短期凭证注入策略。
 
@@ -291,6 +297,8 @@ Evaluation Profile 是用户唯一需要管理的评测配置。一个 Profile �
 - 节点错误次数
 - 总成本
 - 总耗时
+
+LLM Judge 启动前分别校验 Workflow Service Identity 对模型及其凭证的授权。仅有 Model Grant 时不得读取或调用未授权 Credential；缺少任一授权即拒绝启动评测，不生成已接受的评测调用。
 
 报告内容：
 

@@ -84,7 +84,7 @@ def _stream_workflow(control: httpx.Client, headers: dict[str, str], name: str, 
         headers=headers,
         json={"name": name, "description": "plan7 P7-B streaming e2e", "visibility": "company"},
     )
-    created.raise_for_status()
+    assert created.status_code == 201, f"{created.status_code}: {created.text}"
     workflow_id = created.json()["id"]
     draft = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
     draft.raise_for_status()

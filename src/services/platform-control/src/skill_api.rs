@@ -879,7 +879,13 @@ async fn create_version(
             "Skill workspace changed",
         ));
     }
-    validate_dependencies(&state, &actor, &input.dependencies).await?;
+    validate_dependencies(
+        &state,
+        &actor,
+        skill.owner_department_id,
+        &input.dependencies,
+    )
+    .await?;
     let workspace = load_workspace(&state, actor.tenant_id, id).await?;
     let files = workspace
         .entries
@@ -1174,28 +1180,17 @@ async fn ensure_identity(
 async fn validate_dependencies(
     state: &ControlApiState,
     actor: &Actor,
+    owner_department: Uuid,
     dependencies: &[DependencyInput],
 ) -> ApiResult<()> {
     for dependency in dependencies {
-        if !matches!(
-            dependency.resource_type.as_str(),
-            "model" | "mcp" | "knowledge" | "memory" | "sandbox_profile" | "skill"
-        ) {
-            return Err(ApiError::bad_request(
-                "INVALID_SKILL_DEPENDENCY",
-                "Skill dependency type is invalid",
-            ));
-        }
-        if dependency.operation.trim().is_empty() {
-            return Err(ApiError::bad_request(
-                "INVALID_SKILL_DEPENDENCY",
-                "Dependency operation is required",
-            ));
-        }
-        let granted: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM resource_grants WHERE tenant_id=? AND resource_type=? AND resource_id=?)").bind(actor.tenant_id).bind(&dependency.resource_type).bind(dependency.resource_id).fetch_one(&state.pool).await?;
-        if !granted {
-            return Err(ApiError::forbidden("Skill dependency is not granted"));
-        }
+        crate::resource_api::validate_skill_dependency(
+            state, actor.tenant_id, owner_department,
+            &serde_json::from_value(json!({
+                "resourceType": dependency.resource_type, "resourceId": dependency.resource_id,
+                "resourceVersionId": dependency.resource_version_id, "operation": dependency.operation
+            })).map_err(ApiError::internal)?
+        ).await?;
     }
     Ok(())
 }

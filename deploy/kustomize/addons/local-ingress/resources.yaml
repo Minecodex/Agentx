@@ -1,0 +1,24 @@
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: agentx-local-ingress
+  namespace: metallb-system
+spec:
+  addresses:
+    - 172.18.255.242/32
+  serviceAllocation:
+    namespaces:
+      - agentx-prod-deps
+    serviceSelectors:
+      - matchLabels:
+          app.kubernetes.io/name: ingress-nginx
+          app.kubernetes.io/component: controller
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: agentx-local-ingress
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - agentx-local-ingress

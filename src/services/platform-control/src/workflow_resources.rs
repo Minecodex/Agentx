@@ -700,7 +700,7 @@ async fn credential_dependencies(
 ) -> ApiResult<Vec<Uuid>> {
     let ids = match reference.resource_type {
         ResourceType::Model => sqlx::query_scalar("SELECT d.credential_id FROM model_aliases a JOIN model_deployments d ON d.id=a.deployment_id WHERE a.tenant_id=? AND a.id=? AND d.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
-        ResourceType::McpServer => sqlx::query_scalar("SELECT sv.credential_id FROM mcp_servers s JOIN mcp_server_versions sv ON sv.server_id=s.id AND sv.version_number=s.current_version_number WHERE s.tenant_id=? AND s.id=? AND sv.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
+        ResourceType::McpServer => sqlx::query_scalar("SELECT credential_id FROM mcp_server_versions WHERE tenant_id=? AND server_id=? AND id=? AND credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).bind(reference.resource_version_id).fetch_all(&state.pool).await?,
         ResourceType::Rag => sqlx::query_scalar("SELECT c.credential_id FROM rag_resources r JOIN rag_connections c ON c.id=r.connection_id WHERE r.tenant_id=? AND r.id=? AND c.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
         ResourceType::Memory => sqlx::query_scalar("SELECT c.credential_id FROM memory_namespaces n JOIN memory_connections c ON c.id=n.connection_id WHERE n.tenant_id=? AND n.id=? AND c.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
         _ => Vec::new(),

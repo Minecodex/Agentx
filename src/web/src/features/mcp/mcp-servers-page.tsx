@@ -58,7 +58,7 @@ export function McpServersPage() {
     { name: 'configuration', label: t('mcp.configuration'), type: 'textarea', defaultValue: '{}' },
   ]
   return <>
-    <ListPage action={auth.hasPermission('mcp:manage') ? <Button onClick={() => setOpen(true)}><Plus className="size-4" />{t('mcp.connectMcp')}</Button> : undefined} columns={columns} data={servers.data?.items ?? []} description={t('mcp.description')} getSearchText={(row) => `${row.name} ${transportEndpoint(row.transport)} ${transportKind(row.transport)}`} getStatus={(row) => row.status === 'active' ? 'active' : 'inactive'} searchPlaceholder={t('mcp.search')} statusOptions={[{ value: 'active', label: t('common.active') }, { value: 'inactive', label: t('common.inactive') }]} title={t('mcp.title')} />
+    <ListPage loading={servers.isLoading} error={servers.error} action={auth.hasPermission('mcp:manage') ? <Button onClick={() => setOpen(true)}><Plus className="size-4" />{t('mcp.connectMcp')}</Button> : undefined} columns={columns} data={servers.data?.items ?? []} description={t('mcp.description')} getSearchText={(row) => `${row.name} ${transportEndpoint(row.transport)} ${transportKind(row.transport)}`} getStatus={(row) => row.status === 'active' ? 'active' : 'inactive'} searchPlaceholder={t('mcp.search')} statusOptions={[{ value: 'active', label: t('common.active') }, { value: 'inactive', label: t('common.inactive') }]} title={t('mcp.title')} />
     {open && <EntityFormDialog cancelLabel={t('common.cancel')} fields={fields} onClose={() => setOpen(false)} onSubmit={(values) => create.mutateAsync(values).then(() => undefined)} open submitLabel={t('common.save')} title={t('mcp.connectMcp')} />}
   </>
 }

@@ -35,7 +35,7 @@ mode = "direct"
 
 [egress]
 image = "opensandbox/egress:v1.1.4"
-mode = "dns"
+mode = "dns+nft"
 
 [renew_intent]
 enabled = false

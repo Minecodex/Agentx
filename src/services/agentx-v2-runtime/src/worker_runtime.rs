@@ -506,7 +506,23 @@ impl RuntimeWorker {
     }
 
     async fn execute_agent_core(&self, claim: &ClaimedWorkerAttempt) -> WorkerExecution {
-        agent_core::execute(self, claim).await
+        // Agent Core uses synchronous ports. block_in_place inside those ports
+        // suspends the caller's select!, including Attempt Lease heartbeats.
+        // Keep the bounded Core run on a blocking task so the lease owner can
+        // keep polling cancellation, draining and renewal independently.
+        let worker = self.clone();
+        let claim = claim.clone();
+        let runtime = tokio::runtime::Handle::current();
+        match tokio::task::spawn_blocking(move || {
+            runtime.block_on(agent_core::execute(&worker, &claim))
+        })
+        .await
+        {
+            Ok(execution) => execution,
+            Err(error) => {
+                WorkerExecution::failed("AGENT_CORE_TASK_FAILED", error.to_string(), false)
+            }
+        }
     }
 
     async fn execute_resource(&self, claim: &ClaimedWorkerAttempt) -> WorkerExecution {

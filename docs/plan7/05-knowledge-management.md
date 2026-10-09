@@ -57,6 +57,7 @@ rag_resources.sync_status 语义激活：有文档在 indexing 时 syncing，全
 - 快照固定上传时的 endpoint、workspace、resource version 和 Vault 凭证版本，防止重试期间变更资源导致索引漂移。稳定 `file_source=agentx_<document_uuid_without_dashes>.txt`；受理后、保存 track_id 前崩溃时，以 `/documents/paginated` 的 file_path 找回任务。429、409、5xx 和连接故障延后重试，总索引窗口 2 小时。
 - 删除：`DELETE .../documents/{docId}` —— LightRAG 无标准删除协议的边界：首期只删平台文档记录并释放 artifact_references 原件引用，由既有 Artifact retention 回收原件；不回撤外部索引（文档明示"外部索引需在外部服务清理"）；如 LightRAG 提供 `documents/delete` 则调用并以响应为准。勘察新增：现有 `rag_query_request` 对未知 operation **静默落到 `/query`**（LightRAG 分支只区分 insert/非 insert，`worker_runtime_output.rs` 内）——共享协议抽取时必须显式拦截 delete 等未支持 operation，否则删除语义会被误发成查询；
 - 列表：`GET .../documents` 返回资源内有界列表；200 文档上限包含 failed 文档。上传/索引中禁止删除，避免释放正在读取的原件。所有文档、上传、删除和检索操作复用资源的部门作用域校验。
+- 文档上传及终态删除更新文档记录与 `sync_status`，不递增资源配置版本 `rag_resources.version`。应用绑定外部 workspace，检索其当前索引；本期不做知识库数据版本化发布。这样上传新文档后既有应用可以检索新内容，新调试也不会因文档数据变化与有效 Runtime 配置产生 Hash 冲突；终态删除仍只移除平台原件记录。
 - LightRAG 检索调试调用 `/query/data`、`mode=naive`，返回真实 chunk/content/file_path；缺失分数显示为空。workspace 通过 `LIGHTRAG-WORKSPACE` 头绑定，仅允许 1–128 位 ASCII 字母、数字和下划线，输入不能覆盖资源快照中的 workspace/indexVersion。
 
 ### 3.3 RAG 协议抽取共享

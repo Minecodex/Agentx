@@ -34,7 +34,7 @@ function MappingSelect({ label, options, value, onChange, required = false }: { 
 }
 
 function mappingChoices(input: JsonSchema, output: JsonSchema) {
-  const entries = (schema: JsonSchema) => Object.entries(schema.properties ?? {}).map(([value, field]) => ({ value, label: `${field.title ?? value} · ${field['x-agentx-artifact-array'] ? 'artifact[]' : field['x-agentx-artifact'] ? 'artifact' : field.type ?? 'unknown'}`, field }))
+  const entries = (schema: JsonSchema) => Object.entries(schema.properties ?? {}).map(([value, field]) => ({ value, label: `${field.title?.trim() || value} · ${field['x-agentx-artifact-array'] ? 'artifact[]' : field['x-agentx-artifact'] ? 'artifact' : field.type ?? 'unknown'}`, field }))
   const inputs = entries(input)
   const outputs = entries(output)
   return {

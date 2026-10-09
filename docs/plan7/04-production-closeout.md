@@ -63,7 +63,7 @@
 
 - [x] 分布式准入：Gateway Admission 检查（租户并发 Invocation、队列深度水位）→ 429 + `Retry-After`（复用 quota 投影 MySQL 语义）；
 - [x] 按维度公平限流：Tenant × Capability × Provider 的在途上限（worker 派发侧，`AGENTX_PROVIDER_MAX_INFLIGHT` 默认 32，`PROVIDER_BUSY`）与 Provider 熔断（连续 5 次失败开断 30s 冷却半开探测，`PROVIDER_CIRCUIT_OPEN`，`provider_breaker.rs` 4 项单测）；
-- [ ] 队列水位：Redis Stream 情况暴露 + 水位超限拒绝（过载可解释拒绝、无雪崩）；
+- [x] 队列水位：原子读取九类 capability 的 Redis Stream 未消费数与 Pending，合计达到队列水位时 API 与 Chat 新请求均返回 429 + `Retry-After`；Redis 不可用返回 503，Chat 已受理的幂等请求仍可重放。暴露 `agentx_redis_task_unread_items`、`agentx_redis_task_pending_items`、`agentx_redis_admission_available`；独立 Namespace 的 2000 条真实积压、Pending、Redis 停服与恢复已有 [第三批专项通过证据](evidence/p7-automatic-boundary-acceptance.md)。两小时容量门禁仍单独验收。
 - [x] metrics 暴露（现有 `/metrics` 扩展）供容量脚本采集（`agentx_admission_rejections_total` 等，capacity 域 `test_metrics_endpoint_exposes_admission_counters` 断言）。
 
 门禁：单测 + 故障注入 E2E（打满租户配额 → 429 + Retry-After；Provider 故障 → 熔断与恢复）。

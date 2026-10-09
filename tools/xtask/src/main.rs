@@ -301,7 +301,8 @@ fn images(root: &Path, args: Images) -> Result<()> {
     }
     for service in &selected {
         if !known.contains(service)
-            && !(local_runtime_fixture && matches!(service.as_str(), "echo-node" | "echo-mcp"))
+            && !(local_runtime_fixture
+                && matches!(service.as_str(), "echo-node" | "echo-mcp" | "cpu-embedding"))
         {
             bail!("unknown image service: {service}");
         }
@@ -347,6 +348,11 @@ fn images(root: &Path, args: Images) -> Result<()> {
                 "--build-arg",
                 "NGINX_CONFIG=deploy/docker/nginx-v2.conf",
             ]);
+        } else if service == "cpu-embedding" {
+            command.args(["-f", "deploy/docker/cpu-embedding.Dockerfile"]);
+            if let Ok(index) = std::env::var("PIP_INDEX_URL") {
+                command.args(["--build-arg", &format!("PIP_INDEX_URL={index}")]);
+            }
         } else {
             command
                 .args(["-f", "deploy/docker/backend.Dockerfile", "--build-arg"])
@@ -473,9 +479,9 @@ fn import_images(root: &Path, values: &Value, images: &[String]) -> Result<()> {
         if !status.success() {
             bail!("Kubernetes containerd image import failed");
         }
-        Ok(())
+        tag_digest_images(root, &["docker", "exec", &node], images)
     } else {
-        import_with_loader(root, values, &archive_text, &remote, &loader)
+        import_with_loader(root, values, &archive_text, &remote, &loader, images)
     }
 }
 
@@ -485,6 +491,7 @@ fn import_with_loader(
     archive: &str,
     remote: &str,
     loader: &str,
+    images: &[String],
 ) -> Result<()> {
     let namespace = values
         .pointer("/global/namespaces/dependencies")
@@ -544,6 +551,11 @@ fn import_with_loader(
                 "import",
                 remote,
             ],
+        )?;
+        tag_digest_images(
+            root,
+            &["kubectl", "-n", namespace, "exec", loader, "--"],
+            images,
         )
     })();
     let _ = output(
@@ -561,6 +573,48 @@ fn import_with_loader(
         false,
     );
     result
+}
+
+fn tag_digest_images(root: &Path, prefix: &[&str], selected: &[String]) -> Result<()> {
+    let mut args = prefix[1..].to_vec();
+    args.extend(["ctr", "--namespace", "k8s.io", "images", "ls"]);
+    let listing = output(root, prefix[0], &args, true)?;
+    let listing_text = String::from_utf8_lossy(&listing.stdout);
+    let mut tagged = std::collections::HashSet::new();
+    for line in listing_text.lines().skip(1) {
+        let fields = line.split_whitespace().collect::<Vec<_>>();
+        if fields.len() < 3
+            || !selected.iter().any(|image| {
+                fields[0] == image || fields[0].strip_prefix("docker.io/") == Some(image.as_str())
+            })
+        {
+            continue;
+        }
+        let repository = fields[0].rsplit_once(':').context("image has no tag")?.0;
+        let reference = format!("{repository}@{}", fields[2]);
+        let mut tag = prefix[1..].to_vec();
+        tag.extend([
+            "ctr",
+            "--namespace",
+            "k8s.io",
+            "images",
+            "tag",
+            "--force",
+            fields[0],
+            &reference,
+        ]);
+        run(root, prefix[0], &tag)?;
+        tagged.insert(fields[0]);
+    }
+    for image in selected {
+        if !tagged
+            .iter()
+            .any(|name| *name == image || name.strip_prefix("docker.io/") == Some(image.as_str()))
+        {
+            bail!("Imported image was not found in Kubernetes containerd: {image}");
+        }
+    }
+    Ok(())
 }
 
 fn apply_json(root: &Path, value: &Value) -> Result<()> {

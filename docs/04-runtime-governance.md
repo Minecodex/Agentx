@@ -62,6 +62,8 @@ Trace Event 使用强类型 `contentKind` 区分内容语义：
 
 不依赖 Prometheus 或 Grafana。平台直接通过内部 API 查询 MySQL 和 ClickHouse。
 
+执行列表、详情、节点与调用详情使用同一查询范围。拥有公司数据范围的 `execution:view` 用户可查询本租户的全部执行；其他用户仍受 Application／Workflow Grant 与 Runtime User Admission 限制。委托 Token 不得在详情查询时丢失公司范围，也不能借助执行 ID 绕过 Runtime 的撤销校验。
+
 Studio Runtime Panel、独立执行详情和 Node Inspector 复用同一个 Trace Workspace。默认节点视图从 Runtime MySQL 读取权威 Workflow 输入、Node Execution 输入输出、错误和最终结果，按 `开始 → 节点执行 → 结束` 展示；解析参数、Provider、Agent、Tool、Sandbox 和 Wait 等内部过程再由 ClickHouse 补充。普通视图按 Port 和 Item 解包语义字段，Model/Agent 优先展示 `text/usage/finishReason`，原始 Item JSON、Provider 原始响应和 Event Envelope 只进入高级区域。Node Execution 首次离开 `ready` 时冻结 `startedAt`，终态写入 `endedAt`；节点标题左侧元信息统一展示总生命周期耗时，Model/Agent 还展示按该节点 Runtime Call 聚合的本次成本，右侧只保留状态和展开动作。
 
 高级瀑布使用 SkyWalking/Phoenix 风格的共享树形时间线：左侧展示可折叠 Span 层级、状态、耗时和时间轴，右侧按 Span 类型及 `contentKind` 动态生成内容页签，不为纯生命周期 Span伪造空输入/输出。页面能力：

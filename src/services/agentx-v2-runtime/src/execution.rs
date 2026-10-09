@@ -1260,7 +1260,7 @@ async fn process_cancel_command(
             .bind(claim.execution_id).bind(claim.tenant_id).execute(&mut *tx).await?;
         sqlx::query("UPDATE runtime_calls SET status=CASE WHEN status='sent' THEN 'outcome_unknown' ELSE 'cancelled' END,ended_at=UTC_TIMESTAMP(6) WHERE execution_id=? AND tenant_id=? AND status IN ('reserved','sent')")
             .bind(claim.execution_id).bind(claim.tenant_id).execute(&mut *tx).await?;
-        sqlx::query("UPDATE sandbox_leases SET status='interrupting',expires_at=UTC_TIMESTAMP(6),last_error='execution_cancelled',locked_by=NULL,locked_until=NULL WHERE execution_id=? AND tenant_id=? AND status IN ('creating','ready','running')")
+        sqlx::query("UPDATE sandbox_leases SET status='interrupting',expires_at=UTC_TIMESTAMP(6),last_error='execution_cancelled',locked_by=NULL,locked_until=NULL WHERE execution_id=? AND tenant_id=? AND status IN ('creating','ready','running','interrupting')")
             .bind(claim.execution_id).bind(claim.tenant_id).execute(&mut *tx).await?;
         sqlx::query("UPDATE agent_iterations i JOIN agent_runs r ON r.id=i.agent_run_id SET i.status='cancelled',i.ended_at=UTC_TIMESTAMP(6) WHERE r.execution_id=? AND r.tenant_id=? AND i.status='running'")
             .bind(claim.execution_id).bind(claim.tenant_id).execute(&mut *tx).await?;

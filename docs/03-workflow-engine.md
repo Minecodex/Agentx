@@ -338,6 +338,8 @@ Worker 必须容忍：
 
 Redis Stream 只承载可重建的派发事实。Worker 的每个 capability 使用独立连接；队列读取必须有界，连接错误或读取超时后主动重建连接，`FLUSHALL`、Consumer Group 丢失或 Redis Pod 替换后由 MySQL Outbox/Recovery 与 `ensure_group` 自恢复。依赖错误重试属于调度器仍在推进，不能把它误报为进程 liveness stalled，也不能依赖 Kubernetes 重启来恢复队列消费。
 
+Gateway 在接受 API 或 Chat 新调用前检查租户的 MySQL 在途数量和队列数量，以及九类 capability 的 Redis Stream 未消费数与 Pending 合计。MySQL 默认在途上限为 500，MySQL 队列与 Redis 合计水位默认为 2000；超限返回 429 与 `Retry-After`，不创建调用记录。Redis 使用原子且有界的读取，缺失 Stream 按空队列计；连接或水位读取失败返回 503，不放行未知压力下的新请求。Chat 已受理消息的幂等重放先返回原结果。Redis 压力只参与准入判断，执行权威状态仍在 MySQL。
+
 ## 11. 错误和重试
 
 节点错误策略（Definition 8.0 起"接线即失败分支"）：

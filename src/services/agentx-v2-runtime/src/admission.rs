@@ -51,7 +51,11 @@ pub fn rejection_count() -> i64 {
 
 /// Queue and running work both consume the admission budget. Storage
 /// failures propagate; an unavailable watermark cannot authorize intake.
-pub async fn check(pool: &sqlx::MySqlPool, tenant_id: Uuid) -> RuntimeResult<()> {
+pub async fn check(
+    pool: &sqlx::MySqlPool,
+    redis: Option<&redis::aio::ConnectionManager>,
+    tenant_id: Uuid,
+) -> RuntimeResult<()> {
     let (running, queued): (i64, i64) = sqlx::query_as(
         "SELECT (SELECT COUNT(*) FROM application_invocations WHERE tenant_id=? AND status IN ('queued','running')) running,(SELECT COUNT(*) FROM node_attempts WHERE tenant_id=? AND status='queued') queued",
     )
@@ -60,6 +64,17 @@ pub async fn check(pool: &sqlx::MySqlPool, tenant_id: Uuid) -> RuntimeResult<()>
     .fetch_one(pool)
     .await?;
     if overloaded(running, queued, max_running_per_tenant(), queue_watermark()) {
+        record_rejection();
+        return Err(RuntimeError::AdmissionRejected {
+            retry_after_seconds: retry_after_seconds(),
+        });
+    }
+    let (unread, pending) = crate::redis_admission::snapshot(
+        redis.ok_or(RuntimeError::Unavailable)?,
+        queue_watermark(),
+    )
+    .await?;
+    if unread.saturating_add(pending) >= queue_watermark() {
         record_rejection();
         return Err(RuntimeError::AdmissionRejected {
             retry_after_seconds: retry_after_seconds(),

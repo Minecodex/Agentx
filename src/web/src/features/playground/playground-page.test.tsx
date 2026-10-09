@@ -233,6 +233,42 @@ describe('application playground sessions', () => {
     expect(screen.getByRole('button', { name: '保存并发布' })).toBeDisabled()
     expect(screen.getAllByText('选择兼容字段')).toHaveLength(2)
   })
+
+  it('shows field names for blank titles and publishes the selected chat mapping', async () => {
+    let publishedMapping: unknown = null
+    let submitted: unknown
+    const untitled = {
+      ...deployment(),
+      inputSchema: { type: 'object', properties: { question: { type: 'string', title: '' } }, required: ['question'] },
+      outputSchema: { type: 'object', properties: { result: { type: 'string', title: '  ' } } },
+    }
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), 'http://agentx.test').pathname
+      if (path === '/api/v1/applications') return jsonResponse({ items: [application()], page: 1, pageSize: 100, total: 1 })
+      if (path === '/api/v1/applications/app-1/deployments') return jsonResponse([untitled])
+      if (path.endsWith('/playground-config')) {
+        if (init?.method === 'PUT') {
+          submitted = JSON.parse(String(init.body))
+          publishedMapping = (submitted as { mapping: unknown }).mapping
+        }
+        return jsonResponse({ ...config(publishedMapping), version: publishedMapping ? 1 : 0, publishedVersion: publishedMapping ? 1 : 0 })
+      }
+      if (path === '/api/v1/applications/app-1/sessions') return jsonResponse([session('session-1', '第一轮会话')])
+      return jsonResponse([])
+    }))
+    renderPlayground('/playground?applicationId=app-1&mode=conversation&sessionId=session-1')
+
+    expect(await screen.findByText('尚未配置对话映射')).toBeVisible()
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: '参数映射' }))
+    expect(screen.getByRole('combobox', { name: /问题输入/ })).toHaveTextContent('question · string')
+    expect(screen.getByRole('combobox', { name: /回答输出/ })).toHaveTextContent('result · string')
+    fireEvent.click(screen.getByRole('button', { name: '保存并发布' }))
+
+    expect(await screen.findByText('映射 v1')).toBeVisible()
+    expect(submitted).toEqual({ expectedVersion: 0, mapping: { questionInput: 'question', fileInput: null, answerOutput: 'result', answerFilesOutput: null } })
+    expect(screen.getByPlaceholderText('输入消息进行测试…')).toBeEnabled()
+  })
 })
 
 describe('historical parameter projection', () => {

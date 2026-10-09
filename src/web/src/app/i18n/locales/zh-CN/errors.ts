@@ -1,6 +1,7 @@
 const translations = {
   "requestFailed": "请求失败（{{code}}）",
   "requestFailedWithId": "请求暂时无法完成。请求 ID：{{requestId}}",
+  "requestUnavailable": "请求暂时无法完成，请稍后重试。",
   "requiredField": "此项为必填项",
   "pageLoad": {
     "title": "页面暂时无法打开",
@@ -9,6 +10,7 @@ const translations = {
     "home": "返回首页"
   },
   "codes": {
+    "NETWORK_ERROR": "无法连接服务。请检查网络、服务地址或浏览器的安全提示后重试。",
     "INVALID_REQUEST_BODY": "提交内容存在缺失项或格式错误，请检查后重试。",
     "REQUIRED_FIELD": "此项为必填项。",
     "INVALID_FIELD": "此项的格式不正确。",

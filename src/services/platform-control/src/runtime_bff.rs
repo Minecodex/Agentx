@@ -1093,14 +1093,15 @@ async fn runtime_execution_detail(
 ) -> ApiResult<ExecutionDetailV1> {
     let request_hash = content_hash(&json!({"operation":"get_execution","executionId":id}))
         .map_err(ApiError::internal)?;
+    let (tenant_wide, application_ids, workflow_ids) = execution_query_scope(state, actor).await?;
     let token = delegation_token(
         state,
         actor,
         "runtime.query.execution",
-        BTreeSet::new(),
-        BTreeSet::new(),
+        application_ids,
+        workflow_ids,
         BTreeSet::from([id]),
-        false,
+        tenant_wide,
         request_hash,
     )?;
     let response = state
@@ -1125,14 +1126,15 @@ async fn runtime_execution_get<T: serde::de::DeserializeOwned>(
 ) -> ApiResult<T> {
     let request_hash = content_hash(&json!({"operation":operation,"executionId":id}))
         .map_err(ApiError::internal)?;
+    let (tenant_wide, application_ids, workflow_ids) = execution_query_scope(state, actor).await?;
     let token = delegation_token(
         state,
         actor,
         "runtime.query.execution",
-        BTreeSet::new(),
-        BTreeSet::new(),
+        application_ids,
+        workflow_ids,
         BTreeSet::from([id]),
-        false,
+        tenant_wide,
         request_hash,
     )?;
     let response = state

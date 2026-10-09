@@ -569,6 +569,22 @@ pub(super) fn finalize_rag_response(provider: &str, execution: WorkerExecution) 
     }
 }
 
+pub(super) fn finalize_retrieval_response(
+    provider: &str,
+    execution: WorkerExecution,
+) -> WorkerExecution {
+    if execution.status != WorkerResultStatusV1::Succeeded {
+        return execution;
+    }
+    let Some(value) = successful_value(&execution) else {
+        return invalid_empty();
+    };
+    match agentx_runtime_contracts::rag::finalize_retrieval_value(provider, value) {
+        Ok(normalized) => WorkerExecution::succeeded(normalized),
+        Err(error) => WorkerExecution::failed(error.code, error.message, false),
+    }
+}
+
 #[cfg(test)]
 mod evaluator_prompt_tests {
     use super::evaluator_model_input;

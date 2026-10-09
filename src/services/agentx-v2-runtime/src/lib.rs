@@ -32,6 +32,7 @@ pub mod query;
 mod query_authority;
 pub mod quota;
 pub mod rate_limit;
+pub mod redis_admission;
 pub mod resource_check;
 pub mod retention;
 pub mod sandbox;
@@ -70,6 +71,7 @@ pub struct RuntimeState {
     pub trust: Arc<RuntimeTrust>,
     pub wakeups: crate::sse_wakeup::SseWakeup,
     pub vault: Option<RuntimeVault>,
+    pub admission_redis: Option<redis::aio::ConnectionManager>,
 }
 
 impl RuntimeState {
@@ -86,6 +88,12 @@ impl RuntimeState {
             trust: Arc::new(RuntimeTrust::from_env()?),
             wakeups: crate::sse_wakeup::SseWakeup::from_env()?,
             vault: Some(RuntimeVault::from_env()?),
+            admission_redis: Some(
+                agentx_runtime_infrastructure::connect_runtime_redis(
+                    &agentx_runtime_infrastructure::RuntimeRedisSettings::from_env()?,
+                )
+                .await?,
+            ),
         })
     }
 
@@ -101,6 +109,7 @@ impl RuntimeState {
             // channel credentials; a missing Vault fails its startup check
             // explicitly instead of degrading to a crash loop.
             vault: RuntimeVault::from_env().ok(),
+            admission_redis: None,
         })
     }
 }

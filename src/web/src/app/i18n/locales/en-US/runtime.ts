@@ -4,6 +4,7 @@ const translations = {
   "failedToday": "Failed today",
   "runtimeComponents": "Runtime components",
   "components": {
+    "runtime": "Runtime service",
     "coordinator": "Coordinator", "worker": "Worker", "sandbox": "Sandbox", "trace_writer": "Trace writer", "trace_queue": "Trace queue", "queue": "Queue"
   },
   "instances": "instances",
@@ -109,6 +110,7 @@ const translations = {
     }
   },
   "capability": {
+    "plugin_nodejs": "Canvas plugins (Node.js)",
     "agent": "Agent nodes",
     "builtin": "Built-in nodes",
     "declarative_http": "HTTP request nodes",

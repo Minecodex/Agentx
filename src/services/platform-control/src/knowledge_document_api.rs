@@ -201,7 +201,7 @@ async fn upload_document(
             "The same document content already exists on this knowledge resource",
         ));
     }
-    snapshot["index_version"] = json!(current_version + 1);
+    snapshot["index_version"] = json!(current_version);
     sqlx::query(
         "INSERT INTO knowledge_documents(id,tenant_id,rag_resource_id,name,content_type,size_bytes,sha256,artifact_id,index_snapshot_json,status,created_by) VALUES(?,?,?,?,?,?,?,?,?, 'uploading',?)",
     )
@@ -225,7 +225,7 @@ async fn upload_document(
     .bind(document_id.to_string())
     .execute(&mut *tx)
     .await?;
-    sqlx::query("UPDATE rag_resources SET sync_status='syncing',version=version+1 WHERE tenant_id=? AND id=?")
+    sqlx::query("UPDATE rag_resources SET sync_status='syncing' WHERE tenant_id=? AND id=?")
         .bind(actor.tenant_id)
         .bind(resource_id)
         .execute(&mut *tx)
@@ -323,11 +323,8 @@ async fn delete_document(
         .bind(document_id)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("UPDATE rag_resources SET version=version+1 WHERE tenant_id=? AND id=?")
-        .bind(actor.tenant_id)
-        .bind(resource_id)
-        .execute(&mut *tx)
-        .await?;
+    // Removing the platform source record does not change the external index
+    // or its Runtime snapshot. Keep the resource's index version unchanged.
     crate::knowledge_indexing::refresh_resource_status(&mut tx, actor.tenant_id, resource_id)
         .await?;
     tx.commit().await?;

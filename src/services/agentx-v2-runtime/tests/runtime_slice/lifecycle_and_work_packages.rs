@@ -84,7 +84,7 @@ async fn assert_authentication_rejected(fixture: &Fixture) {
 }
 
 impl Fixture {
-    fn new(pool: MySqlPool, observer: MySqlPool) -> Self {
+    fn new(pool: MySqlPool, observer: MySqlPool, redis: redis::aio::ConnectionManager) -> Self {
         let signing_key = SigningKey::generate(&mut OsRng);
         let work_package_signing_key = SigningKey::generate(&mut OsRng);
         let trust = RuntimeTrust::new(
@@ -105,6 +105,7 @@ impl Fixture {
                 trust: Arc::new(trust),
                 wakeups: Default::default(),
                 vault: None,
+                admission_redis: Some(redis),
             },
             signing_key,
             work_package_signing_key,

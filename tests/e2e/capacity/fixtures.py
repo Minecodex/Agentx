@@ -32,7 +32,7 @@ def capacity_application(context: dict[str, str], control_url: str, nodes: int) 
         created = control.post(
             "/api/v1/workflows", headers=headers, json={"name": f"Capacity {stamp}", "visibility": "company"}
         )
-        created.raise_for_status()
+        assert created.status_code == 201, f"{created.status_code}: {created.text}"
         workflow_id = created.json()["id"]
         draft = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers).json()
         definition = draft["definition"]

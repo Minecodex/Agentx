@@ -80,7 +80,7 @@ export function ModelsPage() {
     { name: 'capabilities', label: t('models.capabilities'), placeholder: 'vision, audio' },
   ]
   return <>
-    <ListPage action={auth.hasPermission('model:manage') ? <Button onClick={() => setOpen(true)}><Plus className="size-4" />{t('models.create')}</Button> : undefined} columns={columns} data={models.data?.items ?? []} description={t('models.description')} getSearchText={(row) => `${row.alias} ${row.connectionName} ${row.modelName}`} getStatus={(row) => row.status === 'active' ? 'active' : 'inactive'} searchPlaceholder={t('models.search')} statusOptions={[{ value: 'active', label: t('common.active') }, { value: 'inactive', label: t('common.inactive') }]} title={t('models.title')} />
+    <ListPage loading={models.isLoading} error={models.error} action={auth.hasPermission('model:manage') ? <Button onClick={() => setOpen(true)}><Plus className="size-4" />{t('models.create')}</Button> : undefined} columns={columns} data={models.data?.items ?? []} description={t('models.description')} getSearchText={(row) => `${row.alias} ${row.connectionName} ${row.modelName}`} getStatus={(row) => row.status === 'active' ? 'active' : 'inactive'} searchPlaceholder={t('models.search')} statusOptions={[{ value: 'active', label: t('common.active') }, { value: 'inactive', label: t('common.inactive') }]} title={t('models.title')} />
     {open && <EntityFormDialog cancelLabel={t('common.cancel')} fields={fields} onClose={() => setOpen(false)} onSubmit={async (values) => { await createModel.mutateAsync(values) }} open submitLabel={t('common.save')} title={t('models.create')} />}
   </>
 }

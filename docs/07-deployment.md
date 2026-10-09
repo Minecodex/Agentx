@@ -39,7 +39,7 @@ production 必须使用镜像摘要、existing Kubernetes Secret、外部状态�
 
 裸金属或本地集群的生产 Profile 可使用平台独立安装的 MetalLB。Sandbox Service 必须同时指定 `loadBalancerClass`、`metallb.io/address-pool` 与单个私网 `metallb.io/loadBalancerIPs`，Endpoint 必须匹配该 IP；ctl 将 Class 与 Annotation 渲染到 Service，集群平台负责提供对应私网地址池及路由。Ingress 通过 `global.ingress.loadBalancerClass` 选择平台控制器；MetalLB 安装的 Class 必须与这些字段一致，避免多个 LB 控制器争用 Service。Class 是 Kubernetes 不可变字段，已有 Service 切换控制器时须先重建。生产仍要求 LoadBalancer、TLS 和来源 CIDR，不使用 NodePort 例外。参考 [MetalLB 地址池配置](https://metallb.io/configuration/_advanced_ipaddresspool_configuration/) 与 [LoadBalancerClass](https://metallb.io/installation/#setting-the-loadbalancer-class)。
 
-Docker Desktop 的 Ingress 可继续由原生 LoadBalancer 提供宿主机 80/443。Docker OpenSandbox 使用 `networkPolicy` 时必须保持默认 `bridge` 网络；其私网 LB 必须在该网段可达。平台可把 kind 节点接入 bridge，并使用该网段的 MetalLB 地址池；新增网络的 Gateway Priority 必须低于 kind，保留节点默认路由。这属于独立平台网络准备，不改变 ctl 的四个 Release 或 OpenSandbox 的默认拒绝策略。
+Docker Desktop 的单网络节点可由原生 LoadBalancer 提供宿主机 80/443。Docker OpenSandbox 使用 `networkPolicy` 时必须保持默认 `bridge` 网络；其私网 LB 必须在该网段可达。平台把 kind 节点接入 bridge 时，新增网络的 Gateway Priority 必须低于 kind，保留节点默认路由。当前 Docker Desktop 原生 Cloud Provider 无法解析这种双网络节点，Ingress 改用 MetalLB Class，并由固定 Envoy TCP 入口转发宿主机回环 80/443 到 Ingress VIP；具体平台配置见 [本地 Ingress Addon](../deploy/kustomize/addons/local-ingress/README.md)。这是独立平台网络准备，不改变 ctl 的四个 Release 或 OpenSandbox 的默认拒绝策略。
 
 外部 ClickHouse 必须预先创建配置的 Database、迁移账户及 Query/Consumer SQL 用户，并在持久化目录启用 `user_directories.local_directory`。Query/Consumer 不能只定义在只读 `users_xml`，因为 ctl 的 Schema 迁移需要向这些账户授予对应表的权限；迁移账户由平台管理并具备这些授权权限。
 
@@ -109,6 +109,8 @@ TLS 挂载和迁移等待按各组件的 `caSecretName` 配置，和环境名解
 公网 Provider 的 DNS 必须返回真实公网地址。本地代理若把域名解析为 `198.18.0.0/15` 的 fake-IP，production Gateway 会按保留地址策略拒绝 CONNECT，模型连接测试显示 `PROVIDER_UNAVAILABLE`。应在平台 DNS 层修正解析，例如为受影响域名配置 CoreDNS `forward` 到经过证书校验的 DNS-over-TLS 上游，并设置 `tls_servername`；不要通过开放保留网段、关闭 TLS 校验或绕过 Gateway 解决。该 DNS 配置属于集群基础设施，不由 Agentx Helm Release 管理；本地集群重建时需要重新应用。Kimi 实例恢复与真实界面连接测试证据见 [本地模型 DNS 修复](plan7/evidence/p7-kimi-model-connection-fix.md)。
 
 Dependencies Doctor 在所有环境检查 Control 和 Runtime 的 Vault `lookup-self`，使用已配置的 CA 校验证书，任一身份无效即失败。响应体直接丢弃，避免 Token ID/accessor 出现在诊断日志；Token 有效与实际 KV 权限分别由身份检查和凭证业务 E2E 验证。TLS 凭证 UI 创建/轮换及两类失效 Token 的拒绝/恢复验收入口为 `pytest tests/e2e/infrastructure/test_vault_credentials.py`。
+
+production 的 Doctor Pod 通过 `global.network.externalEgress.vault` 中已配置的 CIDR 和端口访问外部 Vault；对应规则只选择 `dependencies-doctor`，保持其他 Dependencies 工作负载的默认拒绝策略。仅允许同 Namespace 的 bundled Vault 会阻断 production 的 Token 检查。
 
 ## 8. 健康、扩展和故障恢复
 
