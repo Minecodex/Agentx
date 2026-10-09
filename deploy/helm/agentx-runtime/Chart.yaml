@@ -2,5 +2,5 @@ apiVersion: v2
 name: agentx-runtime
 description: Agentx runtime plane
 type: application
-version: 0.0.4-beta
-appVersion: "0.0.4-beta"
+version: 0.0.5-beta
+appVersion: "0.0.5-beta"
