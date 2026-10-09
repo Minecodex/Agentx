@@ -40,6 +40,8 @@ Kustomize只管理可选Addon与E2E Fixture，不拥有核心资源。OpenSandbo
 - `dockerhub-beta.yaml`：公开Beta镜像和本地依赖。
 - `production.example.yaml`：外部状态依赖、TLS、existing Secret、镜像摘要示例。
 
+Bundled MinIO 使用 `cgr.dev/chainguard/minio` 的固定多架构摘要，服务以非 root 用户运行，并通过 `fsGroup` 获得数据卷写权限。初始化 Job 使用包含 `mc` 和 shell 的同源镜像，在 `/tmp/mc` 保存临时客户端配置。RAGFlow Addon 使用相同的服务镜像；不再引用无法匿名拉取的 MinIO Quay 镜像。安装节点需要能够访问 `cgr.dev` 及其镜像层下载地址。
+
 production另外强制要求 `global.images.sourceCommit` 为镜像对应的40位小写Git SHA。Release Manifest使用该值，不读取本机Git仓库。
 
 ## 安装与状态

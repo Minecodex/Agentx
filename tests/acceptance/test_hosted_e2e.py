@@ -165,6 +165,82 @@ def test_hosted_cluster_does_not_delete_a_preexisting_network(monkeypatch, tmp_p
     assert all("delete" not in args and "rm" not in args for args in commands)
 
 
+def test_hosted_cluster_enforces_the_measured_cpu_limit(monkeypatch, tmp_path):
+    import json
+
+    from tests.e2e import hosted_cluster as module
+    from tests.e2e.support import Result
+
+    nodes, environment = baseline_fixture()
+    resources = environment["nodeResources"]
+    resources["NanoCpus"] = 0  # Minikube's observed default on a four-CPU host.
+    values = tmp_path / "source.yaml"
+    values.write_text(Path("deploy/values/local.yaml").read_text())
+    monkeypatch.setattr(module, "install_minikube", lambda: None)
+    monkeypatch.setattr(module, "prepare_images", lambda values: None)
+
+    def command(args, **kwargs):
+        payload = ""
+        if args[:2] == ("docker", "update"):
+            assert args == ("docker", "update", f"--cpus={CPU_COUNT}", PROFILE)
+            resources["NanoCpus"] = CPU_COUNT * 10**9
+        elif args[:3] == ("docker", "network", "inspect"):
+            payload = json.dumps([{"IPAM": {"Config": [{"Subnet": "192.168.49.0/24", "Gateway": "192.168.49.1"}]}}])
+        elif args == ("minikube", "-p", PROFILE, "ip"):
+            payload = "192.168.49.2\n"
+        elif args[:3] == ("kubectl", "get", "nodes") and "json" in args:
+            payload = json.dumps({"items": nodes})
+        elif args[:2] == ("docker", "inspect"):
+            payload = json.dumps([{"HostConfig": resources}])
+        return Result(tuple(args), payload, "", 0)
+
+    monkeypatch.setattr(module, "run", command)
+    directory = tmp_path / "artifacts"
+    generator = module.minikube_environment(values, directory)
+    try:
+        next(generator)
+        observed = json.loads((directory / "hosted-environment.json").read_text())
+        assert baseline_matches(observed["nodes"], hosted=True, environment=observed)
+    finally:
+        generator.close()
+
+
+def test_hosted_image_builder_includes_every_local_provider_fixture(monkeypatch):
+    from tests.e2e import hosted_cluster as module
+    from tests.e2e.support import Result
+
+    fixture_files = [
+        "deploy/kustomize/e2e-fixtures/runtime-providers/providers.yaml",
+        "deploy/kustomize/e2e-fixtures/runtime-providers/lightrag-tokenizer-cache.yaml",
+        "deploy/kustomize/addons/cpu-embedding/resources.yaml",
+        "deploy/kustomize/addons/mem0/resources.yaml",
+    ]
+    required = set()
+    for path in fixture_files:
+        for document in yaml.safe_load_all(Path(path).read_text()):
+            if document and document["kind"] in {"Deployment", "Job"}:
+                pod = document["spec"]["template"]["spec"]
+                for container in [*pod.get("initContainers", []), *pod.get("containers", [])]:
+                    image = container["image"]
+                    if image.startswith("agentx/"):
+                        required.add(image.split("/", 1)[1].split(":", 1)[0])
+
+    commands = []
+    monkeypatch.setenv("AGENTX_E2E_CPU_EMBEDDING_IMAGE", "isolated-fixture")
+    monkeypatch.setenv("AGENTX_E2E_MEM0_IMAGE", "isolated-fixture")
+    monkeypatch.setattr(module, "node_image", lambda image: f"{image.split(':')[0]}@sha256:{'a' * 64}")
+
+    def command(args, **kwargs):
+        commands.append(args)
+        return Result(tuple(args), "", "", 0)
+
+    monkeypatch.setattr(module, "run", command)
+    module.prepare_images(yaml.safe_load(Path("deploy/values/local.yaml").read_text()))
+    invocation = commands[0]
+    selected = {invocation[index + 1] for index, argument in enumerate(invocation) if argument == "--service"}
+    assert required <= selected, f"fixture images omitted from the build: {required - selected}"
+
+
 def test_linux_cluster_e2e_is_mandatory_and_release_keeps_full_certification():
     quality = yaml.safe_load(Path(".github/workflows/quality.yml").read_text())["jobs"]
     assert "kubernetes-e2e-windows" not in quality

@@ -79,7 +79,7 @@ Agentx 采用三平面分离架构，每个逻辑域独立部署，通过 Helm �
 
 - 对应平台的 `agentxctl` 单文件二进制
 - Helm 3、kubectl 和一个可访问且具有默认 StorageClass 的 Kubernetes 集群
-- 集群可以拉取 Docker Hub、ingress-nginx 和基础依赖镜像
+- 集群可以拉取 Docker Hub、`cgr.dev`、ingress-nginx 和基础依赖镜像
 - OpenSandbox 已独立安装，并可从 Agentx Runtime Namespace 访问
 
 默认 OpenSandbox 地址为 `http://opensandbox.agentx-deps.svc:8080`。如果使用其他地址或主机上的 OpenSandbox，请先按 [OpenSandbox 接入说明](deploy/opensandbox/README.md) 准备自定义 Values，并在安装时传入 `--values`。

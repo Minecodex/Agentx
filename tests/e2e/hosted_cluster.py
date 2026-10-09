@@ -73,7 +73,7 @@ def hosted_values(source: dict, *, gateway: str, subnet: str) -> dict:
 def prepare_images(values: dict) -> None:
     images = values["global"]["images"]
     local = images["registry"] == "agentx" and not images.get("repositoryPrefix")
-    selected = ["echo-mcp", "echo-node", "cpu-embedding", "mem0-server"]
+    selected = ["echo-mcp", "echo-node", "cpu-embedding", "mem0-server", "lightrag"]
     if local:
         selected = [*images["services"], *selected]
     command = ["cargo", "xtask", "images", "--values", "deploy/values/local.yaml"]
@@ -119,6 +119,9 @@ def minikube_environment(values_path: Path, directory: Path) -> Iterator[Path]:
             ),
             timeout=900,
         )
+        # Minikube leaves the Docker CPU quota unset when it equals the host's
+        # CPU count. Keep the frozen capacity limit explicit and measurable.
+        run(("docker", "update", f"--cpus={CPU_COUNT}", PROFILE))
         network = run(("docker", "network", "inspect", PROFILE)).json()[0]
         subnet = network["IPAM"]["Config"][0]["Subnet"]
         gateway = network["IPAM"]["Config"][0]["Gateway"]

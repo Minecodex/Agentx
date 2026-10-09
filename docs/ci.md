@@ -22,7 +22,9 @@ Kubernetes E2E 固定在 GitHub 托管 `ubuntu-24.04` 上运行，由 `pytest te
 
 Windows 保留原生 Rust、ctl、Python/Helm 检查和 Release 二进制打包。服务镜像与 Kubernetes 节点为 Linux，因此不再重复部署一套 Windows Docker Desktop 集群 E2E。
 
-Linux E2E 从当前 PR 源码调用 `cargo xtask images` 构建正式镜像及 Echo、CPU Embedding、Mem0 测试镜像，并导入临时节点。OpenSandbox 0.2.2 使用同一 Docker 网络自动启动；真实 Kimi 测试读取 `AGENTX_E2E_KIMI_API_KEY` Actions Secret。缺少凭证或环境启动失败会报错，不能通过跳过隐藏。Fork PR 无法读取仓库 Secret，须由维护者在受信任分支运行完整检查后合并。
+Linux E2E 从当前 PR 源码调用 `cargo xtask images` 构建正式镜像及 Echo、CPU Embedding、Mem0、LightRAG 缓存测试镜像，并导入临时节点。Minikube 启动后显式设置 Docker 的 4 CPU 配额和 12 GiB 内存上限，容量证据核对实际容器限制。OpenSandbox 0.2.2 使用同一 Docker 网络自动启动；真实 Kimi 测试读取 `AGENTX_E2E_KIMI_API_KEY` Actions Secret。缺少凭证或环境启动失败会报错，不能通过跳过隐藏。Fork PR 无法读取仓库 Secret，须由维护者在受信任分支运行完整检查后合并。
+
+Bundled MinIO 和 RAGFlow 的 MinIO 使用固定多架构摘要的 Chainguard 公开镜像；初始化 Job 使用包含 `mc` 和 shell 的同源镜像。原 `quay.io/minio/minio` 与 `quay.io/minio/mc` 已不能匿名拉取，不能依赖本地旧缓存通过认证。Chart 变化会触发 ctl 重新编译；已构建的旧 Tag 安装包不会因工具分支修复而改变，必须通过包含新 Chart 的候选包重新验收。
 
 PR 执行全部系统领域及显式短容量检查；短跑不产生生产容量通过证据。Tag 发布在相同托管环境执行完整容量矩阵和两小时连续采样，保留九领域 JUnit、备份恢复、滚动升级、签名及 SPDX 门禁；失败仍阻止 Release。
 
