@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-agent-core"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "jsonschema",
  "schemars 1.2.2",
@@ -56,7 +56,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-api-types"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "serde",
  "serde_json",
@@ -66,7 +66,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-application"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "agentx-domain",
  "agentx-runtime-contracts",
@@ -83,7 +83,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-backup-test-adapter"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "chrono",
  "serde_json",
@@ -91,7 +91,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-boundary-check"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "anyhow",
  "regex",
@@ -105,7 +105,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-bundle-builder"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "agentx-domain",
  "agentx-node-protocol",
@@ -124,7 +124,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-control-infrastructure"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "aes-gcm",
  "agentx-application",
@@ -151,7 +151,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-domain"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "schemars 1.2.2",
  "serde",
@@ -163,7 +163,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-egress-gateway"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "agentx-runtime-contracts",
  "agentx-service-kit",
@@ -186,7 +186,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-key-material"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "anyhow",
  "base64",
@@ -199,7 +199,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-mysql-lease"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "anyhow",
  "serde",
@@ -213,7 +213,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-node-protocol"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "agentx-domain",
  "schemars 1.2.2",
@@ -226,7 +226,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-observability"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "agentx-mysql-lease",
  "agentx-runtime-contracts",
@@ -249,7 +249,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-runtime"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "agentx-domain",
  "agentx-node-protocol",
@@ -267,7 +267,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-runtime-contracts"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "agentx-domain",
  "agentx-node-protocol",
@@ -289,7 +289,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-runtime-infrastructure"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "agentx-mysql-lease",
  "anyhow",
@@ -304,7 +304,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-service-kit"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "agentx-api-types",
  "anyhow",
@@ -322,7 +322,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-v2-ops"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "agentx-control-infrastructure",
  "agentx-key-material",
@@ -345,7 +345,7 @@ dependencies = [
 
 [[package]]
 name = "agentx-v2-runtime"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "aes",
  "agentx-agent-core",
@@ -407,7 +407,7 @@ dependencies = [
 
 [[package]]
 name = "agentxctl"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "agentx-key-material",
  "anyhow",
@@ -1483,7 +1483,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "echo-mcp"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "anyhow",
  "axum",
@@ -1500,7 +1500,7 @@ dependencies = [
 
 [[package]]
 name = "echo-node"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "agentx-domain",
  "agentx-node-protocol",
@@ -2928,7 +2928,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "platform-control"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "agentx-api-types",
  "agentx-application",
@@ -5627,7 +5627,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.0.4-beta"
+version = "0.0.5-beta"
 dependencies = [
  "anyhow",
  "clap",

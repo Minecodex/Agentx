@@ -65,8 +65,41 @@ jobs:
             .local/dist/agentxctl-*.sha256
             .local/dist/${{ matrix.standalone }}
 
-  certify:
+  images:
     needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare disk space for the native Rust image build
+        run: |
+          sudo python3 - <<'PY'
+          import shutil
+          from pathlib import Path
+
+          for directory in ("/usr/share/dotnet", "/opt/ghc", "/usr/local/lib/android"):
+              path = Path(directory)
+              if path.is_dir():
+                  shutil.rmtree(path)
+          print(f"Available disk bytes: {shutil.disk_usage('/').free}")
+          PY
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.13"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and publish the eleven source-bound Linux AMD64 images
+        env:
+          DOCKER_DEFAULT_PLATFORM: linux/amd64
+        run: cargo xtask images --values deploy/values/dockerhub-beta.yaml --push --skip-kubernetes-import
+
+  certify:
+    needs: [build, images]
     runs-on: [self-hosted, macOS, agentx-e2e, docker-desktop]
     timeout-minutes: 300
     steps:

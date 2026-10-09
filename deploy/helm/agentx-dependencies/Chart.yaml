@@ -2,5 +2,5 @@ apiVersion: v2
 name: agentx-dependencies
 description: Agentx shared dependencies and controlled egress gateway
 type: application
-version: 0.0.4-beta
-appVersion: "0.0.4-beta"
+version: 0.0.5-beta
+appVersion: "0.0.5-beta"

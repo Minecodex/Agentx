@@ -2,9 +2,9 @@
 
 <div align="center">
 
-![版本](https://img.shields.io/badge/版本-v0.0.4--beta-6d5dfc)
+![版本](https://img.shields.io/badge/版本-v0.0.5--beta-6d5dfc)
 ![许可证](https://img.shields.io/badge/许可证-Apache--2.0-blue)
-![Rust](https://img.shields.io/badge/Rust-1.85%2B-orange)
+![Rust](https://img.shields.io/badge/Rust-1.97.1-orange)
 ![agentxctl](https://img.shields.io/badge/CLI-agentxctl-orange)
 ![Helm](https://img.shields.io/badge/部署-Helm-0f1689)
 ![Kubernetes](https://img.shields.io/badge/运行-Kubernetes-326ce5)
@@ -22,7 +22,7 @@
 Agentx 是一个面向企业场景的开源 Agent 工作流平台，提供可视化 Workflow 编排、模型与 MCP 资源管理、在线调试、应用发布、执行追踪、审批恢复和运行治理。
 
 > **⚠️ 开发阶段提示**  
-> 当前版本为 `v0.0.4-beta`，仍处于快速开发阶段，不保证历史数据和旧协议兼容。未经容量、安全、备份恢复和隔离评审，不建议直接用于生产环境。
+> 当前版本为 `v0.0.5-beta`，仍处于快速开发阶段，不保证历史数据和旧协议兼容。未经容量、安全、备份恢复和隔离评审，不建议直接用于生产环境。
 
 ## 核心能力
 
@@ -51,7 +51,7 @@ Execution、审批、等待、Checkpoint、Fork、恢复、成本统计和 Trace
 
 ### plan7 源码与验收范围
 
-以上能力描述当前源码；下方 `v0.0.4-beta` 下载包与镜像是已发布版本，不会随源码自动更新。测试当前源码时，请从仓库构建镜像并使用对应 Values 部署。
+`v0.0.5-beta` 包含 plan7 的渠道回复、文本流式、评测洞察、知识库管理及真实服务验收修复。ctl 内嵌同版本 Chart、Schema 和全部 11 个镜像配置；发布后下载包保持固定，测试后续源码时需重新构建并使用对应 Values 部署。升级内容见 [0.0.5-beta 发布说明](docs/releases/agentxctl-v0.0.5-beta.md)。
 
 真实 Kimi 文本/SSE/Judge、CPU Embedding、LightRAG、Mem0、OpenSandbox 功能及权限、故障恢复、桌面界面已有专项验收记录。完整范围和剩余项见 [plan7](docs/plan7/README.md)、[真实服务验收](docs/plan7/evidence/p7-live-provider-acceptance.md) 和 [自动化专项验收](docs/plan7/evidence/p7-automatic-boundary-acceptance.md)。真实 IM 回复、多模态与 RAGFlow 联调，以及生产强隔离、容量和完整发布认证仍按报告保留。
 
@@ -86,11 +86,11 @@ Agentx 采用三平面分离架构，每个逻辑域独立部署，通过 Helm �
 
 ### 安装步骤
 
-当前发布：[agentxctl-v0.0.4-beta](https://github.com/Minecodex/Agentx/releases/tag/agentxctl-v0.0.4-beta)。下载的 `agentxctl` 已包含本版本安装所需的 Chart、Schema 和镜像配置，无需克隆仓库或另行下载安装脚本。
+当前发布：[agentxctl-v0.0.5-beta](https://github.com/Minecodex/Agentx/releases/tag/agentxctl-v0.0.5-beta)。下载的 `agentxctl` 已包含本版本安装所需的 Chart、Schema 和镜像配置，无需克隆仓库或另行下载安装脚本。
 
 #### Windows x64
 
-[直接下载 `agentxctl-windows-x86_64.exe`](https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.4-beta/agentxctl-windows-x86_64.exe) ([SHA-256](https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.4-beta/agentxctl-windows-x86_64.exe.sha256))
+[直接下载 `agentxctl-windows-x86_64.exe`](https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.5-beta/agentxctl-windows-x86_64.exe) ([SHA-256](https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.5-beta/agentxctl-windows-x86_64.exe.sha256))
 
 也可以在 PowerShell 中下载、校验并安装：
 
@@ -98,7 +98,7 @@ Agentx 采用三平面分离架构，每个逻辑域独立部署，通过 Helm �
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force "$HOME\Downloads" | Out-Null
 Set-Location $HOME\Downloads
-$release = 'https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.4-beta'
+$release = 'https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.5-beta'
 $asset = 'agentxctl-windows-x86_64.exe'
 Invoke-WebRequest "$release/$asset" -OutFile $asset
 Invoke-WebRequest "$release/$asset.sha256" -OutFile "$asset.sha256"
@@ -109,7 +109,7 @@ if ((Get-FileHash $asset -Algorithm SHA256).Hash -ne $expected) { throw 'SHA-256
 
 #### Linux x64
 
-[直接下载 `agentxctl-linux-x86_64`](https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.4-beta/agentxctl-linux-x86_64) ([SHA-256](https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.4-beta/agentxctl-linux-x86_64.sha256))
+[直接下载 `agentxctl-linux-x86_64`](https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.5-beta/agentxctl-linux-x86_64) ([SHA-256](https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.5-beta/agentxctl-linux-x86_64.sha256))
 
 在终端中下载、校验并安装（需要 `curl` 和 `sha256sum`）：
 
@@ -118,7 +118,7 @@ if ((Get-FileHash $asset -Algorithm SHA256).Hash -ne $expected) { throw 'SHA-256
 set -eu
 mkdir -p ~/Downloads
 cd ~/Downloads
-release='https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.4-beta'
+release='https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.5-beta'
 curl -fL --retry 3 "$release/agentxctl-linux-x86_64" -o agentxctl-linux-x86_64 &&
 curl -fL --retry 3 "$release/agentxctl-linux-x86_64.sha256" -o agentxctl-linux-x86_64.sha256 &&
 sha256sum --check agentxctl-linux-x86_64.sha256 &&
@@ -131,7 +131,7 @@ chmod +x agentxctl-linux-x86_64 &&
 
 不传 `--values` 时，单文件二进制使用与当前 CLI 版本绑定的内嵌 Docker Hub Beta 配置。
 
-`agentxctl 0.0.4-beta` 默认安装全部 `kakj/agentx-*:v0.0.4-beta` 镜像。后续升级请从本页或 [Releases](https://github.com/Minecodex/Agentx/releases) 下载新版 ctl，完成校验后执行 `upgrade`；旧 ctl 的内嵌镜像版本不会自动变化。自定义 `--values` 的用户需要同步更新其中的镜像版本。
+`agentxctl 0.0.5-beta` 默认安装全部 `kakj/agentx-*:v0.0.5-beta` 镜像。后续升级请从本页或 [Releases](https://github.com/Minecodex/Agentx/releases) 下载新版 ctl，完成校验后执行 `upgrade`；旧 ctl 的内嵌镜像版本不会自动变化。自定义 `--values` 的用户需要同步更新其中的镜像版本。
 
 安装命令会完成：
 1. Values 校验
@@ -195,27 +195,27 @@ kubectl -n agentx-control port-forward service/web-console 18081:8080
 
 ## 已发布镜像
 
-当前 Beta 镜像均为 Linux AMD64，标签为 `v0.0.4-beta`。
+当前 Beta 镜像均为 Linux AMD64，标签为 `v0.0.5-beta`。
 
 | 镜像 | 用途 |
 |---|---|
-| `kakj/agentx-web-console:v0.0.4-beta` | Web 管理控制台 |
-| `kakj/agentx-platform-control:v0.0.4-beta` | Control API、发布和投影 |
-| `kakj/agentx-runtime-gateway:v0.0.4-beta` | 应用调用和 Runtime 查询入口 |
-| `kakj/agentx-workflow-runtime:v0.0.4-beta` | 调度、恢复和后台角色 |
-| `kakj/agentx-workflow-worker:v0.0.4-beta` | 节点与 Agent 执行 |
-| `kakj/agentx-sandbox-manager:v0.0.4-beta` | OpenSandbox 生命周期适配 |
-| `kakj/agentx-egress-gateway:v0.0.4-beta` | 受控公网出口 |
-| `kakj/agentx-observability:v0.0.4-beta` | Trace 摄取和查询 |
-| `kakj/agentx-migrate:v0.0.4-beta` | MySQL/ClickHouse Migration |
-| `kakj/agentx-bootstrap:v0.0.4-beta` | 幂等初始化检查 |
-| `kakj/agentx-doctor:v0.0.4-beta` | 部署后依赖与权限检查 |
+| `kakj/agentx-web-console:v0.0.5-beta` | Web 管理控制台 |
+| `kakj/agentx-platform-control:v0.0.5-beta` | Control API、发布和投影 |
+| `kakj/agentx-runtime-gateway:v0.0.5-beta` | 应用调用和 Runtime 查询入口 |
+| `kakj/agentx-workflow-runtime:v0.0.5-beta` | 调度、恢复和后台角色 |
+| `kakj/agentx-workflow-worker:v0.0.5-beta` | 节点与 Agent 执行 |
+| `kakj/agentx-sandbox-manager:v0.0.5-beta` | OpenSandbox 生命周期适配 |
+| `kakj/agentx-egress-gateway:v0.0.5-beta` | 受控公网出口 |
+| `kakj/agentx-observability:v0.0.5-beta` | Trace 摄取和查询 |
+| `kakj/agentx-migrate:v0.0.5-beta` | MySQL/ClickHouse Migration |
+| `kakj/agentx-bootstrap:v0.0.5-beta` | 幂等初始化检查 |
+| `kakj/agentx-doctor:v0.0.5-beta` | 部署后依赖与权限检查 |
 
 ## 本地开发与测试
 
 ### 环境要求
 
-- Rust 1.85+ (Edition 2024)
+- Rust 工具链由 `rust-toolchain.toml` 固定（当前为 1.97.1，Edition 2024）
 - Node.js 24
 - pnpm 11
 - Docker
@@ -301,7 +301,7 @@ uv run --frozen --group test pytest tests/e2e --values deploy/values/local.yaml 
 
 ## 许可证
 
-项目使用 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)。
+项目使用 [Apache License 2.0](LICENSE)。
 
 ---
 
