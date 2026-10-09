@@ -103,8 +103,7 @@ def _wait_admission_delivery(installed_agentx: dict[str, str], timeout: float = 
                 "--",
                 "sh",
                 "-ec",
-                f'{MYSQL_ROOT_CLIENT} '
-                '--batch --skip-column-names -uroot agentx_control -e "$1"',
+                f'{MYSQL_ROOT_CLIENT} --batch --skip-column-names -uroot agentx_control -e "$1"',
                 "agentx-plugin-admission-query",
                 query,
             ),
@@ -547,8 +546,7 @@ def test_failed_plugin_import_expires_through_the_retention_role(
                 "--",
                 "sh",
                 "-ec",
-                f'{MYSQL_ROOT_CLIENT} '
-                '--batch --skip-column-names -uroot agentx_control -e "$1"',
+                f'{MYSQL_ROOT_CLIENT} --batch --skip-column-names -uroot agentx_control -e "$1"',
                 "agentx-plugin-expiry",
                 expiry_query,
             ),

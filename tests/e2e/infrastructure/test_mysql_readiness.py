@@ -76,7 +76,14 @@ def test_mysql_cold_initialization_uses_the_server_socket(installed_agentx: dict
             assert socket in result.stdout, result.stdout
             administrative = run(
                 (
-                    "kubectl", "-n", namespace, "exec", name, "--", "sh", "-ec",
+                    "kubectl",
+                    "-n",
+                    namespace,
+                    "exec",
+                    name,
+                    "--",
+                    "sh",
+                    "-ec",
                     f'{MYSQL_ROOT_CLIENT} -uroot --batch --skip-column-names -e "SELECT @@socket"',
                 )
             )

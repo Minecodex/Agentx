@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 # always connect to its explicitly bound loopback TCP listener.
 MYSQL_ROOT_CLIENT = (
     'MYSQL_PWD="$(cat /run/secrets/agentx/root-password)" '
-    'mysql --protocol=TCP --host=127.0.0.1 --port=3306 --ssl-mode=DISABLED'
+    "mysql --protocol=TCP --host=127.0.0.1 --port=3306 --ssl-mode=DISABLED"
 )
 
 

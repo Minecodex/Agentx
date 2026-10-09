@@ -89,8 +89,7 @@ def _assert_execution_context_snapshot(installed_agentx: dict[str, str], evidenc
             "--",
             "sh",
             "-ec",
-            f'{MYSQL_ROOT_CLIENT} '
-            '--batch --skip-column-names -uroot agentx_runtime -e "$1"',
+            f'{MYSQL_ROOT_CLIENT} --batch --skip-column-names -uroot agentx_runtime -e "$1"',
             "agentx-e2e-query",
             query,
         ),

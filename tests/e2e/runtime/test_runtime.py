@@ -347,8 +347,7 @@ def _runtime_mysql(installed_agentx: dict[str, str], query: str) -> str:
             "--",
             "sh",
             "-ec",
-            f'{MYSQL_ROOT_CLIENT} '
-            '--batch --skip-column-names -uroot agentx_runtime -e "$1"',
+            f'{MYSQL_ROOT_CLIENT} --batch --skip-column-names -uroot agentx_runtime -e "$1"',
             "agentx-p3-04-query",
             query,
         ),
