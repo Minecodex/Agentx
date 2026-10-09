@@ -145,27 +145,20 @@ def _restore_development(replicas: dict[tuple[str, str], int]) -> None:
 
 
 def _collect_artifacts(context: dict[str, str], artifact_dir: Path, timeline: list[str]) -> None:
+    from tests.e2e.diagnostics import workload_logs
+
     for plane in ("control", "runtime", "dependencies"):
         namespace = context[f"{plane}_namespace"]
         commands = {
             "resources": ("kubectl", "-n", namespace, "get", "all,ingress,networkpolicy,pdb", "-o", "yaml"),
             "events": ("kubectl", "-n", namespace, "get", "events", "-o", "yaml"),
-            "logs": (
-                "kubectl",
-                "-n",
-                namespace,
-                "logs",
-                "-l",
-                "agentx.io/plane in (runtime,observability)" if plane == "runtime" else f"agentx.io/plane={plane}",
-                "--all-containers=true",
-                "--prefix=true",
-                "--tail=1000",
-            ),
         }
         for label, command in commands.items():
             result = run(command, check=False, timeout=180)
             content = result.stdout + (f"\n{result.stderr}" if result.stderr else "")
             (artifact_dir / f"{plane}-{label}.txt").write_text(redact(content), encoding="utf-8")
+        selector = "agentx.io/plane in (runtime,observability)" if plane == "runtime" else f"agentx.io/plane={plane}"
+        (artifact_dir / f"{plane}-logs.txt").write_text(workload_logs(namespace, selector), encoding="utf-8")
     (artifact_dir / "timeline.txt").write_text("\n".join(timeline) + "\n", encoding="utf-8")
 
 
@@ -223,7 +216,11 @@ def _installed_environment(
     installation_ready = False
     try:
         try:
-            installed = run(install_command, timeout=3600)
+            from tests.e2e.diagnostics import installation_diagnostics
+
+            namespaces = [context[f"{plane}_namespace"] for plane in ("dependencies", "control", "runtime")]
+            with installation_diagnostics(namespaces, artifact_dir):
+                installed = run(install_command, timeout=3600)
         except Exception as error:
             (artifact_dir / "install-error.txt").write_text(redact(str(error)), encoding="utf-8")
             raise

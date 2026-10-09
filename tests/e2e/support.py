@@ -147,9 +147,16 @@ def redact(value: str) -> str:
         value,
         flags=re.DOTALL,
     )
+
+    def scalar(match: re.Match[str]) -> str:
+        label, content = match.group(1), match.group(2)
+        quote = content[0] if content.startswith(('"', "'")) else ""
+        return f"{label}{quote}<redacted>{quote}"
+
     return re.sub(
-        r"(?i)((?:password|secret|token|private[_-]?key|unseal[ _-]?key|api[ _-]?key|authorization)[\"']?\s*[=:]\s*[\"']?)(?:(?:Bearer|Basic)\s+)?([^\"'\s,;}]+)",
-        r"\1<redacted>",
+        r"(?i)((?:password|secret|(?<!automountserviceaccount)token|private[_-]?key|unseal[ _-]?key|api[ _-]?key|authorization)[\"']?[ \t]*[=:][ \t]*)"
+        r"""("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:(?:Bearer|Basic)[ \t]+)?[^\"'\s,;{}\[\]]+)""",
+        scalar,
         value,
     )
 
