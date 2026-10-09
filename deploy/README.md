@@ -123,6 +123,8 @@ git push origin agentxctl-v0.0.5-beta
 
 镜像发布需要维护者的 Docker Hub 权限。Tag 工作流从同一提交构建两个平台的 ctl 和全部镜像，验证内嵌版本与公开镜像，再将完整资产上传到草稿并公开 Release。已公开版本不会被覆盖；修订使用新版本。`release-images.json` 随 Release 一起发布，提供镜像摘要核对依据。
 
+集群 E2E 和发布认证使用 GitHub 托管 Ubuntu / Minikube，不需要本地 Runner。完整发布仍要求九领域、两小时容量、备份恢复、滚动升级和供应链证据全部通过；Kimi 测试凭证使用 `AGENTX_E2E_KIMI_API_KEY` Actions Secret。Actions 的手动运行入口可输入已有不可变 Tag 重新认证，复用并验证已推送的镜像，不覆盖它们。
+
 4. 工作流成功后，从公开 Release 下载二进制并核对 SHA-256，在仓库外验证 `--version`、`validate` 和 `render`，再使用 `pytest tests/e2e` 完成临时 Namespace 安装验收。主分支已由版本 PR 更新，无需直接推送主分支。
 
 ### 本地开发

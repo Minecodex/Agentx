@@ -1,11 +1,8 @@
-"""Real Kimi resources for opt-in local acceptance; secrets stay in memory."""
+"""Real Kimi resources for local and hosted acceptance; secrets stay in memory."""
 
 from __future__ import annotations
 
-import base64
 import os
-import socket
-import ssl
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -16,7 +13,6 @@ import pytest
 from tests.e2e.product.test_model_streaming import _grant_model_to_workflow, _stream_workflow
 from tests.e2e.product.test_provider_integration import _publish_application_deployment
 from tests.e2e.runtime.test_agent_attachments import _access_token
-from tests.e2e.support import ROOT, run, start_process
 
 
 @dataclass
@@ -32,49 +28,14 @@ def post(client: httpx.Client, path: str, payload: dict) -> dict:
 
 @pytest.fixture(scope="session")
 def live_kimi_secret(run_id: str) -> Iterator[Secret]:
-    reference = os.environ.get("AGENTX_E2E_LIVE_VAULT_SECRET_REF")
-    if not reference:
-        raise RuntimeError("AGENTX_E2E_LIVE_VAULT_SECRET_REF must identify the existing Kimi Vault credential")
-    directory = ROOT / ".local/artifacts/e2e" / run_id / "live-model"
-    directory.mkdir(parents=True, exist_ok=True)
-    control_secret = run(
-        ("kubectl", "-n", "agentx-prod-control", "get", "secret", "agentx-control-secrets", "-o", "json")
-    ).json()["data"]
-    vault_token = base64.b64decode(control_secret["AGENTX_CONTROL_VAULT_TOKEN"]).decode()
-    ca_secret = run(
-        ("kubectl", "-n", "agentx-prod-control", "get", "secret", "agentx-prod-vault-ca", "-o", "json")
-    ).json()["data"]
-    ca = directory / "vault-ca.pem"
-    ca.write_bytes(base64.b64decode(ca_secret["ca.crt"]))
-    with socket.socket() as listener:
-        listener.bind(("127.0.0.1", 0))
-        port = listener.getsockname()[1]
-    forward = start_process(
-        ("kubectl", "-n", "agentx-prod-external", "port-forward", "service/vault", f"{port}:8200"),
-        stdout_path=directory / "vault-forward.log",
-        stderr_path=directory / "vault-forward-error.log",
-    )
+    value = os.environ.get("AGENTX_E2E_KIMI_API_KEY")
+    if not value:
+        raise RuntimeError("AGENTX_E2E_KIMI_API_KEY must contain the Kimi test credential")
+    secret = Secret(value)
     try:
-        with httpx.Client(verify=ssl.create_default_context(cafile=str(ca)), trust_env=False, timeout=10) as vault:
-            deadline = time.monotonic() + 30
-            while True:
-                try:
-                    response = vault.get(
-                        f"https://127.0.0.1:{port}/v1/agentx-v2/data/{reference}?version=1",
-                        headers={"X-Vault-Token": vault_token},
-                        extensions={"sni_hostname": "vault.agentx-prod-external.svc"},
-                    )
-                    break
-                except httpx.ConnectError:
-                    if time.monotonic() > deadline:
-                        raise
-                    time.sleep(0.3)
-            response.raise_for_status()
-            secret = Secret(response.json()["data"]["data"]["value"])
         yield secret
-        secret.value = ""
     finally:
-        forward.stop()
+        secret.value = ""
 
 
 def publish_version(control: httpx.Client, workflow_id: str, prompt: str) -> dict:

@@ -42,34 +42,28 @@ jobs:
       - run: cargo xtask check --fast
 
   kubernetes-e2e-linux:
-    if: ${{ vars.AGENTX_E2E_LINUX_ENABLED == 'true' }}
     needs: python-helm
-    runs-on: [self-hosted, linux, agentx-e2e, strict-cni]
-    timeout-minutes: 180
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: ./.github/actions/e2e-tools
+      - name: Run all system domains in disposable Minikube
+        env:
+          AGENTX_E2E_KIMI_API_KEY: ${{ secrets.AGENTX_E2E_KIMI_API_KEY }}
+        run: >-
+          uv run --frozen --group test pytest tests/e2e --minikube
+          --values deploy/values/local.yaml --capacity-smoke --maxfail=1
+          --evidence-run-id "ci-${{ github.run_id }}-${{ github.run_attempt }}"
+          --junitxml=.local/artifacts/kubernetes-e2e.xml --timeout=14400
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          version: "0.8.13"
-      - run: uv sync --frozen --group test
-      - run: cargo build -p agentxctl -p agentx-backup-test-adapter
-      - run: corepack enable && pnpm install --frozen-lockfile
-      - run: uv run --frozen --group test pytest tests/e2e --values deploy/values/dockerhub-beta.yaml --capacity-smoke --timeout=7200
-
-  kubernetes-e2e-windows:
-    if: ${{ vars.AGENTX_E2E_WINDOWS_ENABLED == 'true' }}
-    needs: python-helm
-    runs-on: [self-hosted, windows, agentx-e2e, docker-desktop]
-    timeout-minutes: 180
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-        with:
-          version: "0.8.13"
-      - run: uv sync --frozen --group test
-      - run: cargo build -p agentxctl -p agentx-backup-test-adapter
-      - run: corepack enable; pnpm install --frozen-lockfile
-      - run: uv run --frozen --group test pytest tests/e2e --values deploy/values/dockerhub-beta.yaml --capacity-smoke --timeout=7200
+          name: kubernetes-e2e-linux
+          path: |
+            .local/artifacts/kubernetes-e2e.xml
+            .local/artifacts/e2e
+            .local/artifacts/playwright
 
   frontend:
     runs-on: ubuntu-latest
@@ -90,7 +84,7 @@ jobs:
   ci-gate:
     name: CI
     if: ${{ always() }}
-    needs: ["python-helm", "frontend", "kubernetes-e2e-linux", "kubernetes-e2e-windows"]
+    needs: ["python-helm", "frontend", "kubernetes-e2e-linux"]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -103,13 +97,11 @@ jobs:
           import os
           import sys
 
-          optional = set(["kubernetes-e2e-linux", "kubernetes-e2e-windows"])
           jobs = json.loads(os.environ["JOB_RESULTS"])
           failed = {
               name: job["result"]
               for name, job in jobs.items()
               if job["result"] != "success"
-              and not (name in optional and job["result"] == "skipped")
           }
           if failed:
               print(f"Required CI jobs did not succeed: {failed}")

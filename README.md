@@ -275,6 +275,8 @@ cargo xtask images --values deploy/values/local.yaml --service platform-control 
 
 领域 E2E 使用临时 Namespace；浏览器场景由 TypeScript Playwright 执行：
 
+GitHub CI 在托管 Ubuntu 上由 pytest 自动创建 Minikube / Calico 集群，Linux 集群 E2E 是必需检查；Windows 保留 ctl 原生构建、测试和打包。Release 使用相同环境完成完整九领域、两小时容量与镜像签名门禁，通过后才公开发布。配置和手动重跑说明见 [CI 说明](docs/ci.md)。
+
 ```bash
 # 基础设施测试
 uv run --frozen --group test pytest tests/e2e --values deploy/values/local.yaml -m infrastructure

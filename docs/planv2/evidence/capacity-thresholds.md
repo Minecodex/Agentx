@@ -19,6 +19,22 @@
 
 换环境（CPU/内存/存储类别/副本数/中间件规格任一变化）时本文全部数值作废，需重新冻结并记录差异。
 
+### GitHub 托管环境基准（2026-10-09）
+
+本次用户明确要求“帮我改为 github 托管的机器不跳过”，因此新增独立托管环境基准。原本机基准保留用于本机认证；不把两种硬件的结果混为同一环境。
+
+| 项 | 规格 |
+|---|---|
+| Runner | GitHub 公共仓库 `ubuntu-24.04` x64，4 vCPU / 16 GB RAM |
+| 集群 | Minikube 1.39.0、Docker 驱动、containerd、Calico、Kubernetes v1.36.1，单节点 |
+| 节点配额 | 4 CPU / 12,288 MiB；同时验证 Docker 的 CPU/内存配额和 Kubernetes 架构、版本及容量 |
+| 存储 | Runner SSD 上的 Minikube 默认动态本地存储；保留低于 5 GiB 即中止的保护 |
+| 部署与负载 | 与本机相同的单副本服务、中间件配置、完整矩阵与两小时连续采样 |
+| 凭证 | Actions Secret `AGENTX_E2E_KIMI_API_KEY`；不读取开发机的 Vault/Namespace |
+| 冻结依据 | 用户选择托管 Runner；在首次托管容量 Run 前确定规格，七组指标数值保持不变 |
+
+节点内存报告可能显示容器限额或宿主物理内存，因此同时记录并检查明确的 12 GiB Docker 限额；节点可见内存只允许 11.8–16.5 GiB。更改配额、节点数、架构或 Kubernetes 版本会使门禁失败，不按失败 Run 放宽阈值。
+
 ## 2. 七组冻结阈值
 
 ### ① Invocation 接受质量

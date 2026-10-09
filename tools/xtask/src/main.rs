@@ -302,7 +302,10 @@ fn images(root: &Path, args: Images) -> Result<()> {
     for service in &selected {
         if !known.contains(service)
             && !(local_runtime_fixture
-                && matches!(service.as_str(), "echo-node" | "echo-mcp" | "cpu-embedding"))
+                && matches!(
+                    service.as_str(),
+                    "echo-node" | "echo-mcp" | "cpu-embedding" | "mem0-server"
+                ))
         {
             bail!("unknown image service: {service}");
         }
@@ -348,6 +351,8 @@ fn images(root: &Path, args: Images) -> Result<()> {
                 "--build-arg",
                 "NGINX_CONFIG=deploy/docker/nginx-v2.conf",
             ]);
+        } else if service == "mem0-server" {
+            command.args(["-f", "deploy/docker/mem0.Dockerfile"]);
         } else if service == "cpu-embedding" {
             command.args(["-f", "deploy/docker/cpu-embedding.Dockerfile"]);
             if let Ok(index) = std::env::var("PIP_INDEX_URL") {

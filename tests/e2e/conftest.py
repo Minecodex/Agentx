@@ -42,6 +42,8 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--previous-worker-image", help="distinct compatible Worker image for the mixed-version capacity matrix"
     )
     parser.addoption("--evidence-run-id", help="candidate run ID from prepare_candidate")
+    parser.addoption("--minikube", action="store_true", help="prepare and clean up a Linux Minikube test cluster")
+    parser.addoption("--candidate-root", help="immutable application source checkout used to bind release evidence")
 
 
 @pytest.hookimpl(wrapper=True, tryfirst=True)
@@ -68,11 +70,20 @@ def release_evidence_properties(pytestconfig: pytest.Config, record_testsuite_pr
 
 
 @pytest.fixture(scope="session")
-def deployment_values(pytestconfig: pytest.Config) -> Path:
+def deployment_values(pytestconfig: pytest.Config, run_id: str) -> Iterator[Path]:
     value = pytestconfig.getoption("--values")
     if not value:
         pytest.skip("cluster E2E requires --values or AGENTX_E2E_VALUES")
-    return Path(value).resolve()
+    path = Path(value).resolve()
+    if pytestconfig.getoption("--minikube"):
+        if not os.environ.get("AGENTX_E2E_KIMI_API_KEY"):
+            raise ValueError("GitHub E2E requires the AGENTX_E2E_KIMI_API_KEY Actions secret")
+        from tests.e2e.hosted_cluster import minikube_environment
+
+        directory = Path(__file__).resolve().parents[2] / ".local/artifacts/e2e" / run_id
+        yield from minikube_environment(path, directory)
+    else:
+        yield path
 
 
 @pytest.fixture(scope="session")
@@ -228,7 +239,8 @@ def _installed_environment(
             if service.removeprefix("agentx-") in configured_services or service in configured_services:
                 image_refs.append(image)
         assert len(set(image_refs)) == 11, "candidate identity requires all 11 rendered application images"
-        identity = write_identity(context, image_refs)
+        source_root = pytestconfig.getoption("--candidate-root") or context["root"]
+        identity = write_identity({**context, "root": str(Path(source_root).resolve())}, image_refs)
         if not pytestconfig._agentx_evidence_properties:
             pytestconfig._agentx_evidence_properties.update(identity)
         installation_ready = True
@@ -286,6 +298,15 @@ def tls_agentx(
     root = Path(installed_agentx["root"])
     values = yaml.safe_load((root / "deploy/values/local-tls.yaml").read_text(encoding="utf-8"))
     values["global"]["images"] = source["global"]["images"]
+    if pytestconfig.getoption("--minikube"):
+        sandbox = values["global"]["components"]["sandbox"]
+        sandbox["localProxyUpstream"] = source["global"]["components"]["sandbox"]["endpoint"]
+        access = values["global"]["network"]["egressGateway"]["sandboxAccess"]
+        access.update(source["global"]["network"]["egressGateway"]["sandboxAccess"])
+        access.update(endpoint="https://agentx-ci:31429", port=31429)
+        values["global"]["network"]["externalEgress"]["opensandbox"] = source["global"]["network"]["externalEgress"][
+            "opensandbox"
+        ]
     original = values["global"]["namespaces"].copy()
     for plane in ("control", "runtime", "dependencies"):
         values["global"]["namespaces"][plane] = installed_agentx[f"{plane}_namespace"]
@@ -411,6 +432,13 @@ def e2e_providers(installed_agentx: dict[str, str]) -> dict[str, str]:
                 document["spec"]["template"]["spec"]["containers"][0]["image"] = (
                     f"agentx/{document['metadata']['name']}:{images['tag']}"
                 )
+    mem0_image = os.environ.get("AGENTX_E2E_MEM0_IMAGE")
+    if mem0_image:
+        for document in documents:
+            if document["kind"] == "Deployment" and document["metadata"]["name"] == "mem0":
+                pod = document["spec"]["template"]["spec"]
+                for container in (*pod.get("initContainers", []), *pod["containers"]):
+                    container["image"] = mem0_image
     if not ragflow_enabled:
         documents = [
             document
@@ -495,7 +523,7 @@ def _opensandbox_healthy() -> bool:
 
 
 @pytest.fixture(scope="session")
-def opensandbox_server(run_id: str) -> Iterator[None]:
+def opensandbox_server(run_id: str, deployment_values: Path) -> Iterator[None]:
     """Start the OpenSandbox lifecycle server when it is not already running.
 
     Removes the manual pre-start step: the server runs as a host process via
@@ -521,6 +549,9 @@ def opensandbox_server(run_id: str) -> Iterator[None]:
             f'path = "{artifact_dir / "opensandbox.db"}"',
         )
     )
+    network = os.environ.get("AGENTX_E2E_DOCKER_NETWORK")
+    if network:
+        config = config.replace('network_mode = "bridge"', f'network_mode = "{network}"')
     config_path = artifact_dir / "opensandbox.local.toml"
     config_path.write_text(config, encoding="utf-8")
     server = start_process(
@@ -600,7 +631,7 @@ def code_egress_fixtures() -> Iterator[dict[str, str]]:
         thread.start()
     try:
         yield {
-            "host": "host.docker.internal",
+            "host": os.environ.get("AGENTX_E2E_HOST", "host.docker.internal"),
             "http_port": str(http_server.server_port),
             "tcp_port": str(tcp_server.server_address[1]),
         }

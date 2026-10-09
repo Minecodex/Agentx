@@ -3,18 +3,41 @@ name: agentxctl-release
 on:
   push:
     tags: ["agentxctl-v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing immutable agentxctl tag to certify and publish
+        required: true
+        type: string
+      previous_worker_image:
+        description: Distinct compatible Worker digest for rolling and capacity tests
+        required: true
+        type: string
+        default: kakj/agentx-workflow-worker:v0.0.4-beta@sha256:daa72d3f6ada839a0102e9ef6ed36c8546ebe8622e0a2ebcf1fe716c0e9be746
+      build_run_id:
+        description: Original tag-triggered run containing successful native ctl builds
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+  PREVIOUS_WORKER_IMAGE: ${{ inputs.previous_worker_image || 'kakj/agentx-workflow-worker:v0.0.4-beta@sha256:daa72d3f6ada839a0102e9ef6ed36c8546ebe8622e0a2ebcf1fe716c0e9be746' }}
 
 permissions:
+  actions: read
   contents: write
   id-token: write
   attestations: write
 
 concurrency:
-  group: agentxctl-release-${{ github.ref }}
+  group: agentxctl-release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   build:
+    defaults:
+      run:
+        shell: bash
     strategy:
       matrix:
         include:
@@ -29,13 +52,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.8.13"
-      - run: uv run --frozen --group test python -m tools.scripts.release.verify_release --version "${{ github.ref_name }}" --versions-only
+      - run: uv run --frozen --group test python -m tools.scripts.release.verify_release --version "${{ env.RELEASE_TAG }}" --versions-only
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.1
@@ -48,14 +73,79 @@ jobs:
           version: v1.33.4
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - run: cargo build --release --locked -p agentxctl --target ${{ matrix.target }}
-      - run: python tools/scripts/release/package_agentxctl.py --version "${{ github.ref_name }}" --target "${{ matrix.target }}"
+      - if: github.event_name == 'push'
+        run: cargo build --release --locked -p agentxctl --target ${{ matrix.target }}
+      - if: github.event_name == 'push'
+        run: python tools/scripts/release/package_agentxctl.py --version "${{ env.RELEASE_TAG }}" --target "${{ matrix.target }}"
       - uses: actions/attest-build-provenance@v2
+        if: github.event_name == 'push'
         with:
           subject-path: .local/dist/agentxctl-*-${{ matrix.target }}.${{ matrix.archive }}
       - uses: actions/attest-build-provenance@v2
+        if: github.event_name == 'push'
         with:
           subject-path: .local/dist/${{ matrix.standalone }}
+      - name: Require successful original builds for this exact immutable tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          uv run --frozen --group test python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import urllib.request
+
+          run_id = os.environ["BUILD_RUN_ID"]
+          if not run_id.isdecimal():
+              raise ValueError("build_run_id must be numeric")
+          base = f"https://api.github.com/repos/{os.environ['REPOSITORY']}/actions/runs/{run_id}"
+          def get(path):
+              request = urllib.request.Request(base + path, headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json"})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+          origin = get("")
+          commit = subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+          if origin["head_sha"] != commit or origin["event"] != "push" or origin["path"] != ".github/workflows/agentxctl-release.yml":
+              raise ValueError("original build does not belong to this tag and release workflow")
+          jobs = get("/jobs")['jobs']
+          for target in ("x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"):
+              if not any(target in job['name'] and job['conclusion'] == 'success' for job in jobs):
+                  raise ValueError(f"original native build did not pass: {target}")
+          print(f"Verified original native builds at {commit}")
+          PY
+      - uses: actions/download-artifact@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: agentxctl-${{ matrix.target }}
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+          path: .local/dist
+      - name: Recheck the original package on its native operating system
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          uv run --frozen --group test python - <<'PY'
+          import os
+          from pathlib import Path
+          from tools.scripts.release.package_agentxctl import TARGETS, checksum, smoke_package
+
+          version = os.environ["RELEASE_TAG"].removeprefix("agentxctl-v")
+          target = os.environ["TARGET"]
+          _, name, extension = TARGETS[target]
+          directory = Path(".local/dist").resolve()
+          archive = directory / f"agentxctl-{version}-{target}.{extension}"
+          standalone = directory / name
+          for artifact in (archive, standalone):
+              expected = f"{checksum(artifact)}  {artifact.name}"
+              if artifact.with_name(artifact.name + '.sha256').read_text().strip() != expected:
+                  raise ValueError("original artifact checksum mismatch")
+          standalone.chmod(0o755)
+          smoke_package(archive, standalone, version, target)
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: agentxctl-${{ matrix.target }}
@@ -71,6 +161,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - name: Prepare disk space for the native Rust image build
         run: |
           sudo python3 - <<'PY'
@@ -94,45 +186,87 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build and publish the eleven source-bound Linux AMD64 images
+        if: github.event_name == 'push'
         env:
           DOCKER_DEFAULT_PLATFORM: linux/amd64
-        run: cargo xtask images --values deploy/values/dockerhub-beta.yaml --push --skip-kubernetes-import
+        run: |
+          uv run --frozen --group test python - <<'PY'
+          import subprocess
+          import yaml
+          from pathlib import Path
+
+          values = Path("deploy/values/dockerhub-beta.yaml")
+          command = ["cargo", "xtask", "images", "--values", str(values), "--push", "--skip-kubernetes-import"]
+          for service in yaml.safe_load(values.read_text())["global"]["images"]["services"]:
+              command.extend(("--service", service))
+          subprocess.run(command, check=True)
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: agentxctl-x86_64-unknown-linux-musl
+          path: .local/dist
+      - run: chmod +x .local/dist/agentxctl-linux-x86_64
+      - name: Resolve existing public images and verify their exact source
+        run: >-
+          uv run --frozen --group test python -m tools.scripts.release.prepare_candidate
+          --version "${{ env.RELEASE_TAG }}" --binary .local/dist/agentxctl-linux-x86_64
+          --values deploy/values/dockerhub-beta.yaml --run-id "p7-${{ github.run_id }}-${{ github.run_attempt }}"
+          --directory .local/dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agentx-candidate
+          path: |
+            .local/dist/release-images-inspected.json
+            .local/dist/values.yaml
 
   certify:
     needs: [build, images]
-    runs-on: [self-hosted, macOS, agentx-e2e, docker-desktop]
-    timeout-minutes: 300
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v4
         with:
-          version: "0.8.13"
-      - uses: dtolnay/rust-toolchain@stable
+          ref: ${{ env.RELEASE_TAG }}
+          path: .local/candidate
+          persist-credentials: false
+      - uses: ./.github/actions/e2e-tools
+      - uses: actions/download-artifact@v4
         with:
-          toolchain: 1.97.1
-      - uses: azure/setup-helm@v4
+          name: agentx-candidate
+          path: .local/dist
+      - uses: actions/download-artifact@v4
         with:
-          version: v3.18.4
-      - name: Require signing tools and previous Worker
-        env:
-          PREVIOUS_WORKER_IMAGE: ${{ vars.AGENTX_PREVIOUS_WORKER_IMAGE }}
-        run: uv run --frozen --group test python -c "import os,shutil; assert all(shutil.which(x) for x in ('cosign','syft','docker','kubectl','helm')); assert os.environ['PREVIOUS_WORKER_IMAGE']"
-      - run: cargo build --locked -p agentxctl -p agentx-backup-test-adapter
-      - run: corepack enable && pnpm install --frozen-lockfile
-      - name: Build the source-matched provider fixtures
-        run: cargo xtask images --values deploy/values/local.yaml --service echo-mcp --service echo-node
-      - name: Resolve and pin the exact source candidate
-        run: uv run --frozen --group test python -m tools.scripts.release.prepare_candidate --version "${{ github.ref_name }}" --binary target/debug/agentxctl --values deploy/values/dockerhub-beta.yaml --run-id "p7-${{ github.run_id }}-${{ github.run_attempt }}" --directory .local/dist
+          name: agentxctl-x86_64-unknown-linux-musl
+          path: .local/dist
+      - run: chmod +x .local/dist/agentxctl-linux-x86_64
       - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Sign, attest and verify all 11 immutable images
         run: uv run --frozen --group test python -m tools.scripts.release.supply_chain --receipts .local/dist/release-images-inspected.json --output .local/dist/supply-chain-evidence.json --certificate-identity "https://github.com/${{ github.workflow_ref }}" --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      - name: Pull source-bound images for the local registry security drill
+        run: |
+          uv run --frozen --group test python - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+          from tools.scripts.release.signature_verification import digest_reference
+
+          receipt = json.loads(Path(".local/dist/release-images-inspected.json").read_text())
+          for image in receipt["images"]:
+              subprocess.run(["docker", "pull", digest_reference(image)], check=True)
+          PY
       - name: Complete the nine-domain E2E and two-hour capacity gate
         env:
-          PREVIOUS_WORKER_IMAGE: ${{ vars.AGENTX_PREVIOUS_WORKER_IMAGE }}
-        run: uv run --frozen --group test pytest tests/e2e --values .local/dist/values.yaml --evidence-run-id "p7-${{ github.run_id }}-${{ github.run_attempt }}" --previous-worker-image "$PREVIOUS_WORKER_IMAGE" --junitxml=.local/artifacts/certification.xml --timeout=14400
+          AGENTX_E2E_KIMI_API_KEY: ${{ secrets.AGENTX_E2E_KIMI_API_KEY }}
+          AGENTXCTL_BIN: ${{ github.workspace }}/.local/dist/agentxctl-linux-x86_64
+        run: >-
+          uv run --frozen --group test pytest tests/e2e --minikube --values .local/dist/values.yaml
+          --candidate-root .local/candidate --evidence-run-id "p7-${{ github.run_id }}-${{ github.run_attempt }}"
+          --previous-worker-image "$PREVIOUS_WORKER_IMAGE" --maxfail=1
+          --junitxml=.local/artifacts/certification.xml --timeout=18000
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -143,6 +277,7 @@ jobs:
             .local/dist/release-images-inspected.json
             .local/dist/supply-chain-evidence.json
             .local/dist/sboms
+            .local/artifacts/playwright
 
   publish:
     needs: [build, certify]
@@ -171,7 +306,7 @@ jobs:
       - name: Install image verification tools
         uses: sigstore/cosign-installer@v4.1.0
       - name: Verify all public Docker images before publishing the CLI
-        run: uv run --frozen --group test python -m tools.scripts.release.verify_release --version "${{ github.ref_name }}" --binary .local/dist/agentxctl-linux-x86_64 --identity .local/artifacts/e2e/p7-${{ github.run_id }}-${{ github.run_attempt }}/candidate-identity.json --certificate-identity "https://github.com/${{ github.workflow_ref }}" --certificate-oidc-issuer https://token.actions.githubusercontent.com --output .local/dist/release-images.json
+        run: uv run --frozen --group test python -m tools.scripts.release.verify_release --version "${{ env.RELEASE_TAG }}" --binary .local/dist/agentxctl-linux-x86_64 --identity .local/artifacts/e2e/p7-${{ github.run_id }}-${{ github.run_attempt }}/candidate-identity.json --certificate-identity "https://github.com/${{ github.workflow_ref }}" --certificate-oidc-issuer https://token.actions.githubusercontent.com --output .local/dist/release-images.json
       - name: Require complete candidate-bound certification evidence
         run: >-
           uv run --frozen --group test python -m tools.scripts.release.release_summary
@@ -188,4 +323,4 @@ jobs:
       - name: Upload complete artifacts and publish the draft
         env:
           GH_TOKEN: ${{ github.token }}
-        run: uv run --frozen --group test python -m tools.scripts.release.publish_release --tag "${{ github.ref_name }}" --notes "docs/releases/${{ github.ref_name }}.md"
+        run: uv run --frozen --group test python -m tools.scripts.release.publish_release --tag "${{ env.RELEASE_TAG }}" --notes "docs/releases/${{ env.RELEASE_TAG }}.md"
