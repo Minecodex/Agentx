@@ -297,7 +297,7 @@ uv run --frozen --group test pytest tests/e2e --values deploy/values/local.yaml 
 
 ## 贡献
 
-欢迎贡献代码、报告问题或提出建议。开发时遵循 [AGENTS.md](AGENTS.md)，完成相关测试后向 `master` 提交 Pull Request；主分支受保护，需通过必选 CI 检查并审核后合并。验证命令见[本地开发与测试](#本地开发与测试)。ctl 发布包和镜像在合入主分支后按发布流程构建、校验和推送。
+欢迎贡献代码、报告问题或提出建议。开发时遵循 [AGENTS.md](AGENTS.md)，完成相关测试后向 `master` 提交 Pull Request；主分支受保护，需通过必选 CI 检查并解决审查意见后合并。验证命令见[本地开发与测试](#本地开发与测试)，合并规则见 [CI 说明](docs/ci.md)。ctl 发布包和镜像在合入主分支后按发布流程构建、校验和推送。
 
 ## 许可证
 

@@ -32,4 +32,4 @@ def test_channel_configuration_and_reply_ui(installed_agentx, service_urls, im_m
     )
     received = delivery._mock_received(installed_agentx["dependencies_namespace"], "session-channel-form")
     assert received, "The platform mock must receive the reply created through the channel UI"
-    assert received[-1]["body"]["text"]["content"] == "回答：channel form message\n发送者：E2E"  # noqa: RUF001 -- Verify localized text verbatim.
+    assert received[-1]["body"]["text"]["content"] == "回答：channel form message\n发送者：E2E"
