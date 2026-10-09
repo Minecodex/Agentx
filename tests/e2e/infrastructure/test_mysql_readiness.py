@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 from tests.e2e.diagnostics import workload_logs
-from tests.e2e.support import run
+from tests.e2e.support import MYSQL_ROOT_CLIENT, run
 
 
 @pytest.mark.cluster
@@ -74,5 +74,12 @@ def test_mysql_cold_initialization_uses_the_server_socket(installed_agentx: dict
             query = command[-1].replace("SELECT 1", "SELECT @@socket")
             result = run(("kubectl", "-n", namespace, "exec", name, "--", *command[:-1], query))
             assert socket in result.stdout, result.stdout
+            administrative = run(
+                (
+                    "kubectl", "-n", namespace, "exec", name, "--", "sh", "-ec",
+                    f'{MYSQL_ROOT_CLIENT} -uroot --batch --skip-column-names -e "SELECT @@socket"',
+                )
+            )
+            assert socket in administrative.stdout, administrative.stdout
         finally:
             run(("kubectl", "-n", namespace, "delete", "pod", name, "--ignore-not-found=true", "--wait=true"))

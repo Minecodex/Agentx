@@ -11,7 +11,7 @@ import pytest
 from tests.e2e.product.test_model_streaming import _sse_events
 from tools.scripts.release.evidence import write_report
 
-pytestmark = [pytest.mark.cluster, pytest.mark.product]
+pytestmark = [pytest.mark.cluster, pytest.mark.product, pytest.mark.live_model]
 
 
 def session(gateway, app, title):

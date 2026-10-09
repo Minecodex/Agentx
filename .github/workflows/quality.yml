@@ -5,6 +5,15 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      full:
+        description: Include live providers and the complete release capacity matrix
+        type: boolean
+        default: false
+      previous_worker_image:
+        description: Distinct compatible Worker digest for full capacity acceptance
+        type: string
+        default: kakj/agentx-workflow-worker:v0.0.4-beta@sha256:daa72d3f6ada839a0102e9ef6ed36c8546ebe8622e0a2ebcf1fe716c0e9be746
 
 permissions:
   contents: read
@@ -44,18 +53,27 @@ jobs:
   kubernetes-e2e-linux:
     needs: python-helm
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/e2e-tools
-      - name: Run all system domains in disposable Minikube
+      - name: Run required system E2E or full release acceptance in disposable Minikube
         env:
           AGENTX_E2E_KIMI_API_KEY: ${{ secrets.AGENTX_E2E_KIMI_API_KEY }}
-        run: >-
-          uv run --frozen --group test pytest tests/e2e --minikube
-          --values deploy/values/local.yaml --capacity-smoke --maxfail=1
-          --evidence-run-id "ci-${{ github.run_id }}-${{ github.run_attempt }}"
-          --junitxml=.local/artifacts/kubernetes-e2e.xml --timeout=14400
+          FULL_ACCEPTANCE: ${{ inputs.full }}
+          PREVIOUS_WORKER_IMAGE: ${{ inputs.previous_worker_image }}
+        run: |
+          if [ "$FULL_ACCEPTANCE" = "true" ]; then
+            uv run --frozen --group test pytest tests/e2e --minikube \
+              --values deploy/values/local.yaml --previous-worker-image "$PREVIOUS_WORKER_IMAGE" \
+              --evidence-run-id "ci-${{ github.run_id }}-${{ github.run_attempt }}" \
+              --junitxml=.local/artifacts/kubernetes-e2e.xml --timeout=18000
+          else
+            uv run --frozen --group test pytest tests/e2e --minikube \
+              --values deploy/values/local.yaml -m "not capacity and not live_model" --maxfail=1 \
+              --evidence-run-id "ci-${{ github.run_id }}-${{ github.run_attempt }}" \
+              --junitxml=.local/artifacts/kubernetes-e2e.xml --timeout=14400
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:

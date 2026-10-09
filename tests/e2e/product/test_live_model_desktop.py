@@ -7,7 +7,7 @@ import pytest
 
 from tests.e2e.support import run_playwright
 
-pytestmark = [pytest.mark.cluster, pytest.mark.product]
+pytestmark = [pytest.mark.cluster, pytest.mark.product, pytest.mark.live_model]
 
 
 def test_real_model_playground_history_stop_trace_and_comparison(

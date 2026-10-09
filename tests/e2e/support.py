@@ -16,6 +16,14 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 
+# MySQL image distributions and test configurations use different socket
+# paths. Administrative assertions run inside the database container and
+# always connect to its explicitly bound loopback TCP listener.
+MYSQL_ROOT_CLIENT = (
+    'MYSQL_PWD="$(cat /run/secrets/agentx/root-password)" '
+    'mysql --protocol=TCP --host=127.0.0.1 --port=3306 --ssl-mode=DISABLED'
+)
+
 
 def agentxctl() -> str:
     configured = os.getenv("AGENTXCTL_BIN")

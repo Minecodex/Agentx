@@ -27,7 +27,7 @@ from tests.e2e.product.test_provider_integration import _publish_application_dep
 from tests.e2e.runtime.test_agent_attachments import _runtime_mysql
 from tools.scripts.release.evidence import write_report
 
-pytestmark = [pytest.mark.cluster, pytest.mark.product]
+pytestmark = [pytest.mark.cluster, pytest.mark.product, pytest.mark.live_model]
 
 TOOL_INSTRUCTION = (
     "你是工具调用验收智能体。用户指定 memory_write 时,必须先发出真实 memory_write 函数调用,"

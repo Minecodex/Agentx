@@ -17,7 +17,7 @@ from tests.e2e.product.test_provider_integration import _publish_application_dep
 from tests.e2e.runtime.test_agent_attachments import _control_mysql, _runtime_mysql
 from tools.scripts.release.evidence import write_report
 
-pytestmark = [pytest.mark.cluster, pytest.mark.product]
+pytestmark = [pytest.mark.cluster, pytest.mark.product, pytest.mark.live_model]
 
 
 @pytest.fixture(scope="module")
