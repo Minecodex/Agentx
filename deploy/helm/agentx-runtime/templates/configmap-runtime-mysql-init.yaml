@@ -7,7 +7,6 @@ metadata:
 data:
   01-users.sh: |
     #!/bin/sh
-    set -eu
     app_password="$(cat /run/secrets/agentx/app-password)"
     migrate_password="$(cat /run/secrets/agentx/migrate-password)"
     test -n "$app_password"
@@ -15,7 +14,7 @@ data:
     case "$app_password$migrate_password" in
       *[!A-Za-z0-9]*) echo "MySQL passwords must be alphanumeric" >&2; exit 1 ;;
     esac
-    mysql --protocol=socket -uroot -p"$MYSQL_ROOT_PASSWORD" <<SQL
+    docker_process_sql --database=agentx_runtime <<SQL
     CREATE DATABASE IF NOT EXISTS agentx_runtime;
     CREATE USER IF NOT EXISTS 'runtime_app'@'%' IDENTIFIED BY '$app_password'{{ if .Values.global.components.runtimeMysql.caSecretName }} REQUIRE SSL{{ end }};
     ALTER USER 'runtime_app'@'%' IDENTIFIED BY '$app_password'{{ if .Values.global.components.runtimeMysql.caSecretName }} REQUIRE SSL{{ end }};

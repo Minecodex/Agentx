@@ -89,6 +89,8 @@ TLS 挂载和迁移等待按各组件的 `caSecretName` 配置，和环境名解
 
 Bundled MySQL 的启动和就绪检查使用应用账户在业务 Database 执行 `SELECT 1`，同时验证账户初始化、密码和连接；TLS 配置存在时校验 CA。不能使用认证失败仍返回成功的 `mysqladmin ping` 判断 Ready。Migration 的等待容器保留 MySQL 错误输出，以区分连接、认证和 TLS 失败。
 
+MySQL 账户初始化脚本以只读、不可执行的 ConfigMap 文件挂载，由官方入口脚本 source，并调用其 `docker_process_sql` 函数；继承入口的错误处理与实际 socket 配置。不能在独立 shell 中依赖 MySQL 客户端的默认 socket 路径。
+
 - Control：Control MySQL、S3、Vault CA。
 - Runtime：Runtime MySQL、Redis、S3、Vault、OpenSandbox CA。
 - Observability：ClickHouse、受限 Redis、S3 CA。

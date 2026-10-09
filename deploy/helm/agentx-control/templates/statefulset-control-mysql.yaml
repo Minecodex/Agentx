@@ -49,7 +49,7 @@ spec:
           secret: { secretName: {{ .Values.global.components.controlMysql.caSecretName }} }
 {{- end }}
         - name: init
-          configMap: { name: control-mysql-init, defaultMode: 0555 }
+          configMap: { name: control-mysql-init, defaultMode: 0444 }
         - name: mysql-secrets
           secret:
             secretName: agentx-control-secrets
