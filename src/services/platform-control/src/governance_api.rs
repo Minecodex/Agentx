@@ -42,6 +42,7 @@ pub fn routes() -> Router<ControlApiState> {
         .route("/api/v1/approvals/{id}/decide", post(decide_approval))
         .route("/api/v1/approvals/{id}/cancel", post(cancel_approval))
         .route("/api/v1/evaluations", get(list_evaluations))
+        .route("/api/v1/evaluations/compare", get(compare_evaluations))
         .route(
             "/api/v1/evaluations/{id}/report",
             get(get_evaluation_report),
@@ -562,30 +563,53 @@ pub(crate) async fn post_runtime_admission(
         },
     )
     .map_err(ApiError::internal)?;
-    let response = state
-        .http
-        .post(format!(
-            "{}/internal/runtime/v1/admission-commands:apply",
-            state.runtime_query_url
-        ))
-        .bearer_auth(token)
-        .json(command)
-        .send()
-        .await
-        .map_err(|error| {
+    for attempt in 0..3 {
+        let mut request = state
+            .http
+            .post(format!(
+                "{}/internal/runtime/v1/admission-commands:apply",
+                state.runtime_query_url
+            ))
+            .bearer_auth(&token)
+            .json(command);
+        if attempt > 0 {
+            // Retire a pooled connection to the old draining Pod. Admission
+            // commands keep the same idempotency key across these retries.
+            request = request.header(reqwest::header::CONNECTION, "close");
+        }
+        let response = request.send().await.map_err(|error| {
             tracing::warn!(%error,"Runtime governance command is unavailable");
             ApiError::unavailable("RUNTIME_UNAVAILABLE", "Runtime service is unavailable")
         })?;
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        tracing::warn!(%status,response_body=%body,"Runtime rejected governance command");
-        return Err(ApiError::conflict(
-            "RUNTIME_COMMAND_REJECTED",
-            "Runtime rejected the governance command",
-        ));
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            tracing::warn!(%status,response_body=%body,"Runtime rejected governance command");
+            if status == reqwest::StatusCode::SERVICE_UNAVAILABLE
+                && attempt < 2
+                && serde_json::from_str::<Value>(&body)
+                    .ok()
+                    .and_then(|value| value.get("code").and_then(Value::as_str).map(str::to_owned))
+                    .as_deref()
+                    == Some("SERVICE_DRAINING")
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                continue;
+            }
+            if status.is_server_error() {
+                return Err(ApiError::unavailable(
+                    "RUNTIME_UNAVAILABLE",
+                    "Runtime service is unavailable",
+                ));
+            }
+            return Err(ApiError::conflict(
+                "RUNTIME_COMMAND_REJECTED",
+                "Runtime rejected the governance command",
+            ));
+        }
+        return response.json().await.map_err(ApiError::internal);
     }
-    response.json().await.map_err(ApiError::internal)
+    unreachable!("each admission attempt returns or advances to a bounded retry")
 }
 
 async fn list_evaluations(
@@ -615,6 +639,18 @@ async fn get_evaluation_report(
 ) -> ApiResult<(HeaderMap, Json<Value>)> {
     actor.require("evaluation:view")?;
     let view = projection(&state.pool).await?;
+    Ok((
+        projection_headers(&view)?,
+        Json(evaluation_report(&state, &actor, id, &view).await?),
+    ))
+}
+
+async fn evaluation_report(
+    state: &ControlApiState,
+    actor: &Actor,
+    id: Uuid,
+    view: &ProjectionView,
+) -> ApiResult<Value> {
     let row=sqlx::query("SELECT er.id,er.name,er.workflow_version_id,CONVERT(COALESCE(w.name,BIN_TO_UUID(er.workflow_version_id)) USING utf8mb4) workflow_name,er.dataset_version_id,CONVERT(COALESCE(d.name,BIN_TO_UUID(er.dataset_version_id)) USING utf8mb4) dataset_name,er.evaluation_profile_version_id,er.visibility,er.owner_department_id,er.status,er.completed_cases result_count,er.parameters_json,er.runtime_report_json,er.created_at FROM evaluation_runs er LEFT JOIN workflow_versions wv ON wv.tenant_id=er.tenant_id AND wv.id=er.workflow_version_id LEFT JOIN workflows w ON w.tenant_id=er.tenant_id AND w.id=wv.workflow_id LEFT JOIN dataset_versions dv ON dv.tenant_id=er.tenant_id AND dv.id=er.dataset_version_id LEFT JOIN datasets d ON d.tenant_id=er.tenant_id AND d.id=dv.dataset_id WHERE er.tenant_id=? AND er.id=? AND er.projection_generation=? AND er.projection_deleted=FALSE").bind(actor.tenant_id).bind(id).bind(view.generation).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Evaluation"))?;
     let report: Option<Value> = row.try_get("runtime_report_json")?;
     let run = evaluation_json(row)?;
@@ -671,10 +707,7 @@ async fn get_evaluation_report(
         .get("status")
         .cloned()
         .unwrap_or_else(|| json!("not_started"));
-    Ok((
-        projection_headers(&view)?,
-        Json(json!({"run":run,"results":results,"metrics":metrics,"reportStatus":report_status})),
-    ))
+    Ok(json!({"run":run,"results":results,"metrics":metrics,"reportStatus":report_status}))
 }
 
 fn evaluation_metrics(runtime_metrics: Option<&Value>, results: &[Value]) -> Vec<Value> {
@@ -873,4 +906,138 @@ fn deterministic_id(value: &str) -> Uuid {
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     Uuid::from_bytes(bytes)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CompareEvaluationsQuery {
+    run_ids: String,
+}
+
+fn compare_run_ids(raw: &str) -> ApiResult<Vec<Uuid>> {
+    let runs = raw
+        .split(',')
+        .map(|value| {
+            Uuid::parse_str(value).map_err(|_| {
+                ApiError::bad_request(
+                    "INVALID_COMPARE_RUN_IDS",
+                    "runIds must be comma-separated UUIDs",
+                )
+            })
+        })
+        .collect::<ApiResult<Vec<_>>>()?;
+    if !(2..=5).contains(&runs.len()) || runs.iter().collect::<BTreeSet<_>>().len() != runs.len() {
+        return Err(ApiError::bad_request(
+            "INVALID_COMPARE_RUN_COUNT",
+            "Compare requires 2 to 5 distinct evaluation runs",
+        ));
+    }
+    Ok(runs)
+}
+
+async fn compare_evaluations(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Query(query): Query<CompareEvaluationsQuery>,
+) -> ApiResult<(HeaderMap, Json<Value>)> {
+    actor.require("evaluation:view")?;
+    let runs = compare_run_ids(&query.run_ids)?;
+    let view = projection(&state.pool).await?;
+    let mut reports = Vec::with_capacity(runs.len());
+    for id in runs {
+        reports.push(evaluation_report(&state, &actor, id, &view).await?);
+    }
+    Ok((projection_headers(&view)?, Json(compare_reports(&reports))))
+}
+
+fn compare_reports(reports: &[Value]) -> Value {
+    let mut by_case = BTreeMap::<String, Vec<Option<Value>>>::new();
+    let mut by_rule = BTreeMap::<String, Vec<Vec<Value>>>::new();
+    let mut summaries = Vec::new();
+    for (index, report) in reports.iter().enumerate() {
+        let run = &report["run"];
+        let metrics = report["metrics"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|metric| {
+                Some((metric["key"].as_str()?.to_owned(), metric["value"].clone()))
+            })
+            .collect::<serde_json::Map<_, _>>();
+        summaries.push(json!({"runId":run["id"],"name":run["name"],"workflowVersionId":run["workflowVersionId"],"datasetVersionId":run["datasetVersionId"],"profileVersionId":run["evaluationProfileVersionId"],"status":run["status"],"metrics":metrics}));
+        for case in report["results"].as_array().into_iter().flatten() {
+            let Some(key) = case["caseKey"].as_str() else {
+                continue;
+            };
+            by_case
+                .entry(key.to_owned())
+                .or_insert_with(|| vec![None; reports.len()])[index] = Some(case.clone());
+            for rule in case["ruleResults"].as_array().into_iter().flatten() {
+                let Some(key) = rule["key"].as_str() else {
+                    continue;
+                };
+                by_rule
+                    .entry(key.to_owned())
+                    .or_insert_with(|| vec![Vec::new(); reports.len()])[index]
+                    .push(rule.clone());
+            }
+        }
+    }
+    let total = by_case.len();
+    let aligned = by_case
+        .values()
+        .filter(|values| values.iter().all(Option::is_some))
+        .count();
+    let cases = by_case.into_iter().map(|(key, values)| {
+        let column = |name: &str| values.iter().map(|case| case.as_ref().map(|case| case[name].clone()).unwrap_or(Value::Null)).collect::<Vec<_>>();
+        let costs = column("costMicros");
+        let delta = costs.get(1).and_then(Value::as_i64).zip(costs.first().and_then(Value::as_i64)).map(|(candidate, baseline)| candidate - baseline);
+        json!({"caseKey":key,"baselineStatus":values.first().and_then(Option::as_ref).map(|case|case["status"].clone()),"candidateStatus":values.get(1).and_then(Option::as_ref).map(|case|case["status"].clone()),"statusByRun":column("status"),"scoreByRun":column("score"),"durationMsByRun":column("durationMs"),"costMicrosByRun":costs,"targetExecutionIdByRun":column("targetExecutionId"),"errorCodeByRun":column("errorCode"),"costDelta":delta})
+    }).collect::<Vec<_>>();
+    let rules = by_rule.into_iter().map(|(key, values)| {
+        let per_run = values.iter().map(|rules| {
+            if rules.is_empty() { return Value::Null }
+            let passed = rules.iter().filter(|rule| rule["passed"] == true).count();
+            let scores = rules.iter().filter_map(|rule|rule["score"].as_f64()).collect::<Vec<_>>();
+            json!({"evaluatorType":rules[0]["evaluatorType"],"total":rules.len(),"passed":passed,"passRate":passed as f64 / rules.len() as f64,"averageScore":(!scores.is_empty()).then(||scores.iter().sum::<f64>()/scores.len() as f64),"evaluatorExecutionIds":rules.iter().filter_map(|rule|rule["evaluatorExecutionId"].as_str()).collect::<Vec<_>>()})
+        }).collect::<Vec<_>>();
+        json!({"ruleKey":key,"passRateByRun":per_run.iter().map(|value|value["passRate"].clone()).collect::<Vec<_>>(),"resultsByRun":per_run})
+    }).collect::<Vec<_>>();
+    json!({"apiVersion":1,"runs":summaries,"alignedCaseCount":aligned,"totalCaseCount":total,"caseDeltas":cases,"ruleAggregates":rules})
+}
+
+#[cfg(test)]
+mod compare_tests {
+    use super::*;
+
+    #[test]
+    fn run_ids_require_distinct_valid_comma_separated_uuids() {
+        let a = Uuid::now_v7();
+        let b = Uuid::now_v7();
+        assert_eq!(compare_run_ids(&format!("{a},{b}")).unwrap(), vec![a, b]);
+        assert!(compare_run_ids(&format!("{a},{a}")).is_err());
+        assert!(compare_run_ids("invalid,invalid").is_err());
+        assert!(compare_run_ids(&a.to_string()).is_err());
+    }
+
+    #[test]
+    fn aligns_cases_and_marks_absent_rules_without_inventing_zeroes() {
+        let reports = [
+            json!({"run":{"id":"a"},"metrics":[],"results":[{"caseKey":"same","status":"completed","costMicros":5,"targetExecutionId":"trace-a","ruleResults":[{"key":"judge","passed":true,"score":1,"evaluatorType":"llm_judge"}]}]}),
+            json!({"run":{"id":"b"},"metrics":[],"results":[{"caseKey":"same","status":"failed","costMicros":8,"ruleResults":[]},{"caseKey":"new","status":"completed","costMicros":10,"ruleResults":[]}]}),
+        ];
+        let result = compare_reports(&reports);
+        assert_eq!(result["alignedCaseCount"], 1);
+        assert_eq!(result["totalCaseCount"], 2);
+        assert_eq!(result["caseDeltas"][0]["costDelta"], Value::Null);
+        assert_eq!(result["caseDeltas"][1]["costDelta"], 3);
+        assert_eq!(
+            result["ruleAggregates"][0]["passRateByRun"],
+            json!([1.0, null])
+        );
+        assert_eq!(
+            result["caseDeltas"][1]["targetExecutionIdByRun"][0],
+            "trace-a"
+        );
+    }
 }

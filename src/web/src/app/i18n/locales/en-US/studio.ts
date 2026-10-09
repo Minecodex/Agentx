@@ -302,6 +302,7 @@ const translations = {
     "addFirstNode": "Add loop body node"
   },
   "runtime": {
+    "streamTail": "Live model preview", "reasoning": "Reasoning",
     "title": "Execution",
     "expand": "Expand execution rail",
     "collapse": "Collapse execution rail",

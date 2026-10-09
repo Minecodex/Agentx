@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,6 +10,61 @@ import yaml
 from tests.e2e import support
 from tests.e2e.conftest import _must_remain_available_during_scale_down
 from tests.e2e.support import run
+
+
+@pytest.mark.parametrize("scale_error", [False, True])
+def test_capacity_storage_abort_interrupts_load_even_if_scaling_fails(monkeypatch, scale_error):
+    from tests.e2e.capacity import collector as module
+
+    collector = module.CapacityCollector.__new__(module.CapacityCollector)
+    collector.context = {"runtime_namespace": "agentx-e2e-runtime-storage", "run_id": "storage"}
+    collector.stop_event = threading.Event()
+    commands = []
+
+    def capture(command, **kwargs):
+        commands.append(command)
+        if scale_error and "scale" in command:
+            raise RuntimeError("scale unavailable")
+
+    monkeypatch.setattr(module, "run", capture)
+    if scale_error:
+        with pytest.raises(RuntimeError, match="scale unavailable"):
+            collector.abort_low_storage(1024)
+    else:
+        collector.abort_low_storage(1024)
+    assert collector.stop_event.is_set()
+    assert collector.storage_abort["availableBytes"] == 1024
+    assert all(command[2] == "agentx-e2e-runtime-storage" for command in commands)
+    assert "delete" in commands[-1] and "pod/capacity-load" in commands[-1]
+
+
+def test_capacity_storage_abort_never_mutates_production(monkeypatch):
+    from tests.e2e.capacity import collector as module
+
+    collector = module.CapacityCollector.__new__(module.CapacityCollector)
+    collector.context = {"runtime_namespace": "agentx-prod-runtime", "run_id": "storage"}
+    commands = []
+    monkeypatch.setattr(module, "run", lambda command, **kwargs: commands.append(command))
+    with pytest.raises(ValueError, match="isolated E2E namespace"):
+        collector.abort_low_storage(1024)
+    assert commands == []
+
+
+@pytest.mark.parametrize("unread", [0, 2001])
+def test_capacity_redis_lag_uses_atomic_unread_snapshot_even_when_native_lag_is_unknown(monkeypatch, tmp_path, unread):
+    from tests.e2e.capacity import collector as module
+
+    collector = module.CapacityCollector.__new__(module.CapacityCollector)
+    collector.context = {}
+    collector.directory = tmp_path
+    responses = {
+        ("INFO", "memory"): "used_memory:512\r\n",
+        ("SCAN", "0", "COUNT", "1000", "TYPE", "stream"): ["0", ["tasks"]],
+        ("EVAL", module.UNREAD_STREAM_SNAPSHOT, "1", "tasks"): [["workers", 4, unread, "100-0", None]],
+    }
+    monkeypatch.setattr(module, "redis_command", lambda _context, *args: responses[args])
+    assert collector.redis_state() == {"usedMemoryBytes": 512, "pending": 4, "consumerLag": unread}
+    assert f'"unread": {unread}' in (tmp_path / "redis-unread-snapshots.jsonl").read_text()
 
 
 def test_scale_down_keeps_the_ingress_admission_controller_available() -> None:
@@ -45,7 +101,11 @@ def test_playwright_harness_uses_the_windows_executable_shim_and_new_stage_name(
     monkeypatch.setattr(support, "os", SimpleNamespace(name=platform))
     monkeypatch.setattr(support.subprocess, "run", capture)
     tests = ["tests/v2-08-api-first.spec.ts", "tests/m2.1-control-plane.spec.ts", "tests/m6-workflow-studio.spec.ts"]
-    environment = {"AGENTX_E2E_STAGE": "helm-agentxctl", "AGENTX_V2_08_CONTEXT_OUTPUT": str(tmp_path / "context.json")}
+    environment = {
+        "AGENTX_E2E_STAGE": "helm-agentxctl",
+        "AGENTX_E2E_RUN_ID": "harness-contract",
+        "AGENTX_V2_08_CONTEXT_OUTPUT": str(tmp_path / "context.json"),
+    }
     support.run_playwright(tmp_path, "product", tests, environment)
 
     assert len(calls) == 1

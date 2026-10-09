@@ -80,12 +80,12 @@ spec:
           lifecycle: { preStop: { httpGet: { path: /health/drain, port: admin, scheme: HTTP } } }
           volumeMounts:
             - { name: plugin-work, mountPath: /var/run/agentx/plugin-work }
-{{- if eq .Values.global.environment "production" }}
+{{- if include "agentx.runtime.hasCa" . }}
 {{ include "agentx.runtime.caMount" . | nindent 12 }}
 {{- end }}
       volumes:
         - name: plugin-work
           emptyDir: { sizeLimit: 512Mi }
-{{- if eq .Values.global.environment "production" }}
+{{- if include "agentx.runtime.hasCa" . }}
 {{ include "agentx.runtime.caVolume" . | nindent 8 }}
 {{- end }}

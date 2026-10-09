@@ -1,5 +1,12 @@
 import type { ArtifactReference, JsonSchema } from '../../shared/components/schema-form'
 
+export function artifactPartType(contentType?: string): 'image' | 'audio' | 'file' {
+  const mime = contentType?.split(';', 1)[0].trim().toLowerCase()
+  if (mime?.startsWith('image/')) return 'image'
+  if (mime?.startsWith('audio/')) return 'audio'
+  return 'file'
+}
+
 export type ChatMapping = {
   questionInput: string
   fileInput: string | null

@@ -32,6 +32,17 @@ pub async fn connect_runtime_mysql(settings: &RuntimeMySqlSettings) -> Result<My
     }
     MySqlPoolOptions::new()
         .max_connections(settings.max_connections)
+        .after_connect(|connection, _| {
+            Box::pin(async move {
+                // Aggregate authority is guarded by explicit parent-row locks,
+                // leases and CAS. Missing idempotency keys must not take gap locks
+                // that deadlock independent executions during quota reservation.
+                sqlx::query("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+                    .execute(connection)
+                    .await?;
+                Ok(())
+            })
+        })
         .connect_with(options)
         .await
         .context("failed to connect to Runtime MySQL")

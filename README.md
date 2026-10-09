@@ -11,7 +11,7 @@
 
 **面向企业场景的开源 Agent 工作流平台**
 
-[快速开始](#快速部署-docker-hub-beta) · [文档](#文档) · [架构](#架构) · [贡献指南](CONTRIBUTING.md)
+[快速开始](#快速部署-docker-hub-beta) · [文档](#文档) · [架构](#架构) · [贡献指南](#贡献)
 
 </div>
 
@@ -32,22 +32,28 @@ Agentx 是一个面向企业场景的开源 Agent 工作流平台，提供可视
 ![工作流画布与执行追踪](docs/images/工作流.png)
 
 ### 🤖 Agent Runtime
-模型调用、工具循环、MCP、Skill、RAG、Memory、代码沙箱与 Artifact。
+模型调用、文本流式输出、多模态输入、工具循环、MCP、Skill、RAG、Memory、代码沙箱与 Artifact。
 
 ![MCP 集成](docs/images/mcp.png)
 
 ### 🚀 应用交付
-不可变版本发布、API Key、Webhook、定时任务、参数测试和多轮会话。
+不可变版本发布、API Key、Webhook、定时任务、参数测试和多轮会话；支持钉钉、飞书、企业微信渠道入站及工作流结果回复。
 
 ![应用发布](docs/images/应用发布.png)
 
 ### 📊 运行治理
-Execution、审批、等待、Checkpoint、Fork、恢复、成本统计和 Trace。
+Execution、审批、等待、Checkpoint、Fork、恢复、成本统计和 Trace；支持规则与 LLM Judge 评测、版本比较、错误分布和节点耗时分析。
 
 ![调试与追踪](docs/images/调试.png)
 
 ### 🏢 企业资源
-部门、用户、运行身份、资源授权、模型服务、凭证、MCP、Skill 和知识资源。
+部门、用户、运行身份、资源授权、模型服务、凭证、MCP、Skill 和知识资源；资源申请包含完整依赖与跨部门会签，LightRAG 支持文档上传、索引状态和检索。
+
+### plan7 源码与验收范围
+
+以上能力描述当前源码；下方 `v0.0.4-beta` 下载包与镜像是已发布版本，不会随源码自动更新。测试当前源码时，请从仓库构建镜像并使用对应 Values 部署。
+
+真实 Kimi 文本/SSE/Judge、CPU Embedding、LightRAG、Mem0、OpenSandbox 功能及权限、故障恢复、桌面界面已有专项验收记录。完整范围和剩余项见 [plan7](docs/plan7/README.md)、[真实服务验收](docs/plan7/evidence/p7-live-provider-acceptance.md) 和 [自动化专项验收](docs/plan7/evidence/p7-automatic-boundary-acceptance.md)。真实 IM 回复、多模态与 RAGFlow 联调，以及生产强隔离、容量和完整发布认证仍按报告保留。
 
 ## 架构
 
@@ -80,11 +86,11 @@ Agentx 采用三平面分离架构，每个逻辑域独立部署，通过 Helm �
 
 ### 安装步骤
 
-当前发布：[agentxctl-v0.0.4-beta](https://github.com/kakj-go/Agentx/releases/tag/agentxctl-v0.0.4-beta)。下载的 `agentxctl` 已包含本版本安装所需的 Chart、Schema 和镜像配置，无需克隆仓库或另行下载安装脚本。
+当前发布：[agentxctl-v0.0.4-beta](https://github.com/Minecodex/Agentx/releases/tag/agentxctl-v0.0.4-beta)。下载的 `agentxctl` 已包含本版本安装所需的 Chart、Schema 和镜像配置，无需克隆仓库或另行下载安装脚本。
 
 #### Windows x64
 
-[直接下载 `agentxctl-windows-x86_64.exe`](https://github.com/kakj-go/Agentx/releases/download/agentxctl-v0.0.4-beta/agentxctl-windows-x86_64.exe) ([SHA-256](https://github.com/kakj-go/Agentx/releases/download/agentxctl-v0.0.4-beta/agentxctl-windows-x86_64.exe.sha256))
+[直接下载 `agentxctl-windows-x86_64.exe`](https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.4-beta/agentxctl-windows-x86_64.exe) ([SHA-256](https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.4-beta/agentxctl-windows-x86_64.exe.sha256))
 
 也可以在 PowerShell 中下载、校验并安装：
 
@@ -92,7 +98,7 @@ Agentx 采用三平面分离架构，每个逻辑域独立部署，通过 Helm �
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force "$HOME\Downloads" | Out-Null
 Set-Location $HOME\Downloads
-$release = 'https://github.com/kakj-go/Agentx/releases/download/agentxctl-v0.0.4-beta'
+$release = 'https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.4-beta'
 $asset = 'agentxctl-windows-x86_64.exe'
 Invoke-WebRequest "$release/$asset" -OutFile $asset
 Invoke-WebRequest "$release/$asset.sha256" -OutFile "$asset.sha256"
@@ -103,7 +109,7 @@ if ((Get-FileHash $asset -Algorithm SHA256).Hash -ne $expected) { throw 'SHA-256
 
 #### Linux x64
 
-[直接下载 `agentxctl-linux-x86_64`](https://github.com/kakj-go/Agentx/releases/download/agentxctl-v0.0.4-beta/agentxctl-linux-x86_64) ([SHA-256](https://github.com/kakj-go/Agentx/releases/download/agentxctl-v0.0.4-beta/agentxctl-linux-x86_64.sha256))
+[直接下载 `agentxctl-linux-x86_64`](https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.4-beta/agentxctl-linux-x86_64) ([SHA-256](https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.4-beta/agentxctl-linux-x86_64.sha256))
 
 在终端中下载、校验并安装（需要 `curl` 和 `sha256sum`）：
 
@@ -112,7 +118,7 @@ if ((Get-FileHash $asset -Algorithm SHA256).Hash -ne $expected) { throw 'SHA-256
 set -eu
 mkdir -p ~/Downloads
 cd ~/Downloads
-release='https://github.com/kakj-go/Agentx/releases/download/agentxctl-v0.0.4-beta'
+release='https://github.com/Minecodex/Agentx/releases/download/agentxctl-v0.0.4-beta'
 curl -fL --retry 3 "$release/agentxctl-linux-x86_64" -o agentxctl-linux-x86_64 &&
 curl -fL --retry 3 "$release/agentxctl-linux-x86_64.sha256" -o agentxctl-linux-x86_64.sha256 &&
 sha256sum --check agentxctl-linux-x86_64.sha256 &&
@@ -125,7 +131,7 @@ chmod +x agentxctl-linux-x86_64 &&
 
 不传 `--values` 时，单文件二进制使用与当前 CLI 版本绑定的内嵌 Docker Hub Beta 配置。
 
-`agentxctl 0.0.4-beta` 默认安装全部 `kakj/agentx-*:v0.0.4-beta` 镜像。后续升级请从本页或 [Releases](https://github.com/kakj-go/Agentx/releases) 下载新版 ctl，完成校验后执行 `upgrade`；旧 ctl 的内嵌镜像版本不会自动变化。自定义 `--values` 的用户需要同步更新其中的镜像版本。
+`agentxctl 0.0.4-beta` 默认安装全部 `kakj/agentx-*:v0.0.4-beta` 镜像。后续升级请从本页或 [Releases](https://github.com/Minecodex/Agentx/releases) 下载新版 ctl，完成校验后执行 `upgrade`；旧 ctl 的内嵌镜像版本不会自动变化。自定义 `--values` 的用户需要同步更新其中的镜像版本。
 
 安装命令会完成：
 1. Values 校验
@@ -153,13 +159,15 @@ chmod +x agentxctl-linux-x86_64 &&
 
 Windows 使用相同子命令，将二进制名称替换为 `.\agentxctl-windows-x86_64.exe` 即可。
 
-本地访问 Web Console：
+通过端口转发访问 Web Console、完成公司初始化：
 
 ```bash
-kubectl -n agentx-control port-forward service/web-console 18080:8080
+kubectl -n agentx-control port-forward service/web-console 18081:8080
 ```
 
-打开 `http://127.0.0.1:18080`，按页面提示完成公司初始化。
+打开 `http://127.0.0.1:18081`，按页面提示完成公司初始化。应用调试和对话还需要浏览器能访问部署配置中的 Runtime 地址；仅转发门户不能验证完整执行链路。
+
+本地 HTTPS 部署使用 `https://agentx.localhost` 与 `https://run.agentx.localhost`。两个域名都需要解析到可达入口，并信任 Ingress 所用 CA；门户能打开时，Runtime 请求仍可能被浏览器单独拦截。Docker Desktop 双网络节点的本地方案见 [本地 Ingress Addon](deploy/kustomize/addons/local-ingress/README.md)，实际检查结果见 [HTTPS 入口检查](docs/plan7/evidence/p7-local-https-entry-check.md)。
 
 ### 卸载
 
@@ -216,6 +224,10 @@ kubectl -n agentx-control port-forward service/web-console 18080:8080
 ### 开发流程
 
 ```bash
+# 获取源码
+git clone https://github.com/Minecodex/Agentx.git
+cd Agentx
+
 # 启用 corepack 并安装依赖
 corepack enable
 pnpm install --frozen-lockfile
@@ -279,14 +291,17 @@ uv run --frozen --group test pytest tests/e2e --values deploy/values/local.yaml 
 - [部署与运维手册](deploy/README.md)
 - [E2E 测试规范](docs/plan/e2e-testing-standard.md)
 - [OpenSandbox 接入](deploy/opensandbox/README.md)
+- [plan7 状态、验收证据与手动测试流程](docs/plan7/README.md)
+- [CPU Embedding 测试 Addon](deploy/kustomize/addons/cpu-embedding/README.md)
+- [Docker Desktop 本地 Ingress](deploy/kustomize/addons/local-ingress/README.md)
 
 ## 贡献
 
-欢迎贡献代码、报告问题或提出建议。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+欢迎贡献代码、报告问题或提出建议。开发时遵循 [AGENTS.md](AGENTS.md)，完成相关测试后向 `master` 提交 Pull Request；主分支受保护，需通过必选 CI 检查并解决审查意见后合并。验证命令见[本地开发与测试](#本地开发与测试)，合并规则见 [CI 说明](docs/ci.md)。ctl 发布包和镜像在合入主分支后按发布流程构建、校验和推送。
 
 ## 许可证
 
-项目使用 [Apache License 2.0](LICENSE)。
+项目使用 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)。
 
 ---
 

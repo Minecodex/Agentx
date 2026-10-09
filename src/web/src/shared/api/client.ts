@@ -25,7 +25,12 @@ export function apiFieldErrors(error: unknown): Record<string, string> {
 }
 
 async function parseError(response: Response): Promise<ApiError> {
-  try { return await response.json() as ApiError } catch { return { code: 'HTTP_ERROR', message: response.statusText, requestId: response.headers.get('x-request-id') ?? '' } }
+  try {
+    const detail = await response.json() as ApiError
+    return { ...detail, requestId: detail.requestId?.trim() || response.headers.get('x-request-id')?.trim() || '' }
+  } catch {
+    return { code: 'HTTP_ERROR', message: response.statusText, requestId: response.headers.get('x-request-id') ?? '' }
+  }
 }
 
 async function sendRaw(basePath: string, path: string, init: RequestInit, retry: boolean): Promise<Response> {

@@ -1,6 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::ports::ModelContentV1;
 use crate::{AgentMessageV1, MessageRole};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
@@ -75,7 +76,7 @@ impl ContextProjector {
             .map(|content| AgentMessageV1 {
                 message_id: "system-prompt".into(),
                 role: MessageRole::ExternalContext,
-                content: content.to_owned(),
+                content: ModelContentV1::Text(content.to_owned()),
                 tool_calls: Vec::new(),
                 tool_call_id: None,
                 is_error: false,
@@ -116,7 +117,7 @@ impl ContextProjector {
         projected.push(AgentMessageV1 {
             message_id: format!("compaction:{}", compaction.snapshot_id),
             role: MessageRole::ExternalContext,
-            content: compaction.summary.clone(),
+            content: ModelContentV1::Text(compaction.summary.clone()),
             tool_calls: Vec::new(),
             tool_call_id: None,
             is_error: false,
@@ -150,7 +151,9 @@ impl ContextProjector {
     pub fn estimated_tokens(messages: &[AgentMessageV1]) -> u64 {
         messages
             .iter()
-            .map(|message| (message.content.chars().count() as u64).div_ceil(4) + 4)
+            .map(|message| {
+                (message.content.as_text().map(str::len).unwrap_or(0) as u64).div_ceil(4) + 4
+            })
             .sum()
     }
 }

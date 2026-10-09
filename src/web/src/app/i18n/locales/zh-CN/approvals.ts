@@ -28,6 +28,7 @@ const translations = {
     "claim": "领取", "release": "释放", "reassign": "转交", "decide": "决策", "cancel": "取消", "timeout": "超时"
   },
   "auditActions": {
+    "stale": "申请已失效",
     "created": "创建申请", "submitted": "提交申请", "approved": "通过", "rejected": "拒绝", "cancelled": "取消", "review_approved": "部门会签通过", "review_rejected": "部门会签拒绝"
   }
   ,"runtimeTab": "运行审批"

@@ -23,7 +23,7 @@ describe('Trace refresh policy', () => {
 })
 
 function page(spans: TraceSpan[]): Trace {
-  return { executionId: 'execution', traceId: 'trace', expectedWatermark: 2, ingestedWatermark: 2, complete: true, degraded: false, warningCode: null, totalSpans: spans.length, nextCursor: null, spans }
+  return { executionId: 'execution', traceId: 'trace', expectedWatermark: 2, ingestedWatermark: 2, expectedEventCount: 2, ingestedEventCount: 2, complete: true, degraded: false, warningCode: null, totalSpans: spans.length, nextCursor: null, spans }
 }
 
 function span(spanId: string, startedAt: string, status: string): TraceSpan {

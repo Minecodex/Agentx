@@ -44,7 +44,7 @@ V2 完成需要同时关闭两张矩阵：第一张证明控制面/执行面隔�
 | 背压和容量 | V2S-006 | runtime 全服务 | 全部 Runtime 依赖 | 容量矩阵 | planned（延期到 V2-08B）；执行正式容量、公平性、背压和两小时稳定性 |
 | 三面 Namespace 和 NetworkPolicy | V2D-007、V2K-001～003 | deploy | Kubernetes | DB/Redis 越界拒绝、Internal API/Provider 白名单正向测试 | V2D-007 done；V2-01 跨域 DB/Redis 拒绝已验证，V2K-001～003 继续追踪生产强化 |
 | 独立 Migration | V2K-004 | migrate jobs | 两 MySQL/ClickHouse | 并发锁/空库 | in_progress；V2-07A 已实现独立 Expand/Contract Target，真实集群竞争待验证 |
-| 备份恢复和独立升级 | V2K-005～006 | deploy/runbook | 全部权威存储 | 恢复/持续探针 | in_progress；RPO/RTO、Adapter、独立部署 Action 已实现，真实恢复和持续探针待验证 |
+| 备份恢复和独立升级 | V2K-005～006 | deploy/runbook | 全部权威存储 | 恢复/持续探针 | in_progress；RPO/RTO、Adapter、独立部署 Action 已实现，真实 PITR + Redis 重建演练用例已就绪（tests/e2e/upgrade/test_backup_recovery_drill.py），真实窗口执行待验证 |
 | 删除 V1 架构 | V2C-001 | 全部 | 无 | 静态扫描 | done；151/151 API 处置、Legacy 例外为零、Workspace/边界门禁和 [V2-08A 证据](evidence/v2-08.md) |
 | 控制面完全离线运行 | V2C-003 | runtime 全服务 | Runtime 依赖 | E2E-V2-002 | done；最终本地三域 Run 与 V2-04 专项矩阵共同证明完整 Runtime 链路离线运行 |
 | Runtime 故障恢复 | V2C-004 | runtime 全服务 | Runtime 依赖 | E2E-V2-003/004/007 | done（本地语义）；MySQL Fail Closed、Redis 重建、CH 独立终态及 OSS/Vault/OpenSandbox 专项故障均通过 |

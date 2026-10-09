@@ -23,6 +23,21 @@ describe('api client', () => {
     })
   })
 
+  it.each([
+    { bodyRequestId: 'body-request', expectedRequestId: 'body-request' },
+    { bodyRequestId: undefined, expectedRequestId: 'header-request' },
+    { bodyRequestId: '  ', expectedRequestId: 'header-request' },
+  ])('keeps the request ID available for JSON errors ($expectedRequestId)', async ({ bodyRequestId, expectedRequestId }) => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      code: 'UNAUTHORIZED', message: 'authentication failed', requestId: bodyRequestId,
+    }), { status: 403, headers: { 'Content-Type': 'application/json', 'X-Request-ID': 'header-request' } })))
+
+    await expect(apiRequest('/forbidden')).rejects.toMatchObject({
+      status: 403,
+      detail: { code: 'UNAUTHORIZED', requestId: expectedRequestId },
+    })
+  })
+
   it('coalesces concurrent unauthorized responses into one refresh', async () => {
     let requests = 0
     vi.stubGlobal('fetch', vi.fn(async () => {

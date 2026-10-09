@@ -4,6 +4,7 @@ const translations = {
   "failedToday": "今日失败",
   "runtimeComponents": "运行组件",
   "components": {
+    "runtime": "运行服务",
     "coordinator": "协调器", "worker": "Worker", "sandbox": "沙箱", "trace_writer": "Trace 写入器", "trace_queue": "Trace 队列", "queue": "队列"
   },
   "instances": "实例",
@@ -109,6 +110,7 @@ const translations = {
     }
   },
   "capability": {
+    "plugin_nodejs": "画布插件（Node.js）",
     "agent": "智能体节点",
     "builtin": "内置节点",
     "declarative_http": "HTTP 请求节点",

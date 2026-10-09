@@ -16,6 +16,8 @@ Migration Job 不计入 7 类常驻产物：`control-migrate`、`runtime-migrate
 
 V2-07A 的 production Profile 只接受外部托管基础设施：MySQL 使用 `verify_identity`，Redis 使用 `rediss://`，S3、Vault、OpenSandbox 和 ClickHouse 使用 HTTPS，并通过 Projected Secret 注入 CA。Production 部署器不创建 Dependencies Namespace、不生成 Secret、不渲染数据库或对象存储 StatefulSet；镜像必须固定 digest。Control、Runtime 和 Observability Target 可以独立 Validate、Render、Install、Upgrade、Status、Rollback、Uninstall 和 Doctor，应用回滚不回滚 Schema 或 Admission State。Profile 的 `replicas` 只用于首次安装，`maxReplicas` 只用于容量预算；Upgrade/Rollback 保留工作负载当前副本数。
 
+开发与生产统一通过 Rust `agentxctl` 和相同四个 Helm Release 安装。local/test 可用 `local-tls.yaml` 在同一流程中创建 bundled TLS 依赖；CA 注入按组件配置生效。local 的 OpenSandbox TLS 代理只提供独立 Provider 的本地入口。该配置不改变 production 的外部基础设施、existing Secret、镜像摘要和私有 Sandbox LoadBalancer 门禁。
+
 备份由外部平台 Adapter 执行，Agentx 只接收并校验 `agentx.io/backup-manifest/v1` Receipt。MySQL、OSS、ClickHouse 和 Redis 重建的冻结 RPO/RTO及 Adapter 约束见 [Backup Provider Adapter](backup-provider-adapter.md)。
 
 ## 当前后台循环 Owner
@@ -25,6 +27,7 @@ V2-07A 的 production Profile 只接受外部托管基础设施：MySQL 使用 `
 | Control Publish Outbox | `platform-control/publisher` | Control MySQL Outbox/Receipt |
 | Governance Event/Snapshot Pull | `platform-control/projector` | Runtime Export API + Control Cursor/Receipt/Generation |
 | Control Retention | `platform-control/retention` | Control MySQL Retention Intent/Lease |
+| Knowledge Index Reconcile | `platform-control/api` | Control MySQL 文档、固定 Provider/Vault 快照、30s Lease/5s Heartbeat/claim token；Provider track/file_path 对账 |
 | Schedule/Poll/Lifecycle | `workflow-runtime/trigger` | Runtime MySQL Trigger Binding/Cursor/Lease |
 | Runtime Command | `workflow-runtime/command` | Runtime MySQL Inbox/Command/Receipt |
 | Execution/Trace Outbox | `workflow-runtime/outbox,trace-relay` | Runtime MySQL Outbox；Redis 可重建 |
@@ -41,7 +44,10 @@ V2-06A 的完整 Role→表/Stream→Claim→Lease→Heartbeat→Fencing→索�
 ## 调用与信任
 
 - Control→Runtime 只允许冻结的 `/internal/runtime/v1/*` API；Runtime 不主动调用 Control。
-- Control 资源治理页面不直连 Provider，也不读取 Credential 明文。模型、MCP、RAG 和 Memory 健康检查使用 `runtime.resources.check`；MCP 发现与已确认的调试调用使用 `runtime.resources.execute`。请求只携带版本化 Vault Reference，Runtime Gateway 用只读 Vault 身份解析并受 Provider Egress NetworkPolicy 约束；公共 `/api/v1` 响应形状保持不变。
+- Control 模型、MCP、RAG 和 Memory 健康检查使用 `runtime.resources.check`；MCP 发现与已确认的调试调用使用 `runtime.resources.execute`。请求只携带版本化 Vault Reference，Runtime Gateway 用只读 Vault 身份解析并受 Provider Egress NetworkPolicy 约束；公共 `/api/v1` 响应形状保持不变。
+- plan7 知识库管理是已确定的例外：上传索引与 retrieval-test 由 Control API Role 直接访问 dependencies 中获准的 LightRAG/RAGFlow，并读取固定 Vault KV secret version；部门作用域在每个操作前验证。Runtime Workflow/Agent 的 RAG 执行继续使用已签名 Bundle 的资源快照，复用相同纯协议构造。网络策略必须允许该管理路径。
+- 模型预览事件保存在 Runtime MySQL，Debug 使用 execution_model_deltas 独立 cursor；BFF 使用签名 Query Scope 读取，不能借用 Trace cursor。运行评测事件与快照的 RuntimeEvaluationRuleResultV1 显式包含可空 evaluatorExecutionId，Control 必须将其持久投影，避免丢失 judge Trace 关系。
+- Trace 的 executionSequence 是 `execution_events.sequence_number` 分配的数据库全局递增游标；它是排序位置，允许跨执行及事务回滚造成空号，不表示该执行的事件数。分配、索引与 Outbox 在同一事务提交，不更新执行权威行。ExecutionDetailV1 同一读取快照返回 traceWatermark（MAX）与 traceEventCount（COUNT），BFF 将二者绑定到授权摘要并传给 Observability。完整性要求已摄取最大游标达到 watermark，且该 watermark 范围内无冲突的唯一事件数等于快照数量；后续事件不能掩盖中间缺失。Invocation/SSE 与模型 delta 的独立 cursor 协议不变。
 - Service JWT 固定 RS256，Claims 为 `iss/aud/sub/role/scope/iat/exp/jti`。Control Role 各自私钥和 `kid`；Runtime 仅保存当前与上一 `kid` 公钥。Service TTL 300 秒。
 - BFF Delegation Token TTL 60 秒，并绑定 Tenant、Subject、Operation、Application/Execution/Session 范围。
 - 写请求必须有 Idempotency Key 与业务 Version/Epoch；错误 Issuer、Audience、Role、Scope、租户、过期 Token 或已移除 Key 一律拒绝。

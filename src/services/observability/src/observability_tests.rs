@@ -16,8 +16,8 @@ use uuid::Uuid;
 
 use super::{
     AggregateRow, TraceConflictRow, TraceRow, TraceSpanKeyRow, aggregate_query_sql,
-    aggregate_spans, existing_trace_hash, parse_span_cursor, span_cursor, span_page_sql,
-    timestamp_micros, trace_contents,
+    aggregate_spans, existing_trace_hash, ingest_trace_batch, parse_span_cursor, span_cursor,
+    span_page_sql, timestamp_micros, trace_contents, trace_ingestion_snapshot,
 };
 
 #[test]
@@ -187,6 +187,8 @@ fn trace_event(
         execution_id,
         execution_sequence: sequence,
         trace_id: Uuid::now_v7(),
+        workflow_id: None,
+        application_id: None,
         span_id,
         parent_span_id: None,
         event_kind,
@@ -251,6 +253,7 @@ async fn clickhouse_trace_queries_decode_aggregate_and_exclude_conflicts() {
     let conflict_event_id = Uuid::now_v7();
     let clean_event_id = Uuid::now_v7();
     let now = OffsetDateTime::now_utc();
+    batch_ingestion_replays_and_concurrent_conflicts_are_durable(&admin).await;
     assert_eq!(
         existing_trace_hash(&admin, clean_event_id).await.unwrap(),
         None,
@@ -311,7 +314,7 @@ async fn clickhouse_trace_queries_decode_aggregate_and_exclude_conflicts() {
             ObservabilityMetricV1::CostMicros,
             ObservabilityMetricV1::InputTokens,
         ],
-        filters: json!({}),
+        filters: json!({"spanKind":"runtime_call"}),
         limit: 100,
     };
     let sql = aggregate_query_sql(&request).unwrap();
@@ -329,9 +332,9 @@ async fn clickhouse_trace_queries_decode_aggregate_and_exclude_conflicts() {
     let dimensions: serde_json::Value = serde_json::from_str(&rows[0].dimensions).unwrap();
     let metrics: serde_json::Value = serde_json::from_str(&rows[0].metrics).unwrap();
     assert_eq!(dimensions["status"], "succeeded");
-    assert_eq!(metrics["count"], "1");
-    assert_eq!(metrics["costMicros"], "11");
-    assert_eq!(metrics["inputTokens"], "5");
+    assert_eq!(metrics["count"], 1);
+    assert_eq!(metrics["costMicros"], 11);
+    assert_eq!(metrics["inputTokens"], 5);
 
     let watermark = admin
         .query("SELECT max(execution_sequence) FROM workflow_trace_events FINAL WHERE tenant_id=? AND execution_id=? AND event_id NOT IN (SELECT event_id FROM trace_ingest_conflicts WHERE tenant_id=?)")
@@ -407,6 +410,107 @@ async fn clickhouse_trace_queries_decode_aggregate_and_exclude_conflicts() {
     assert!(
         exhausted.is_empty(),
         "Cursor pagination must not repeat or skip a clean Span"
+    );
+}
+
+async fn batch_ingestion_replays_and_concurrent_conflicts_are_durable(admin: &Client) {
+    let tenant_id = Uuid::now_v7();
+    let partial_execution = Uuid::now_v7();
+    let mut partial = Vec::new();
+    for sequence in [10, 30, 40] {
+        let mut event = trace_event(
+            partial_execution,
+            Uuid::now_v7(),
+            sequence,
+            TraceEventKindV1::Finished,
+            "succeeded",
+            OffsetDateTime::now_utc(),
+        );
+        event.tenant_id = tenant_id;
+        partial.push((format!("snapshot-{sequence}"), event));
+    }
+    ingest_trace_batch(admin, &partial).await.unwrap();
+    let snapshot =
+        trace_ingestion_snapshot(admin, tenant_id, partial_execution, 30, "snapshot-missing")
+            .await
+            .unwrap();
+    assert_eq!(
+        snapshot,
+        (40, 2),
+        "later events cannot hide a missing event below the snapshot watermark"
+    );
+    let mut middle = trace_event(
+        partial_execution,
+        Uuid::now_v7(),
+        20,
+        TraceEventKindV1::Finished,
+        "succeeded",
+        OffsetDateTime::now_utc(),
+    );
+    middle.tenant_id = tenant_id;
+    let middle = vec![("snapshot-20".into(), middle)];
+    ingest_trace_batch(admin, &middle).await.unwrap();
+    ingest_trace_batch(admin, &middle).await.unwrap();
+    let snapshot =
+        trace_ingestion_snapshot(admin, tenant_id, partial_execution, 30, "snapshot-complete")
+            .await
+            .unwrap();
+    assert_eq!(
+        snapshot,
+        (40, 3),
+        "replay must not inflate the snapshot event count"
+    );
+    let execution_id = Uuid::now_v7();
+    let events: Vec<_> = (1..=100)
+        .map(|sequence| {
+            (
+                format!("{sequence}-0"),
+                trace_event(
+                    execution_id,
+                    Uuid::now_v7(),
+                    sequence,
+                    TraceEventKindV1::Finished,
+                    "succeeded",
+                    OffsetDateTime::now_utc(),
+                ),
+            )
+        })
+        .collect();
+    assert_eq!(ingest_trace_batch(admin, &events).await.unwrap(), 0);
+    assert_eq!(ingest_trace_batch(admin, &events).await.unwrap(), 0);
+    let ids: Vec<_> = events.iter().map(|(_, event)| event.event_id).collect();
+    let count = admin
+        .query("SELECT count() FROM workflow_trace_events FINAL WHERE event_id IN ?")
+        .bind(&ids)
+        .fetch_one::<u64>()
+        .await
+        .unwrap();
+    assert_eq!(
+        count, 100,
+        "replayed batches must not inflate authoritative trace rows"
+    );
+
+    let mut other = events[0].clone();
+    other.1.content_hash = content_hash(&json!({"conflicting":true})).unwrap();
+    let mut third = events[0].clone();
+    third.1.content_hash = content_hash(&json!({"conflicting":2})).unwrap();
+    let first = vec![other];
+    let second = vec![third];
+    let (left, right) = tokio::join!(
+        ingest_trace_batch(admin, &first),
+        ingest_trace_batch(admin, &second)
+    );
+    assert!(left.unwrap() > 0);
+    assert!(right.unwrap() > 0);
+    let recorded = admin
+        .query("SELECT count() FROM trace_ingest_conflicts WHERE event_id=?")
+        .bind(events[0].1.event_id)
+        .fetch_one::<u64>()
+        .await
+        .unwrap();
+    assert!(
+        recorded >= 2,
+        "conflicts must be durable before acknowledging either consumer"
     );
 }
 

@@ -38,6 +38,7 @@ spec:
             - { name: AGENTX_RUNTIME_S3_PATH_STYLE, value: {{ .Values.global.components.objectStorage.pathStyle | quote }} }
             - { name: AGENTX_EGRESS_PROXY_URL, value: {{ printf "http://agentx-egress-gateway.%s.svc:3128" .Values.global.namespaces.dependencies | quote }} }
             - { name: AGENTX_EGRESS_HTTP_PROVIDER_SERVICES, value: {{ join "," .Values.global.network.egressGateway.httpProviderServices | quote }} }
+            - { name: AGENTX_DELIVERY_DOMAIN_EXTRA_ALLOWLIST, value: {{ .Values.global.network.egressGateway.deliveryDomainExtraAllowlist | default "" | quote }} }
             - name: AGENTX_EGRESS_JWT_KEY_ID
               valueFrom: { secretKeyRef: { name: {{ include "agentx.secret" (list . "workflowRuntime" "runtime") }}, key: AGENTX_WORKFLOW_RUNTIME_EGRESS_JWT_KEY_ID } }
             - name: AGENTX_EGRESS_JWT_PRIVATE_KEY_PEM

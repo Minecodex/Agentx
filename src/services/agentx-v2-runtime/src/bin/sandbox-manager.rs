@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    agentx_service_kit::install_tls_provider();
     let pool = connect_runtime_mysql(&RuntimeMySqlSettings::from_env()?).await?;
     let provider_endpoint = env::var("AGENTX_OPENSANDBOX_ENDPOINT")?;
     let provider_secure_access = env::var("AGENTX_OPENSANDBOX_SECURE_ACCESS")
@@ -96,9 +97,12 @@ async fn collect_metrics(
 ) -> Result<()> {
     while !lifecycle.is_draining() {
         let sample = async {
-            let ready: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sandbox_leases WHERE status IN ('creating','interrupting','terminating','orphaned')").fetch_one(&state.pool).await?;
-            let oldest: f64 = sqlx::query_scalar("SELECT CAST(COALESCE(MAX(TIMESTAMPDIFF(MICROSECOND,created_at,UTC_TIMESTAMP(6))),0)/1000000.0 AS DOUBLE) FROM sandbox_leases WHERE status IN ('creating','interrupting','terminating','orphaned')").fetch_one(&state.pool).await?;
-            let active: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sandbox_leases WHERE locked_until>UTC_TIMESTAMP(6)").fetch_one(&state.pool).await?;
+            let acquire_started = std::time::Instant::now();
+            let mut connection = state.pool.acquire().await?;
+            metrics.observe_mysql_pool_wait(acquire_started.elapsed()).await;
+            let ready: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sandbox_leases WHERE status IN ('creating','interrupting','terminating','orphaned')").fetch_one(&mut *connection).await?;
+            let oldest: f64 = sqlx::query_scalar("SELECT CAST(COALESCE(MAX(TIMESTAMPDIFF(MICROSECOND,created_at,UTC_TIMESTAMP(6))),0)/1000000.0 AS DOUBLE) FROM sandbox_leases WHERE status IN ('creating','interrupting','terminating','orphaned')").fetch_one(&mut *connection).await?;
+            let active: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sandbox_leases WHERE locked_until>UTC_TIMESTAMP(6)").fetch_one(&mut *connection).await?;
             Ok::<_, sqlx::Error>((ready, oldest, active))
         }.await;
         match sample {

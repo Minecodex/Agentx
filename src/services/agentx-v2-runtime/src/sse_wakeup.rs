@@ -25,6 +25,10 @@ impl SseWakeup {
         Self { client: None }
     }
 
+    pub async fn publish(&self, invocation_id: Uuid) {
+        publish(self.client.as_ref(), invocation_id).await;
+    }
+
     pub fn subscribe(&self, invocation_id: Uuid) -> Option<mpsc::Receiver<()>> {
         subscribe(self.client.clone(), invocation_id)
     }
@@ -32,15 +36,15 @@ impl SseWakeup {
 
 pub async fn publish(client: Option<&redis::Client>, invocation_id: Uuid) {
     let Some(client) = client else { return };
-    let result = async {
+    let result = tokio::time::timeout(Duration::from_secs(1), async {
         let mut connection = client.get_multiplexed_async_connection().await?;
         connection
             .publish::<_, _, u64>(channel(invocation_id), invocation_id.to_string())
             .await
-    }
+    })
     .await;
-    if let Err(error) = result {
-        tracing::debug!(%error, %invocation_id, "Redis SSE wakeup publish failed; MySQL remains authoritative");
+    if !matches!(result, Ok(Ok(_))) {
+        tracing::debug!(%invocation_id, "Redis SSE wakeup unavailable; MySQL remains authoritative");
     }
 }
 
@@ -58,13 +62,19 @@ pub fn subscribe(client: Option<redis::Client>, invocation_id: Uuid) -> Option<m
     let (sender, receiver) = mpsc::channel(1);
     let client = client?;
     tokio::spawn(async move {
-        loop {
+        while !sender.is_closed() {
             let result: redis::RedisResult<()> = async {
                 let mut pubsub = client.get_async_pubsub().await?;
                 pubsub.subscribe(channel(invocation_id)).await?;
                 let mut messages = pubsub.on_message();
-                while messages.next().await.is_some() {
-                    let _ = sender.try_send(());
+                loop {
+                    tokio::select! {
+                        _ = sender.closed() => break,
+                        message = messages.next() => {
+                            if message.is_none() { break; }
+                            let _ = sender.try_send(());
+                        }
+                    }
                 }
                 Ok(())
             }
@@ -72,7 +82,10 @@ pub fn subscribe(client: Option<redis::Client>, invocation_id: Uuid) -> Option<m
             if let Err(error) = result {
                 tracing::debug!(%error, %invocation_id, "Redis SSE wakeup subscription interrupted; MySQL polling continues");
             }
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::select! {
+                _ = sender.closed() => break,
+                _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+            }
         }
     });
     Some(receiver)

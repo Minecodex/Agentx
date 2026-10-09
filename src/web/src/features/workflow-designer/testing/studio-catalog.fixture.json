@@ -606,7 +606,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:3941d9ad248e3ce3db2d1e1ae5a2fb53fbf73861f94592a9531044bde5e67eed",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -969,7 +969,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:3941d9ad248e3ce3db2d1e1ae5a2fb53fbf73861f94592a9531044bde5e67eed",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -1397,7 +1397,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:3941d9ad248e3ce3db2d1e1ae5a2fb53fbf73861f94592a9531044bde5e67eed",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -1891,11 +1891,11 @@
     "plugin": {
       "packageId": "agentx/http",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:418bccce63cbfe37a795addeec230715c509fcb79e89217bc4c80b21f0230613",
+      "bundleDigest": "sha256:26a14fd23823bbe8089c120b03cee7d6973a9d3ff1c8cfcaa5f6a0105a2ba583",
       "runtimeEntry": "dist/runtime.js",
       "runtimeSource": "export const execute = async (context) => {\n    const request = { ...context.parameters, body: context.parameters.body ?? context.inputs.main?.[0]?.json ?? null, idempotencyKey: context.execution.idempotencyKey };\n    const response = await context.http(request);\n    return { status: 'completed', outputs: { main: [{ json: response }] } };\n};\n",
       "runtimeArtifact": {
-        "objectId": "0d989d3b-350e-5dcd-89c1-95c10dd3c023",
+        "objectId": "73e322b1-3358-511e-8945-9eebf69d252b",
         "contentHash": "sha256:9c32ff07fa58b8b96c481e9943aa2041bd12504eb253e0da38d5c90d5b243c7f",
         "sizeBytes": 344,
         "mediaType": "text/javascript"
@@ -2296,7 +2296,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:3941d9ad248e3ce3db2d1e1ae5a2fb53fbf73861f94592a9531044bde5e67eed",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -2792,11 +2792,11 @@
     "plugin": {
       "packageId": "agentx/data",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:d9e76f14df797ae6dfcc2caeff7d6265269bd1d0bc25f40743034da3bba93423",
+      "bundleDigest": "sha256:39b98308865afd4b4f790276bec5088af0215752480965f78ac14648950ebd3d",
       "runtimeEntry": "dist/runtime.js",
       "runtimeSource": "export const resolveDefinition = (configuration, upstreamContracts, context) => {\n    if (context.nodeType === 'set') {\n        const incoming = schemaObject(upstreamContracts.main)?.schema ?? {};\n        const contracts = { ...upstreamContracts, $currentItem: incoming };\n        const schema = configuration.keepOnlySet === true\n            ? { type: 'object', properties: {}, required: [], additionalProperties: false }\n            : cloneSchema(incoming);\n        const properties = schemaObject(schema.properties) ?? {};\n        const required = new Set(Array.isArray(schema.required) ? schema.required.filter((value) => typeof value === 'string') : []);\n        const values = bindingFields(configuration.values);\n        for (const [name, binding] of Object.entries(values)) {\n            properties[name] = bindingSchema(binding, contracts);\n            required.add(name);\n        }\n        schema.type = 'object';\n        schema.properties = properties;\n        schema.required = [...required];\n        return { status: 'complete', outputSchema: schema, outputPortSchemas: { main: schema } };\n    }\n    if (context.nodeType === 'list') {\n        const input = bindingSchema(configuration.input, upstreamContracts);\n        const item = schemaObject(input)?.items ?? {};\n        const issues = listConditionIssues(configuration, { ...upstreamContracts, $currentItem: item });\n        const schema = { type: 'object', properties: { items: { type: 'array', items: item } }, required: ['items'], additionalProperties: false };\n        return { status: issues.length ? 'invalid' : 'complete', outputSchema: schema, outputPortSchemas: { main: schema }, issues };\n    }\n    return { status: 'invalid', issues: [{ path: '', code: 'BUILTIN_NODE_UNSUPPORTED', message: `Unsupported data node ${context.nodeType}` }] };\n};\nexport const execute = (context) => {\n    if (context.execution.nodeType === 'set')\n        return executeSet(context.inputs, context.parameters, context.perItemParameters);\n    if (context.execution.nodeType === 'list')\n        return executeList(context.parameters, context.perItemParameters);\n    return { status: 'failed', code: 'BUILTIN_NODE_UNSUPPORTED', message: `Unsupported data node ${context.execution.nodeType}` };\n};\nfunction executeSet(inputs, common, perItem) {\n    const main = inputs.main ?? [];\n    const offset = Object.entries(inputs).filter(([name]) => name < 'main').reduce((total, [, items]) => total + items.length, 0);\n    const output = main.map((item, index) => {\n        const parameters = perItem[offset + index] ?? common;\n        const values = object(parameters.values);\n        const base = parameters.keepOnlySet === true ? {} : object(item.json);\n        return { ...item, json: { ...base, ...values } };\n    });\n    return { status: 'completed', outputs: { main: output } };\n}\nfunction executeList(common, perItem) {\n    if (!Array.isArray(common.input))\n        return { status: 'failed', code: 'LIST_INPUT_NOT_ARRAY', message: 'List input must resolve to an array' };\n    const kept = common.input.map((json, index) => ({ index, item: { json } })).filter(({ index }) => passes(perItem[index] ?? common));\n    const fields = Array.isArray(common.sort) ? common.sort : [];\n    if (fields.length)\n        kept.sort((left, right) => compareFields(perItem[left.index] ?? common, perItem[right.index] ?? common, fields));\n    const take = typeof common.takeN === 'number' && common.takeN >= 0 ? common.takeN : kept.length;\n    return { status: 'completed', outputs: { main: [{ json: { items: kept.slice(0, take).map(({ item }) => item.json) } }] } };\n}\nfunction passes(parameters) {\n    const filter = object(parameters.filter);\n    const conditions = Array.isArray(filter.conditions) ? filter.conditions.map((entry) => object(entry).condition === true) : [];\n    return filter.logicalOp === 'or' ? conditions.some(Boolean) : conditions.every(Boolean);\n}\nfunction compareFields(left, right, fields) {\n    const leftFields = Array.isArray(left.sort) ? left.sort : [];\n    const rightFields = Array.isArray(right.sort) ? right.sort : [];\n    for (let index = 0; index < fields.length; index += 1) {\n        const specification = object(fields[index]);\n        const ordering = compareJson(object(leftFields[index]).selector, object(rightFields[index]).selector, specification.nulls === 'first');\n        if (ordering !== 0)\n            return specification.direction === 'desc' ? -ordering : ordering;\n    }\n    return 0;\n}\nfunction compareJson(left, right, nullsFirst) {\n    const leftMissing = left === null || left === undefined;\n    const rightMissing = right === null || right === undefined;\n    if (leftMissing && rightMissing)\n        return 0;\n    if (leftMissing)\n        return nullsFirst ? -1 : 1;\n    if (rightMissing)\n        return nullsFirst ? 1 : -1;\n    if (typeof left === 'number' && typeof right === 'number')\n        return left === right ? 0 : left < right ? -1 : 1;\n    return canonical(left).localeCompare(canonical(right));\n}\nfunction canonical(value) {\n    if (Array.isArray(value))\n        return `[${value.map(canonical).join(',')}]`;\n    if (value && typeof value === 'object')\n        return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;\n    return JSON.stringify(value);\n}\nfunction object(value) {\n    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};\n}\nfunction schemaObject(value) {\n    return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined;\n}\nfunction cloneSchema(value) {\n    const cloned = JSON.parse(JSON.stringify(value));\n    return schemaObject(cloned) ?? { type: 'object' };\n}\nfunction bindingFields(value) {\n    const binding = object(value);\n    return binding.kind === 'object' ? object(binding.fields) : {};\n}\nfunction bindingSchema(value, upstream) {\n    const binding = object(value);\n    switch (binding.kind) {\n        case 'literal': return literalSchema(binding.value);\n        case 'template': return { type: 'string' };\n        case 'array': {\n            const items = Array.isArray(binding.items) ? binding.items.map((item) => bindingSchema(item, upstream)) : [];\n            const first = items[0];\n            return { type: 'array', items: first && items.every((item) => JSON.stringify(item) === JSON.stringify(first)) ? first : {} };\n        }\n        case 'object': {\n            const fields = object(binding.fields);\n            return { type: 'object', properties: Object.fromEntries(Object.entries(fields).map(([name, child]) => [name, bindingSchema(child, upstream)])), required: Object.keys(fields) };\n        }\n        case 'reference': {\n            const selector = object(binding.selector);\n            const path = Array.isArray(selector.path) ? selector.path : [];\n            if (selector.namespace === 'inputs')\n                return schemaAt(upstream.$inputs, path);\n            if (selector.namespace === 'contexts' && typeof path[0] === 'string') {\n                const contexts = schemaObject(upstream.$contexts);\n                const context = schemaObject(contexts?.[path[0]]);\n                return schemaAt(context?.schema, path.slice(1));\n            }\n            if (selector.namespace === 'outputs' && typeof selector.sourceNodeId === 'string') {\n                const nodes = schemaObject(upstream.$nodes);\n                const node = schemaObject(nodes?.[selector.sourceNodeId]);\n                const ports = schemaObject(node?.ports);\n                const port = typeof selector.port === 'string' ? selector.port : 'main';\n                return schemaAt(ports?.[port], path);\n            }\n            if (selector.namespace === 'item') {\n                return schemaAt(upstream.$currentItem, path);\n            }\n            return {};\n        }\n        default: return {};\n    }\n}\nfunction listConditionIssues(configuration, upstream) {\n    const filter = object(configuration.filter);\n    const rows = Array.isArray(filter.conditions) ? filter.conditions : [];\n    return rows.flatMap((entry, index) => {\n        const condition = object(object(entry).condition);\n        const left = bindingSchema(condition.left, upstream);\n        const right = bindingSchema(condition.right, upstream);\n        const operator = typeof condition.operator === 'string' ? condition.operator : '';\n        if (schemasCompatible(left, right, operator))\n            return [];\n        return [{ path: `filter.conditions[${index}].condition.right`, code: 'CONDITION_OPERAND_TYPE_MISMATCH', message: 'Condition operands have incompatible schemas' }];\n    });\n}\nfunction schemasCompatible(left, right, operator) {\n    const leftTypes = schemaTypes(left);\n    const rightTypes = schemaTypes(right);\n    if (!leftTypes.length || !rightTypes.length)\n        return true;\n    if (['gt', 'gte', 'lt', 'lte'].includes(operator)) {\n        return (leftTypes.some((value) => value === 'number' || value === 'integer') && rightTypes.some((value) => value === 'number' || value === 'integer'))\n            || (leftTypes.includes('string') && rightTypes.includes('string'));\n    }\n    if (['contains', 'not_contains', 'starts_with', 'ends_with', 'matches'].includes(operator))\n        return leftTypes.includes('string') || leftTypes.includes('array');\n    return leftTypes.some((value) => rightTypes.includes(value) || (value === 'integer' && rightTypes.includes('number')) || (value === 'number' && rightTypes.includes('integer')));\n}\nfunction schemaTypes(value) {\n    const type = schemaObject(value)?.type;\n    return Array.isArray(type) ? type.filter((item) => typeof item === 'string') : typeof type === 'string' ? [type] : [];\n}\nfunction schemaAt(value, path) {\n    let current = value ?? {};\n    for (const segment of path) {\n        const schema = schemaObject(current);\n        if (!schema)\n            return {};\n        current = typeof segment === 'number'\n            ? schemaObject(schema.items) ?? {}\n            : schemaObject(schema.properties)?.[String(segment)] ?? {};\n    }\n    return current;\n}\nfunction literalSchema(value) {\n    if (value === null || value === undefined)\n        return { type: 'null' };\n    if (Array.isArray(value)) {\n        const items = value.map(literalSchema);\n        const first = items[0];\n        return { type: 'array', items: first && items.every((item) => JSON.stringify(item) === JSON.stringify(first)) ? first : {} };\n    }\n    if (typeof value === 'object')\n        return { type: 'object', properties: Object.fromEntries(Object.entries(value).map(([name, child]) => [name, literalSchema(child)])), required: Object.keys(value) };\n    return { type: typeof value === 'number' ? (Number.isInteger(value) ? 'integer' : 'number') : typeof value };\n}\n",
       "runtimeArtifact": {
-        "objectId": "d91cad6d-effa-54c3-be49-16b14e9c4ec9",
+        "objectId": "50db601f-945d-517e-9b01-5fc5acf1f981",
         "contentHash": "sha256:d22521a2f156d1bd48611da9aa99335666b969e55cf2e0c471c0c52b4100dbb5",
         "sizeBytes": 10751,
         "mediaType": "text/javascript"
@@ -3091,7 +3091,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:3941d9ad248e3ce3db2d1e1ae5a2fb53fbf73861f94592a9531044bde5e67eed",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3368,7 +3368,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:3941d9ad248e3ce3db2d1e1ae5a2fb53fbf73861f94592a9531044bde5e67eed",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3514,11 +3514,23 @@
           ],
           "type": "string"
         },
+        "stream": {
+          "default": "true",
+          "description": "Stream model output token by token to the client.",
+          "enum": [
+            "true",
+            "false"
+          ],
+          "type": "string"
+        },
         "structuredSchema": {
           "type": "object"
         },
         "userQuestion": {
-          "type": "string",
+          "type": [
+            "string",
+            "array"
+          ],
           "x-agentx-binding": {
             "acceptedCardinality": [
               "single"
@@ -3754,6 +3766,9 @@
         "responseMode": {
           "control": "select"
         },
+        "stream": {
+          "control": "select"
+        },
         "structuredSchema": {
           "control": "schema_editor"
         },
@@ -3775,7 +3790,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:3941d9ad248e3ce3db2d1e1ae5a2fb53fbf73861f94592a9531044bde5e67eed",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3791,6 +3806,458 @@
     "sandboxRequired": false,
     "supportsMock": false,
     "sideEffectLevel": "none"
+  },
+  {
+    "protocolVersion": "3.0",
+    "nodeType": "reply_message",
+    "version": 1,
+    "displayName": "Reply Message",
+    "description": "Reply to the conversation that triggered this workflow.",
+    "category": "logic",
+    "keywords": [
+      "reply",
+      "message",
+      "回复",
+      "消息"
+    ],
+    "localizations": {
+      "en-US": {
+        "displayName": "Reply Message",
+        "description": "Reply to the conversation that triggered this workflow.",
+        "keywords": [
+          "reply",
+          "message"
+        ],
+        "inputPortLabels": {
+          "main": "Main"
+        },
+        "outputPortLabels": {
+          "error": "Error",
+          "main": "Main"
+        },
+        "parameterLabels": {
+          "content": "Content"
+        }
+      },
+      "zh-CN": {
+        "displayName": "回复消息",
+        "description": "向触发本工作流的来源会话回复消息（异步投递）。",
+        "keywords": [
+          "回复",
+          "消息"
+        ],
+        "inputPortLabels": {
+          "main": "主输入"
+        },
+        "outputPortLabels": {
+          "error": "错误",
+          "main": "主输出"
+        },
+        "parameterLabels": {
+          "content": "回复内容"
+        }
+      }
+    },
+    "iconKey": "reply",
+    "executionStyle": "action",
+    "capability": "builtin",
+    "readiness": "required",
+    "inputPorts": [
+      {
+        "name": "main",
+        "kind": "main",
+        "required": false,
+        "variadic": true
+      },
+      {
+        "name": "left",
+        "kind": "main",
+        "required": false,
+        "variadic": false
+      },
+      {
+        "name": "right",
+        "kind": "main",
+        "required": false,
+        "variadic": false
+      }
+    ],
+    "outputPorts": [
+      {
+        "name": "main",
+        "kind": "main",
+        "required": false,
+        "variadic": false
+      },
+      {
+        "name": "error",
+        "kind": "error",
+        "required": false,
+        "variadic": false
+      }
+    ],
+    "bindingSlots": [],
+    "parameterSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "deliveryId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "deliveryId",
+        "status"
+      ],
+      "type": "object"
+    },
+    "outputPortSchemas": {
+      "error": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object"
+          },
+          "message": {
+            "type": "string"
+          },
+          "nodeExecutionId": {
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "sourceNodeId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable",
+          "details",
+          "sourceNodeId",
+          "nodeExecutionId"
+        ],
+        "type": "object"
+      }
+    },
+    "outputCardinality": {
+      "error": "many",
+      "main": "many"
+    },
+    "selectorCapabilities": {
+      "namespaces": [
+        "inputs",
+        "outputs",
+        "contexts"
+      ],
+      "supportsCurrent": true,
+      "supportsFirstLast": true,
+      "supportsAll": true,
+      "supportsRunSelection": true
+    },
+    "contextReadCapability": true,
+    "contextWriteCapability": false,
+    "artifactOutputSchema": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "uiSchema": {
+      "fields": {
+        "content": {
+          "control": "textarea"
+        }
+      },
+      "canvas": {
+        "role": "default"
+      }
+    },
+    "plugin": {
+      "packageId": "agentx/core",
+      "packageVersion": "1.0.0",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
+      "runtimeEntry": "native",
+      "runtimeSource": ""
+    },
+    "providers": [],
+    "credentials": [],
+    "defaultTimeoutMs": 30000,
+    "retryPolicy": {
+      "retryable": false,
+      "maxAttempts": 0,
+      "initialBackoffMs": 0,
+      "maxBackoffMs": 0
+    },
+    "sandboxRequired": false,
+    "supportsMock": true,
+    "sideEffectLevel": "irreversible"
+  },
+  {
+    "protocolVersion": "3.0",
+    "nodeType": "send_message",
+    "version": 1,
+    "displayName": "Send Message",
+    "description": "Send a message to an explicit channel conversation.",
+    "category": "logic",
+    "keywords": [
+      "send",
+      "message",
+      "push",
+      "发送",
+      "消息"
+    ],
+    "localizations": {
+      "en-US": {
+        "displayName": "Send Message",
+        "description": "Send a message to an explicit channel conversation.",
+        "keywords": [
+          "send",
+          "message",
+          "push"
+        ],
+        "inputPortLabels": {
+          "main": "Main"
+        },
+        "outputPortLabels": {
+          "error": "Error",
+          "main": "Main"
+        },
+        "parameterLabels": {
+          "channelId": "Channel",
+          "content": "Content",
+          "senderId": "Sender",
+          "targetConversationId": "Conversation"
+        }
+      },
+      "zh-CN": {
+        "displayName": "发送消息",
+        "description": "向指定渠道会话主动发送消息（异步投递）。",
+        "keywords": [
+          "发送",
+          "消息"
+        ],
+        "inputPortLabels": {
+          "main": "主输入"
+        },
+        "outputPortLabels": {
+          "error": "错误",
+          "main": "主输出"
+        },
+        "parameterLabels": {
+          "channelId": "渠道",
+          "content": "发送内容",
+          "senderId": "接收人",
+          "targetConversationId": "会话"
+        }
+      }
+    },
+    "iconKey": "send",
+    "executionStyle": "action",
+    "capability": "builtin",
+    "readiness": "required",
+    "inputPorts": [
+      {
+        "name": "main",
+        "kind": "main",
+        "required": false,
+        "variadic": true
+      },
+      {
+        "name": "left",
+        "kind": "main",
+        "required": false,
+        "variadic": false
+      },
+      {
+        "name": "right",
+        "kind": "main",
+        "required": false,
+        "variadic": false
+      }
+    ],
+    "outputPorts": [
+      {
+        "name": "main",
+        "kind": "main",
+        "required": false,
+        "variadic": false
+      },
+      {
+        "name": "error",
+        "kind": "error",
+        "required": false,
+        "variadic": false
+      }
+    ],
+    "bindingSlots": [],
+    "parameterSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "channelId": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "senderId": {
+          "type": "string"
+        },
+        "targetConversationId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content",
+        "channelId"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "channelId": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "deliveryId": {
+          "type": "string"
+        },
+        "senderId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "targetConversationId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "deliveryId",
+        "status"
+      ],
+      "type": "object"
+    },
+    "outputPortSchemas": {
+      "error": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object"
+          },
+          "message": {
+            "type": "string"
+          },
+          "nodeExecutionId": {
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "sourceNodeId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable",
+          "details",
+          "sourceNodeId",
+          "nodeExecutionId"
+        ],
+        "type": "object"
+      }
+    },
+    "outputCardinality": {
+      "error": "many",
+      "main": "many"
+    },
+    "selectorCapabilities": {
+      "namespaces": [
+        "inputs",
+        "outputs",
+        "contexts"
+      ],
+      "supportsCurrent": true,
+      "supportsFirstLast": true,
+      "supportsAll": true,
+      "supportsRunSelection": true
+    },
+    "contextReadCapability": true,
+    "contextWriteCapability": false,
+    "artifactOutputSchema": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "uiSchema": {
+      "fields": {
+        "channelId": {
+          "control": "text"
+        },
+        "content": {
+          "control": "textarea"
+        },
+        "senderId": {
+          "control": "text"
+        },
+        "targetConversationId": {
+          "control": "text"
+        }
+      },
+      "canvas": {
+        "role": "default"
+      }
+    },
+    "plugin": {
+      "packageId": "agentx/core",
+      "packageVersion": "1.0.0",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
+      "runtimeEntry": "native",
+      "runtimeSource": ""
+    },
+    "providers": [],
+    "credentials": [],
+    "defaultTimeoutMs": 30000,
+    "retryPolicy": {
+      "retryable": false,
+      "maxAttempts": 0,
+      "initialBackoffMs": 0,
+      "maxBackoffMs": 0
+    },
+    "sandboxRequired": false,
+    "supportsMock": true,
+    "sideEffectLevel": "irreversible"
   },
   {
     "protocolVersion": "3.0",
@@ -3990,11 +4457,11 @@
     "plugin": {
       "packageId": "agentx/data",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:d9e76f14df797ae6dfcc2caeff7d6265269bd1d0bc25f40743034da3bba93423",
+      "bundleDigest": "sha256:39b98308865afd4b4f790276bec5088af0215752480965f78ac14648950ebd3d",
       "runtimeEntry": "dist/runtime.js",
       "runtimeSource": "export const resolveDefinition = (configuration, upstreamContracts, context) => {\n    if (context.nodeType === 'set') {\n        const incoming = schemaObject(upstreamContracts.main)?.schema ?? {};\n        const contracts = { ...upstreamContracts, $currentItem: incoming };\n        const schema = configuration.keepOnlySet === true\n            ? { type: 'object', properties: {}, required: [], additionalProperties: false }\n            : cloneSchema(incoming);\n        const properties = schemaObject(schema.properties) ?? {};\n        const required = new Set(Array.isArray(schema.required) ? schema.required.filter((value) => typeof value === 'string') : []);\n        const values = bindingFields(configuration.values);\n        for (const [name, binding] of Object.entries(values)) {\n            properties[name] = bindingSchema(binding, contracts);\n            required.add(name);\n        }\n        schema.type = 'object';\n        schema.properties = properties;\n        schema.required = [...required];\n        return { status: 'complete', outputSchema: schema, outputPortSchemas: { main: schema } };\n    }\n    if (context.nodeType === 'list') {\n        const input = bindingSchema(configuration.input, upstreamContracts);\n        const item = schemaObject(input)?.items ?? {};\n        const issues = listConditionIssues(configuration, { ...upstreamContracts, $currentItem: item });\n        const schema = { type: 'object', properties: { items: { type: 'array', items: item } }, required: ['items'], additionalProperties: false };\n        return { status: issues.length ? 'invalid' : 'complete', outputSchema: schema, outputPortSchemas: { main: schema }, issues };\n    }\n    return { status: 'invalid', issues: [{ path: '', code: 'BUILTIN_NODE_UNSUPPORTED', message: `Unsupported data node ${context.nodeType}` }] };\n};\nexport const execute = (context) => {\n    if (context.execution.nodeType === 'set')\n        return executeSet(context.inputs, context.parameters, context.perItemParameters);\n    if (context.execution.nodeType === 'list')\n        return executeList(context.parameters, context.perItemParameters);\n    return { status: 'failed', code: 'BUILTIN_NODE_UNSUPPORTED', message: `Unsupported data node ${context.execution.nodeType}` };\n};\nfunction executeSet(inputs, common, perItem) {\n    const main = inputs.main ?? [];\n    const offset = Object.entries(inputs).filter(([name]) => name < 'main').reduce((total, [, items]) => total + items.length, 0);\n    const output = main.map((item, index) => {\n        const parameters = perItem[offset + index] ?? common;\n        const values = object(parameters.values);\n        const base = parameters.keepOnlySet === true ? {} : object(item.json);\n        return { ...item, json: { ...base, ...values } };\n    });\n    return { status: 'completed', outputs: { main: output } };\n}\nfunction executeList(common, perItem) {\n    if (!Array.isArray(common.input))\n        return { status: 'failed', code: 'LIST_INPUT_NOT_ARRAY', message: 'List input must resolve to an array' };\n    const kept = common.input.map((json, index) => ({ index, item: { json } })).filter(({ index }) => passes(perItem[index] ?? common));\n    const fields = Array.isArray(common.sort) ? common.sort : [];\n    if (fields.length)\n        kept.sort((left, right) => compareFields(perItem[left.index] ?? common, perItem[right.index] ?? common, fields));\n    const take = typeof common.takeN === 'number' && common.takeN >= 0 ? common.takeN : kept.length;\n    return { status: 'completed', outputs: { main: [{ json: { items: kept.slice(0, take).map(({ item }) => item.json) } }] } };\n}\nfunction passes(parameters) {\n    const filter = object(parameters.filter);\n    const conditions = Array.isArray(filter.conditions) ? filter.conditions.map((entry) => object(entry).condition === true) : [];\n    return filter.logicalOp === 'or' ? conditions.some(Boolean) : conditions.every(Boolean);\n}\nfunction compareFields(left, right, fields) {\n    const leftFields = Array.isArray(left.sort) ? left.sort : [];\n    const rightFields = Array.isArray(right.sort) ? right.sort : [];\n    for (let index = 0; index < fields.length; index += 1) {\n        const specification = object(fields[index]);\n        const ordering = compareJson(object(leftFields[index]).selector, object(rightFields[index]).selector, specification.nulls === 'first');\n        if (ordering !== 0)\n            return specification.direction === 'desc' ? -ordering : ordering;\n    }\n    return 0;\n}\nfunction compareJson(left, right, nullsFirst) {\n    const leftMissing = left === null || left === undefined;\n    const rightMissing = right === null || right === undefined;\n    if (leftMissing && rightMissing)\n        return 0;\n    if (leftMissing)\n        return nullsFirst ? -1 : 1;\n    if (rightMissing)\n        return nullsFirst ? 1 : -1;\n    if (typeof left === 'number' && typeof right === 'number')\n        return left === right ? 0 : left < right ? -1 : 1;\n    return canonical(left).localeCompare(canonical(right));\n}\nfunction canonical(value) {\n    if (Array.isArray(value))\n        return `[${value.map(canonical).join(',')}]`;\n    if (value && typeof value === 'object')\n        return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;\n    return JSON.stringify(value);\n}\nfunction object(value) {\n    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};\n}\nfunction schemaObject(value) {\n    return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined;\n}\nfunction cloneSchema(value) {\n    const cloned = JSON.parse(JSON.stringify(value));\n    return schemaObject(cloned) ?? { type: 'object' };\n}\nfunction bindingFields(value) {\n    const binding = object(value);\n    return binding.kind === 'object' ? object(binding.fields) : {};\n}\nfunction bindingSchema(value, upstream) {\n    const binding = object(value);\n    switch (binding.kind) {\n        case 'literal': return literalSchema(binding.value);\n        case 'template': return { type: 'string' };\n        case 'array': {\n            const items = Array.isArray(binding.items) ? binding.items.map((item) => bindingSchema(item, upstream)) : [];\n            const first = items[0];\n            return { type: 'array', items: first && items.every((item) => JSON.stringify(item) === JSON.stringify(first)) ? first : {} };\n        }\n        case 'object': {\n            const fields = object(binding.fields);\n            return { type: 'object', properties: Object.fromEntries(Object.entries(fields).map(([name, child]) => [name, bindingSchema(child, upstream)])), required: Object.keys(fields) };\n        }\n        case 'reference': {\n            const selector = object(binding.selector);\n            const path = Array.isArray(selector.path) ? selector.path : [];\n            if (selector.namespace === 'inputs')\n                return schemaAt(upstream.$inputs, path);\n            if (selector.namespace === 'contexts' && typeof path[0] === 'string') {\n                const contexts = schemaObject(upstream.$contexts);\n                const context = schemaObject(contexts?.[path[0]]);\n                return schemaAt(context?.schema, path.slice(1));\n            }\n            if (selector.namespace === 'outputs' && typeof selector.sourceNodeId === 'string') {\n                const nodes = schemaObject(upstream.$nodes);\n                const node = schemaObject(nodes?.[selector.sourceNodeId]);\n                const ports = schemaObject(node?.ports);\n                const port = typeof selector.port === 'string' ? selector.port : 'main';\n                return schemaAt(ports?.[port], path);\n            }\n            if (selector.namespace === 'item') {\n                return schemaAt(upstream.$currentItem, path);\n            }\n            return {};\n        }\n        default: return {};\n    }\n}\nfunction listConditionIssues(configuration, upstream) {\n    const filter = object(configuration.filter);\n    const rows = Array.isArray(filter.conditions) ? filter.conditions : [];\n    return rows.flatMap((entry, index) => {\n        const condition = object(object(entry).condition);\n        const left = bindingSchema(condition.left, upstream);\n        const right = bindingSchema(condition.right, upstream);\n        const operator = typeof condition.operator === 'string' ? condition.operator : '';\n        if (schemasCompatible(left, right, operator))\n            return [];\n        return [{ path: `filter.conditions[${index}].condition.right`, code: 'CONDITION_OPERAND_TYPE_MISMATCH', message: 'Condition operands have incompatible schemas' }];\n    });\n}\nfunction schemasCompatible(left, right, operator) {\n    const leftTypes = schemaTypes(left);\n    const rightTypes = schemaTypes(right);\n    if (!leftTypes.length || !rightTypes.length)\n        return true;\n    if (['gt', 'gte', 'lt', 'lte'].includes(operator)) {\n        return (leftTypes.some((value) => value === 'number' || value === 'integer') && rightTypes.some((value) => value === 'number' || value === 'integer'))\n            || (leftTypes.includes('string') && rightTypes.includes('string'));\n    }\n    if (['contains', 'not_contains', 'starts_with', 'ends_with', 'matches'].includes(operator))\n        return leftTypes.includes('string') || leftTypes.includes('array');\n    return leftTypes.some((value) => rightTypes.includes(value) || (value === 'integer' && rightTypes.includes('number')) || (value === 'number' && rightTypes.includes('integer')));\n}\nfunction schemaTypes(value) {\n    const type = schemaObject(value)?.type;\n    return Array.isArray(type) ? type.filter((item) => typeof item === 'string') : typeof type === 'string' ? [type] : [];\n}\nfunction schemaAt(value, path) {\n    let current = value ?? {};\n    for (const segment of path) {\n        const schema = schemaObject(current);\n        if (!schema)\n            return {};\n        current = typeof segment === 'number'\n            ? schemaObject(schema.items) ?? {}\n            : schemaObject(schema.properties)?.[String(segment)] ?? {};\n    }\n    return current;\n}\nfunction literalSchema(value) {\n    if (value === null || value === undefined)\n        return { type: 'null' };\n    if (Array.isArray(value)) {\n        const items = value.map(literalSchema);\n        const first = items[0];\n        return { type: 'array', items: first && items.every((item) => JSON.stringify(item) === JSON.stringify(first)) ? first : {} };\n    }\n    if (typeof value === 'object')\n        return { type: 'object', properties: Object.fromEntries(Object.entries(value).map(([name, child]) => [name, literalSchema(child)])), required: Object.keys(value) };\n    return { type: typeof value === 'number' ? (Number.isInteger(value) ? 'integer' : 'number') : typeof value };\n}\n",
       "runtimeArtifact": {
-        "objectId": "d91cad6d-effa-54c3-be49-16b14e9c4ec9",
+        "objectId": "50db601f-945d-517e-9b01-5fc5acf1f981",
         "contentHash": "sha256:d22521a2f156d1bd48611da9aa99335666b969e55cf2e0c471c0c52b4100dbb5",
         "sizeBytes": 10751,
         "mediaType": "text/javascript"
@@ -4219,7 +4686,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:3941d9ad248e3ce3db2d1e1ae5a2fb53fbf73861f94592a9531044bde5e67eed",
+      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },

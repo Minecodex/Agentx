@@ -13,8 +13,50 @@ pub(super) fn execute(claim: &ClaimedWorkerAttempt) -> WorkerExecution {
         "loop_over_items" => loop_items(claim),
         "if" => if_items(claim, main),
         "merge" => merge(claim, parameters),
+        "reply_message" => reply_or_send(claim, false),
+        "send_message" => reply_or_send(claim, true),
         _ => output("main", main),
     }
+}
+
+/// Renders the delivery intent for the reply/send nodes (plan7 P7-A). The
+/// node itself stays a pure function: it emits the rendered intent with a
+/// deterministic delivery id; the settlement transaction resolves the channel
+/// and inserts the delivery row.
+fn reply_or_send(claim: &ClaimedWorkerAttempt, send: bool) -> WorkerExecution {
+    let parameters = &claim.node_parameters;
+    let content = parameters
+        .get("content")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if content.trim().is_empty() {
+        return WorkerExecution::failed(
+            "DELIVERY_PAYLOAD_INVALID",
+            "reply/send content resolved to empty text",
+            false,
+        );
+    }
+    let delivery_id =
+        agentx_runtime_contracts::deterministic_uuid(claim.lease.attempt_id, b"delivery:node");
+    let mut intent = serde_json::json!({
+        "content": content,
+        "deliveryId": delivery_id.to_string(),
+        "status": "queued",
+    });
+    if send {
+        for field in ["channelId", "targetConversationId", "senderId"] {
+            if let Some(value) = parameters.get(field) {
+                intent[field] = value.clone();
+            }
+        }
+    }
+    output(
+        "main",
+        vec![Item {
+            json: intent,
+            ..Item::default()
+        }],
+    )
 }
 
 fn output(port: &str, items: Vec<Item>) -> WorkerExecution {

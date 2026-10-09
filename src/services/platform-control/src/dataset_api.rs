@@ -423,7 +423,7 @@ async fn import_cases(
     let mut tx = state.pool.begin().await?;
     bump_revision(&mut tx, actor.tenant_id, id, input.expected_revision).await?;
     let start: u64 = sqlx::query_scalar(
-        "SELECT COALESCE(MAX(sort_order),0) FROM dataset_cases WHERE tenant_id=? AND dataset_id=?",
+        "SELECT CAST(COALESCE(MAX(sort_order),0) AS UNSIGNED) FROM dataset_cases WHERE tenant_id=? AND dataset_id=?",
     )
     .bind(actor.tenant_id)
     .bind(id)

@@ -425,11 +425,15 @@ async fn invocation_and_dispatch_recovery_are_fenced(
     ));
     sqlx::query("UPDATE execution_outbox SET published_at=DATE_SUB(UTC_TIMESTAMP(6),INTERVAL 6 SECOND) WHERE id=?")
         .bind(dispatch.id).execute(&fixture.state.pool).await.unwrap();
-    let recovered = recover_dispatches(&fixture.state.pool, 100).await.unwrap();
-    assert!(
-        recovered
-            .iter()
-            .any(|message| message.attempt_id == attempt_id)
+    let (first, second) = tokio::join!(
+        recover_dispatches(&fixture.state.pool, 100),
+        recover_dispatches(&fixture.state.pool, 100)
+    );
+    let recovered: Vec<_> = first.unwrap().into_iter().chain(second.unwrap()).collect();
+    assert_eq!(
+        recovered.iter().filter(|message| message.attempt_id == attempt_id).count(),
+        1,
+        "concurrent recovery must re-dispatch an eligible attempt only once"
     );
 
     let workers = (0..20).map(|_| Uuid::now_v7()).collect::<Vec<_>>();
@@ -442,6 +446,20 @@ async fn invocation_and_dispatch_recovery_are_fenced(
         )
         .await
         .unwrap();
+    }
+    // Freeze unrelated authority/snapshot rows. Claiming an Attempt must
+    // still succeed; only that Attempt row is a claim lock.
+    let mut held_snapshot = fixture.state.pool.begin().await.unwrap();
+    sqlx::query("SELECT id FROM workflow_executions WHERE id=? FOR UPDATE")
+        .bind(task.execution_id).fetch_one(&mut *held_snapshot).await.unwrap();
+    sqlx::query("SELECT id FROM node_executions WHERE id=? FOR UPDATE")
+        .bind(task.node_execution_id).fetch_one(&mut *held_snapshot).await.unwrap();
+    for statement in [
+        "SELECT execution_id FROM execution_snapshots WHERE execution_id=? FOR UPDATE",
+        "SELECT execution_id FROM execution_runtime_state WHERE execution_id=? FOR UPDATE",
+    ] {
+        sqlx::query(statement)
+            .bind(task.execution_id).fetch_one(&mut *held_snapshot).await.unwrap();
     }
     let mut contenders = tokio::task::JoinSet::new();
     for worker in workers {
@@ -458,17 +476,34 @@ async fn invocation_and_dispatch_recovery_are_fenced(
         });
     }
     let mut claims = Vec::new();
-    while let Some(result) = contenders.join_next().await {
-        if let Some(claim) = result.unwrap().unwrap() {
-            claims.push(claim);
+    tokio::time::timeout(Duration::from_millis(500), async {
+        while let Some(result) = contenders.join_next().await {
+            if let Some(claim) = result.unwrap().unwrap() {
+                claims.push(claim);
+            }
         }
-    }
+    }).await.expect("Worker claims must not lock unrelated Workflow/snapshot rows");
+    held_snapshot.rollback().await.unwrap();
     assert_eq!(
         claims.len(),
         1,
         "20 concurrent Workers must produce one Lease"
     );
     let first_claim = claims.pop().unwrap();
+    let mut held = fixture.state.pool.begin().await.unwrap();
+    sqlx::query("SELECT id FROM node_attempts WHERE id=? FOR UPDATE")
+        .bind(attempt_id)
+        .fetch_one(&mut *held)
+        .await
+        .unwrap();
+    tokio::time::timeout(
+        Duration::from_millis(200),
+        recover_dispatches(&fixture.state.pool, 100),
+    )
+    .await
+    .expect("recovery must not lock healthy, unexpired attempts")
+    .unwrap();
+    held.rollback().await.unwrap();
     sqlx::query("UPDATE node_attempts SET locked_until=DATE_SUB(UTC_TIMESTAMP(6),INTERVAL 1 SECOND) WHERE id=?")
         .bind(attempt_id).execute(&fixture.state.pool).await.unwrap();
     recover_dispatches(&fixture.state.pool, 100).await.unwrap();
@@ -497,9 +532,24 @@ async fn invocation_and_dispatch_recovery_are_fenced(
         Err(RuntimeError::Conflict(_, _))
     ));
     let replacement_result = successful_worker_result(&replacement_claim);
-    agentx_v2_runtime::engine::submit_worker_result(&fixture.state.pool, &replacement_result)
-        .await
-        .unwrap();
+    let unrelated_reservation = Uuid::now_v7();
+    sqlx::query("INSERT INTO quota_reservations(id,tenant_id,dimension_key,scope_type,scope_id,idempotency_key,amount,expires_at) VALUES(?,?,'execution_concurrency','execution',?, ?,1,DATE_ADD(UTC_TIMESTAMP(6),INTERVAL 300 SECOND))")
+        .bind(unrelated_reservation).bind(fixture.tenant_id)
+        .bind(Uuid::now_v7().to_string()).bind(format!("held:{unrelated_reservation}"))
+        .execute(&fixture.state.pool).await.unwrap();
+    let mut held = fixture.state.pool.begin().await.unwrap();
+    sqlx::query("SELECT id FROM quota_reservations WHERE id=? FOR UPDATE")
+        .bind(unrelated_reservation).fetch_one(&mut *held).await.unwrap();
+    tokio::time::timeout(
+        Duration::from_millis(500),
+        agentx_v2_runtime::engine::submit_worker_result(&fixture.state.pool, &replacement_result),
+    )
+    .await
+    .expect("settlement must not lock reservations belonging to another execution")
+    .unwrap();
+    held.rollback().await.unwrap();
+    sqlx::query("DELETE FROM quota_reservations WHERE id=?")
+        .bind(unrelated_reservation).execute(&fixture.state.pool).await.unwrap();
     replacement_result
 }
 
@@ -1012,6 +1062,7 @@ async fn query_is_tenant_application_and_execution_scoped(fixture: &Fixture, exe
         trigger_types: vec![],
         trigger_name: None,
         statuses: vec!["succeeded".into()],
+        error_codes: vec![],
         session_mode: agentx_runtime_contracts::ExecutionSessionModeV1::All,
         created_after: None,
         created_before: None,
@@ -1096,6 +1147,7 @@ async fn query_is_tenant_application_and_execution_scoped(fixture: &Fixture, exe
         trigger_types: vec!["webhook".into(), "api_key".into()],
         trigger_name: Some("build hook".into()),
         statuses: vec!["failed".into(), "succeeded".into()],
+        error_codes: vec![],
         session_mode: agentx_runtime_contracts::ExecutionSessionModeV1::All,
         created_after: Some(OffsetDateTime::UNIX_EPOCH),
         created_before: Some(OffsetDateTime::now_utc() + time::Duration::minutes(1)),
@@ -1196,6 +1248,7 @@ async fn query_is_tenant_application_and_execution_scoped(fixture: &Fixture, exe
         trigger_types: vec![],
         trigger_name: None,
         statuses: vec![],
+        error_codes: vec![],
         session_mode: agentx_runtime_contracts::ExecutionSessionModeV1::All,
         created_after: None,
         created_before: None,
@@ -1360,6 +1413,7 @@ async fn gc_object_delete_failure_is_recorded_and_retryable(fixture: &Fixture) {
         trust: fixture.state.trust.clone(),
         wakeups: Default::default(),
         vault: None,
+                admission_redis: fixture.state.admission_redis.clone(),
     };
     assert_eq!(mark_collectable(&state, run).await.unwrap(), 1);
     assert!(sweep_one(&state, run, Uuid::now_v7()).await.unwrap());
@@ -1449,6 +1503,7 @@ async fn ready_orphan_objects_are_swept_and_reuploadable(fixture: &Fixture) {
         trust: fixture.state.trust.clone(),
         wakeups: Default::default(),
         vault: None,
+                admission_redis: fixture.state.admission_redis.clone(),
     };
     let retry_run = Uuid::now_v7();
     assert_eq!(
@@ -1816,14 +1871,15 @@ fn composite_definition(child_version_id: Uuid) -> WorkflowDefinition {
 }
 
 async fn connect_with_retry(port: u16) -> MySqlPool {
-    let url = format!("mysql://agentx:agentx-test-password@127.0.0.1:{port}/agentx_runtime");
+    let settings = agentx_runtime_infrastructure::RuntimeMySqlSettings {
+        host: "127.0.0.1".into(), port, database: "agentx_runtime".into(),
+        username: "agentx".into(), password: "agentx-test-password".into(), max_connections: 64,
+        tls_mode: agentx_runtime_infrastructure::MySqlTlsMode::Disabled,
+        tls_ca_path: None, tls_client_cert_path: None, tls_client_key_path: None,
+    };
     let mut last_error = None;
     for _ in 0..40 {
-        match MySqlPoolOptions::new()
-            .max_connections(64)
-            .acquire_timeout(Duration::from_secs(60))
-            .connect(&url)
-            .await
+        match agentx_runtime_infrastructure::connect_runtime_mysql(&settings).await
         {
             Ok(pool) => return pool,
             Err(error) => last_error = Some(error),

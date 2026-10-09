@@ -428,7 +428,7 @@ fn threshold_compaction_projects_summary_tail_and_recent_messages() {
         model.requests[1]
             .messages
             .iter()
-            .any(|message| message.content == "stable summary")
+            .any(|message| message.content.as_text() == Some("stable summary"))
     );
 }
 
@@ -474,7 +474,7 @@ fn threshold_compaction_does_not_reinsert_an_oversized_turn_or_drop_new_tool_res
         !model.requests[2]
             .messages
             .iter()
-            .any(|message| message.content == run_input.prompt)
+            .any(|message| message.content.as_text() == Some(run_input.prompt.as_str()))
     );
 }
 

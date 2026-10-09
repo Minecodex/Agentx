@@ -13,7 +13,7 @@ spec:
     spec:
       serviceAccountName: workflow-runtime
       automountServiceAccountToken: false
-      restartPolicy: OnFailure
+      restartPolicy: Never
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
       initContainers:
 {{ include "agentx.runtime.schemaGate" (list . "runtimeMigration") | nindent 8 }}
@@ -41,4 +41,3 @@ spec:
 {{ include "agentx.runtime.caVolume" . | nindent 8 }}
 
 {{- end }}
-

@@ -1,28 +1,49 @@
 {
   "$defs": {
     "ObservabilityDimensionV1": {
-      "enum": [
-        "hour",
-        "day",
-        "workflow",
-        "application",
-        "status",
-        "error_code",
-        "provider",
-        "resource_type"
-      ],
-      "type": "string"
+      "oneOf": [
+        {
+          "enum": [
+            "hour",
+            "day",
+            "workflow",
+            "application",
+            "status",
+            "error_code",
+            "provider",
+            "resource_type"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "span_name",
+          "description": "plan7 P7-C: node-duration distribution charts.",
+          "type": "string"
+        }
+      ]
     },
     "ObservabilityMetricV1": {
-      "enum": [
-        "count",
-        "duration_millis",
-        "cost_micros",
-        "input_tokens",
-        "output_tokens",
-        "error_rate"
-      ],
-      "type": "string"
+      "oneOf": [
+        {
+          "enum": [
+            "count",
+            "succeeded_count",
+            "failed_count",
+            "duration_millis",
+            "cost_micros",
+            "input_tokens",
+            "output_tokens",
+            "error_rate",
+            "duration_p95"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "duration_p50",
+          "description": "plan7 P7-C: node-duration distribution charts.",
+          "type": "string"
+        }
+      ]
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

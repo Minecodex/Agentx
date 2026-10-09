@@ -52,6 +52,32 @@ describe('application playground sessions', () => {
     await waitFor(() => expect(requestedPaths).toContain('/gateway/v1/sessions/session-2/messages'))
   })
 
+  it('sends an uploaded image as a native image part from the conversation composer', async () => {
+    let submitted: { parts: Array<{ partType: string; artifactId?: string }> } | undefined
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), 'http://agentx.test').pathname
+      if (path === '/api/v1/applications') return jsonResponse({ items: [application()], page: 1, pageSize: 100, total: 1 })
+      if (path === '/api/v1/applications/app-1/deployments') return jsonResponse([deployment()])
+      if (path.endsWith('/playground-config')) return jsonResponse(config({ questionInput: 'prompt', fileInput: 'attachments', answerOutput: 'answer', answerFilesOutput: null }))
+      if (path === '/api/v1/applications/app-1/sessions') return jsonResponse([session('session-1', '第一轮会话')])
+      if (path === '/gateway/v1/artifacts') return jsonResponse({ artifactId: 'image-1', contentType: 'image/png', sizeBytes: 8, sha256: 'image-sha' })
+      if (path === '/gateway/v1/sessions/session-1/messages' && init?.method === 'POST') {
+        submitted = JSON.parse(String(init.body))
+        return jsonResponse({ id: 'image-invocation', status: 'completed' })
+      }
+      if (path === '/gateway/v1/invocations/image-invocation') return jsonResponse({ id: 'image-invocation', status: 'completed' })
+      return jsonResponse([])
+    }))
+    const view = renderPlayground('/playground?applicationId=app-1&mode=conversation&sessionId=session-1')
+    const composer = await screen.findByPlaceholderText('输入消息进行测试…')
+    await waitFor(() => expect(screen.getByRole('button', { name: '添加附件' })).toBeEnabled())
+    fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(['tiny png'], 'tiny.png', { type: 'image/png' })] } })
+    expect(await screen.findByText('tiny.png')).toBeVisible()
+    fireEvent.change(composer, { target: { value: 'Describe this image' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+    await waitFor(() => expect(submitted?.parts).toEqual(expect.arrayContaining([{ partType: 'image', artifactId: 'image-1', content: expect.objectContaining({ type: 'image', contentType: 'image/png' }) }])))
+  })
+
   it('opens mapping configuration from the settings action and keeps publishing state', async () => {
     let saved: unknown
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -207,6 +233,42 @@ describe('application playground sessions', () => {
     expect(screen.getByRole('button', { name: '保存并发布' })).toBeDisabled()
     expect(screen.getAllByText('选择兼容字段')).toHaveLength(2)
   })
+
+  it('shows field names for blank titles and publishes the selected chat mapping', async () => {
+    let publishedMapping: unknown = null
+    let submitted: unknown
+    const untitled = {
+      ...deployment(),
+      inputSchema: { type: 'object', properties: { question: { type: 'string', title: '' } }, required: ['question'] },
+      outputSchema: { type: 'object', properties: { result: { type: 'string', title: '  ' } } },
+    }
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), 'http://agentx.test').pathname
+      if (path === '/api/v1/applications') return jsonResponse({ items: [application()], page: 1, pageSize: 100, total: 1 })
+      if (path === '/api/v1/applications/app-1/deployments') return jsonResponse([untitled])
+      if (path.endsWith('/playground-config')) {
+        if (init?.method === 'PUT') {
+          submitted = JSON.parse(String(init.body))
+          publishedMapping = (submitted as { mapping: unknown }).mapping
+        }
+        return jsonResponse({ ...config(publishedMapping), version: publishedMapping ? 1 : 0, publishedVersion: publishedMapping ? 1 : 0 })
+      }
+      if (path === '/api/v1/applications/app-1/sessions') return jsonResponse([session('session-1', '第一轮会话')])
+      return jsonResponse([])
+    }))
+    renderPlayground('/playground?applicationId=app-1&mode=conversation&sessionId=session-1')
+
+    expect(await screen.findByText('尚未配置对话映射')).toBeVisible()
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: '参数映射' }))
+    expect(screen.getByRole('combobox', { name: /问题输入/ })).toHaveTextContent('question · string')
+    expect(screen.getByRole('combobox', { name: /回答输出/ })).toHaveTextContent('result · string')
+    fireEvent.click(screen.getByRole('button', { name: '保存并发布' }))
+
+    expect(await screen.findByText('映射 v1')).toBeVisible()
+    expect(submitted).toEqual({ expectedVersion: 0, mapping: { questionInput: 'question', fileInput: null, answerOutput: 'result', answerFilesOutput: null } })
+    expect(screen.getByPlaceholderText('输入消息进行测试…')).toBeEnabled()
+  })
 })
 
 describe('historical parameter projection', () => {
@@ -230,7 +292,7 @@ describe('historical parameter projection', () => {
 
 function renderPlayground(path: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(<QueryClientProvider client={client}><TooltipPrimitive.Provider><ToastProvider><MemoryRouter initialEntries={[path]}><PlaygroundPage /></MemoryRouter></ToastProvider></TooltipPrimitive.Provider></QueryClientProvider>)
+  return render(<QueryClientProvider client={client}><TooltipPrimitive.Provider><ToastProvider><MemoryRouter initialEntries={[path]}><PlaygroundPage /></MemoryRouter></ToastProvider></TooltipPrimitive.Provider></QueryClientProvider>)
 }
 
 function application() { return { id: 'app-1', name: '客服应用', slug: 'support', status: 'active', activeDeploymentId: 'deployment-1' } }

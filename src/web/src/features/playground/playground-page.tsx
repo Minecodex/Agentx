@@ -14,6 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from '../../shared/ui/tabs'
 import { ConversationTestWorkspace } from './conversation-test-workspace'
 import { ParameterTestWorkspace } from './parameter-test-workspace'
 import type { PlaygroundDeployment, UploadedArtifact } from './playground-types'
+import { artifactPartType } from './playground-types'
 
 type TestMode = 'parameters' | 'conversation'
 
@@ -41,7 +42,7 @@ export function PlaygroundPage() {
     const body = new FormData()
     body.append('file', file)
     const uploaded = await gatewayRequest<UploadedArtifact>('/artifacts', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body })
-    return { artifactId: uploaded.artifactId, fileName: file.name, contentType: uploaded.contentType, sizeBytes: uploaded.sizeBytes, sha256: uploaded.sha256, type: 'file' }
+    return { artifactId: uploaded.artifactId, fileName: file.name, contentType: uploaded.contentType, sizeBytes: uploaded.sizeBytes, sha256: uploaded.sha256, type: artifactPartType(uploaded.contentType) }
   }
   return <PageContainer className="flex h-full min-h-0 flex-col overflow-hidden">
     <PageHeader action={<Select className="w-72" onValueChange={(value) => updateLocation({ applicationId: value })} options={(applications.data?.items ?? []).map((item) => ({ value: item.id, label: item.name }))} placeholder={t('applications.playground.selectApp')} value={applicationId} />} description={t('applications.playground.description')} title={t('applications.playground.title')} />

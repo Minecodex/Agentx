@@ -17,6 +17,7 @@ import { useToast } from '../../shared/ui/toast'
 import { useExecutionArtifactDownload } from '../traces/use-execution-artifact-download'
 import { ChatMappingDialog } from './chat-mapping-dialog'
 import type { ChatMapping, PlaygroundConfig, PlaygroundDeployment } from './playground-types'
+import { artifactPartType } from './playground-types'
 import { useInvocationEvents } from './use-invocation-events'
 
 const terminal = new Set(['completed', 'failed', 'cancelled'])
@@ -39,6 +40,7 @@ export function ConversationTestWorkspace({ application, deployment, sessionId, 
   const [uploading, setUploading] = useState(false)
   const [mappingOpen, setMappingOpen] = useState(false)
   const [invocationId, setInvocationId] = useState<string>()
+  const [deltaBuffer, setDeltaBuffer] = useState('')
   const sessions = useQuery({ queryKey: ['application-sessions', application.id], queryFn: () => apiRequest<ApplicationSession[]>(`/applications/${application.id}/sessions`) })
   const config = useQuery({ queryKey: ['playground-config', application.id, deployment.id], queryFn: () => apiRequest<PlaygroundConfig>(`/applications/${application.id}/deployments/${deployment.id}/playground-config`), refetchInterval: (query) => query.state.data?.publishStatus === 'publishing' ? 1_000 : false })
   const sessionList: Array<ApplicationSession | GatewaySession> = createdSession && !sessions.data?.some((item) => item.id === createdSession.id) ? [createdSession, ...(sessions.data ?? [])] : (sessions.data ?? [])
@@ -46,12 +48,23 @@ export function ConversationTestWorkspace({ application, deployment, sessionId, 
   const messages = useQuery({ queryKey: ['gateway-messages', sessionId], queryFn: () => gatewayRequest<GatewayMessage[]>(`/sessions/${sessionId}/messages`), enabled: Boolean(sessionId) })
   const invocation = useQuery({ queryKey: ['gateway-invocation', invocationId], queryFn: () => gatewayRequest<GatewayInvocation>(`/invocations/${invocationId}`), enabled: Boolean(invocationId), refetchInterval: (query) => query.state.data && terminal.has(query.state.data.status) ? false : 2_000 })
   const running = Boolean(invocation.data && !terminal.has(invocation.data.status))
-  useInvocationEvents(invocationId, running, () => { void queryClient.invalidateQueries({ queryKey: ['gateway-invocation', invocationId] }); void queryClient.invalidateQueries({ queryKey: ['gateway-messages', sessionId] }) })
+  useInvocationEvents(invocationId, running, (eventType, payload) => {
+    if (eventType === 'model.delta') {
+      const delta = (payload as { deltaText?: unknown } | null)?.deltaText
+      if (typeof delta === 'string' && delta) setDeltaBuffer((current) => current + delta)
+      return
+    }
+    void queryClient.invalidateQueries({ queryKey: ['gateway-invocation', invocationId] })
+    if (eventType.startsWith('invocation.')) void queryClient.invalidateQueries({ queryKey: ['gateway-messages', sessionId] })
+  })
   useEffect(() => {
     if (invocation.data && terminal.has(invocation.data.status)) {
       void queryClient.invalidateQueries({ queryKey: ['gateway-messages', sessionId] })
     }
   }, [invocation.data, queryClient, sessionId])
+  useEffect(() => {
+    if (invocation.data && terminal.has(invocation.data.status) && deltaBuffer) setDeltaBuffer('')
+  }, [deltaBuffer, invocation.data])
   const createSession = useMutation({
     mutationFn: () => gatewayRequest<GatewaySession>(`/applications/${application.slug}/sessions`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: jsonBody({ title: null, externalUserId: null }) }),
     onSuccess: async (value) => { setCreatedSession(value); setInvocationId(undefined); onSessionChange(value.id); await queryClient.invalidateQueries({ queryKey: ['application-sessions', application.id] }) },
@@ -59,7 +72,7 @@ export function ConversationTestWorkspace({ application, deployment, sessionId, 
   })
   const saveMapping = useMutation({ mutationFn: (mapping: ChatMapping | null) => apiRequest<PlaygroundConfig>(`/applications/${application.id}/deployments/${deployment.id}/playground-config`, { method: 'PUT', body: jsonBody({ expectedVersion: config.data?.version ?? 0, mapping }) }), onSuccess: (value) => { queryClient.setQueryData(['playground-config', application.id, deployment.id], value); setMappingOpen(false) }, onError: (error: Error) => showToast(error.message) })
   const send = useMutation({
-    mutationFn: () => gatewayRequest<GatewayInvocation>(`/sessions/${sessionId}/messages`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: jsonBody({ parts: [{ partType: 'text', content: message }, ...files.map((file) => ({ partType: 'file', content: file, artifactId: file.artifactId }))] }) }),
+    mutationFn: () => gatewayRequest<GatewayInvocation>(`/sessions/${sessionId}/messages`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: jsonBody({ parts: [{ partType: 'text', content: message }, ...files.map((file) => ({ partType: artifactPartType(file.contentType), content: file, artifactId: file.artifactId }))] }) }),
     onSuccess: async (value) => {
       setInvocationId(value.id)
       setMessage('')
@@ -98,7 +111,7 @@ export function ConversationTestWorkspace({ application, deployment, sessionId, 
     <section className="flex min-h-0 min-w-0 flex-col">
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-5"><span className="grid size-8 place-items-center rounded-md bg-primary/10 text-primary"><Bot className="size-4" /></span><div><strong className="block text-xs">{application.name}</strong><span className="text-[10px] text-muted-foreground">{config.data?.publishStatus === 'publishing' ? t('applications.playground.mappingPublishing') : config.data?.mapping ? t('applications.playground.mappingVersion', { version: config.data.publishedVersion ?? config.data.version }) : t('applications.playground.mappingMissing')}</span></div><Tooltip content={t('applications.playground.mappingButton')}><Button aria-label={t('applications.playground.mappingButton')} className="ml-auto" onClick={() => setMappingOpen(true)} size="icon" variant="secondary"><Settings2 className="size-4" /></Button></Tooltip>{invocation.data && <Badge tone={invocation.data.status === 'failed' ? 'danger' : running ? 'warning' : 'success'}>{localizedValue(t, 'common', invocation.data.status)}</Badge>}{running && <Button aria-label={t('applications.playground.stop')} onClick={() => cancel.mutate()} size="icon" variant="ghost"><Square className="size-4" /></Button>}</div>
       {config.data?.publishStatus === 'failed' && <div className="border-b border-danger/20 bg-danger/10 px-5 py-2 text-xs text-danger">{config.data.errorCode}: {config.data.errorMessage}</div>}
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{!session ? <Empty icon={<UserRound className="size-6" />} text={t('applications.playground.selectSessionHint')} /> : messages.isLoading ? <Hint>{t('common.loading')}</Hint> : !messages.data?.length ? <Empty icon={<Bot className="size-6" />} text={t('applications.playground.firstMessageHint')} /> : <div className="space-y-4">{messages.data.map((item) => <MessageBubble key={item.id} message={item} locale={i18n.resolvedLanguage} />)}</div>}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{!session ? <Empty icon={<UserRound className="size-6" />} text={t('applications.playground.selectSessionHint')} /> : messages.isLoading ? <Hint>{t('common.loading')}</Hint> : !messages.data?.length ? <Empty icon={<Bot className="size-6" />} text={t('applications.playground.firstMessageHint')} /> : <div className="space-y-4">{messages.data.map((item) => <MessageBubble key={item.id} message={item} locale={i18n.resolvedLanguage} />)}{running && deltaBuffer && <div className="flex justify-start"><div className="max-w-[78%] whitespace-pre-wrap break-words rounded-md border border-border bg-muted/40 px-4 py-3 text-xs leading-5">{deltaBuffer}<span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-primary align-middle" /></div></div>}</div>}</div>
       <div className="shrink-0 border-t border-border p-4">
         <div className="relative rounded-lg border border-border bg-background transition-shadow focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15">
           {files.length > 0 && <div className="flex flex-wrap gap-2 px-3 pt-3">{files.map((file) => <span className="flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-[10px]" key={file.artifactId}><File className="size-3" />{file.fileName ?? file.artifactId}<button aria-label={t('applications.playground.removeAttachment')} onClick={() => setFiles((items) => items.filter((item) => item.artifactId !== file.artifactId))} type="button">×</button></span>)}</div>}

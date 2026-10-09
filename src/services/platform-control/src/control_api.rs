@@ -271,6 +271,8 @@ fn routes() -> Router<ControlApiState> {
         .merge(crate::model_api::routes())
         .merge(crate::operations_api::routes())
         .merge(crate::external_resource_api::routes())
+        .merge(crate::knowledge_document_api::routes())
+        .merge(crate::insights_api::routes())
         .merge(crate::mcp_api::routes())
         .merge(crate::skill_api::routes())
         .merge(crate::resource_api::routes())
@@ -754,7 +756,7 @@ async fn update_application(
     if input.status == "disabled" {
         admission_outbox(
             &mut tx,
-            &actor,
+            actor.tenant_id,
             id,
             "ApplicationAdmissionChanged",
             json!({"applicationId":id,"status":"disabled"}),
@@ -1015,23 +1017,10 @@ async fn create_deployment(
         .bind(actor.tenant_id).bind(id).bind(trigger_revision).fetch_optional(&mut *tx).await?;
     let sequence: u64 = sqlx::query_scalar("SELECT CAST(COALESCE(MAX(sequence_number),0)+1 AS UNSIGNED) FROM application_deployments WHERE tenant_id=? AND application_id=? FOR UPDATE")
         .bind(actor.tenant_id).bind(id).fetch_one(&mut *tx).await?;
-    let all_complete = definition.end.completion == agentx_domain::WorkflowCompletion::AllComplete;
-    let output = json!({"type":"object","properties":definition.end.outputs.iter().map(|(name,value)| {
-        let mut schema = value.schema.clone();
-        if let Some(object) = schema.as_object_mut() {
-            object.insert("x-agentx-sensitive".into(), json!(value.sensitive));
-        }
-        if all_complete {
-            schema = json!({
-                "type":"array",
-                "items": if value.required { schema } else { json!({"anyOf":[schema,{"type":"null"}]}) }
-            });
-        }
-        (name.clone(), schema)
-    }).collect::<serde_json::Map<_,_>>(),"required":definition.end.outputs.iter().filter(|(_,value)|all_complete || value.required).map(|(name,_)|name.clone()).collect::<Vec<_>>(),"additionalProperties":false});
+    let (input_schema, output_schema) = application_webhooks::workflow_schemas(&definition);
     sqlx::query("INSERT INTO application_deployments(id,tenant_id,application_id,workflow_version_id,environment_id,sequence_number,input_schema_json,output_schema_json,session_version_policy,trigger_revision,trigger_manifest_hash,status,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,'building',?)")
         .bind(deployment_id).bind(actor.tenant_id).bind(id).bind(input.workflow_version_id).bind(input.environment_id).bind(sequence)
-        .bind(serde_json::to_value(&definition.start.inputs).map_err(ApiError::internal)?).bind(output).bind(input.session_version_policy).bind(trigger_revision).bind(trigger_manifest_hash).bind(actor.user_id).execute(&mut *tx).await?;
+        .bind(input_schema).bind(output_schema).bind(input.session_version_policy).bind(trigger_revision).bind(trigger_manifest_hash).bind(actor.user_id).execute(&mut *tx).await?;
     let expected: Option<u64> = sqlx::query_scalar(
         "SELECT version FROM application_deployment_heads WHERE tenant_id=? AND application_id=?",
     )
@@ -1605,7 +1594,7 @@ async fn create_api_key(
     let mut tx = state.pool.begin().await?;
     sqlx::query("INSERT INTO application_api_keys(id,tenant_id,application_id,family_id,name,key_prefix,secret_hash,created_by) VALUES(?,?,?,?,?,?,?,?)")
         .bind(key).bind(actor.tenant_id).bind(id).bind(family).bind(input.name.trim()).bind(&prefix).bind(hash.as_slice()).bind(actor.user_id).execute(&mut *tx).await?;
-    admission_outbox(&mut tx, &actor, id, "ApiKeyAdmissionChanged", json!({"applicationId":id,"keyId":key,"keyName":input.name.trim(),"status":"active","keyPrefix":prefix,"secretHash":format!("sha256:{}",hex(&hash))})).await?;
+    admission_outbox(&mut tx, actor.tenant_id, id, "ApiKeyAdmissionChanged", json!({"applicationId":id,"keyId":key,"keyName":input.name.trim(),"status":"active","keyPrefix":prefix,"secretHash":format!("sha256:{}",hex(&hash))})).await?;
     tx.commit().await?;
     let mut response = load_api_key(&state, actor.tenant_id, key).await?;
     response.secret = Some(secret);
@@ -1630,8 +1619,8 @@ async fn rotate_api_key(
     .await?;
     sqlx::query("INSERT INTO application_api_keys(id,tenant_id,application_id,family_id,name,key_prefix,secret_hash,created_by) VALUES(?,?,?,?,?,?,?,?)")
         .bind(new_key).bind(actor.tenant_id).bind(id).bind(old.try_get::<Uuid,_>("family_id")?).bind(old.try_get::<String,_>("name")?).bind(&prefix).bind(hash.as_slice()).bind(actor.user_id).execute(&mut *tx).await?;
-    admission_outbox(&mut tx, &actor, id, "ApiKeyAdmissionChanged", json!({"applicationId":id,"keyId":key,"keyName":old.try_get::<String,_>("name")?,"status":"revoked","keyPrefix":old.try_get::<String,_>("key_prefix")?,"secretHash":format!("sha256:{}",hex(&old.try_get::<Vec<u8>,_>("secret_hash")?))})).await?;
-    admission_outbox(&mut tx, &actor, id, "ApiKeyAdmissionChanged", json!({"applicationId":id,"keyId":new_key,"keyName":old.try_get::<String,_>("name")?,"status":"active","keyPrefix":prefix,"secretHash":format!("sha256:{}",hex(&hash))})).await?;
+    admission_outbox(&mut tx, actor.tenant_id, id, "ApiKeyAdmissionChanged", json!({"applicationId":id,"keyId":key,"keyName":old.try_get::<String,_>("name")?,"status":"revoked","keyPrefix":old.try_get::<String,_>("key_prefix")?,"secretHash":format!("sha256:{}",hex(&old.try_get::<Vec<u8>,_>("secret_hash")?))})).await?;
+    admission_outbox(&mut tx, actor.tenant_id, id, "ApiKeyAdmissionChanged", json!({"applicationId":id,"keyId":new_key,"keyName":old.try_get::<String,_>("name")?,"status":"active","keyPrefix":prefix,"secretHash":format!("sha256:{}",hex(&hash))})).await?;
     tx.commit().await?;
     let mut response = load_api_key(&state, actor.tenant_id, new_key).await?;
     response.secret = Some(secret);
@@ -1653,29 +1642,29 @@ async fn revoke_api_key(
     .bind(key)
     .execute(&mut *tx)
     .await?;
-    admission_outbox(&mut tx, &actor, id, "ApiKeyAdmissionChanged", json!({"applicationId":id,"keyId":key,"status":"revoked","keyPrefix":row.try_get::<String,_>("key_prefix")?,"secretHash":format!("sha256:{}",hex(&row.try_get::<Vec<u8>,_>("secret_hash")?))})).await?;
+    admission_outbox(&mut tx, actor.tenant_id, id, "ApiKeyAdmissionChanged", json!({"applicationId":id,"keyId":key,"status":"revoked","keyPrefix":row.try_get::<String,_>("key_prefix")?,"secretHash":format!("sha256:{}",hex(&row.try_get::<Vec<u8>,_>("secret_hash")?))})).await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn admission_outbox(
+pub(crate) async fn admission_outbox(
     tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
-    actor: &Actor,
+    tenant: Uuid,
     application: Uuid,
     event: &str,
     mut payload: Value,
 ) -> ApiResult<u64> {
     sqlx::query("INSERT INTO admission_epochs(tenant_id,application_id,current_epoch) VALUES(?,?,1) ON DUPLICATE KEY UPDATE current_epoch=current_epoch+1")
-        .bind(actor.tenant_id).bind(application).execute(&mut **tx).await?;
+        .bind(tenant).bind(application).execute(&mut **tx).await?;
     let epoch: u64 = sqlx::query_scalar("SELECT current_epoch FROM admission_epochs WHERE tenant_id=? AND application_id=? FOR UPDATE")
-        .bind(actor.tenant_id).bind(application).fetch_one(&mut **tx).await?;
+        .bind(tenant).bind(application).fetch_one(&mut **tx).await?;
     payload["admissionEpoch"] = json!(epoch);
     let request_hash = format!(
         "sha256:{:x}",
         Sha256::digest(serde_json::to_vec(&payload).map_err(ApiError::internal)?)
     );
     sqlx::query("INSERT INTO outbox(id,tenant_id,event_type,aggregate_type,aggregate_id,payload_json,status,request_hash,idempotency_key) VALUES(?,?,?,?,?,?,'pending',?,?)")
-        .bind(Uuid::now_v7()).bind(actor.tenant_id).bind(event).bind("application_admission").bind(application.to_string()).bind(payload)
+        .bind(Uuid::now_v7()).bind(tenant).bind(event).bind("application_admission").bind(application.to_string()).bind(payload)
         .bind(request_hash).bind(format!("admission:{application}:{epoch}:{event}")).execute(&mut **tx).await?;
     Ok(epoch)
 }

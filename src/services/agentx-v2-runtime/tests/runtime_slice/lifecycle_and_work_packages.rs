@@ -84,7 +84,7 @@ async fn assert_authentication_rejected(fixture: &Fixture) {
 }
 
 impl Fixture {
-    fn new(pool: MySqlPool) -> Self {
+    fn new(pool: MySqlPool, observer: MySqlPool, redis: redis::aio::ConnectionManager) -> Self {
         let signing_key = SigningKey::generate(&mut OsRng);
         let work_package_signing_key = SigningKey::generate(&mut OsRng);
         let trust = RuntimeTrust::new(
@@ -98,12 +98,14 @@ impl Fixture {
             work_package_signing_key.verifying_key(),
         );
         Self {
+            observer,
             state: RuntimeState {
                 pool,
                 objects: Arc::new(InMemory::new()),
                 trust: Arc::new(trust),
                 wakeups: Default::default(),
                 vault: None,
+                admission_redis: Some(redis),
             },
             signing_key,
             work_package_signing_key,
@@ -623,7 +625,37 @@ async fn evaluation_work_package_creates_cases_converges_and_cancels_atomically(
     .await
     .unwrap();
     assert_eq!(case_count, 2);
-    complete_work_package_executions(fixture, &execution_ids).await;
+    let owner = Uuid::now_v7();
+    let commands = claim_commands(&fixture.state.pool, owner, 100)
+        .await
+        .unwrap();
+    complete_claimed_work_package_executions(fixture, owner, &commands, &execution_ids[..1]).await;
+    let first_case: Uuid = sqlx::query_scalar(
+        "SELECT id FROM evaluation_run_cases WHERE tenant_id=? AND target_execution_id=? AND status='completed'",
+    )
+    .bind(fixture.tenant_id)
+    .bind(execution_ids[0])
+    .fetch_one(&fixture.state.pool)
+    .await
+    .unwrap();
+    let mut historical = fixture.state.pool.begin().await.unwrap();
+    sqlx::query("SELECT id FROM evaluation_run_cases WHERE id=? FOR UPDATE")
+        .bind(first_case)
+        .fetch_one(&mut *historical)
+        .await
+        .unwrap();
+    sqlx::query("SELECT id FROM evaluation_rule_results WHERE evaluation_run_case_id=? FOR UPDATE")
+        .bind(first_case)
+        .fetch_all(&mut *historical)
+        .await
+        .unwrap();
+    tokio::time::timeout(
+        Duration::from_millis(500),
+        complete_claimed_work_package_executions(fixture, owner, &commands, &execution_ids[1..]),
+    )
+    .await
+    .expect("finishing another Case must not lock historical Cases or Rules");
+    historical.rollback().await.unwrap();
     let run_status: String = sqlx::query_scalar(
         "SELECT status FROM evaluation_runs WHERE tenant_id=? AND work_package_id=?",
     )
@@ -654,7 +686,7 @@ async fn evaluation_work_package_creates_cases_converges_and_cancels_atomically(
     let model_id = Uuid::now_v7();
     let evaluator_id = Uuid::now_v7();
     let prompt_object_id = Uuid::now_v7();
-    let prompt = Bytes::from_static(br#"{"instruction":"return passed and score"}"#);
+    let prompt = Bytes::from_static(br#"{"prompt":"Judge {{actualOutput}} against {{expectedOutput}}. Return passed, score and reason."}"#);
     let prompt_hash = agentx_runtime_contracts::ContentHash::parse(format!(
         "sha256:{:x}",
         Sha256::digest(&prompt)
@@ -712,6 +744,7 @@ async fn evaluation_work_package_creates_cases_converges_and_cancels_atomically(
             }))
             .unwrap(),
             configuration: agentx_runtime_contracts::RuntimeResourceConfigurationV1::Model {
+            capabilities: Vec::new(),
                 provider: "openai_compatible".into(),
                 endpoint,
                 model: "evaluator-fixture".into(),
@@ -797,7 +830,7 @@ async fn evaluation_work_package_creates_cases_converges_and_cancels_atomically(
         "model evaluator state: {model_debug:#?}"
     );
     assert_eq!(model_results.1, 2);
-    assert_eq!(model_results.2, 46);
+    assert_eq!(model_results.2, 28);
     let model_package_status: String =
         sqlx::query_scalar("SELECT status FROM runtime_work_packages WHERE id=?")
             .bind(model_package_id)
@@ -912,6 +945,15 @@ async fn complete_work_package_executions(fixture: &Fixture, execution_ids: &[Uu
     let commands = claim_commands(&fixture.state.pool, owner, 100)
         .await
         .unwrap();
+    complete_claimed_work_package_executions(fixture, owner, &commands, execution_ids).await;
+}
+
+async fn complete_claimed_work_package_executions(
+    fixture: &Fixture,
+    owner: Uuid,
+    commands: &[agentx_v2_runtime::execution::RuntimeCommandClaim],
+    execution_ids: &[Uuid],
+) {
     for execution_id in execution_ids {
         let command = commands
             .iter()

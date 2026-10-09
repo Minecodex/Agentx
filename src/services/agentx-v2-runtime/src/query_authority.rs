@@ -182,6 +182,7 @@ pub async fn get_execution(
         state_version: row.try_get("state_version")?,
         admission_epoch: row.try_get("admission_epoch")?,
         trace_watermark: row.try_get("trace_watermark")?,
+        trace_event_count: row.try_get("trace_event_count")?,
         parent_execution_id: row.try_get("parent_execution_id")?,
         work_package_id: row.try_get("work_package_id")?,
         input: row.try_get("input_json")?,
@@ -263,6 +264,26 @@ pub async fn get_execution_node(
     let item = node_from_row(row)?;
     complete_query_receipt(&state, claims.jti, "OK").await?;
     Ok(Json(item))
+}
+
+pub async fn get_execution_model_deltas(
+    State(state): State<RuntimeState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Query(query): Query<ExecutionEventsQuery>,
+) -> RuntimeResult<Json<Value>> {
+    let claims = authorize_execution(&state, &headers, id, "execution_model_deltas").await?;
+    let after = query.after.unwrap_or_default();
+    let limit = query.limit.unwrap_or(1000).clamp(1, 1000);
+    let rows = sqlx::query("SELECT sequence_number,payload_json FROM execution_model_deltas WHERE tenant_id=? AND execution_id=? AND sequence_number>? ORDER BY sequence_number LIMIT ?")
+        .bind(claims.tenant_id).bind(id).bind(after).bind(limit).fetch_all(&state.pool).await?;
+    let items = rows.iter().map(|row| -> RuntimeResult<Value> { Ok(json!({"sequence":row.try_get::<u64,_>("sequence_number")?,"payload":row.try_get::<Value,_>("payload_json")?})) }).collect::<RuntimeResult<Vec<_>>>()?;
+    let cursor = items
+        .last()
+        .and_then(|item| item["sequence"].as_u64())
+        .unwrap_or(after);
+    complete_query_receipt(&state, claims.jti, "OK").await?;
+    Ok(Json(json!({"items":items,"nextCursor":cursor})))
 }
 
 pub async fn get_execution_events(
@@ -420,6 +441,7 @@ async fn create_execution_snapshot(
     let departments = serde_json::to_string(&request.initiator_department_ids)?;
     let trigger_types = serde_json::to_string(&request.trigger_types)?;
     let statuses = serde_json::to_string(&request.statuses)?;
+    let error_codes = serde_json::to_string(&request.error_codes)?;
     let session_mode = match request.session_mode {
         agentx_runtime_contracts::ExecutionSessionModeV1::All => "all",
         agentx_runtime_contracts::ExecutionSessionModeV1::Stateless => "stateless",
@@ -434,11 +456,11 @@ async fn create_execution_snapshot(
         .as_ref()
         .map(|value| format!("%{}%", escape_like(value.trim())));
     let mut tx = state.pool.begin().await?;
-    let rows = sqlx::query("SELECT /*+ MAX_EXECUTION_TIME(5000) */ id,invocation_id,application_id,workflow_id,workflow_version_id,session_id,parent_execution_id,bundle_id,trace_id,trigger_type,initiator_user_id,initiator_user_name,initiator_department_id,initiator_department_name,trigger_source_id,trigger_name,status,duration_ms,(SELECT CAST(COALESCE(SUM(rc.cost_micros),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_micros,(SELECT CASE WHEN COUNT(DISTINCT rc.cost_currency)=1 THEN MAX(rc.cost_currency) ELSE NULL END FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_currency,(SELECT CAST(COALESCE(SUM(rc.input_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) input_tokens,(SELECT CAST(COALESCE(SUM(rc.output_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) output_tokens,error_code,created_at,ended_at FROM workflow_executions WHERE tenant_id=? AND (?=TRUE OR (JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(application_id))) AND EXISTS(SELECT 1 FROM runtime_user_application_grants scope_app WHERE scope_app.tenant_id=workflow_executions.tenant_id AND scope_app.user_id=? AND scope_app.application_id=workflow_executions.application_id AND scope_app.status='active' AND scope_app.can_query=TRUE)) OR (JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(workflow_id))) AND EXISTS(SELECT 1 FROM runtime_user_workflow_grants scope_workflow WHERE scope_workflow.tenant_id=workflow_executions.tenant_id AND scope_workflow.user_id=? AND scope_workflow.workflow_id=workflow_executions.workflow_id AND scope_workflow.status='active'))) AND retention_deleted_at IS NULL AND (?='all' OR (?='stateless' AND session_id IS NULL) OR (?='session' AND session_id IS NOT NULL)) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(application_id)))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(workflow_id)))) AND (JSON_LENGTH(?)=0 OR EXISTS(SELECT 1 FROM runtime_calls tool_call WHERE tool_call.tenant_id=workflow_executions.tenant_id AND tool_call.execution_id=workflow_executions.id AND tool_call.call_kind='mcp_tool' AND JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(tool_call.resource_id))))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(initiator_user_id)))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(initiator_department_id)))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(trigger_type))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(status))) AND (? IS NULL OR LOWER(trigger_name) LIKE ?) AND (? IS NULL OR created_at>=?) AND (? IS NULL OR created_at<=?) AND (? IS NULL OR BIN_TO_UUID(id) LIKE ? OR BIN_TO_UUID(trace_id) LIKE ? OR error_code LIKE ?) ORDER BY created_at DESC,id DESC LIMIT 10001")
+    let rows = sqlx::query("SELECT /*+ MAX_EXECUTION_TIME(5000) */ id,invocation_id,application_id,workflow_id,workflow_version_id,session_id,parent_execution_id,bundle_id,trace_id,trigger_type,initiator_user_id,initiator_user_name,initiator_department_id,initiator_department_name,trigger_source_id,trigger_name,status,duration_ms,(SELECT CAST(COALESCE(SUM(rc.cost_micros),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_micros,(SELECT CASE WHEN COUNT(DISTINCT rc.cost_currency)=1 THEN MAX(rc.cost_currency) ELSE NULL END FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_currency,(SELECT CAST(COALESCE(SUM(rc.input_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) input_tokens,(SELECT CAST(COALESCE(SUM(rc.output_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) output_tokens,error_code,created_at,ended_at FROM workflow_executions WHERE tenant_id=? AND (?=TRUE OR (JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(application_id))) AND EXISTS(SELECT 1 FROM runtime_user_application_grants scope_app WHERE scope_app.tenant_id=workflow_executions.tenant_id AND scope_app.user_id=? AND scope_app.application_id=workflow_executions.application_id AND scope_app.status='active' AND scope_app.can_query=TRUE)) OR (JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(workflow_id))) AND EXISTS(SELECT 1 FROM runtime_user_workflow_grants scope_workflow WHERE scope_workflow.tenant_id=workflow_executions.tenant_id AND scope_workflow.user_id=? AND scope_workflow.workflow_id=workflow_executions.workflow_id AND scope_workflow.status='active'))) AND retention_deleted_at IS NULL AND (?='all' OR (?='stateless' AND session_id IS NULL) OR (?='session' AND session_id IS NOT NULL)) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(application_id)))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(workflow_id)))) AND (JSON_LENGTH(?)=0 OR EXISTS(SELECT 1 FROM runtime_calls tool_call WHERE tool_call.tenant_id=workflow_executions.tenant_id AND tool_call.execution_id=workflow_executions.id AND tool_call.call_kind='mcp_tool' AND JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(tool_call.resource_id))))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(initiator_user_id)))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(initiator_department_id)))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(trigger_type))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(status))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(error_code))) AND (? IS NULL OR LOWER(trigger_name) LIKE ?) AND (? IS NULL OR created_at>=?) AND (? IS NULL OR created_at<=?) AND (? IS NULL OR BIN_TO_UUID(id) LIKE ? OR BIN_TO_UUID(trace_id) LIKE ? OR error_code LIKE ?) ORDER BY created_at DESC,id DESC LIMIT 10001")
         .bind(request.tenant_id).bind(claims.tenant_wide).bind(&authorized_apps).bind(claims.sub).bind(&authorized_workflows).bind(claims.sub)
         .bind(session_mode).bind(session_mode).bind(session_mode).bind(&apps).bind(&apps).bind(&workflows).bind(&workflows)
         .bind(&tools).bind(&tools).bind(&users).bind(&users).bind(&departments).bind(&departments)
-        .bind(&trigger_types).bind(&trigger_types).bind(&statuses).bind(&statuses)
+        .bind(&trigger_types).bind(&trigger_types).bind(&statuses).bind(&statuses).bind(&error_codes).bind(&error_codes)
         .bind(&trigger_name).bind(&trigger_name)
         .bind(request.created_after).bind(request.created_after).bind(request.created_before).bind(request.created_before)
         .bind(&search).bind(&search).bind(&search).bind(&search).fetch_all(&mut *tx).await?;
@@ -693,7 +715,7 @@ pub(crate) async fn authorize_execution_command(
 }
 
 async fn execution_row(state: &RuntimeState, id: Uuid) -> RuntimeResult<sqlx::mysql::MySqlRow> {
-    sqlx::query("SELECT id,tenant_id,invocation_id,application_id,workflow_id,workflow_version_id,session_id,parent_execution_id,bundle_id,trace_id,trigger_type,initiator_user_id,initiator_user_name,initiator_department_id,initiator_department_name,trigger_source_id,trigger_name,status,duration_ms,(SELECT CAST(COALESCE(SUM(rc.cost_micros),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_micros,(SELECT CASE WHEN COUNT(DISTINCT rc.cost_currency)=1 THEN MAX(rc.cost_currency) ELSE NULL END FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_currency,(SELECT CAST(COALESCE(SUM(rc.input_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) input_tokens,(SELECT CAST(COALESCE(SUM(rc.output_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) output_tokens,error_code,created_at,ended_at,state_version,admission_epoch,trace_watermark,work_package_id,input_json,output_json,error_json,terminal_result_object_id,terminal_result_hash FROM workflow_executions WHERE id=? AND retention_deleted_at IS NULL")
+    sqlx::query("SELECT id,tenant_id,invocation_id,application_id,workflow_id,workflow_version_id,session_id,parent_execution_id,bundle_id,trace_id,trigger_type,initiator_user_id,initiator_user_name,initiator_department_id,initiator_department_name,trigger_source_id,trigger_name,status,duration_ms,(SELECT CAST(COALESCE(SUM(rc.cost_micros),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_micros,(SELECT CASE WHEN COUNT(DISTINCT rc.cost_currency)=1 THEN MAX(rc.cost_currency) ELSE NULL END FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_currency,(SELECT CAST(COALESCE(SUM(rc.input_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) input_tokens,(SELECT CAST(COALESCE(SUM(rc.output_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) output_tokens,error_code,created_at,ended_at,state_version,admission_epoch,CAST(COALESCE((SELECT MAX(t.sequence_number) FROM execution_events t WHERE t.tenant_id=workflow_executions.tenant_id AND t.execution_id=workflow_executions.id),0) AS UNSIGNED) trace_watermark,CAST((SELECT COUNT(*) FROM execution_events t WHERE t.tenant_id=workflow_executions.tenant_id AND t.execution_id=workflow_executions.id) AS UNSIGNED) trace_event_count,work_package_id,input_json,output_json,error_json,terminal_result_object_id,terminal_result_hash FROM workflow_executions WHERE id=? AND retention_deleted_at IS NULL")
         .bind(id).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)
 }
 
@@ -806,7 +828,7 @@ async fn json_rows(
 }
 
 fn execution_filter_hash(request: &ExecutionSearchRequestV1) -> RuntimeResult<ContentHash> {
-    content_hash(&json!({"tenantId":request.tenant_id,"applicationIds":request.application_ids,"workflowIds":request.workflow_ids,"toolIds":request.tool_ids,"initiatorUserIds":request.initiator_user_ids,"initiatorDepartmentIds":request.initiator_department_ids,"triggerTypes":request.trigger_types,"triggerName":request.trigger_name,"statuses":request.statuses,"sessionMode":request.session_mode,"createdAfter":request.created_after,"createdBefore":request.created_before,"search":request.search}))
+    content_hash(&json!({"tenantId":request.tenant_id,"applicationIds":request.application_ids,"workflowIds":request.workflow_ids,"toolIds":request.tool_ids,"initiatorUserIds":request.initiator_user_ids,"initiatorDepartmentIds":request.initiator_department_ids,"triggerTypes":request.trigger_types,"triggerName":request.trigger_name,"statuses":request.statuses,"errorCodes":request.error_codes,"sessionMode":request.session_mode,"createdAfter":request.created_after,"createdBefore":request.created_before,"search":request.search}))
         .map_err(|error| RuntimeError::Internal(error.into()))
 }
 
@@ -876,6 +898,7 @@ fn validate_execution_search(request: &ExecutionSearchRequestV1) -> RuntimeResul
         request.initiator_department_ids.len(),
         request.trigger_types.len(),
         request.statuses.len(),
+        request.error_codes.len(),
     ] {
         if values > 50 {
             return Err(RuntimeError::InvalidRequest(
@@ -947,6 +970,7 @@ mod tests {
             trigger_types: vec![],
             trigger_name: None,
             statuses: vec![],
+            error_codes: vec![],
             session_mode: agentx_runtime_contracts::ExecutionSessionModeV1::All,
             created_after: None,
             created_before: None,
@@ -976,6 +1000,7 @@ mod tests {
         variant!(trigger_types, vec!["schedule".into()]);
         variant!(trigger_name, Some("nightly".into()));
         variant!(statuses, vec!["succeeded".into()]);
+        variant!(error_codes, vec!["MODEL_INPUT_UNSUPPORTED".into()]);
         variant!(
             session_mode,
             agentx_runtime_contracts::ExecutionSessionModeV1::Session

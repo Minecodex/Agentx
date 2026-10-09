@@ -5,7 +5,7 @@ use agentx_runtime::{
 };
 use agentx_runtime_contracts::{RuntimeAuthorizationSnapshotV1, RuntimeResourceBindingV1};
 use serde_json::{Map, Value, json};
-use sqlx::{MySql, Row, Transaction};
+use sqlx::{MySql, QueryBuilder, Row, Transaction};
 use uuid::Uuid;
 
 use crate::{
@@ -322,6 +322,7 @@ pub(super) async fn finish_execution(
     }
     if let Some(invocation_id) = invocation_id.filter(|_| invocation_status == "completed") {
         append_session_assistant_message(tx, tenant_id, invocation_id, &output).await?;
+        enqueue_terminal_reply(tx, tenant_id, execution_id, invocation_id, &output).await?;
     }
     sqlx::query(
         "UPDATE execution_snapshots SET output_json=?,state_version=? WHERE tenant_id=? AND execution_id=?",
@@ -988,23 +989,52 @@ pub(super) async fn persist_lineage(
     delivery_id: Uuid,
     items: &[Item],
 ) -> RuntimeResult<()> {
-    for (target_index, item) in items.iter().enumerate() {
+    let mut batch = Vec::with_capacity(256);
+    for (index, item) in items.iter().enumerate() {
         for source in &item.lineage {
-            sqlx::query(
-                "INSERT IGNORE INTO item_lineage(tenant_id,execution_id,delivery_id,target_item_index,source_node_execution_id,source_run_index,source_output_index,source_item_index) VALUES(?,?,?,?,?,?,?,?)",
-            )
-            .bind(tenant_id)
-            .bind(execution_id)
-            .bind(delivery_id)
-            .bind(target_index as u32)
-            .bind(source.node_execution_id.as_uuid())
-            .bind(source.run_index)
-            .bind(source.output_index)
-            .bind(source.item_index)
-            .execute(&mut **tx)
-            .await?;
+            batch.push((
+                index as u32,
+                source.node_execution_id.as_uuid(),
+                source.run_index,
+                source.output_index,
+                source.item_index,
+            ));
+            if batch.len() == 256 {
+                persist_lineage_batch(tx, tenant_id, execution_id, delivery_id, &batch).await?;
+                batch.clear();
+            }
         }
     }
+    if !batch.is_empty() {
+        persist_lineage_batch(tx, tenant_id, execution_id, delivery_id, &batch).await?;
+    }
+    Ok(())
+}
+
+async fn persist_lineage_batch(
+    tx: &mut Transaction<'_, MySql>,
+    tenant_id: Uuid,
+    execution_id: Uuid,
+    delivery_id: Uuid,
+    rows: &[(u32, Uuid, u32, u32, u32)],
+) -> RuntimeResult<()> {
+    let mut query = QueryBuilder::<MySql>::new(
+        "INSERT IGNORE INTO item_lineage(tenant_id,execution_id,delivery_id,target_item_index,source_node_execution_id,source_run_index,source_output_index,source_item_index) ",
+    );
+    query.push_values(
+        rows.iter().copied(),
+        |mut row, (target, source, run, output, item)| {
+            row.push_bind(tenant_id)
+                .push_bind(execution_id)
+                .push_bind(delivery_id)
+                .push_bind(target)
+                .push_bind(source)
+                .push_bind(run)
+                .push_bind(output)
+                .push_bind(item);
+        },
+    );
+    query.build().execute(&mut **tx).await?;
     Ok(())
 }
 
@@ -1015,6 +1045,13 @@ pub(super) async fn insert_invocation_event(
     event_type: &str,
     payload: Value,
 ) -> RuntimeResult<()> {
+    // Every writer (model deltas, terminal state and delivery) serializes on
+    // the same parent row before allocating the next SSE cursor.
+    sqlx::query("SELECT id FROM application_invocations WHERE tenant_id=? AND id=? FOR UPDATE")
+        .bind(tenant_id)
+        .bind(invocation_id)
+        .fetch_one(&mut **tx)
+        .await?;
     let next: u64 = sqlx::query_scalar(
         "SELECT CAST(COALESCE(MAX(sequence_number),0)+1 AS UNSIGNED) FROM invocation_events WHERE tenant_id=? AND invocation_id=? FOR UPDATE",
     )
@@ -1034,6 +1071,312 @@ pub(super) async fn insert_invocation_event(
     .execute(&mut **tx)
     .await?;
     Ok(())
+}
+
+/// Enqueues the L1 channel auto reply in the execution terminal transaction:
+/// resolves the triggering webhook binding from the invocation's frozen
+/// trigger context, renders the reply payload from the frozen output and
+/// inserts an idempotent delivery_outbox row (plan7 P7-A).
+pub(super) async fn enqueue_terminal_reply(
+    tx: &mut Transaction<'_, MySql>,
+    tenant_id: Uuid,
+    execution_id: Uuid,
+    invocation_id: Uuid,
+    output: &Value,
+) -> RuntimeResult<()> {
+    let invocation = sqlx::query(
+        "SELECT application_id,trigger_context_json FROM application_invocations WHERE tenant_id=? AND id=?",
+    )
+    .bind(tenant_id)
+    .bind(invocation_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some(invocation) = invocation else {
+        return Ok(());
+    };
+    let application_id: Uuid = invocation.try_get("application_id")?;
+    let context: Option<Value> = invocation.try_get("trigger_context_json")?;
+    let Some(context) = context else {
+        return Ok(());
+    };
+    let Some(binding_id) = context
+        .get("webhookTriggerId")
+        .map(|value| value.as_str().map(str::to_owned).unwrap_or_default())
+    else {
+        return Ok(());
+    };
+    let Ok(binding_id) = uuid::Uuid::parse_str(&binding_id) else {
+        return Ok(());
+    };
+    let binding = sqlx::query(
+        "SELECT provider_type,reply_config_json,secret_ref_json FROM webhook_bindings WHERE tenant_id=? AND id=? AND status='active'",
+    )
+    .bind(tenant_id)
+    .bind(binding_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some(binding) = binding else {
+        return Ok(());
+    };
+    let reply: Option<agentx_runtime_contracts::WebhookReplyConfigV1> = binding
+        .try_get::<Option<Value>, _>("reply_config_json")?
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|error| RuntimeError::Internal(error.into()))?;
+    let Some(reply) = reply.filter(|reply| reply.enabled) else {
+        return Ok(());
+    };
+    let field = output.get(&reply.output_field);
+    let Some(field) = field else {
+        tracing::warn!(%execution_id, field = %reply.output_field, "reply output field missing; skipping delivery");
+        return Ok(());
+    };
+    let text = render_reply_text(&reply, output, field);
+    let payload = json!({"text": text});
+    let target = json!({
+        "conversationId": context.get("conversation").and_then(|value| value.get("id")).and_then(Value::as_str),
+        "conversationType": context.get("conversation").and_then(|value| value.get("conversationType")).and_then(Value::as_str),
+        "senderId": context.get("sender").and_then(|value| value.get("id")).and_then(Value::as_str),
+        "sessionWebhook": context.get("sessionWebhook").and_then(Value::as_str),
+        "sessionWebhookExpiresAt": context.get("sessionWebhookExpiresAt").and_then(Value::as_i64),
+    });
+    let provider: String = binding.try_get::<String, _>("provider_type")?;
+    let credential_ref: Option<Value> = binding.try_get("secret_ref_json")?;
+    crate::delivery::enqueue(
+        tx,
+        &crate::delivery::DeliveryEnqueue {
+            id: agentx_runtime_contracts::deterministic_uuid(execution_id, b"delivery:terminal"),
+            tenant_id,
+            application_id,
+            invocation_id: Some(invocation_id),
+            execution_id,
+            channel_binding_id: binding_id,
+            provider,
+            origin: "terminal".into(),
+            target,
+            credential_ref,
+            payload,
+        },
+    )
+    .await
+}
+
+/// Enqueues the L2/L3 node delivery in the worker attempt settlement
+/// transaction (plan7 P7-A). The builtin node rendered the intent into its
+/// main output item; this resolves the channel binding and inserts the
+/// delivery row. Resolution failures surface as deterministic node failures
+/// (REPLY_TARGET_UNRESOLVED / SEND_CHANNEL_UNRESOLVED).
+pub(super) struct NodeDeliveryIntent<'a> {
+    pub tenant_id: Uuid,
+    pub execution_id: Uuid,
+    pub invocation_id: Option<Uuid>,
+    pub node_execution_id: Uuid,
+    pub node_type: &'a str,
+    pub intent: &'a Value,
+}
+
+pub(super) async fn enqueue_node_delivery(
+    tx: &mut Transaction<'_, MySql>,
+    delivery: &NodeDeliveryIntent<'_>,
+) -> RuntimeResult<Result<(), (&'static str, String)>> {
+    let NodeDeliveryIntent {
+        tenant_id,
+        execution_id,
+        invocation_id,
+        node_execution_id,
+        node_type,
+        intent,
+    } = *delivery;
+    let content = intent
+        .get("content")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_owned();
+    if content.is_empty() {
+        return Ok(Err((
+            "DELIVERY_PAYLOAD_INVALID",
+            "reply/send content resolved to empty text".into(),
+        )));
+    }
+    let origin = format!("node:{node_execution_id}:0");
+    let delivery_id = agentx_runtime_contracts::deterministic_uuid(execution_id, origin.as_bytes());
+    let payload = json!({"text": content});
+    let (binding_id, application_id, provider, credential_ref, target) = if node_type
+        == "reply_message"
+    {
+        let Some(invocation_id) = invocation_id else {
+            return Ok(Err((
+                "REPLY_TARGET_UNRESOLVED",
+                "execution has no invocation to derive a reply target from".into(),
+            )));
+        };
+        let invocation = sqlx::query(
+            "SELECT trigger_context_json FROM application_invocations WHERE tenant_id=? AND id=?",
+        )
+        .bind(tenant_id)
+        .bind(invocation_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+        let context: Option<Value> = match invocation {
+            Some(row) => row
+                .try_get::<Option<Value>, _>("trigger_context_json")
+                .map_err(RuntimeError::from)?,
+            None => None,
+        };
+        let Some(context) = context else {
+            return Ok(Err((
+                "REPLY_TARGET_UNRESOLVED",
+                "invocation carries no trigger context".into(),
+            )));
+        };
+        let Some(binding_value) = context.get("webhookTriggerId").and_then(Value::as_str) else {
+            return Ok(Err((
+                "REPLY_TARGET_UNRESOLVED",
+                "trigger context carries no webhook trigger id".into(),
+            )));
+        };
+        let Ok(binding_id) = Uuid::parse_str(binding_value) else {
+            return Ok(Err((
+                "REPLY_TARGET_UNRESOLVED",
+                "trigger context webhook trigger id is not a UUID".into(),
+            )));
+        };
+        let binding = sqlx::query(
+            "SELECT application_id,provider_type,secret_ref_json FROM webhook_bindings WHERE tenant_id=? AND id=? AND status='active'",
+        )
+        .bind(tenant_id)
+        .bind(binding_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+        let Some(binding) = binding else {
+            return Ok(Err((
+                "REPLY_TARGET_UNRESOLVED",
+                "source channel binding is not active".into(),
+            )));
+        };
+        let target = json!({
+            "conversationId": context.pointer("/conversation/id").and_then(Value::as_str),
+            "conversationType": context.pointer("/conversation/conversationType").and_then(Value::as_str),
+            "senderId": context.pointer("/sender/id").and_then(Value::as_str),
+            "sessionWebhook": context.get("sessionWebhook").and_then(Value::as_str),
+            "sessionWebhookExpiresAt": context.get("sessionWebhookExpiresAt").and_then(Value::as_i64),
+        });
+        if target
+            .get("conversationId")
+            .and_then(Value::as_str)
+            .is_none()
+            && target.get("senderId").and_then(Value::as_str).is_none()
+        {
+            return Ok(Err((
+                "REPLY_TARGET_UNRESOLVED",
+                "trigger context carries no conversation or sender".into(),
+            )));
+        }
+        (
+            binding_id,
+            binding.try_get("application_id")?,
+            binding.try_get::<String, _>("provider_type")?,
+            binding.try_get("secret_ref_json")?,
+            target,
+        )
+    } else {
+        let Some(channel) = intent.get("channelId").and_then(Value::as_str) else {
+            return Ok(Err((
+                "SEND_CHANNEL_UNRESOLVED",
+                "send_message has no channelId".into(),
+            )));
+        };
+        let Ok(binding_id) = Uuid::parse_str(channel) else {
+            return Ok(Err((
+                "SEND_CHANNEL_UNRESOLVED",
+                "send_message channelId is not a channel id".into(),
+            )));
+        };
+        let binding = sqlx::query(
+            "SELECT application_id,provider_type,secret_ref_json FROM webhook_bindings WHERE tenant_id=? AND id=? AND status='active'",
+        )
+        .bind(tenant_id)
+        .bind(binding_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+        let Some(binding) = binding else {
+            return Ok(Err((
+                "SEND_CHANNEL_UNRESOLVED",
+                "send_message channel binding is not active".into(),
+            )));
+        };
+        let target = json!({
+            "conversationId": intent.get("targetConversationId").and_then(Value::as_str),
+            "conversationType": if intent.get("targetConversationId").is_some() { Some("group") } else { None },
+            "senderId": intent.get("senderId").and_then(Value::as_str),
+        });
+        if target
+            .get("conversationId")
+            .and_then(Value::as_str)
+            .is_none()
+            && target.get("senderId").and_then(Value::as_str).is_none()
+        {
+            return Ok(Err((
+                "SEND_CHANNEL_UNRESOLVED",
+                "send_message carries neither conversation nor sender target".into(),
+            )));
+        }
+        (
+            binding_id,
+            binding.try_get("application_id")?,
+            binding.try_get::<String, _>("provider_type")?,
+            binding.try_get("secret_ref_json")?,
+            target,
+        )
+    };
+    crate::delivery::enqueue(
+        tx,
+        &crate::delivery::DeliveryEnqueue {
+            id: delivery_id,
+            tenant_id,
+            application_id,
+            invocation_id,
+            execution_id,
+            channel_binding_id: binding_id,
+            provider,
+            origin,
+            target,
+            credential_ref,
+            payload,
+        },
+    )
+    .await?;
+    Ok(Ok(()))
+}
+
+/// Renders the reply text: with a template, only `{{output.<field>}}`
+/// references are substituted; without one the raw field value is stringified.
+fn render_reply_text(
+    reply: &agentx_runtime_contracts::WebhookReplyConfigV1,
+    output: &Value,
+    field: &Value,
+) -> String {
+    match reply.template.as_deref() {
+        Some(template) if template.contains("{{") => {
+            let mut rendered = template.to_owned();
+            for (name, value) in output.as_object().into_iter().flatten() {
+                let placeholder = format!("{{{{output.{name}}}}}");
+                if rendered.contains(&placeholder) {
+                    let replacement = match value {
+                        Value::String(text) => text.clone(),
+                        other => other.to_string(),
+                    };
+                    rendered = rendered.replace(&placeholder, &replacement);
+                }
+            }
+            rendered
+        }
+        _ => match field {
+            Value::String(text) => text.clone(),
+            other => other.to_string(),
+        },
+    }
 }
 
 pub(super) async fn initial_context_for_execution(

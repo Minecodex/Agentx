@@ -374,7 +374,7 @@ async fn model_snapshot(
     tenant_id: Uuid,
     reference: &mut ResourceReference,
 ) -> ApiResult<Value> {
-    let row = sqlx::query("SELECT a.id alias_id,a.alias,a.version alias_version,d.id deployment_id,d.connection_name,d.model_name,d.max_input_tokens,d.max_output_tokens,d.version deployment_version,d.default_parameters,d.endpoint,d.provider_type,d.credential_id,pv.id price_version_id,pv.version_number price_version_number,pv.currency,CAST(pv.input_per_million AS CHAR) input_per_million,CAST(pv.output_per_million AS CHAR) output_per_million FROM model_aliases a JOIN model_deployments d ON d.tenant_id=a.tenant_id AND d.id=a.deployment_id JOIN model_price_versions pv ON pv.tenant_id=d.tenant_id AND pv.deployment_id=d.id AND pv.id=(SELECT latest.id FROM model_price_versions latest WHERE latest.tenant_id=d.tenant_id AND latest.deployment_id=d.id ORDER BY latest.version_number DESC LIMIT 1) WHERE a.tenant_id=? AND a.id=? AND a.status='active' AND d.status='active'")
+    let row = sqlx::query("SELECT a.id alias_id,a.alias,a.version alias_version,d.id deployment_id,d.connection_name,d.model_name,d.max_input_tokens,d.max_output_tokens,d.version deployment_version,d.default_parameters,d.capabilities_json,d.endpoint,d.provider_type,d.credential_id,pv.id price_version_id,pv.version_number price_version_number,pv.currency,CAST(pv.input_per_million AS CHAR) input_per_million,CAST(pv.output_per_million AS CHAR) output_per_million FROM model_aliases a JOIN model_deployments d ON d.tenant_id=a.tenant_id AND d.id=a.deployment_id JOIN model_price_versions pv ON pv.tenant_id=d.tenant_id AND pv.deployment_id=d.id AND pv.id=(SELECT latest.id FROM model_price_versions latest WHERE latest.tenant_id=d.tenant_id AND latest.deployment_id=d.id ORDER BY latest.version_number DESC LIMIT 1) WHERE a.tenant_id=? AND a.id=? AND a.status='active' AND d.status='active'")
         .bind(tenant_id).bind(reference.resource_id).fetch_optional(&state.pool).await?
         .ok_or_else(|| ApiError::unprocessable("RESOURCE_UNAVAILABLE", "Model is missing or disabled"))?;
     let deployment_id: Uuid = row.try_get("deployment_id")?;
@@ -397,6 +397,7 @@ async fn model_snapshot(
         "maxInputTokens":row.try_get::<u64,_>("max_input_tokens")?,"maxOutputTokens":row.try_get::<u64,_>("max_output_tokens")?,
         "defaultParameters":row.try_get::<Value,_>("default_parameters")?,"providerType":row.try_get::<String,_>("provider_type")?,
         "endpoint":row.try_get::<String,_>("endpoint")?,"credentialId":credential_id,"vaultSecretRef":secret,
+        "capabilities":row.try_get::<Option<Value>,_>("capabilities_json")?.unwrap_or_else(|| json!([])),
         "price":{"versionId":row.try_get::<Uuid,_>("price_version_id")?,"versionNumber":row.try_get::<u64,_>("price_version_number")?,"currency":row.try_get::<String,_>("currency")?,"inputPerMillion":row.try_get::<String,_>("input_per_million")?,"outputPerMillion":row.try_get::<String,_>("output_per_million")?}
     }))
 }
@@ -699,7 +700,7 @@ async fn credential_dependencies(
 ) -> ApiResult<Vec<Uuid>> {
     let ids = match reference.resource_type {
         ResourceType::Model => sqlx::query_scalar("SELECT d.credential_id FROM model_aliases a JOIN model_deployments d ON d.id=a.deployment_id WHERE a.tenant_id=? AND a.id=? AND d.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
-        ResourceType::McpServer => sqlx::query_scalar("SELECT sv.credential_id FROM mcp_servers s JOIN mcp_server_versions sv ON sv.server_id=s.id AND sv.version_number=s.current_version_number WHERE s.tenant_id=? AND s.id=? AND sv.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
+        ResourceType::McpServer => sqlx::query_scalar("SELECT credential_id FROM mcp_server_versions WHERE tenant_id=? AND server_id=? AND id=? AND credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).bind(reference.resource_version_id).fetch_all(&state.pool).await?,
         ResourceType::Rag => sqlx::query_scalar("SELECT c.credential_id FROM rag_resources r JOIN rag_connections c ON c.id=r.connection_id WHERE r.tenant_id=? AND r.id=? AND c.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
         ResourceType::Memory => sqlx::query_scalar("SELECT c.credential_id FROM memory_namespaces n JOIN memory_connections c ON c.id=n.connection_id WHERE n.tenant_id=? AND n.id=? AND c.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
         _ => Vec::new(),

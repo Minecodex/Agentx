@@ -521,7 +521,7 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
         Some(&token),
         Some(json!({
             "connectionId":rag_connection["id"],"name":"API Knowledge",
-            "externalResourceId":"api-knowledge","ownerDepartmentId":department_id
+            "externalResourceId":"api_knowledge","ownerDepartmentId":department_id
         })),
     )
     .await;

@@ -11,6 +11,7 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    agentx_service_kit::install_tls_provider();
     let mut arguments = std::env::args().skip(1);
     if arguments.next().as_deref() == Some("openapi") {
         let path = arguments
@@ -28,12 +29,14 @@ async fn main() -> Result<()> {
     let metrics = agentx_service_kit::MetricsRegistry::default();
     let health = agentx_service_kit::HealthRegistry::default();
     health.register("runtime_mysql", true).await;
+    health.register("runtime_redis", true).await;
     health.register("runtime_object_storage", true).await;
     health.set_status("runtime_mysql", "ready").await;
     health.set_status("runtime_object_storage", "ready").await;
     let probe_state = state.clone();
     let probe_health = health.clone();
     let probe_lifecycle = lifecycle.clone();
+    let probe_metrics = metrics.clone();
     let probe_progress = agentx_service_kit::RoleProgressWatchdog::start(
         "dependency-probe",
         Duration::from_secs(agentx_service_kit::ROLE_WATCHDOG_TIMEOUT_SECONDS),
@@ -45,7 +48,16 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         while !probe_lifecycle.is_draining() {
             let started = std::time::Instant::now();
-            match sqlx::query("SELECT 1").execute(&probe_state.pool).await {
+            let probe = async {
+                let acquire_started = std::time::Instant::now();
+                let mut connection = probe_state.pool.acquire().await?;
+                probe_metrics
+                    .observe_mysql_pool_wait(acquire_started.elapsed())
+                    .await;
+                sqlx::query("SELECT 1").execute(&mut *connection).await
+            }
+            .await;
+            match probe {
                 Ok(_) => probe_health.set_status("runtime_mysql", "ready").await,
                 Err(error) => {
                     probe_health
@@ -67,6 +79,31 @@ async fn main() -> Result<()> {
                     tracing::warn!(%error, "Runtime Gateway object storage readiness probe failed");
                 }
             }
+            let queue = if let Some(redis) = &probe_state.admission_redis {
+                agentx_v2_runtime::redis_admission::snapshot(redis, 2000).await
+            } else {
+                Err(agentx_v2_runtime::error::RuntimeError::Unavailable)
+            };
+            probe_health
+                .set_status(
+                    "runtime_redis",
+                    if queue.is_ok() {
+                        "ready"
+                    } else {
+                        "unavailable"
+                    },
+                )
+                .await;
+            let (unread, pending, available) = agentx_v2_runtime::redis_admission::metrics();
+            probe_metrics
+                .set("agentx_redis_task_unread_items", unread as f64)
+                .await;
+            probe_metrics
+                .set("agentx_redis_task_pending_items", pending as f64)
+                .await;
+            probe_metrics
+                .set("agentx_redis_admission_available", available as f64)
+                .await;
             probe_progress.processed_since(started).await;
             tokio::select! {
                 () = probe_lifecycle.cancelled() => break,
@@ -121,6 +158,18 @@ async fn main() -> Result<()> {
             post(agentx_v2_runtime::query::search_invocations),
         )
         .route(
+            "/internal/runtime/v1/query/deliveries:search",
+            post(agentx_v2_runtime::delivery_query::search_deliveries),
+        )
+        .route(
+            "/internal/runtime/v1/query/deliveries/{id}",
+            get(agentx_v2_runtime::delivery_query::get_delivery),
+        )
+        .route(
+            "/internal/runtime/v1/query/deliveries/{id}/retry",
+            post(agentx_v2_runtime::delivery_query::retry_delivery),
+        )
+        .route(
             "/internal/runtime/v1/query/invocations/{id}",
             get(agentx_v2_runtime::query::get_invocation),
         )
@@ -139,6 +188,10 @@ async fn main() -> Result<()> {
         .route(
             "/internal/runtime/v1/query/executions/{id}/nodes/{node_execution_id}",
             get(agentx_v2_runtime::query::get_execution_node),
+        )
+        .route(
+            "/internal/runtime/v1/query/executions/{id}/model-deltas",
+            get(agentx_v2_runtime::query::get_execution_model_deltas),
         )
         .route(
             "/internal/runtime/v1/query/executions/{id}/events",
@@ -222,6 +275,29 @@ async fn main() -> Result<()> {
         )
         .nest("/gateway/v1", public_gateway)
         .with_state(state);
+    let admission_metrics = metrics.clone();
+    let router = router.layer(axum::middleware::from_fn(
+        move |request: axum::http::Request<axum::body::Body>, next: axum::middleware::Next| {
+            let metrics = admission_metrics.clone();
+            async move {
+                let (unread, pending, available) = agentx_v2_runtime::redis_admission::metrics();
+                metrics
+                    .set("agentx_redis_task_unread_items", unread as f64)
+                    .await;
+                metrics
+                    .set("agentx_redis_task_pending_items", pending as f64)
+                    .await;
+                metrics
+                    .set("agentx_redis_admission_available", available as f64)
+                    .await;
+                let count = agentx_v2_runtime::admission::rejection_count();
+                metrics
+                    .set("agentx_admission_rejections_total", count as f64)
+                    .await;
+                next.run(request).await
+            }
+        },
+    ));
     agentx_service_kit::serve_with_lifecycle("runtime-gateway", router, health, lifecycle, metrics)
         .await
 }

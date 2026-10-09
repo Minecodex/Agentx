@@ -10,6 +10,60 @@ pub enum ModelPurposeV1 {
     Compaction,
 }
 
+/// One multimodal content part of a model message (plan7 P7-B). `Text` is
+/// the untagged default so pure-text state and requests stay plain strings.
+#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum ModelContentV1 {
+    Text(String),
+    Parts(Vec<ModelContentPartV1>),
+}
+
+impl From<String> for ModelContentV1 {
+    fn from(value: String) -> Self {
+        Self::Text(value)
+    }
+}
+
+impl From<&str> for ModelContentV1 {
+    fn from(value: &str) -> Self {
+        Self::Text(value.to_owned())
+    }
+}
+
+impl ModelContentV1 {
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(text),
+            Self::Parts(parts) => parts.iter().find_map(|part| match part {
+                ModelContentPartV1::Text { text } => Some(text.as_str()),
+                _ => None,
+            }),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ModelContentPartV1 {
+    Text { text: String },
+    ImageUrl { image_url: ImageUrlV1 },
+    InputAudio { input_audio: InputAudioV1 },
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ImageUrlV1 {
+    pub url: String,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct InputAudioV1 {
+    pub data: String,
+    pub format: String,
+}
+
 #[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ModelRequestV1 {
@@ -40,12 +94,34 @@ pub enum ModelPortError {
     Effect(String),
 }
 
+/// One streamed token increment of a model response (plan7 P7-B). The
+/// callback is synchronous: implementations must not block and should hand
+/// the chunk to a non-blocking sink.
+#[derive(Clone, Debug)]
+pub struct ModelDeltaChunk {
+    pub text: String,
+    pub reasoning_text: Option<String>,
+}
+
 pub trait ModelPort {
     fn invoke(
         &mut self,
         request: &ModelRequestV1,
         context: &EffectContextV1,
     ) -> Result<ModelResponseV1, ModelPortError>;
+
+    /// Streaming variant: same settlement contract as `invoke` (the final
+    /// full response is still returned); the default delegates to `invoke`
+    /// without emitting deltas so existing ports and tests stay valid.
+    fn invoke_stream(
+        &mut self,
+        request: &ModelRequestV1,
+        context: &EffectContextV1,
+        on_delta: &(dyn Fn(&ModelDeltaChunk) + Send + Sync),
+    ) -> Result<ModelResponseV1, ModelPortError> {
+        let _ = on_delta;
+        self.invoke(request, context)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -101,6 +177,13 @@ pub enum CoreEventV1 {
     ModelSettled {
         operation_id: String,
         is_error: bool,
+    },
+    /// Live token increment of the running model operation. Bypasses the
+    /// EventCollector batching by design: the runtime adapter forwards it
+    /// straight to the invocation event stream (plan7 P7-B).
+    ModelDelta {
+        operation_id: String,
+        text: String,
     },
     ToolIntent {
         operation_id: String,

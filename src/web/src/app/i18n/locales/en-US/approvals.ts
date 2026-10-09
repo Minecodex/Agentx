@@ -28,6 +28,7 @@ const translations = {
     "claim": "Claim", "release": "Release", "reassign": "Reassign", "decide": "Decide", "cancel": "Cancel", "timeout": "Timeout"
   },
   "auditActions": {
+    "stale": "Request invalidated",
     "created": "Request created", "submitted": "Request submitted", "approved": "Approved", "rejected": "Rejected", "cancelled": "Cancelled", "review_approved": "Department review approved", "review_rejected": "Department review rejected"
   }
   ,"runtimeTab": "Runtime approvals"

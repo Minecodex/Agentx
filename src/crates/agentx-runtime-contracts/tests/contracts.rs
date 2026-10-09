@@ -166,6 +166,7 @@ fn execution_origin_and_search_filters_round_trip_without_compatibility_fields()
         trigger_types: vec!["schedule".into()],
         trigger_name: Some("nightly".into()),
         statuses: vec!["succeeded".into()],
+        error_codes: vec![],
         session_mode: agentx_runtime_contracts::ExecutionSessionModeV1::All,
         created_after: Some(OffsetDateTime::UNIX_EPOCH),
         created_before: None,
@@ -289,6 +290,7 @@ fn internal_api_response_wrappers_reject_version_two() {
             state_version: 1,
             admission_epoch: 1,
             trace_watermark: 0,
+            trace_event_count: 0,
             parent_execution_id: None,
             work_package_id: None,
             input: None,
@@ -404,6 +406,8 @@ fn trace_fixture_event(content_kind: TraceContentKindV1) -> TraceEventEnvelopeV1
         execution_id: Uuid::now_v7(),
         execution_sequence: 1,
         trace_id: Uuid::now_v7(),
+        workflow_id: None,
+        application_id: None,
         span_id: Uuid::now_v7(),
         parent_span_id: None,
         event_kind: TraceEventKindV1::Started,
@@ -677,6 +681,7 @@ fn evaluation_work_package_payload() -> RuntimeWorkPackagePayloadV1 {
     let prompt_hash =
         agentx_runtime_contracts::ContentHash::parse(format!("sha256:{}", "e".repeat(64))).unwrap();
     let model_configuration = agentx_runtime_contracts::RuntimeResourceConfigurationV1::Model {
+        capabilities: Vec::new(),
         provider: "fixture".into(),
         endpoint: "https://model.fixture/v1".into(),
         model: "evaluator-v1".into(),

@@ -82,6 +82,30 @@
                 "string",
                 "null"
               ]
+            },
+            "serviceType": {
+              "enum": [
+                "LoadBalancer",
+                "NodePort",
+                "ClusterIP"
+              ]
+            },
+            "httpNodePort": {
+              "type": "integer",
+              "minimum": 30000,
+              "maximum": 32767
+            },
+            "httpsNodePort": {
+              "type": "integer",
+              "minimum": 30000,
+              "maximum": 32767
+            },
+            "loadBalancerClass": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1
             }
           }
         },
@@ -161,6 +185,10 @@
                     "null"
                   ],
                   "minLength": 1
+                },
+                "localProxyUpstream": {
+                  "type": "string",
+                  "pattern": "^https?://"
                 }
               }
             },
@@ -288,6 +316,10 @@
                     "type": "string"
                   },
                   "description": "First DNS labels of in-cluster provider services allowed over plain HTTP through the egress gateway."
+                },
+                "deliveryDomainExtraAllowlist": {
+                  "type": "string",
+                  "description": "Comma-separated DNS labels extending the outbound delivery host allowlist (leading-label match, e.g. in-cluster IM fixtures)."
                 }
               }
             },
@@ -758,7 +790,8 @@
               "recovery",
               "artifact",
               "quota",
-              "trace-relay"
+              "trace-relay",
+              "delivery"
             ]
           }
         }
@@ -939,6 +972,13 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "loadBalancerClass": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
         }
       }
     },

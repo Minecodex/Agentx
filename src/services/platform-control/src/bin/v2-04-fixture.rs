@@ -75,6 +75,7 @@ struct ResourceFixture {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    agentx_service_kit::install_tls_provider();
     let mode = env::var("AGENTX_V2_FIXTURE_MODE").unwrap_or_else(|_| "seed".into());
     if mode == "evaluation" {
         let seed = env::var("AGENTX_V2_FIXTURE_ID_SEED").unwrap_or_default();
@@ -843,7 +844,7 @@ fn resource_fixtures(
             RAG,
             RAG_VERSION,
             "read",
-            json!({"endpoint":rag,"externalResourceId":"v2-04","resourceVersion":1,"vaultSecretRef":rag_credential}),
+            json!({"endpoint":rag,"externalResourceId":"v2_04","resourceVersion":1,"vaultSecretRef":rag_credential}),
         )?,
         resource(
             "agent",

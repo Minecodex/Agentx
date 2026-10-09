@@ -24,6 +24,8 @@ pub enum RuntimeError {
     ProviderRejected,
     #[error("runtime database is unavailable")]
     DatabaseUnavailable,
+    #[error("runtime admission rejected the overloaded request")]
+    AdmissionRejected { retry_after_seconds: u32 },
     #[error("runtime query budget was exceeded")]
     QueryBudgetExceeded,
     #[error("runtime query cursor expired")]
@@ -45,6 +47,12 @@ struct ErrorBody {
 
 impl IntoResponse for RuntimeError {
     fn into_response(self) -> axum::response::Response {
+        let retry_after = match &self {
+            Self::AdmissionRejected {
+                retry_after_seconds,
+            } => Some(*retry_after_seconds),
+            _ => None,
+        };
         let (status, code, message) = match self {
             Self::Deterministic { code, message } => {
                 (StatusCode::UNPROCESSABLE_ENTITY, json!(code), message)
@@ -79,6 +87,13 @@ impl IntoResponse for RuntimeError {
                 json!("RUNTIME_DATABASE_UNAVAILABLE"),
                 "runtime database is unavailable".into(),
             ),
+            Self::AdmissionRejected {
+                retry_after_seconds,
+            } => (
+                StatusCode::TOO_MANY_REQUESTS,
+                json!("RUNTIME_ADMISSION_REJECTED"),
+                format!("runtime is overloaded; retry after {retry_after_seconds}s"),
+            ),
             Self::QueryBudgetExceeded => (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 json!("QUERY_BUDGET_EXCEEDED"),
@@ -108,7 +123,13 @@ impl IntoResponse for RuntimeError {
                 )
             }
         };
-        (status, Json(ErrorBody { code, message })).into_response()
+        let mut response = (status, Json(ErrorBody { code, message })).into_response();
+        if let Some(seconds) = retry_after
+            && let Ok(value) = seconds.to_string().parse()
+        {
+            response.headers_mut().insert("retry-after", value);
+        }
+        response
     }
 }
 

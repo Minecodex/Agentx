@@ -20,6 +20,7 @@ import {
   Box,
   Bell,
   RadioTower,
+  Activity,
 } from 'lucide-react'
 
 import type { NavigationGroup } from '../shared/types/app'
@@ -41,6 +42,7 @@ export const navigationGroups: NavigationGroup[] = [
       { labelKey: 'navigation.approvals', path: '/approvals', icon: ShieldCheck, keywords: ['review', 'todo'], requiredPermission: 'approval:view' },
       { labelKey: 'navigation.notifications', path: '/notifications', icon: Bell, keywords: ['inbox', 'message'], requiredPermission: 'notification:view' },
       { labelKey: 'navigation.datasets', path: '/datasets', icon: Database, keywords: ['cases', 'test'], requiredPermission: 'dataset:view' },
+      { labelKey: 'navigation.insights', path: '/insights', icon: Activity, keywords: ['charts', 'cost'], requiredPermission: 'execution:view' },
       { labelKey: 'navigation.evaluations', path: '/evaluations', icon: FlaskConical, keywords: ['report', 'quality'], requiredPermission: 'evaluation:view' },
       { labelKey: 'navigation.runtime', path: '/runtime', icon: RadioTower, keywords: ['worker', 'queue'], requiredPermission: 'runtime:view' },
       { labelKey: 'navigation.agentSessions', path: '/agent-sessions', icon: History, keywords: ['agent', 'session', 'compaction', 'memory'], requiredPermission: 'execution:view' },

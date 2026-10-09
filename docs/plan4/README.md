@@ -161,7 +161,9 @@ Trace 和审计只记录 Provider 类型、Webhook ID/Revision、事件类型 Ha
 
 ## 7. Workflow 开始节点映射
 
-映射目标必须来自当前 Deployment 的 Workflow Start Input Schema，不使用硬编码的 `question`、`message` 或 `ai_response` 约定。
+映射目标必须来自应用绑定的 Workflow Start Input Schema，不使用硬编码的 `question`、`message` 或 `ai_response` 约定。有活跃 Deployment 时使用该 Deployment 冻结的 Schema；首次应用部署前使用绑定工作流的最新不可变 Workflow Version。没有已发布工作流版本时禁止配置渠道并提示先发布版本，不从可变 Draft 推断字段。
+
+输入下拉框列出该 Schema 中的全部输入，包括必填与可选输入。新建配置时仅预先生成必填输入行，来源字段留空，要求用户明确选择；可选输入通过“添加映射”按需配置。必填输入以 `*` 标记，也可以由固定输入提供。保存时阻止必填输入遗漏、空来源及映射和固定输入之间的目标冲突。
 
 推荐映射：
 
@@ -209,7 +211,7 @@ Application 详情页的“渠道对接”Tab 展示渠道名称、平台、状�
 
 添加渠道 Dialog 默认只显示：平台、Webhook 名称、Credential/认证方式、Workflow 开始参数映射、固定输入值和保存草稿。接入地址区域只提示“保存并发布后生成”，不展示路由模板或复制按钮。
 
-映射与固定输入均以 Workflow 参数为第一列：用户先选要填的 Start Input，再选来源（标准字段、平台原始字段目录或手填 raw 路径）或直接填固定值；固定输入的值按 Start Input Schema 类型在保存时做 number/boolean 收敛，键名不允许脱离 Schema 自由填写（有活跃 Deployment 时）。
+映射与固定输入均以 Workflow 参数为第一列：用户先选要填的 Start Input，再选来源（标准字段、平台原始字段目录或手填 raw 路径）或直接填固定值；固定输入的值按 Start Input Schema 类型在保存时做 number/boolean 收敛，键名不允许脱离 Schema 自由填写。弹窗显示字段所对应的工作流版本，首次应用部署前也能配置完整映射。
 
 高级设置只包含 Custom HTTP 请求 Schema、自定义 JSONPath、事件 ID 路径、自定义 Header 验证和 Replay Window。不显示回复目标、群组路由、出站 Webhook、消息模板或 Delivery。
 

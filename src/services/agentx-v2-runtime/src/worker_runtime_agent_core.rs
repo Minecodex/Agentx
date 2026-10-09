@@ -591,7 +591,17 @@ async fn finish(
         .iter()
         .rev()
         .find(|m| matches!(m.role, MessageRole::Assistant))
-        .map(|m| m.content.clone())
+        .map(|m| match &m.content {
+            agentx_agent_core::ModelContentV1::Text(text) => text.clone(),
+            agentx_agent_core::ModelContentV1::Parts(parts) => parts
+                .iter()
+                .filter_map(|part| match part {
+                    agentx_agent_core::ModelContentPartV1::Text { text } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(""),
+        })
         .unwrap_or_default();
     WorkerExecution::succeeded(agent_public_output(
         text,
@@ -1604,8 +1614,8 @@ impl<'a> AgentToolRouter<'a> {
                     self.authorize_secret_dependency(secret)?;
                 }
                 let (path, request, secret_header) = match super::output::rag_query_request(
-                    &provider,
-                    "query",
+                    provider,
+                    "retrieve",
                     namespace,
                     index_version,
                     &call.arguments,
@@ -1630,7 +1640,7 @@ impl<'a> AgentToolRouter<'a> {
                         Some(&binding),
                     ))
                 });
-                let execution = super::output::finalize_rag_response(&provider, execution);
+                let execution = super::output::finalize_retrieval_response(provider, execution);
                 knowledge_result_from_execution(execution, binding.resource_id)
             }
             RuntimeResourceConfigurationV1::Memory {

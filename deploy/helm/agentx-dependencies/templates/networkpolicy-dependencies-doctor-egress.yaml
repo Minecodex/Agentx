@@ -7,3 +7,15 @@ spec:
   egress:
     - to: [{ podSelector: { matchLabels: { app.kubernetes.io/name: agentx-egress-gateway } } }]
       ports: [{ protocol: TCP, port: 8080 }]
+{{- if eq .Values.global.environment "production" }}
+{{- with .Values.global.network.externalEgress.vault }}
+    - to:
+        {{- range .cidrs }}
+        - ipBlock: { cidr: {{ . | quote }} }
+        {{- end }}
+      ports:
+        {{- range .ports }}
+        - { protocol: TCP, port: {{ . }} }
+        {{- end }}
+{{- end }}
+{{- end }}

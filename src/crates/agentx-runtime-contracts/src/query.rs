@@ -191,6 +191,7 @@ pub struct ExecutionSearchRequestV1 {
     pub trigger_types: Vec<String>,
     pub trigger_name: Option<String>,
     pub statuses: Vec<String>,
+    pub error_codes: Vec<String>,
     pub session_mode: ExecutionSessionModeV1,
     #[schemars(with = "Option<String>")]
     #[serde(with = "time::serde::rfc3339::option")]
@@ -316,6 +317,7 @@ pub struct ExecutionDetailV1 {
     pub state_version: u64,
     pub admission_epoch: u64,
     pub trace_watermark: u64,
+    pub trace_event_count: u64,
     pub parent_execution_id: Option<Uuid>,
     pub work_package_id: Option<Uuid>,
     pub input: Option<Value>,
@@ -492,6 +494,14 @@ pub struct TraceEventEnvelopeV1 {
     pub execution_id: Uuid,
     pub execution_sequence: u64,
     pub trace_id: Uuid,
+    /// Aggregation dimensions (plan7 P7-C): filled at the single outbox
+    /// enqueue point from the execution row; absent on events produced by
+    /// older runtimes (serde default keeps the consumer green during the
+    /// rollout window).
+    #[serde(default)]
+    pub workflow_id: Option<Uuid>,
+    #[serde(default)]
+    pub application_id: Option<Uuid>,
     pub span_id: Uuid,
     pub parent_span_id: Option<Uuid>,
     pub event_kind: TraceEventKindV1,
@@ -635,6 +645,9 @@ pub struct TraceSearchRequestV1 {
     pub api_version: u32,
     pub tenant_id: Uuid,
     pub execution_id: Option<Uuid>,
+    /// plan7 P7-C: aggregate-page drill-down needs workflow-scoped search.
+    #[serde(default)]
+    pub workflow_id: Option<Uuid>,
     pub event_types: Vec<String>,
     pub statuses: Vec<String>,
     #[schemars(with = "String")]
@@ -666,6 +679,8 @@ pub struct ExecutionTraceV1 {
     pub execution_id: Uuid,
     pub ingested_watermark: u64,
     pub expected_watermark: u64,
+    pub ingested_event_count: u64,
+    pub expected_event_count: u64,
     pub complete: bool,
     pub degraded: bool,
     pub warning_code: Option<String>,
@@ -678,11 +693,16 @@ pub struct ExecutionTraceV1 {
 #[serde(rename_all = "snake_case")]
 pub enum ObservabilityMetricV1 {
     Count,
+    SucceededCount,
+    FailedCount,
     DurationMillis,
     CostMicros,
     InputTokens,
     OutputTokens,
     ErrorRate,
+    /// plan7 P7-C: node-duration distribution charts.
+    DurationP50,
+    DurationP95,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
@@ -696,6 +716,8 @@ pub enum ObservabilityDimensionV1 {
     ErrorCode,
     Provider,
     ResourceType,
+    /// plan7 P7-C: node-duration distribution charts.
+    SpanName,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]

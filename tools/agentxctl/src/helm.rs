@@ -6,6 +6,8 @@ use std::{collections::BTreeMap, io::Write, path::PathBuf};
 use tempfile::NamedTempFile;
 
 pub const INGRESS_RELEASE: &str = "agentx-ingress-nginx";
+// --atomic may spend a second Helm timeout rolling a failed release back.
+const HELM_PROCESS_TIMEOUT_SECONDS: u64 = 25 * 60 * 2 + 60;
 
 pub fn release_name(target: &str) -> &'static str {
     match target {
@@ -112,12 +114,12 @@ impl Helm<'_> {
             "--wait".into(),
             "--wait-for-jobs".into(),
             "--timeout".into(),
-            "10m".into(),
+            "25m".into(),
         ];
         for (key, value) in set_values {
             args.extend(["--set".into(), format!("{key}={value}")]);
         }
-        process::run_command(args, None, None, 720, true, None).await?;
+        process::run_command(args, None, None, HELM_PROCESS_TIMEOUT_SECONDS, true, None).await?;
         Ok(())
     }
 
@@ -136,7 +138,7 @@ impl Helm<'_> {
             "--atomic".into(),
             "--wait".into(),
             "--timeout".into(),
-            "10m".into(),
+            "25m".into(),
             "-f".into(),
             path(self.assets.ingress_values()),
             "--set-string".into(),
@@ -157,18 +159,35 @@ impl Helm<'_> {
                 format!("fullnameOverride={class_name}"),
             ]);
         }
-        if self.config.environment() == "test"
-            || self
-                .config
-                .namespace("dependencies")
-                .starts_with("agentx-e2e-")
+        args.extend([
+            "--set-string".into(),
+            format!(
+                "controller.service.type={}",
+                self.config.ingress_service_type()
+            ),
+        ]);
+        if self.config.ingress_service_type() == "LoadBalancer"
+            && let Some(class) = self.config.string("/global/ingress/loadBalancerClass")
         {
             args.extend([
                 "--set-string".into(),
-                "controller.service.type=ClusterIP".into(),
+                format!("controller.service.loadBalancerClass={class}"),
             ]);
         }
-        process::run_command(args, None, None, 720, true, None).await?;
+        if self.config.ingress_service_type() == "NodePort" {
+            for (port, field) in [("http", "httpNodePort"), ("https", "httpsNodePort")] {
+                args.extend([
+                    "--set".into(),
+                    format!(
+                        "controller.service.nodePorts.{port}={}",
+                        self.config
+                            .u64(&format!("/global/ingress/{field}"))
+                            .unwrap()
+                    ),
+                ]);
+            }
+        }
+        process::run_command(args, None, None, HELM_PROCESS_TIMEOUT_SECONDS, true, None).await?;
         Ok(())
     }
 
@@ -298,7 +317,8 @@ mod tests {
     async fn ingress_install_uses_only_the_embedded_chart() {
         let executor = Arc::new(test_support::RecordingExecutor::new(test_support::success));
         let assets = EmbeddedAssets::extract().unwrap();
-        let config = config();
+        let mut config = config();
+        config.values["global"]["ingress"]["loadBalancerClass"] = "metallb".into();
         process::with_command_executor(
             executor.clone(),
             Helm {
@@ -320,6 +340,11 @@ mod tests {
         );
         assert!(!command.iter().any(|argument| argument.starts_with("http://") || argument.starts_with("https://")));
         assert!(!command.iter().any(|argument| argument == "repo"));
+        assert!(
+            command
+                .iter()
+                .any(|argument| argument == "controller.service.loadBalancerClass=metallb")
+        );
         assert!(
             !command
                 .iter()
@@ -363,6 +388,37 @@ mod tests {
                 .iter()
                 .any(|argument| argument == "fullnameOverride=agentx-e2e-aabbccddee")
         );
+    }
+
+    #[tokio::test]
+    async fn local_tls_ingress_uses_configured_nodeports_and_allows_atomic_rollback() {
+        let executor = Arc::new(test_support::RecordingExecutor::new(test_support::success));
+        let assets = EmbeddedAssets::extract().unwrap();
+        let config = DeploymentConfig::load(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../deploy/values/local-tls.yaml"),
+            None,
+        )
+        .unwrap();
+        process::with_command_executor(
+            executor.clone(),
+            Helm {
+                config: &config,
+                assets: &assets,
+            }
+            .install_ingress(),
+        )
+        .await
+        .unwrap();
+        let requests = executor.requests();
+        let command = &requests[0].command;
+        for value in [
+            "controller.service.type=NodePort",
+            "controller.service.nodePorts.http=30080",
+            "controller.service.nodePorts.https=30443",
+        ] {
+            assert!(command.iter().any(|argument| argument == value));
+        }
+        assert!(requests[0].timeout_seconds > 2 * 25 * 60);
     }
 
     #[tokio::test]

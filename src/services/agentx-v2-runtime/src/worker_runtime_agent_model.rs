@@ -196,6 +196,28 @@ impl ModelPort for ProviderModelPort<'_> {
         request: &ModelRequestV1,
         context: &EffectContextV1,
     ) -> Result<ModelResponseV1, ModelPortError> {
+        self.invoke_with_mode(request, context, false)
+    }
+
+    fn invoke_stream(
+        &mut self,
+        request: &ModelRequestV1,
+        context: &EffectContextV1,
+        _on_delta: &(dyn Fn(&agentx_agent_core::ModelDeltaChunk) + Send + Sync),
+    ) -> Result<ModelResponseV1, ModelPortError> {
+        // Deltas are routed straight to the invocation event sink by the
+        // streaming transport; the driver-level callback stays unused here.
+        self.invoke_with_mode(request, context, true)
+    }
+}
+
+impl<'a> ProviderModelPort<'a> {
+    fn invoke_with_mode(
+        &mut self,
+        request: &ModelRequestV1,
+        context: &EffectContextV1,
+        streaming: bool,
+    ) -> Result<ModelResponseV1, ModelPortError> {
         let RuntimeResourceConfigurationV1::Model {
             provider,
             endpoint,
@@ -250,26 +272,45 @@ impl ModelPort for ProviderModelPort<'_> {
             agentx_agent_core::ModelPurposeV1::AgentTurn => ("agent_turn", "model"),
             agentx_agent_core::ModelPurposeV1::Compaction => ("compaction", "compaction"),
         };
-        let mut body = json!({"model":model,"messages":messages,"stream":false,"metadata":{"priceVersion":price.version_id,"agentPurpose":purpose}});
+        let mut body = json!({"model":model,"messages":messages,"stream":streaming,"metadata":{"priceVersion":price.version_id,"agentPurpose":purpose}});
+        if streaming {
+            body["stream_options"] = json!({"include_usage":true});
+        }
         if !tools.is_empty() {
             body["tools"] = json!(tools);
         }
         let call_index = self.call_index;
         self.call_index = self.call_index.saturating_add(1);
         let endpoint = openai_chat_completions_endpoint(endpoint);
-        let execution = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(self.worker.call_http_effect(
-                self.claim,
-                call_kind,
-                &endpoint,
-                body,
-                call_index,
-                &context.idempotency_key,
-                credential.as_ref(),
-                "authorization",
-                Some(&self.binding),
-            ))
-        });
+        let execution = if streaming {
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(self.worker.call_http_effect_stream(
+                    self.claim,
+                    call_kind,
+                    &endpoint,
+                    body,
+                    call_index,
+                    &context.idempotency_key,
+                    credential.as_ref(),
+                    "authorization",
+                    Some(&self.binding),
+                ))
+            })
+        } else {
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(self.worker.call_http_effect(
+                    self.claim,
+                    call_kind,
+                    &endpoint,
+                    body,
+                    call_index,
+                    &context.idempotency_key,
+                    credential.as_ref(),
+                    "authorization",
+                    Some(&self.binding),
+                ))
+            })
+        };
         if execution.status == agentx_runtime_contracts::WorkerResultStatusV1::OutcomeUnknown {
             return Err(ModelPortError::OutcomeUnknown(
                 execution.error_message.unwrap_or_default(),

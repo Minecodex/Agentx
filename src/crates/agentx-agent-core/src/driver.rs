@@ -202,7 +202,7 @@ impl AgentCore {
                 AgentMessageV1 {
                     message_id: format!("external-context:{}", context.context_id),
                     role: MessageRole::ExternalContext,
-                    content: context.content.clone(),
+                    content: crate::ports::ModelContentV1::Text(context.content.clone()),
                     tool_calls: Vec::new(),
                     tool_call_id: None,
                     is_error: false,
@@ -454,7 +454,7 @@ impl AgentCore {
                         AgentMessageV1 {
                             message_id: message_id.clone(),
                             role: MessageRole::ToolResult,
-                            content: result.content,
+                            content: crate::ports::ModelContentV1::Text(result.content),
                             tool_calls: Vec::new(),
                             tool_call_id: Some(call.call_id.clone()),
                             is_error: result.is_error,
@@ -580,7 +580,7 @@ where
     if let Some(message) = pending_tool_response {
         return Ok(ModelResponseV1 {
             message_id: message.message_id,
-            content: message.content,
+            content: message.content.as_text().unwrap_or_default().to_owned(),
             tool_calls: message.tool_calls,
         });
     }
@@ -654,7 +654,16 @@ where
         messages: project_for_input(input, state),
         tools: registry.to_vec(),
     };
-    let response = match model.invoke(&request, &context) {
+    // Streaming turn (plan7 P7-B): the runtime adapter routes the deltas to
+    // the live invocation event stream; the settlement contract is identical
+    // to the buffered invoke.
+    let response = match model.invoke_stream(
+        &request,
+        &context,
+        &|chunk: &crate::ports::ModelDeltaChunk| {
+            let _ = chunk;
+        },
+    ) {
         Ok(response) => response,
         Err(error) => {
             fail_operation(
@@ -923,7 +932,7 @@ where
 
 /// 估算单条消息的 token 数
 fn estimate_message_tokens(msg: &AgentMessageV1) -> u64 {
-    let content_tokens = (msg.content.chars().count() as u64).div_ceil(4);
+    let content_tokens = (msg.content.as_text().map(str::len).unwrap_or(0) as u64).div_ceil(4);
     let tool_tokens: u64 = msg
         .tool_calls
         .iter()

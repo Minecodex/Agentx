@@ -225,7 +225,7 @@ async fn converge_evaluation(
     error: &Option<Value>,
 ) -> RuntimeResult<()> {
     let Some(case) = sqlx::query(
-        "SELECT c.id,c.evaluation_run_id,c.status FROM evaluation_run_cases c JOIN evaluation_runs r ON r.id=c.evaluation_run_id AND r.tenant_id=c.tenant_id WHERE c.tenant_id=? AND c.target_execution_id=? AND r.work_package_id=? FOR UPDATE",
+        "SELECT c.id,c.evaluation_run_id,c.status FROM evaluation_run_cases c FORCE INDEX(idx_evaluation_case_target) JOIN evaluation_runs r ON r.id=c.evaluation_run_id AND r.tenant_id=c.tenant_id WHERE c.tenant_id=? AND c.target_execution_id=? AND r.work_package_id=? FOR UPDATE OF c",
     )
     .bind(tenant_id)
     .bind(execution_id)
@@ -256,24 +256,20 @@ async fn converge_evaluation(
     let case_status = if terminal_status == "completed" {
         evaluate_deterministic_rules(tx, tenant_id, case_id, output).await?;
         start_model_evaluators(tx, tenant_id, package_id, execution_id, case_id, output).await?;
-        let pending: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM evaluation_rule_results WHERE tenant_id=? AND evaluation_run_case_id=? AND status IN ('queued','running')",
-        )
-        .bind(tenant_id)
-        .bind(case_id)
-        .fetch_one(&mut **tx)
-        .await?;
-        if pending == 0 { "completed" } else { "scoring" }
+        evaluation_scoring_status(tx, tenant_id, case_id).await?
     } else if terminal_status == "cancelled" {
         "cancelled"
     } else {
         "failed"
     };
+    let (duration_ms, cost_micros) = execution_measurements(tx, tenant_id, execution_id).await?;
     sqlx::query(
-        "UPDATE evaluation_run_cases SET status=?,actual_output_json=?,error_code=JSON_UNQUOTE(JSON_EXTRACT(?,'$.code')),error_message=JSON_UNQUOTE(JSON_EXTRACT(?,'$.message')),completed_at=IF(? IN ('completed','failed','cancelled'),UTC_TIMESTAMP(6),NULL) WHERE tenant_id=? AND id=?",
+        "UPDATE evaluation_run_cases SET status=?,actual_output_json=?,duration_ms=?,cost_micros=?,error_code=JSON_UNQUOTE(JSON_EXTRACT(?,'$.code')),error_message=JSON_UNQUOTE(JSON_EXTRACT(?,'$.message')),completed_at=IF(? IN ('completed','failed','cancelled'),UTC_TIMESTAMP(6),NULL) WHERE tenant_id=? AND id=?",
     )
     .bind(case_status)
     .bind(output)
+    .bind(duration_ms)
+    .bind(cost_micros)
     .bind(error)
     .bind(error)
     .bind(case_status)
@@ -301,6 +297,16 @@ async fn start_model_evaluators(
     case_id: Uuid,
     actual_output: &Value,
 ) -> RuntimeResult<()> {
+    let rules = sqlx::query(
+        "SELECT id,profile_rule_id,detail_json FROM evaluation_rule_results WHERE tenant_id=? AND evaluation_run_case_id=? AND status='queued' FOR UPDATE",
+    )
+    .bind(tenant_id)
+    .bind(case_id)
+    .fetch_all(&mut **tx)
+    .await?;
+    if rules.is_empty() {
+        return Ok(());
+    }
     let payload: RuntimeWorkPackagePayloadV1 = serde_json::from_value(
         sqlx::query_scalar(
             "SELECT payload_json FROM runtime_work_packages WHERE tenant_id=? AND id=?",
@@ -311,13 +317,6 @@ async fn start_model_evaluators(
         .await?,
     )
     .map_err(|error| RuntimeError::Internal(error.into()))?;
-    let rules = sqlx::query(
-        "SELECT id,profile_rule_id,detail_json FROM evaluation_rule_results WHERE tenant_id=? AND evaluation_run_case_id=? AND status='queued' FOR UPDATE",
-    )
-    .bind(tenant_id)
-    .bind(case_id)
-    .fetch_all(&mut **tx)
-    .await?;
     for rule in rules {
         let mut detail: Value = rule.try_get("detail_json")?;
         if detail.get("kind").and_then(Value::as_str) != Some("model") {
@@ -505,7 +504,7 @@ async fn converge_model_evaluator(
     error: &Option<Value>,
 ) -> RuntimeResult<()> {
     let Some(rule) = sqlx::query(
-        "SELECT rr.id,rr.evaluation_run_case_id,rr.status,rr.detail_json,c.evaluation_run_id FROM evaluation_rule_results rr JOIN evaluation_run_cases c ON c.id=rr.evaluation_run_case_id AND c.tenant_id=rr.tenant_id JOIN evaluation_runs r ON r.id=c.evaluation_run_id AND r.tenant_id=c.tenant_id WHERE rr.tenant_id=? AND rr.evaluator_execution_id=? AND r.work_package_id=? FOR UPDATE",
+        "SELECT rr.id,rr.evaluation_run_case_id,rr.status,rr.detail_json,c.evaluation_run_id FROM evaluation_rule_results rr FORCE INDEX(idx_evaluation_rule_evaluator) JOIN evaluation_run_cases c ON c.id=rr.evaluation_run_case_id AND c.tenant_id=rr.tenant_id JOIN evaluation_runs r ON r.id=c.evaluation_run_id AND r.tenant_id=c.tenant_id WHERE rr.tenant_id=? AND rr.evaluator_execution_id=? AND r.work_package_id=? FOR UPDATE OF rr",
     )
     .bind(tenant_id)
     .bind(execution_id)
@@ -547,39 +546,24 @@ async fn converge_model_evaluator(
     if let Some(error) = error {
         detail["error"] = error.clone();
     }
-    let cost_micros = evaluation
-        .pointer("/usage/costMicros")
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
+    let (duration_ms, cost_micros) = execution_measurements(tx, tenant_id, execution_id).await?;
     sqlx::query(
-        "UPDATE evaluation_rule_results SET status=?,passed=?,score=?,detail_json=?,cost_micros=?,completed_at=UTC_TIMESTAMP(6) WHERE tenant_id=? AND id=? AND status='running'",
+        "UPDATE evaluation_rule_results SET status=?,passed=?,score=?,detail_json=?,duration_ms=?,cost_micros=?,completed_at=UTC_TIMESTAMP(6) WHERE tenant_id=? AND id=? AND status='running'",
     )
     .bind(rule_status)
     .bind(if terminal_status == "completed" { Some(passed) } else { None })
     .bind(score)
     .bind(detail)
+    .bind(duration_ms)
     .bind(cost_micros)
     .bind(tenant_id)
     .bind(rule_id)
     .execute(&mut **tx)
     .await?;
-    let pending: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM evaluation_rule_results WHERE tenant_id=? AND evaluation_run_case_id=? AND status IN ('queued','running')",
-    )
-    .bind(tenant_id)
-    .bind(case_id)
-    .fetch_one(&mut **tx)
-    .await?;
-    if pending == 0 {
-        let case_status = if terminal_status == "cancelled" {
-            "cancelled"
-        } else if terminal_status == "completed" {
-            "completed"
-        } else {
-            "failed"
-        };
+    let case_status = evaluation_scoring_status(tx, tenant_id, case_id).await?;
+    if case_status != "scoring" {
         sqlx::query(
-            "UPDATE evaluation_run_cases SET status=?,completed_at=UTC_TIMESTAMP(6),cost_micros=(SELECT COALESCE(SUM(cost_micros),0) FROM evaluation_rule_results WHERE tenant_id=? AND evaluation_run_case_id=?) WHERE tenant_id=? AND id=? AND status='scoring'",
+            "UPDATE evaluation_run_cases SET status=?,completed_at=UTC_TIMESTAMP(6),cost_micros=cost_micros+(SELECT COALESCE(SUM(cost_micros),0) FROM evaluation_rule_results WHERE tenant_id=? AND evaluation_run_case_id=?) WHERE tenant_id=? AND id=? AND status='scoring'",
         )
         .bind(case_status)
         .bind(tenant_id)
@@ -590,6 +574,45 @@ async fn converge_model_evaluator(
         .await?;
     }
     converge_evaluation_run(tx, tenant_id, package_id, run_id, execution_id).await
+}
+
+async fn evaluation_scoring_status(
+    tx: &mut Transaction<'_, MySql>,
+    tenant_id: Uuid,
+    case_id: Uuid,
+) -> RuntimeResult<&'static str> {
+    let statuses: Vec<String> = sqlx::query_scalar(
+        "SELECT status FROM evaluation_rule_results WHERE tenant_id=? AND evaluation_run_case_id=?",
+    )
+    .bind(tenant_id)
+    .bind(case_id)
+    .fetch_all(&mut **tx)
+    .await?;
+    Ok(scoring_status(&statuses))
+}
+
+fn scoring_status(statuses: &[String]) -> &'static str {
+    if statuses
+        .iter()
+        .any(|status| matches!(status.as_str(), "queued" | "running"))
+    {
+        "scoring"
+    } else if statuses.iter().any(|status| status == "error") {
+        "failed"
+    } else if statuses.iter().any(|status| status == "cancelled") {
+        "cancelled"
+    } else {
+        "completed"
+    }
+}
+
+async fn execution_measurements(
+    tx: &mut Transaction<'_, MySql>,
+    tenant_id: Uuid,
+    execution_id: Uuid,
+) -> RuntimeResult<(Option<u64>, u64)> {
+    Ok(sqlx::query_as("SELECT duration_ms,(SELECT CAST(COALESCE(SUM(cost_micros),0) AS UNSIGNED) FROM runtime_calls WHERE tenant_id=? AND execution_id=?) FROM workflow_executions WHERE tenant_id=? AND id=?")
+        .bind(tenant_id).bind(execution_id).bind(tenant_id).bind(execution_id).fetch_one(&mut **tx).await?)
 }
 
 async fn evaluate_deterministic_rules(
@@ -704,8 +727,10 @@ async fn converge_evaluation_run(
         .bind(run_id)
         .fetch_one(&mut **tx)
         .await?;
+    // The Work Package parent serializes convergence and cancellation. This
+    // single consistent-view aggregate does not need locks on all old Cases.
     let counts = sqlx::query(
-        "SELECT COUNT(*) total,CAST(COALESCE(SUM(status IN ('completed','failed','cancelled')),0) AS UNSIGNED) terminal,CAST(COALESCE(SUM(status='failed'),0) AS UNSIGNED) failed,CAST(COALESCE(SUM(status='cancelled'),0) AS UNSIGNED) cancelled FROM evaluation_run_cases WHERE tenant_id=? AND evaluation_run_id=? FOR UPDATE",
+        "SELECT COUNT(*) total,CAST(COALESCE(SUM(status IN ('completed','failed','cancelled')),0) AS UNSIGNED) terminal,CAST(COALESCE(SUM(status='failed'),0) AS UNSIGNED) failed,CAST(COALESCE(SUM(status='cancelled'),0) AS UNSIGNED) cancelled FROM evaluation_run_cases WHERE tenant_id=? AND evaluation_run_id=?",
     )
     .bind(tenant_id)
     .bind(run_id)
@@ -793,6 +818,21 @@ async fn load_evaluation_report(
         .bind(run_id)
         .fetch_all(&mut **tx)
         .await?;
+    // All convergence writers hold the Work Package parent. Read rules in
+    // one scoped query instead of holding that lock for one query per Case.
+    let rule_rows = sqlx::query("SELECT rr.evaluation_run_case_id,rr.id,rr.profile_rule_id,rr.evaluator_execution_id,rr.status,rr.passed,CAST(rr.score AS DOUBLE) score,rr.detail_json,rr.duration_ms,rr.cost_micros FROM evaluation_rule_results rr JOIN evaluation_run_cases c ON c.tenant_id=rr.tenant_id AND c.id=rr.evaluation_run_case_id WHERE rr.tenant_id=? AND c.evaluation_run_id=? ORDER BY rr.created_at,rr.id")
+        .bind(tenant_id)
+        .bind(run_id)
+        .fetch_all(&mut **tx)
+        .await?;
+    let mut rules_by_case = std::collections::HashMap::new();
+    for rule in rule_rows {
+        let case_id: Uuid = rule.try_get("evaluation_run_case_id")?;
+        rules_by_case
+            .entry(case_id)
+            .or_insert_with(Vec::new)
+            .push(rule);
+    }
     let mut cases = Vec::with_capacity(case_rows.len());
     let mut completed_cases = 0_u64;
     let mut passed_rules = 0_u64;
@@ -801,11 +841,7 @@ async fn load_evaluation_report(
     let mut total_cost_micros = 0_u64;
     for row in case_rows {
         let case_id: Uuid = row.try_get("id")?;
-        let rule_rows = sqlx::query("SELECT id,profile_rule_id,status,passed,CAST(score AS DOUBLE) score,detail_json,duration_ms,cost_micros FROM evaluation_rule_results WHERE tenant_id=? AND evaluation_run_case_id=? ORDER BY created_at,id")
-            .bind(tenant_id)
-            .bind(case_id)
-            .fetch_all(&mut **tx)
-            .await?;
+        let rule_rows = rules_by_case.remove(&case_id).unwrap_or_default();
         let mut rules = Vec::with_capacity(rule_rows.len());
         for rule in rule_rows {
             let status: String = rule.try_get("status")?;
@@ -818,6 +854,7 @@ async fn load_evaluation_report(
             rules.push(RuntimeEvaluationRuleResultV1 {
                 id: rule.try_get("id")?,
                 profile_rule_id: rule.try_get("profile_rule_id")?,
+                evaluator_execution_id: rule.try_get("evaluator_execution_id")?,
                 status,
                 passed: rule.try_get("passed")?,
                 score: rule.try_get("score")?,
@@ -984,7 +1021,26 @@ fn stable_id(namespace: Uuid, label: &[u8]) -> Uuid {
 mod tests {
     use serde_json::json;
 
-    use super::evaluate_deterministic_expression;
+    use super::{evaluate_deterministic_expression, scoring_status};
+
+    #[test]
+    fn multiple_judges_settle_without_losing_an_earlier_error() {
+        for statuses in [["passed", "error"], ["error", "passed"]] {
+            assert_eq!(scoring_status(&statuses.map(str::to_owned)), "failed");
+        }
+        assert_eq!(
+            scoring_status(&["failed".into(), "passed".into()]),
+            "completed"
+        );
+        assert_eq!(
+            scoring_status(&["error".into(), "running".into()]),
+            "scoring"
+        );
+        assert_eq!(
+            scoring_status(&["passed".into(), "cancelled".into()]),
+            "cancelled"
+        );
+    }
 
     #[test]
     fn deterministic_evaluators_cover_the_public_profile_types() {

@@ -531,6 +531,7 @@ async fn agent_worker_runs_a_bounded_tool_loop_and_persists_usage(fixture: &Fixt
     .unwrap();
     let model_id = Uuid::now_v7();
     let model_configuration = agentx_runtime_contracts::RuntimeResourceConfigurationV1::Model {
+            capabilities: Vec::new(),
         provider: "openai_compatible".into(),
         endpoint: format!("{endpoint}/model"),
         model: "fixture-model".into(),
@@ -568,7 +569,8 @@ async fn agent_worker_runs_a_bounded_tool_loop_and_persists_usage(fixture: &Fixt
                 .unwrap(),
             deadline_at: OffsetDateTime::now_utc() + time::Duration::seconds(30),
         },
-        node_type: "agent".into(),
+        node_key: "test_node".into(), node_type: "agent".into(),
+        invocation_id: None,
         node_version: 1,
         run_index: 0,
         iteration_index: 0,
@@ -725,6 +727,7 @@ async fn application_session_agent_restores_context_across_executions(fixture: &
     let model_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let model_id = Uuid::now_v7();
     let configuration = agentx_runtime_contracts::RuntimeResourceConfigurationV1::Model {
+            capabilities: Vec::new(),
         provider: "openai_compatible".into(),
         endpoint: "https://provider.example.test/model".into(),
         model: "fixture-model".into(),
@@ -762,7 +765,8 @@ async fn application_session_agent_restores_context_across_executions(fixture: &
                 compatibility_hash: agentx_runtime_contracts::content_hash(&json!({"agent":1})).unwrap(),
                 deadline_at: OffsetDateTime::now_utc() + time::Duration::seconds(30),
             },
-            node_type: "agent".into(),
+            node_key: "test_node".into(), node_type: "agent".into(),
+            invocation_id: None,
             node_version: 1,
             run_index: 0,
             iteration_index: 0,
@@ -841,6 +845,10 @@ async fn sandbox_manager_is_fenced_and_idempotent(fixture: &Fixture) {
                     }))
                 }
             }),
+        )
+        .route(
+            "/v1/sandboxes/{id}/proxy/44772/ping",
+            get(|| async { axum::http::StatusCode::OK }),
         )
         .route(
             "/v1/sandboxes/{id}/proxy/44772/command",
@@ -1580,6 +1588,7 @@ async fn retention_dry_run_reference_block_and_object_sweep_are_fenced(fixture: 
         trust: fixture.state.trust.clone(),
         wakeups: Default::default(),
         vault: None,
+                admission_redis: fixture.state.admission_redis.clone(),
     };
     assert!(
         run_retention_once(&failing_state, Uuid::now_v7())

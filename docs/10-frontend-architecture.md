@@ -236,6 +236,14 @@ Playground 调用正式 Application API，不建立单独的执行实现。页�
 
 执行表格展示当前 Control 名称补充与 Runtime 审计快照的不同语义：应用和 Workflow 名称是 BFF 对当页稳定 ID 批量解析的当前名称；发起用户、发起部门和触发名称来自执行时快照。未知触发枚举保留协议原值用于诊断，已知值必须使用 `executions.triggerTypes` 的中英文映射。
 
+### 10.1 部署后的页面资源加载
+
+HTML 入口及 `runtime-config.js` 使用 `Cache-Control: no-store`；带内容摘要的 `/assets/` 文件允许长期不可变缓存，缺失资源必须返回不缓存的 404，不能返回 SPA 首页。SPA 业务路由仍由 `index.html` 承接。
+
+入口监听 Vite 官方 `vite:preloadError` 事件。每个入口构建在同一个浏览器标签页内最多自动刷新一次，以获取新部署的资源；刷新后仍失败或标签页存储不可用时，由全局路由错误页提供明确提示、手动刷新与返回首页，不显示框架默认开发者错误页。此行为不保留旧版本资源或旧路径兼容入口。实现依据见 [Vite 加载错误处理](https://vite.dev/guide/build#load-error-handling) 与 [NGINX 响应头文档](https://nginx.org/en/docs/http/ngx_http_headers_module.html)。
+
+Kubernetes 桌面浏览器验收覆盖创建工作流后进入详情和画布、单次缺失分块恢复且不重复创建、持续缺失时不循环刷新，以及显式刷新恢复。
+
 ## 11. M2.1 资源界面
 
 - Model 列表只提供“新建模型”，在同一个 Dialog 中按连接、模型能力、所属部门和默认参数的顺序完成配置，不要求预先创建连接。Model 详情使用相同字段集合统一编辑；连接或模型参数变化都创建不可变 Deployment Revision，并展示 Revision 历史。

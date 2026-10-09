@@ -7,6 +7,7 @@ dependencies = []
 
 [dependency-groups]
 test = [
+  "cryptography>=44,<48",
   "httpx>=0.28,<1",
   "pytest>=8.3,<9",
   "pytest-timeout>=2.3,<3",
@@ -23,6 +24,7 @@ pythonpath = ["."]
 testpaths = ["tests/acceptance", "tests/e2e"]
 cache_dir = ".local/cache/pytest"
 markers = [
+    "capacity: dedicated capacity-window runs (plan7 P7-D4)",
   "infrastructure: Kubernetes infrastructure and data-domain scenarios",
   "publishing: bundle publishing and activation scenarios",
   "gateway: invocation, webhook, and SSE scenarios",

@@ -8,6 +8,9 @@ use rsa::{
 };
 use serde::Serialize;
 
+mod tls;
+pub use tls::{LocalTlsMaterial, local_tls_material};
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SigningMaterial {

@@ -46,6 +46,15 @@
     },
     "to": {
       "type": "string"
+    },
+    "workflowId": {
+      "default": null,
+      "description": "plan7 P7-C: aggregate-page drill-down needs workflow-scoped search.",
+      "format": "uuid",
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "required": [

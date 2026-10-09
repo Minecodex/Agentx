@@ -4,10 +4,11 @@ import { SUPPORTED_CONTROLS } from '../forms/parameter-field'
 import { studioManifest, studioManifestTypes } from './studio-catalog'
 
 describe('generated Studio Catalog fixture', () => {
-  it('contains only the eleven registry-owned action nodes', () => {
+  it('contains only the thirteen registry-owned action nodes', () => {
     expect([...studioManifestTypes].sort()).toEqual([
       'agent', 'approval', 'code', 'declarative_http', 'if', 'list',
-      'loop_over_items', 'merge', 'model', 'set', 'sub_workflow',
+      'loop_over_items', 'merge', 'model', 'reply_message', 'send_message',
+      'set', 'sub_workflow',
     ])
   })
 

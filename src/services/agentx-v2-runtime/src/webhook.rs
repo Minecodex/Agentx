@@ -370,6 +370,12 @@ fn sender_paths(provider: WebhookProviderV1) -> &'static [&'static str] {
     }
 }
 fn message_text(provider: WebhookProviderV1, payload: &Value) -> Option<String> {
+    if provider == WebhookProviderV1::Dingtalk {
+        // Regular robot callbacks use the `text.content` object; session
+        // webhook callbacks carry a JSON-encoded `content` string instead.
+        return first_string(payload, &["text.content", "text"])
+            .or_else(|| dingtalk_session_content_text(payload));
+    }
     let value = first_string(
         payload,
         match provider {
@@ -386,6 +392,18 @@ fn message_text(provider: WebhookProviderV1, payload: &Value) -> Option<String> 
     } else {
         Some(value)
     }
+}
+
+/// DingTalk session-webhook robot callbacks put the message body in a
+/// JSON-encoded `content` field (`"{\"content\":\"hi\"}"`).
+fn dingtalk_session_content_text(payload: &Value) -> Option<String> {
+    let value = first_string(payload, &["content"])?;
+    if !value.trim_start().starts_with('{') {
+        return None;
+    }
+    serde_json::from_str::<Value>(&value)
+        .ok()
+        .and_then(|v| v.get("content").and_then(Value::as_str).map(str::to_owned))
 }
 pub(crate) fn is_text_message(provider: WebhookProviderV1, payload: &Value) -> bool {
     if provider == WebhookProviderV1::Dingtalk {
@@ -803,6 +821,22 @@ mod tests {
                 &json!({"conversation_id":"bad"})
             ),
             Err("WEBHOOK_MAPPING_CONFLICT")
+        );
+    }
+    #[test]
+    fn dingtalk_session_webhook_content_is_decoded_to_text() {
+        let payload = json!({"msgId":"event-s","conversationId":"chat-s","conversationType":"1","senderStaffId":"user-s","msgtype":"text","content":"{\"content\":\"hello delivery\"}","sessionWebhook":"https://oapi.dingtalk.com/robot/sendBySession?session=x"});
+        let context = normalize(
+            WebhookProviderV1::Dingtalk,
+            Uuid::nil(),
+            "c".into(),
+            &payload,
+        )
+        .unwrap();
+        assert_eq!(context.message.text, "hello delivery");
+        assert_eq!(
+            context.session_webhook.as_deref(),
+            Some("https://oapi.dingtalk.com/robot/sendBySession?session=x")
         );
     }
     #[test]

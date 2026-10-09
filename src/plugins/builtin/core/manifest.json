@@ -18,7 +18,9 @@
     "nodes/mcp_tool.json",
     "nodes/skill.json",
     "nodes/rag.json",
-    "nodes/memory.json"
+    "nodes/memory.json",
+    "nodes/reply_message.json",
+    "nodes/send_message.json"
   ],
   "traceRenderers": []
 }

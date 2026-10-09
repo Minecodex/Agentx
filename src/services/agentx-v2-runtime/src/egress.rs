@@ -588,6 +588,7 @@ fn provider_builder() -> Result<reqwest::ClientBuilder> {
 #[cfg(test)]
 mod tests {
     use std::env;
+    use std::sync::Mutex;
 
     use reqwest::{Method, StatusCode, header};
 
@@ -595,8 +596,13 @@ mod tests {
         prepare_redirect_request, validate_provider_url, validate_sandbox_manager_execute_url,
     };
 
+    // validate_provider_url reads AGENTX_EGRESS_HTTP_PROVIDER_SERVICES; the
+    // test that mutates it must not race the tests asserting default behavior.
+    static PROVIDER_ENV_LOCK: Mutex<()> = Mutex::new(());
+
     #[test]
     fn public_endpoints_require_https_and_forbid_userinfo() {
+        let _guard = PROVIDER_ENV_LOCK.lock().unwrap();
         assert!(validate_provider_url("https://api.example.com/v1").is_ok());
         assert!(validate_provider_url("http://api.example.com/v1").is_err());
         assert!(validate_provider_url("https://user:password@api.example.com/v1").is_err());
@@ -605,6 +611,7 @@ mod tests {
 
     #[test]
     fn managed_cluster_fixtures_keep_their_http_path() {
+        let _guard = PROVIDER_ENV_LOCK.lock().unwrap();
         assert!(
             validate_provider_url("http://echo-mcp.agentx-deps.svc.cluster.local:8090/mcp").is_ok()
         );
@@ -618,7 +625,9 @@ mod tests {
 
     #[test]
     fn http_provider_services_allowlist_is_configurable() {
-        // SAFETY: single-threaded test process; the override is restored below.
+        let _guard = PROVIDER_ENV_LOCK.lock().unwrap();
+        // SAFETY: the shared lock keeps concurrent tests off the ambient env
+        // while the override is held; it is restored below.
         unsafe {
             env::set_var("AGENTX_EGRESS_HTTP_PROVIDER_SERVICES", "echo-mcp,ragflow");
         }

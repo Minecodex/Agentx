@@ -9,13 +9,13 @@ spec:
       serviceAccountName: observability
       automountServiceAccountToken: false
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
-      restartPolicy: OnFailure
+      restartPolicy: Never
       initContainers:
         - name: wait-for-clickhouse
           image: curlimages/curl:8.12.1
           securityContext: { allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 101, runAsGroup: 102, capabilities: { drop: [ALL] } }
           command: [sh, -ec]
-          args: ['until curl --fail --silent {{ if eq .Values.global.environment "production" }}--cacert /etc/agentx-ca/clickhouse.pem{{ end }} --user "$AGENTX_CLICKHOUSE_USER:$AGENTX_CLICKHOUSE_PASSWORD" "${AGENTX_CLICKHOUSE_URL%/}/ping" >/dev/null; do sleep 2; done']
+          args: ['until curl --fail --silent {{ if .Values.global.components.clickhouse.caSecretName }}--cacert /etc/agentx-ca/clickhouse.pem{{ end }} --user "$AGENTX_CLICKHOUSE_USER:$AGENTX_CLICKHOUSE_PASSWORD" "${AGENTX_CLICKHOUSE_URL%/}/ping" >/dev/null; do sleep 2; done']
           env:
             - { name: AGENTX_CLICKHOUSE_URL, value: {{ .Values.global.components.clickhouse.url | quote }} }
             - { name: AGENTX_CLICKHOUSE_USER, value: {{ .Values.global.components.clickhouse.migrateUser | quote }} }

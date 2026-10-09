@@ -190,6 +190,11 @@ Execution Style：
 - suspend：挂起等待外部恢复（Approval 专用）
 - sub_workflow：调用不可变的已发布 Workflow Version
 
+内置节点目录（agentx/core 包）：`agent`、`approval`、`code`、`if`、`loop_over_items`、`merge`、`model`、`sub_workflow`、`mcp_tool`、`skill`、`rag`、`memory`，以及 plan7 P7-A 新增的 IM 回复节点：
+
+- `reply_message`：回复触发本工作流的来源 IM 会话。内容为任意 workflow 变量；目标由 ExecutionOrigin → Invocation Trigger Context 在结算事务内解析，非 IM 来源执行失败 `REPLY_TARGET_UNRESOLVED`。语义为非终态副作用：结算事务入队 `delivery_outbox` 后节点即成功，实际投递异步进行。
+- `send_message`：向显式渠道会话主动发送。参数为 content + channelId（+ 可选 targetConversationId/senderId）；渠道无法解析时发布被阻塞（`SEND_CHANNEL_UNRESOLVED`）。
+
 `remote_action` 已整条废弃（plan5）：触发内部 Workflow 由 `sub_workflow` 承载，第三方节点生态位未来归 MCP。
 
 Sandbox Python、JavaScript、Shell 和 Agent 是运行适配或内置节点能力，不要求对外提供语言 SDK。UI Schema 还需要表达条件显示、Collection、Fixed Collection、Resource Locator、Resource Mapper 和动态选项；动态能力通过 load options、list search、resource mapping 和 credential test 等受控 API 提供，不能只依赖 JSON Schema。
@@ -332,6 +337,8 @@ Worker 必须容忍：
 - Trace 写入延迟
 
 Redis Stream 只承载可重建的派发事实。Worker 的每个 capability 使用独立连接；队列读取必须有界，连接错误或读取超时后主动重建连接，`FLUSHALL`、Consumer Group 丢失或 Redis Pod 替换后由 MySQL Outbox/Recovery 与 `ensure_group` 自恢复。依赖错误重试属于调度器仍在推进，不能把它误报为进程 liveness stalled，也不能依赖 Kubernetes 重启来恢复队列消费。
+
+Gateway 在接受 API 或 Chat 新调用前检查租户的 MySQL 在途数量和队列数量，以及九类 capability 的 Redis Stream 未消费数与 Pending 合计。MySQL 默认在途上限为 500，MySQL 队列与 Redis 合计水位默认为 2000；超限返回 429 与 `Retry-After`，不创建调用记录。Redis 使用原子且有界的读取，缺失 Stream 按空队列计；连接或水位读取失败返回 503，不放行未知压力下的新请求。Chat 已受理消息的幂等重放先返回原结果。Redis 压力只参与准入判断，执行权威状态仍在 MySQL。
 
 ## 11. 错误和重试
 

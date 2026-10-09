@@ -77,6 +77,26 @@ fn validate_schema(path: &str, schema: &Value, issues: &mut Vec<CompileIssue>) {
             "Artifact array fields must use an array schema",
         );
     }
+    // plan7 P7-B: modality-marked inputs receive artifact reference arrays from
+    // the chat input projection, so the schema must declare them accordingly.
+    if let Some(modality) = schema.get("x-agentx-modality").and_then(Value::as_str) {
+        if !matches!(modality, "image" | "audio") {
+            issue(
+                issues,
+                path,
+                "INVALID_MODALITY_SCHEMA",
+                "x-agentx-modality only supports image and audio",
+            );
+        }
+        if schema.get("type").and_then(Value::as_str) != Some("array") {
+            issue(
+                issues,
+                path,
+                "INVALID_MODALITY_SCHEMA",
+                "Modality-marked fields must use an array schema",
+            );
+        }
+    }
     if let Some(properties) = schema.get("properties").and_then(Value::as_object) {
         for (name, property) in properties {
             validate_schema(&format!("{path}.properties.{name}"), property, issues);
@@ -142,6 +162,32 @@ mod tests {
             issues
                 .iter()
                 .any(|issue| issue.code == "INVALID_SCHEMA_DEFAULT")
+        );
+    }
+
+    #[test]
+    fn rejects_unsupported_modality_markers_and_non_array_fields() {
+        let mut definition = WorkflowDefinition::empty();
+        definition.start.inputs = json!({
+            "type":"object",
+            "properties":{
+                "poster":{"type":"string","x-agentx-modality":"image"},
+                "clip":{"type":"array","x-agentx-modality":"video"}
+            }
+        });
+        let mut issues = Vec::new();
+        validate_workflow_contract_schemas(&definition, &mut issues);
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.code == "INVALID_MODALITY_SCHEMA"
+                    && issue.message.contains("array schema"))
+        );
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.code == "INVALID_MODALITY_SCHEMA"
+                    && issue.message.contains("image and audio"))
         );
     }
 }

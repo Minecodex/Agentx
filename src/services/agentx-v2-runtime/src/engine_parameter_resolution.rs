@@ -1,9 +1,34 @@
 use std::collections::BTreeMap;
 
-use agentx_domain::ConditionOperator;
+use agentx_domain::{ConditionOperator, InputBinding, InputTemplateSegment, ValueNamespace};
 use agentx_node_protocol::Item;
 use agentx_runtime::{ExpressionContext, ExpressionEngine, ExpressionError};
 use serde_json::{Value, json};
+
+pub(super) fn reads_outputs(value: &Value) -> bool {
+    if value.is_object()
+        && let Ok(binding) = serde_json::from_value::<InputBinding>(value.clone())
+    {
+        return binding_reads_outputs(&binding);
+    }
+    match value {
+        Value::Array(values) => values.iter().any(reads_outputs),
+        Value::Object(fields) => fields.values().any(reads_outputs),
+        _ => false,
+    }
+}
+
+fn binding_reads_outputs(binding: &InputBinding) -> bool {
+    match binding {
+        InputBinding::Literal { .. } => false,
+        InputBinding::Reference { selector, .. } => selector.namespace == ValueNamespace::Outputs,
+        InputBinding::Array { items } => items.iter().any(binding_reads_outputs),
+        InputBinding::Object { fields } => fields.values().any(binding_reads_outputs),
+        InputBinding::Template { segments } => segments.iter().any(|segment| {
+            matches!(segment, InputTemplateSegment::Reference { selector, .. } if selector.namespace == ValueNamespace::Outputs)
+        }),
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn resolve(
@@ -221,6 +246,57 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn nested_output_bindings_still_resolve_but_literal_reference_data_needs_no_history() {
+        let reference = json!({"kind":"reference","selector":{
+            "namespace":"outputs","sourceNodeId":"earlier-id","port":"main",
+            "run":{"kind":"current"},"item":{"kind":"first"},"path":["answer"]
+        },"missingPolicy":{"kind":"error"}});
+        let parameters = json!({"value":{"kind":"array","items":[{"kind":"template","segments":[
+            {"kind":"text","text":"Answer: "}, reference.clone()
+        ]}]}});
+        assert!(reads_outputs(&parameters));
+        let mut outputs = serde_json::Map::new();
+        crate::engine_persistence::merge_output_namespace(
+            &mut outputs,
+            "earlier-key",
+            0,
+            &json!({
+                "main":[{"json":{"answer":"ready"},"lineage":[]}]
+            }),
+        );
+        let (resolved, _, _) = resolve(
+            "set",
+            &parameters,
+            &json!({}),
+            &BTreeMap::new(),
+            Value::Null,
+            Value::Null,
+            Value::Object(outputs),
+            json!({}),
+            json!({}),
+            BTreeMap::from([("earlier-id".into(), "earlier-key".into())]),
+        )
+        .unwrap();
+        assert_eq!(resolved["value"], json!(["Answer: ready"]));
+        let literal = json!({"value":{"kind":"literal","value":reference}});
+        assert!(!reads_outputs(&literal));
+        let (resolved, _, _) = resolve(
+            "set",
+            &literal,
+            &json!({}),
+            &BTreeMap::new(),
+            Value::Null,
+            Value::Null,
+            json!({}),
+            json!({}),
+            json!({}),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        assert_eq!(resolved["value"], reference);
+    }
 
     #[test]
     fn resolves_item_parameters_for_each_input_item() {

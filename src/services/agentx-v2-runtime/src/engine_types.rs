@@ -10,6 +10,8 @@ pub struct ClaimedWorkerAttempt {
     pub lease: WorkerAttemptLeaseV1,
     pub task: WorkerTaskV1,
     pub node_type: String,
+    pub node_key: String,
+    pub invocation_id: Option<uuid::Uuid>,
     pub node_version: u32,
     pub run_index: u32,
     pub iteration_index: u32,

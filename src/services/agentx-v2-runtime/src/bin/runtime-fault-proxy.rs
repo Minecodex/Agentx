@@ -30,6 +30,7 @@ struct ProxyState {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    agentx_service_kit::install_tls_provider();
     let upstream = env::var("AGENTX_FAULT_PROXY_UPSTREAM")
         .context("AGENTX_FAULT_PROXY_UPSTREAM is required")?
         .trim_end_matches('/')

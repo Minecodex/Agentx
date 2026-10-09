@@ -8,6 +8,8 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use bytes::Bytes;
+use futures_util::StreamExt;
 use rmcp::{
     Json, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -117,7 +119,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/plan5/maybe-fail", get(plan5_maybe_fail))
         .route("/v2/runtime/model", post(v2_runtime_model))
         .route("/v2/runtime/mcp", post(v2_runtime_mcp))
-        .nest_service("/mcp", service);
+        .nest_service("/mcp", service)
+        .layer(axum::middleware::from_fn(require_mcp_bearer));
     let listener = tokio::net::TcpListener::bind(bind_addr).await?;
     tracing::info!(%bind_addr, "Echo MCP is listening");
 
@@ -128,6 +131,23 @@ async fn main() -> anyhow::Result<()> {
         })
         .await?;
     Ok(())
+}
+
+async fn require_mcp_bearer(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if request.uri().path().starts_with("/mcp")
+        && let Ok(token) = env::var("AGENTX_FIXTURE_MCP_AUTH_TOKEN")
+        && request
+            .headers()
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            != Some(format!("Bearer {token}").as_str())
+    {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    next.run(request).await
 }
 
 async fn plan5_items(headers: HeaderMap, AxumJson(body): AxumJson<Value>) -> AxumJson<Value> {
@@ -311,6 +331,45 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
         )
             .into_response();
     }
+    if request.get("model").and_then(Value::as_str) == Some("echo-unavailable") {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            AxumJson(json!({"error":{"message":"fixture provider unavailable"}})),
+        )
+            .into_response();
+    }
+    if request.get("model").and_then(Value::as_str) == Some("echo-timeout") {
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    }
+    // plan7 P7-B B6 scenario 5: the vision fixture reports whether the
+    // request carried native image_url content parts.
+    if request.get("model").and_then(Value::as_str) == Some("echo-vision") {
+        let messages = request
+            .get("messages")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let image_parts = messages
+            .iter()
+            .filter_map(|message| message.get("content").and_then(Value::as_array))
+            .flatten()
+            .filter(|part| part.get("type").and_then(Value::as_str) == Some("image_url"))
+            .count();
+        let text = if image_parts > 0 {
+            format!("vision-ok:{image_parts}")
+        } else {
+            "vision-missing".into()
+        };
+        return (
+            StatusCode::OK,
+            AxumJson(json!({
+                "id":"chatcmpl-vision","object":"chat.completion","model":"echo-vision",
+                "choices":[{"index":0,"message":{"role":"assistant","content":text},"finish_reason":"stop"}],
+                "usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}
+            })),
+        )
+            .into_response();
+    }
     let messages = request
         .get("messages")
         .and_then(Value::as_array)
@@ -454,6 +513,9 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
         .map(schema_example)
         .and_then(|value| serde_json::to_string(&value).ok());
     let content = tool_call.is_none().then(|| {
+        if request.get("model").and_then(Value::as_str) == Some("echo-invalid-judge") {
+            return "{\"passed\":\"invalid\",\"score\":2,\"reason\":42}".into();
+        }
         structured_content.unwrap_or_else(|| {
             if agent_purpose == "compaction" && p3_overflow_requested {
                 "P3_OVERFLOW_COMPACTED".into()
@@ -474,11 +536,66 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
         .and_then(Value::as_bool)
         .unwrap_or(false)
     {
+        let model_name = request
+            .get("model")
+            .and_then(Value::as_str)
+            .unwrap_or("echo-model")
+            .to_owned();
+        let behavior_stream = matches!(
+            model_name.as_str(),
+            "echo-slow-stream" | "echo-abort-stream" | "echo-no-usage"
+        ) && tool_call.is_none();
         let delta = if let Some(call) = tool_call {
             json!({"tool_calls":[{"index":0,"id":call["id"],"type":"function","function":{"name":call["function"]["name"],"arguments":call["function"]["arguments"]}}]})
         } else {
             json!({"content":content})
         };
+        // plan7 P7-B B6: behavior fixtures switch on the model name so the
+        // streaming E2E can exercise slow streams, mid-stream aborts and
+        // usage-less streams against the real worker transport.
+        if behavior_stream {
+            let tokens: Vec<String> = match &content {
+                Some(text) => text.split_inclusive(' ').map(str::to_owned).collect(),
+                None => vec!["echo".into()],
+            };
+            let abort = model_name.as_str() == "echo-abort-stream";
+            let include_usage = model_name.as_str() != "echo-no-usage";
+            let slow = model_name.as_str() == "echo-slow-stream";
+            let usage_frame = usage.clone();
+            let model_for_stream = model_name.clone();
+            let last_index = tokens.len().saturating_sub(1);
+            let stream = futures_util::stream::iter(tokens.into_iter().enumerate()).then(
+                move |(index, token)| {
+                    let usage_for_frame = usage_frame.clone();
+                    let model_in_frame = model_for_stream.clone();
+                    async move {
+                        if slow {
+                            tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+                        }
+                        let frame = json!({
+                            "id":"m5-stream","model":model_in_frame,
+                            "choices":[{"index":0,"delta":{"content":token},"finish_reason":null}]
+                        });
+                        let mut frame_text = format!("data: {frame}\n\n");
+                        if index == last_index && !abort {
+                            let mut finished = json!({"id":"m5-stream","model":model_in_frame,"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]});
+                            if include_usage {
+                                finished["usage"] = usage_for_frame;
+                            }
+                            frame_text.push_str(&format!("data: {finished}\n\ndata: [DONE]\n\n"));
+                        }
+                        Ok::<Bytes, std::io::Error>(Bytes::from(frame_text))
+                    }
+                },
+            )
+            .take(if abort { 3 } else { usize::MAX });
+            let body = Body::from_stream(stream);
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(body)
+                .expect("fixture response");
+        }
         let body = format!(
             "data: {}\n\ndata: {}\n\ndata: [DONE]\n\n",
             json!({"id":"m5-stream","choices":[{"index":0,"delta":delta,"finish_reason":finish_reason}]}),
@@ -544,6 +661,8 @@ mod tests {
         http::{HeaderMap, HeaderValue, header},
         response::IntoResponse,
     };
+    use bytes::Bytes;
+    use futures_util::StreamExt;
     use serde_json::{Value, json};
 
     #[test]
@@ -554,6 +673,29 @@ mod tests {
             ),
             json!({"answer":"structured-value","count":1})
         );
+    }
+
+    #[tokio::test]
+    async fn usage_less_stream_emits_finish_and_done_after_all_content() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer m5-model-secret"),
+        );
+        let response = chat_completions(headers, Json(json!({"model":"echo-no-usage","stream":true,"messages":[{"role":"user","content":"hello"}]}))).await;
+        let mut stream = response.into_body().into_data_stream();
+        let mut frames: Vec<Bytes> = Vec::new();
+        while let Some(frame) = stream.next().await {
+            frames.push(frame.unwrap());
+        }
+        let text = frames
+            .iter()
+            .map(|frame| std::str::from_utf8(frame).unwrap())
+            .collect::<String>();
+        assert_eq!(text.matches("[DONE]").count(), 1);
+        assert_eq!(text.matches("\"finish_reason\":\"stop\"").count(), 1);
+        assert!(!text.contains("\"usage\""));
+        assert!(text.ends_with("data: [DONE]\n\n"));
     }
 
     #[tokio::test]

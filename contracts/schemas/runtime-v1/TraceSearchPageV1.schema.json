@@ -41,6 +41,14 @@
             "null"
           ]
         },
+        "applicationId": {
+          "default": null,
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "attemptId": {
           "format": "uuid",
           "type": [
@@ -207,6 +215,15 @@
           "type": "string"
         },
         "waitId": {
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workflowId": {
+          "default": null,
+          "description": "Aggregation dimensions (plan7 P7-C): filled at the single outbox\nenqueue point from the execution row; absent on events produced by\nolder runtimes (serde default keeps the consumer green during the\nrollout window).",
           "format": "uuid",
           "type": [
             "string",

@@ -48,7 +48,11 @@ pub(crate) fn templates() -> Vec<WebhookProviderTemplateV1> {
         WebhookProviderTemplateV1 {
             provider: "dingtalk".into(),
             mode: "callback".into(),
-            fields: vec![field("secret", true, true), field("aesKey", true, false)],
+            fields: vec![
+                field("secret", true, true),
+                field("aesKey", true, false),
+                field("robotCode", false, false),
+            ],
             mapping_sources: dingtalk_mapping_sources(),
         },
         WebhookProviderTemplateV1 {
@@ -57,6 +61,7 @@ pub(crate) fn templates() -> Vec<WebhookProviderTemplateV1> {
             fields: vec![
                 field("clientId", false, true),
                 field("clientSecret", true, true),
+                field("robotCode", false, false),
             ],
             mapping_sources: dingtalk_mapping_sources(),
         },
@@ -66,6 +71,9 @@ pub(crate) fn templates() -> Vec<WebhookProviderTemplateV1> {
             fields: vec![
                 field("token", true, true),
                 field("encodingAESKey", true, true),
+                field("corpId", false, false),
+                field("corpSecret", true, false),
+                field("agentId", false, false),
             ],
             mapping_sources: ["msgtype", "createTime", "agentId", "toUserName"]
                 .iter()

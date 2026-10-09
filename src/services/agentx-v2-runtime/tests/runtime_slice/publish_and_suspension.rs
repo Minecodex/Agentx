@@ -19,15 +19,26 @@ async fn v2_publish_execution_query_recovery_and_gc_are_fenced_and_idempotent() 
         .expect("Runtime MySQL container should start");
     let port = container.get_host_port_ipv4(3306.tcp()).await.unwrap();
     let pool = connect_with_retry(port).await;
+    let observer = sqlx::mysql::MySqlPoolOptions::new().max_connections(1)
+        .connect(&format!("mysql://root:agentx-root-password@127.0.0.1:{port}/agentx_runtime"))
+        .await.unwrap();
     agentx_runtime_infrastructure::migrate_runtime_mysql(&pool)
         .await
         .unwrap();
     trace_watermarks_are_atomic_under_concurrency(&pool).await;
+    trace_batches_are_disjoint_fenced_and_published(&pool).await;
     composite_timeout_commands_are_idempotent(&pool).await;
     quota_projection_claim_is_single_owner(&pool).await;
     trigger_claim_takeover_is_fenced(&pool).await;
 
-    let fixture = Fixture::new(pool);
+    let redis_container = GenericImage::new("redis", "7.4-alpine")
+        .with_exposed_port(6379.tcp())
+        .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
+        .start().await.unwrap();
+    let redis_port = redis_container.get_host_port_ipv4(6379.tcp()).await.unwrap();
+    let redis = redis::Client::open(format!("redis://127.0.0.1:{redis_port}/"))
+        .unwrap().get_connection_manager().await.unwrap();
+    let fixture = Fixture::new(pool, observer, redis);
     command_claim_returns_only_the_current_batch(&fixture).await;
     authentication_failures_do_not_write_receipts(&fixture).await;
     let first = fixture.bundle(1).await;
@@ -36,6 +47,7 @@ async fn v2_publish_execution_query_recovery_and_gc_are_fenced_and_idempotent() 
     apply_initial_admission(&fixture, 1).await;
     concurrent_admission_delivery_converges_to_one_receipt(&fixture).await;
     activate(&fixture, &first, None, 1, 1).await;
+    concurrent_quota_reservations_are_independent_and_enforce_the_limit(&fixture).await;
     chat_mapping_publication_is_idempotent(&fixture, &first).await;
     authentication_requires_active_route_tenant_and_head(&fixture).await;
     let before_invalid: i64 =
@@ -166,6 +178,7 @@ async fn v2_publish_execution_query_recovery_and_gc_are_fenced_and_idempotent() 
     expired_temporary_objects_are_removed(&fixture).await;
     disable_is_scoped_idempotent_and_preserves_the_head(&fixture, &first).await;
     work_package_prepare_execute_cancel_are_independently_signed_and_idempotent(&fixture).await;
+    completed_history_does_not_block_the_next_node(&fixture).await;
     evaluation_work_package_creates_cases_converges_and_cancels_atomically(&fixture).await;
     wait_and_approval_resume_exactly_once(&fixture).await;
     large_worker_results_are_externalized_and_verified(&fixture).await;
@@ -376,6 +389,9 @@ async fn trace_watermarks_are_atomic_under_concurrency(pool: &MySqlPool) {
         .await
         .unwrap();
 
+    let mut held_execution = pool.begin().await.unwrap();
+    sqlx::query("SELECT id FROM workflow_executions WHERE id=? FOR UPDATE")
+        .bind(execution_id).fetch_one(&mut *held_execution).await.unwrap();
     let mut tasks = tokio::task::JoinSet::new();
     for index in 0..EVENT_COUNT {
         let pool = pool.clone();
@@ -396,18 +412,32 @@ async fn trace_watermarks_are_atomic_under_concurrency(pool: &MySqlPool) {
         });
     }
     let mut sequences = Vec::with_capacity(EVENT_COUNT as usize);
-    while let Some(result) = tasks.join_next().await {
-        sequences.push(result.unwrap());
-    }
+    tokio::time::timeout(Duration::from_millis(500), async {
+        while let Some(result) = tasks.join_next().await {
+            sequences.push(result.unwrap());
+        }
+    }).await.expect("Trace allocation must not wait for a locked Execution authority row");
+    held_execution.rollback().await.unwrap();
     sequences.sort_unstable();
-    assert_eq!(sequences, (1..=EVENT_COUNT).collect::<Vec<_>>());
-    let watermark: u64 =
-        sqlx::query_scalar("SELECT trace_watermark FROM workflow_executions WHERE id=?")
-            .bind(execution_id)
+    assert_eq!(sequences.len(), EVENT_COUNT as usize);
+    assert!(sequences[0] > 0);
+    assert!(sequences.windows(2).all(|pair| pair[0] < pair[1]));
+    let (watermark, count): (u64, u64) =
+        sqlx::query_as("SELECT CAST(COALESCE(MAX(sequence_number),0) AS UNSIGNED),CAST(COUNT(*) AS UNSIGNED) FROM execution_events WHERE tenant_id=? AND execution_id=?")
+            .bind(tenant_id).bind(execution_id)
             .fetch_one(pool)
             .await
             .unwrap();
-    assert_eq!(watermark, EVENT_COUNT);
+    assert_eq!(watermark, *sequences.last().unwrap());
+    assert_eq!(count, EVENT_COUNT);
+    let mut rollback = pool.begin().await.unwrap();
+    agentx_v2_runtime::trace_delivery::enqueue(&mut rollback,
+        agentx_v2_runtime::trace_delivery::TraceDraft::execution(tenant_id,execution_id,"execution.rollback","running"))
+        .await.unwrap();
+    rollback.rollback().await.unwrap();
+    let after_rollback: (u64, u64) = sqlx::query_as("SELECT CAST(COALESCE(MAX(sequence_number),0) AS UNSIGNED),CAST(COUNT(*) AS UNSIGNED) FROM execution_events WHERE tenant_id=? AND execution_id=?")
+        .bind(tenant_id).bind(execution_id).fetch_one(pool).await.unwrap();
+    assert_eq!(after_rollback, (watermark, count));
     let persisted: Vec<u64> = sqlx::query_scalar(
         "SELECT execution_sequence FROM trace_outbox WHERE tenant_id=? AND execution_id=? ORDER BY execution_sequence",
     )
@@ -1241,7 +1271,9 @@ async fn large_worker_results_are_externalized_and_verified(fixture: &Fixture) {
     let package_id = Uuid::now_v7();
     let now = OffsetDateTime::now_utc();
     let mut source = fixture.work_package_source(package_id, now, now + time::Duration::hours(1));
-    let message = "v2-large-result".repeat(6_000);
+    // Larger than the bundled MySQL default sort buffer. Candidate discovery
+    // must sort identifiers, without copying these JSON values into filesort.
+    let message = "v2-large-result".repeat(30_000);
     source.overlay.input = json!({"message":message});
     let package = build_work_package(
         source,
@@ -1344,6 +1376,27 @@ async fn large_worker_results_are_externalized_and_verified(fixture: &Fixture) {
         .await
         .unwrap()
     {}
+    // Explain the exact statement executed by the production adapter. The
+    // selector must be covered by metadata; it must not read historical JSON.
+    let selector: String = sqlx::query_scalar("SELECT SQL_TEXT FROM performance_schema.prepared_statements_instances WHERE SQL_TEXT LIKE 'SELECT id FROM checkpoints %payload_size_bytes>%' LIMIT 1")
+        .fetch_one(&fixture.observer).await.unwrap();
+    // MySQL reports the inner SELECT's prepared-statement metadata for
+    // EXPLAIN. Use the text protocol with this fixed numeric parameter.
+    let explain = format!(
+        "EXPLAIN FORMAT=TRADITIONAL {}",
+        selector.replace('?', &agentx_runtime_contracts::INLINE_RESULT_LIMIT_BYTES.to_string())
+    );
+    let plan = sqlx::raw_sql(&explain)
+        .fetch_one(&fixture.state.pool).await.unwrap();
+    assert_eq!(plan.try_get::<String, _>("key").unwrap(), "idx_checkpoint_externalize");
+    assert!(plan.try_get::<String, _>("Extra").unwrap().contains("Using index"), "checkpoint discovery must not read payload pages");
+    let recovery_selector: String = sqlx::query_scalar("SELECT SQL_TEXT FROM performance_schema.prepared_statements_instances WHERE SQL_TEXT LIKE 'SELECT o.id FROM execution_outbox o FORCE INDEX(idx_execution_outbox_recovery)%' LIMIT 1")
+        .fetch_one(&fixture.observer).await.unwrap();
+    let explain = format!("EXPLAIN FORMAT=TRADITIONAL {}", recovery_selector.replace('?', "100"));
+    let recovery_plan = sqlx::raw_sql(&explain).fetch_all(&fixture.state.pool).await.unwrap();
+    let outbox_plan = recovery_plan.iter().find(|row| row.try_get::<String, _>("table").unwrap() == "o").unwrap();
+    assert_eq!(outbox_plan.try_get::<String, _>("key").unwrap(), "idx_execution_outbox_recovery");
+    assert!(outbox_plan.try_get::<String, _>("Extra").unwrap().split(';').any(|part| part.trim() == "Using index"), "recovery discovery must not read historical payload pages");
     let terminal_object_id: Uuid = sqlx::query_scalar(
         "SELECT terminal_result_object_id FROM workflow_executions WHERE tenant_id=? AND id=? AND terminal_result_json IS NULL",
     )

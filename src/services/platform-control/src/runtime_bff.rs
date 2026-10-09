@@ -34,6 +34,10 @@ pub fn routes() -> Router<ControlApiState> {
         .route("/api/v1/executions/{id}/nodes", get(get_nodes))
         .route("/api/v1/executions/{id}/nodes/{node_id}", get(get_node))
         .route("/api/v1/executions/{id}/events", get(get_events))
+        .route(
+            "/api/v1/executions/{id}/model-deltas",
+            get(get_model_deltas),
+        )
         .route("/api/v1/executions/{id}/checkpoints", get(get_checkpoints))
         .route(
             "/api/v1/executions/{id}/runtime-details",
@@ -71,6 +75,12 @@ pub fn routes() -> Router<ControlApiState> {
         .route(
             "/api/v1/agent-subject-memory/clear",
             post(clear_agent_subject_memory),
+        )
+        .route("/api/v1/deliveries", get(search_deliveries))
+        .route("/api/v1/deliveries/{delivery_id}", get(get_delivery))
+        .route(
+            "/api/v1/deliveries/{delivery_id}/retry",
+            post(retry_delivery),
         )
 }
 
@@ -371,6 +381,7 @@ struct ExecutionListQuery {
     trigger_types: Option<String>,
     trigger_name: Option<String>,
     statuses: Option<String>,
+    error_codes: Option<String>,
     session_mode: Option<String>,
     created_after: Option<String>,
     created_before: Option<String>,
@@ -441,6 +452,27 @@ async fn search_executions(
             "timed_out",
         ],
     )?;
+    let error_codes = query
+        .error_codes
+        .as_deref()
+        .unwrap_or("")
+        .split(',')
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if error_codes.len() > 50
+        || error_codes.iter().any(|code| {
+            code.len() > 128
+                || !code.bytes().all(|value| {
+                    value.is_ascii_alphanumeric() || matches!(value, b'_' | b'-' | b'.' | b':')
+                })
+        })
+    {
+        return Err(ApiError::bad_request(
+            "INVALID_ERROR_CODES",
+            "errorCodes must contain at most 50 valid error codes",
+        ));
+    }
     let session_mode = match query.session_mode.as_deref().unwrap_or("all") {
         "all" => ExecutionSessionModeV1::All,
         "stateless" => ExecutionSessionModeV1::Stateless,
@@ -476,6 +508,7 @@ async fn search_executions(
         trigger_types,
         trigger_name,
         statuses,
+        error_codes,
         session_mode,
         created_after,
         created_before,
@@ -578,6 +611,7 @@ async fn get_execution(
     object.insert("stateVersion".into(), json!(detail.state_version));
     object.insert("admissionEpoch".into(), json!(detail.admission_epoch));
     object.insert("traceWatermark".into(), json!(detail.trace_watermark));
+    object.insert("traceEventCount".into(), json!(detail.trace_event_count));
     Ok(Json(response))
 }
 
@@ -621,6 +655,28 @@ async fn get_node(
     )
     .await?;
     Ok(Json(node_json(id, node)))
+}
+
+async fn get_model_deltas(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Path(id): Path<Uuid>,
+    Query(query): Query<ExecutionEventQuery>,
+) -> ApiResult<Json<Value>> {
+    actor.require("execution:view")?;
+    let after = query.after.unwrap_or_default();
+    let limit = query.limit.unwrap_or(1000).clamp(1, 1000);
+    let page: Value = runtime_execution_get(
+        &state,
+        &actor,
+        id,
+        "execution_model_deltas",
+        &format!(
+            "/internal/runtime/v1/query/executions/{id}/model-deltas?after={after}&limit={limit}"
+        ),
+    )
+    .await?;
+    Ok(Json(page))
 }
 
 async fn get_events(
@@ -923,9 +979,11 @@ async fn get_trace(
         return Err(ApiError::forbidden("Missing permission trace:view"));
     }
     let detail = runtime_execution_detail(&state, &actor, id).await?;
+    let limit = query.limit.unwrap_or(200).clamp(1, 1000);
     let request_hash = content_hash(&json!({
         "operation":"execution-trace","executionId":id,
-        "expectedWatermark":detail.trace_watermark,"limit":query.limit.unwrap_or(200),
+        "expectedWatermark":detail.trace_watermark,"limit":limit,
+        "expectedEventCount":detail.trace_event_count,
         "cursor":query.cursor,"nodeExecutionId":query.node_execution_id
     }))
     .map_err(ApiError::internal)?;
@@ -952,10 +1010,11 @@ async fn get_trace(
     let response = state
         .http
         .get(format!(
-            "{}/internal/observability/v1/executions/{id}/trace?expectedWatermark={}&limit={}{}{}",
+            "{}/internal/observability/v1/executions/{id}/trace?expectedWatermark={}&expectedEventCount={}&limit={}{}{}",
             state.observability_query_url,
             detail.trace_watermark,
-            query.limit.unwrap_or(200).clamp(1, 1000),
+            detail.trace_event_count,
+            limit,
             cursor_query,
             node_execution_query
         ))
@@ -976,7 +1035,8 @@ async fn get_trace(
         "executionId":id,"traceId":detail.summary.trace_id,"spans":trace.spans,
         "nextCursor":trace.next,"complete":trace.complete,"degraded":trace.degraded,
         "warningCode":trace.warning_code,"totalSpans":trace.total_spans,
-        "expectedWatermark":trace.expected_watermark,"ingestedWatermark":trace.ingested_watermark
+        "expectedWatermark":trace.expected_watermark,"ingestedWatermark":trace.ingested_watermark,
+        "expectedEventCount":trace.expected_event_count,"ingestedEventCount":trace.ingested_event_count
     })))
 }
 
@@ -1033,14 +1093,15 @@ async fn runtime_execution_detail(
 ) -> ApiResult<ExecutionDetailV1> {
     let request_hash = content_hash(&json!({"operation":"get_execution","executionId":id}))
         .map_err(ApiError::internal)?;
+    let (tenant_wide, application_ids, workflow_ids) = execution_query_scope(state, actor).await?;
     let token = delegation_token(
         state,
         actor,
         "runtime.query.execution",
-        BTreeSet::new(),
-        BTreeSet::new(),
+        application_ids,
+        workflow_ids,
         BTreeSet::from([id]),
-        false,
+        tenant_wide,
         request_hash,
     )?;
     let response = state
@@ -1065,14 +1126,15 @@ async fn runtime_execution_get<T: serde::de::DeserializeOwned>(
 ) -> ApiResult<T> {
     let request_hash = content_hash(&json!({"operation":operation,"executionId":id}))
         .map_err(ApiError::internal)?;
+    let (tenant_wide, application_ids, workflow_ids) = execution_query_scope(state, actor).await?;
     let token = delegation_token(
         state,
         actor,
         "runtime.query.execution",
-        BTreeSet::new(),
-        BTreeSet::new(),
+        application_ids,
+        workflow_ids,
         BTreeSet::from([id]),
-        false,
+        tenant_wide,
         request_hash,
     )?;
     let response = state
@@ -1136,6 +1198,27 @@ fn delegation_token(
         application_ids,
         workflow_ids,
         execution_ids,
+        tenant_wide,
+        request_hash,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn mint_observability_token(
+    state: &ControlApiState,
+    actor: &Actor,
+    scope: &str,
+    request_hash: agentx_runtime_contracts::ContentHash,
+) -> ApiResult<String> {
+    let (tenant_wide, application_ids, workflow_ids) = execution_query_scope(state, actor).await?;
+    delegation_token_with_audience(
+        state,
+        actor,
+        "agentx-observability-query",
+        scope,
+        application_ids,
+        workflow_ids,
+        BTreeSet::new(),
         tenant_wide,
         request_hash,
     )
@@ -1266,30 +1349,41 @@ async fn summaries_json(
         .collect::<Vec<_>>();
     workflow_versions.sort_unstable();
     workflow_versions.dedup();
+    let mut workflow_ids = summaries
+        .iter()
+        .map(|summary| summary.workflow_id)
+        .collect::<Vec<_>>();
+    workflow_ids.sort_unstable();
+    workflow_ids.dedup();
     let mut workflow_query = QueryBuilder::<MySql>::new(
-        "SELECT w.id workflow_id,w.name,wv.id workflow_version_id,wv.version_number FROM workflow_versions wv JOIN workflows w ON w.tenant_id=wv.tenant_id AND w.id=wv.workflow_id WHERE w.tenant_id=",
+        "SELECT w.id workflow_id,w.name,wv.id workflow_version_id,wv.version_number FROM workflows w LEFT JOIN workflow_versions wv ON wv.tenant_id=w.tenant_id AND wv.workflow_id=w.id AND wv.id IN (",
     );
-    workflow_query.push_bind(tenant_id).push(" AND wv.id IN (");
     {
         let mut separated = workflow_query.separated(",");
         for id in workflow_versions {
             separated.push_bind(id);
         }
     }
+    workflow_query
+        .push(") WHERE w.tenant_id=")
+        .push_bind(tenant_id)
+        .push(" AND w.id IN (");
+    {
+        let mut separated = workflow_query.separated(",");
+        for id in workflow_ids {
+            separated.push_bind(id);
+        }
+    }
     workflow_query.push(")");
     let workflow_rows = workflow_query.build().fetch_all(&state.pool).await?;
-    let workflow_metadata = workflow_rows
-        .into_iter()
-        .map(|row| {
-            Ok((
-                row.try_get::<Uuid, _>("workflow_version_id")?,
-                (
-                    row.try_get::<String, _>("name")?,
-                    row.try_get::<Option<u64>, _>("version_number")?,
-                ),
-            ))
-        })
-        .collect::<Result<HashMap<_, _>, sqlx::Error>>()?;
+    let mut workflow_names = HashMap::<Uuid, String>::new();
+    let mut version_numbers = HashMap::<Uuid, u64>::new();
+    for row in workflow_rows {
+        workflow_names.insert(row.try_get("workflow_id")?, row.try_get("name")?);
+        if let Some(version_id) = row.try_get::<Option<Uuid>, _>("workflow_version_id")? {
+            version_numbers.insert(version_id, row.try_get("version_number")?);
+        }
+    }
 
     let mut application_ids = summaries
         .iter()
@@ -1320,10 +1414,11 @@ async fn summaries_json(
     Ok(summaries
         .into_iter()
         .map(|summary| {
-            let (workflow_name, version) = workflow_metadata
-                .get(&summary.workflow_version_id)
+            let workflow_name = workflow_names
+                .get(&summary.workflow_id)
                 .cloned()
-                .unwrap_or_else(|| (summary.workflow_id.to_string(), None));
+                .unwrap_or_else(|| summary.workflow_id.to_string());
+            let version = version_numbers.get(&summary.workflow_version_id).copied();
             let application_name = summary
                 .application_id
                 .and_then(|id| application_metadata.get(&id).cloned());
@@ -1343,7 +1438,7 @@ fn execution_summary_json(
         "applicationId":summary.application_id,"applicationName":application_name,
         "workflowVersionId":summary.workflow_version_id,"workflowVersionNumber":version,
         "invocationId":summary.invocation_id,"sessionId":summary.session_id,"traceId":summary.trace_id,
-        "triggerType":summary.trigger_type,"executionType":"production","parentExecutionId":summary.parent_execution_id,
+        "triggerType":summary.trigger_type,"executionType":if summary.trigger_type == "fork" { "fork" } else if summary.parent_execution_id.is_some() { "sub_workflow" } else { "whole" },"parentExecutionId":summary.parent_execution_id,
         "initiatorUserId":summary.initiator_user_id,"initiatorUserName":summary.initiator_user_name,
         "initiatorDepartmentId":summary.initiator_department_id,"initiatorDepartmentName":summary.initiator_department_name,
         "triggerSourceId":summary.trigger_source_id,"triggerName":summary.trigger_name,
@@ -1610,4 +1705,141 @@ fn side_effect_resolution(value: &Value) -> ApiResult<SideEffectResolutionV1> {
         .map(parse_resolution)
         .transpose()
         .map(|value| value.unwrap_or(SideEffectResolutionV1::Execute))
+}
+
+#[derive(Deserialize)]
+struct DeliveryListQuery {
+    application_id: Option<Uuid>,
+    invocation_id: Option<Uuid>,
+    execution_id: Option<Uuid>,
+    status: Option<String>,
+    limit: Option<u32>,
+}
+
+/// Delivery records (plan7 P7-A): proxies the runtime delivery outbox and
+/// dead letters for the application detail "投递记录" view.
+async fn search_deliveries(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Query(query): Query<DeliveryListQuery>,
+) -> ApiResult<Json<Value>> {
+    actor.require("application:view")?;
+    if let Some(status) = query.status.as_deref() {
+        if !matches!(
+            status,
+            "pending" | "delivering" | "delivered" | "failed" | "dead"
+        ) {
+            return Err(ApiError::bad_request(
+                "INVALID_DELIVERY_STATUS",
+                "status must be pending, delivering, delivered, failed, or dead",
+            ));
+        }
+    }
+    let (tenant_wide, application_ids, workflow_ids) =
+        execution_query_scope(&state, &actor).await?;
+    let request = json!({
+        "tenantId": actor.tenant_id,
+        "applicationId": query.application_id,
+        "invocationId": query.invocation_id,
+        "executionId": query.execution_id,
+        "status": query.status,
+        "limit": query.limit.unwrap_or(50).clamp(1, 100),
+    });
+    let request_hash = content_hash(&json!({"operation":"delivery-search","request":request}))
+        .map_err(ApiError::internal)?;
+    let token = delegation_token(
+        &state,
+        &actor,
+        "runtime.query.deliveries",
+        application_ids,
+        workflow_ids,
+        BTreeSet::new(),
+        tenant_wide,
+        request_hash,
+    )?;
+    let response = state
+        .http
+        .post(format!(
+            "{}/internal/runtime/v1/query/deliveries:search",
+            state.runtime_query_url
+        ))
+        .bearer_auth(token)
+        .json(&request)
+        .send()
+        .await
+        .map_err(runtime_unavailable)?;
+    runtime_json::<Value>(response).await.map(Json)
+}
+
+async fn get_delivery(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Path(delivery_id): Path<Uuid>,
+) -> ApiResult<Json<Value>> {
+    actor.require("application:view")?;
+    let (tenant_wide, application_ids, workflow_ids) =
+        execution_query_scope(&state, &actor).await?;
+    let request_hash = content_hash(&json!({
+        "operation":"delivery-detail",
+        "deliveryId":delivery_id,
+    }))
+    .map_err(ApiError::internal)?;
+    let token = delegation_token(
+        &state,
+        &actor,
+        "runtime.query.deliveries",
+        application_ids,
+        workflow_ids,
+        BTreeSet::new(),
+        tenant_wide,
+        request_hash,
+    )?;
+    let response = state
+        .http
+        .get(format!(
+            "{}/internal/runtime/v1/query/deliveries/{}",
+            state.runtime_query_url, delivery_id
+        ))
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(runtime_unavailable)?;
+    runtime_json::<Value>(response).await.map(Json)
+}
+
+async fn retry_delivery(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Path(delivery_id): Path<Uuid>,
+) -> ApiResult<Json<Value>> {
+    actor.require("application:manage")?;
+    let (tenant_wide, application_ids, workflow_ids) =
+        execution_query_scope(&state, &actor).await?;
+    let request_hash = content_hash(&json!({
+        "operation":"delivery-retry",
+        "deliveryId":delivery_id,
+    }))
+    .map_err(ApiError::internal)?;
+    let token = delegation_token(
+        &state,
+        &actor,
+        "runtime.delivery.retry",
+        application_ids,
+        workflow_ids,
+        BTreeSet::new(),
+        tenant_wide,
+        request_hash,
+    )?;
+    let response = state
+        .http
+        .post(format!(
+            "{}/internal/runtime/v1/query/deliveries/{}/retry",
+            state.runtime_query_url, delivery_id
+        ))
+        .bearer_auth(token)
+        .json(&serde_json::json!({"apiVersion":1,"tenantId":actor.tenant_id}))
+        .send()
+        .await
+        .map_err(runtime_unavailable)?;
+    runtime_json::<Value>(response).await.map(Json)
 }

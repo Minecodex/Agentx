@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { apiRequest, jsonBody } from '../../shared/api/client'
 import type { QuotaPolicy, RetentionItem, RetentionRun, RuntimeStatus, WorkerCapability } from '../../shared/api/types'
 import { ConfirmDialog } from '../../shared/components/confirm-dialog'
+import { EmptyState } from '../../shared/components/empty-state'
 import { MetricCard } from '../../shared/components/metric-card'
 import { PageContainer } from '../../shared/components/page-container'
 import { PageHeader } from '../../shared/components/page-header'
@@ -33,9 +34,19 @@ export function RuntimeStatusPage() {
   const updateQuota = useMutation({ mutationFn: (policy: QuotaPolicy) => apiRequest<QuotaPolicy[]>('/runtime/quotas', { method: 'PUT', body: jsonBody({ policies: [{ dimension: policy.dimension, hardLimit: policy.hardLimit, periodSeconds: policy.periodSeconds }] }) }), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['runtime-quotas'] }), onError: (error: Error) => showToast(error.message) })
   const createRetention = useMutation({ mutationFn: (dryRun: boolean) => apiRequest<RetentionRun>('/retention-runs', { method: 'POST', body: jsonBody({ dryRun, artifactRetentionDays: 30, traceRetentionDays: 180, messageRetentionDays: 180, evaluationRetentionDays: 365 }) }), onSuccess: async (run) => { setSelectedRun(run.id); setConfirmCleanup(false); await queryClient.invalidateQueries({ queryKey: ['retention-runs'] }) }, onError: (error: Error) => showToast(error.message) })
 
+  const problem = status.error ?? quotas.error ?? capabilities.error ?? retention.error ?? items.error
+  if (problem || status.isLoading || quotas.isLoading || capabilities.isLoading || retention.isLoading) {
+    return <PageContainer>
+      <PageHeader description={t('runtime.runtimeDescription')} title={t('runtime.runtimeStatus')} />
+      <Card className="mt-6" role={problem ? 'alert' : 'status'}>
+        <EmptyState description={problem?.message ?? t('common.loading')} title={problem ? t('common.loadFailed') : t('common.loading')} />
+      </Card>
+    </PageContainer>
+  }
+
   return <PageContainer>
     <PageHeader description={t('runtime.runtimeDescription')} title={t('runtime.runtimeStatus')} />
-    <section className="mt-6 grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-surface lg:grid-cols-4"><MetricCard label={t('runtime.dashboard.metrics.running')} value={String(status.data?.running ?? 0)} /><MetricCard label={t('common.waiting')} value={String(status.data?.waiting ?? 0)} /><MetricCard label={t('runtime.failedToday')} value={String(status.data?.failedToday ?? 0)} /><MetricCard label={t('runtime.activeSandboxes')} value={String(status.data?.activeSandboxes ?? 0)} /></section>
+    <section className="mt-6 grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-surface lg:grid-cols-4"><MetricCard label={t('runtime.dashboard.metrics.running')} value={status.data?.running == null ? '—' : String(status.data.running)} /><MetricCard label={t('common.waiting')} value={status.data?.waiting == null ? '—' : String(status.data.waiting)} /><MetricCard label={t('runtime.failedToday')} value={status.data?.failedToday == null ? '—' : String(status.data.failedToday)} /><MetricCard label={t('runtime.activeSandboxes')} value={status.data?.activeSandboxes == null ? '—' : String(status.data.activeSandboxes)} /></section>
     <Card className="mt-5 overflow-hidden"><SectionTitle icon={<Boxes className="size-4 text-primary" />} title={t('runtime.runtimeComponents')} /><div className="divide-y divide-border">{status.data?.components.map((component) => <div className="grid gap-2 px-5 py-4 text-xs sm:grid-cols-[minmax(180px,1fr)_120px_120px_220px] sm:items-center" key={component.component}><span className="flex items-center gap-2 font-medium"><CircleGauge className="size-4 text-muted-foreground" />{localizedValue(t, 'runtime.components', component.component)}</span><Badge className="w-fit" tone={component.status === 'ready' ? 'success' : component.status === 'unknown' ? 'neutral' : 'warning'}>{localizedValue(t, 'common', component.status)}</Badge><span>{component.instances ?? '—'} {t('runtime.instances')}</span><span className="text-muted-foreground">{component.lastHeartbeat ? formatDateTime(component.lastHeartbeat) : t('runtime.noHeartbeat')}</span></div>)}</div></Card>
     <div className="mt-5 grid gap-5 xl:grid-cols-2">
       <Card className="overflow-hidden"><SectionTitle icon={<CircleGauge className="size-4 text-primary" />} title={t('runtime.runtimeQuotas')} /><p className="border-b border-border px-5 py-3 text-xs text-muted-foreground">{t('runtime.governance.quotaDescription')}</p><div className="divide-y divide-border">{quotas.data?.map((policy) => <QuotaRow key={policy.dimension} onSave={(value) => updateQuota.mutate({ ...policy, hardLimit: value })} pending={updateQuota.isPending} policy={policy} t={t} />)}</div></Card>

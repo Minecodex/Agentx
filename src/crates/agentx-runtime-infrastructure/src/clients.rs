@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
 use object_store::{Certificate, ClientOptions, ObjectStore, aws::AmazonS3Builder};
@@ -16,17 +16,56 @@ pub async fn connect_runtime_redis(settings: &RuntimeRedisSettings) -> Result<Co
 }
 
 pub fn runtime_redis_client(settings: &RuntimeRedisSettings) -> Result<redis::Client> {
-    let url = if let Some(password) = &settings.password {
-        let mut parsed = url::Url::parse(settings.url.expose_secret())
-            .context("AGENTX_RUNTIME_REDIS_URL is invalid")?;
-        parsed
-            .set_password(Some(password.expose_secret()))
-            .map_err(|()| anyhow::anyhow!("Runtime Redis URL cannot carry a password"))?;
-        parsed.to_string()
-    } else {
-        settings.url.expose_secret().to_owned()
-    };
-    redis::Client::open(url).context("invalid Runtime Redis URL")
+    let mut info = redis::ConnectionInfo::from_str(settings.url.expose_secret())
+        .context("invalid Runtime Redis URL")?;
+    if let Some(password) = &settings.password {
+        info.redis.password = Some(password.expose_secret().to_owned());
+    }
+    // rediss:// against a private CA requires the explicit root bundle; the
+    // default webpki roots reject it. Redis rejects TLS settings on redis://.
+    let has_client_identity =
+        settings.tls_client_cert_path.is_some() && settings.tls_client_key_path.is_some();
+    if settings.tls_ca_path.is_some() || has_client_identity {
+        let certificates = redis::TlsCertificates {
+            root_cert: settings
+                .tls_ca_path
+                .as_ref()
+                .map(|path| {
+                    let pem = std::fs::read(path).with_context(|| {
+                        format!(
+                            "failed to read Runtime Redis CA bundle at {}",
+                            path.display()
+                        )
+                    })?;
+                    anyhow::ensure!(!pem.is_empty(), "Runtime Redis CA bundle is empty");
+                    Ok(pem)
+                })
+                .transpose()?,
+            client_tls: match (
+                &settings.tls_client_cert_path,
+                &settings.tls_client_key_path,
+            ) {
+                (Some(cert_path), Some(key_path)) => Some(redis::ClientTlsConfig {
+                    client_cert: std::fs::read(cert_path).with_context(|| {
+                        format!(
+                            "failed to read Runtime Redis client certificate at {}",
+                            cert_path.display()
+                        )
+                    })?,
+                    client_key: std::fs::read(key_path).with_context(|| {
+                        format!(
+                            "failed to read Runtime Redis client key at {}",
+                            key_path.display()
+                        )
+                    })?,
+                }),
+                _ => None,
+            },
+        };
+        return redis::Client::build_with_tls(info, certificates)
+            .context("invalid Runtime Redis TLS configuration");
+    }
+    redis::Client::open(info).context("invalid Runtime Redis URL")
 }
 
 pub fn runtime_object_store(

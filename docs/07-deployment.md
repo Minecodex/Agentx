@@ -17,6 +17,10 @@ ingress-nginx 使用固定上游 Chart和独立 Release `agentx-ingress-nginx`�
 
 本地正式部署使用 ingress-nginx 的 LoadBalancer Service，在 Docker Desktop 提供 `http://agentx.localhost` 与 `http://run.agentx.localhost` 入口。`test` 环境及带 Run ID 的临时 E2E 部署使用 ClusterIP，并由测试进程 port-forward，避免争用正式环境的 80/443 端口。此差异只决定入口暴露方式，不改变三平面依赖边界。
 
+开发和生产统一使用 `agentxctl validate/install/upgrade/doctor/uninstall`，核心资源和依赖初始化都由现有四个 Helm Release 管理。Python 只编排构建和 E2E，不另行安装 Agentx 数据库、生成业务 Secret 或创建第二套核心资源。`local-tls.yaml` 在 local 环境验证 TLS 依赖；生产仍只接受预置外部基础设施和 Secret。
+
+本地可显式配置 `global.ingress.serviceType: NodePort` 及不同的 `httpNodePort`、`httpsNodePort`；ctl 返回带端口的访问地址，Ingress Host 必须解析到可达节点。默认 LoadBalancer 不变。production 要求 LoadBalancer，Sandbox 入口额外要求内部 LoadBalancer Annotation；Run ID 只在 local/test 使用，临时 Sandbox 入口使用独立 NodePort。
+
 Kustomize 只管理 LightRAG/Mem0 Addon与临时 E2E Fixture。核心 Helm与 Kustomize资源不得重名、使用同一 Selector或声明相同 Helm所有权。
 
 ## 2. Values 契约
@@ -31,7 +35,13 @@ Kustomize 只管理 LightRAG/Mem0 Addon与临时 E2E Fixture。核心 Helm与 Ku
 - Egress Gateway端口、Sandbox私有入口、固定外部依赖 CIDR；
 - 权威 Secret、工作负载 Secret和备份 RPO/RTO。
 
-production 必须使用镜像摘要、existing Kubernetes Secret、外部状态依赖、HTTPS/私有 CA、MySQL `verify_identity`、`rediss://` 和已知云厂商内部 LoadBalancer Annotation。外部资源在安装、升级和卸载中都不被创建、修改或删除。
+production 必须使用镜像摘要、existing Kubernetes Secret、外部状态依赖、HTTPS/私有 CA、MySQL `verify_identity`、`rediss://` 和受支持的内部 LoadBalancer 配置。外部资源在安装、升级和卸载中都不被创建、修改或删除。
+
+裸金属或本地集群的生产 Profile 可使用平台独立安装的 MetalLB。Sandbox Service 必须同时指定 `loadBalancerClass`、`metallb.io/address-pool` 与单个私网 `metallb.io/loadBalancerIPs`，Endpoint 必须匹配该 IP；ctl 将 Class 与 Annotation 渲染到 Service，集群平台负责提供对应私网地址池及路由。Ingress 通过 `global.ingress.loadBalancerClass` 选择平台控制器；MetalLB 安装的 Class 必须与这些字段一致，避免多个 LB 控制器争用 Service。Class 是 Kubernetes 不可变字段，已有 Service 切换控制器时须先重建。生产仍要求 LoadBalancer、TLS 和来源 CIDR，不使用 NodePort 例外。参考 [MetalLB 地址池配置](https://metallb.io/configuration/_advanced_ipaddresspool_configuration/) 与 [LoadBalancerClass](https://metallb.io/installation/#setting-the-loadbalancer-class)。
+
+Docker Desktop 的单网络节点可由原生 LoadBalancer 提供宿主机 80/443。Docker OpenSandbox 使用 `networkPolicy` 时必须保持默认 `bridge` 网络；其私网 LB 必须在该网段可达。平台把 kind 节点接入 bridge 时，新增网络的 Gateway Priority 必须低于 kind，保留节点默认路由。当前 Docker Desktop 原生 Cloud Provider 无法解析这种双网络节点，Ingress 改用 MetalLB Class，并由固定 Envoy TCP 入口转发宿主机回环 80/443 到 Ingress VIP；具体平台配置见 [本地 Ingress Addon](../deploy/kustomize/addons/local-ingress/README.md)。这是独立平台网络准备，不改变 ctl 的四个 Release 或 OpenSandbox 的默认拒绝策略。
+
+外部 ClickHouse 必须预先创建配置的 Database、迁移账户及 Query/Consumer SQL 用户，并在持久化目录启用 `user_directories.local_directory`。Query/Consumer 不能只定义在只读 `users_xml`，因为 ctl 的 Schema 迁移需要向这些账户授予对应表的权限；迁移账户由平台管理并具备这些授权权限。
 
 ## 3. 安装和发布顺序
 
@@ -64,14 +74,18 @@ Dependencies Namespace中的 `agentx-dependencies-secrets` 是共享 JWT、Bundl
 
 - local/test：Rust共享密钥材料库生成RSA、Ed25519和TLS材料；先查权威 Secret，重复 Install/Upgrade保持原值。
 - production：只接受预先创建的权威、工作负载和外部依赖 Secret。
+- 外部 Vault 的 Control/Runtime 服务 Token 必须已经在 Vault 签发并绑定对应的最小权限策略；只向 Kubernetes Secret 写入随机字符串不会创建 Vault 身份。`CONTROL_VAULT_TOKEN` 与 `RUNTIME_VAULT_TOKEN` 是权威值，工作负载中的镜像值必须一致；更换 Token 后按既有 `sync-secrets` 同步并滚动消费者。Token 的续期、轮换和到期时间由外部 Vault 运维管理，不能将其当作永久密码。签发与生命周期接口见 [Vault Token API](https://developer.hashicorp.com/vault/api-docs/auth/token)。
 - Helm：只渲染 Secret名称和 Key，不生成或承载明文。
 - 普通 Install/Upgrade：不隐式轮换持久密钥。
+- local TLS：Rust 密钥库生成 CA 与每个服务的证书，持久化到权威 Secret，ctl 按平面发布证书和 CA。重复安装/升级复用原材料；改变服务域名时使用新 Namespace 重新签发。Egress 证书和信任锚来自同一权威材料，Ingress 和依赖证书互不覆盖。
 - `sync-secrets`：同步与权威源同名的共享 Key并滚动消费者。
 - `rotate-egress-keys`：互斥执行双公钥重叠、Gateway Ready、调用方逐个切换、旧公钥删除；失败恢复并重新滚动。
 
 ## 6. 外部依赖与 CA
 
 Control、Runtime和 Observability Chart通过投影 Secret把私有 CA只读挂载至 `/etc/agentx-ca`，并设置各 Rust Client的 CA Path。生产不允许关闭证书校验。
+
+TLS 挂载和迁移等待按各组件的 `caSecretName` 配置，和环境名解耦。bundled MySQL 使用挂载密码文件和 `REQUIRE SSL`；Redis 禁用明文监听；ClickHouse、S3、Vault 对客户端提供 HTTPS。本地 Vault 保持开发模式，通过同 Pod 的 TLS 入口访问。独立 OpenSandbox 的本地 HTTPS 入口由 Dependencies Release 的代理提供，`localProxyUpstream` 只允许 local/test；production 直接连接平台提供的 HTTPS OpenSandbox。
 
 - Control：Control MySQL、S3、Vault CA。
 - Runtime：Runtime MySQL、Redis、S3、Vault、OpenSandbox CA。
@@ -91,6 +105,12 @@ Control、Runtime和 Observability Chart通过投影 Secret把私有 CA只读挂
 - 核心部署不引入 Prometheus、指标 Adapter、HPA、KEDA、Operator或 GitOps控制器。
 
 严格 NetworkPolicy认证必须在实际执行策略的 CNI上完成；不支持策略执行的本地集群不能形成生产安全证据。
+
+公网 Provider 的 DNS 必须返回真实公网地址。本地代理若把域名解析为 `198.18.0.0/15` 的 fake-IP，production Gateway 会按保留地址策略拒绝 CONNECT，模型连接测试显示 `PROVIDER_UNAVAILABLE`。应在平台 DNS 层修正解析，例如为受影响域名配置 CoreDNS `forward` 到经过证书校验的 DNS-over-TLS 上游，并设置 `tls_servername`；不要通过开放保留网段、关闭 TLS 校验或绕过 Gateway 解决。该 DNS 配置属于集群基础设施，不由 Agentx Helm Release 管理；本地集群重建时需要重新应用。Kimi 实例恢复与真实界面连接测试证据见 [本地模型 DNS 修复](plan7/evidence/p7-kimi-model-connection-fix.md)。
+
+Dependencies Doctor 在所有环境检查 Control 和 Runtime 的 Vault `lookup-self`，使用已配置的 CA 校验证书，任一身份无效即失败。响应体直接丢弃，避免 Token ID/accessor 出现在诊断日志；Token 有效与实际 KV 权限分别由身份检查和凭证业务 E2E 验证。TLS 凭证 UI 创建/轮换及两类失效 Token 的拒绝/恢复验收入口为 `pytest tests/e2e/infrastructure/test_vault_credentials.py`。
+
+production 的 Doctor Pod 通过 `global.network.externalEgress.vault` 中已配置的 CIDR 和端口访问外部 Vault；对应规则只选择 `dependencies-doctor`，保持其他 Dependencies 工作负载的默认拒绝策略。仅允许同 Namespace 的 bundled Vault 会阻断 production 的 Token 检查。
 
 ## 8. 健康、扩展和故障恢复
 

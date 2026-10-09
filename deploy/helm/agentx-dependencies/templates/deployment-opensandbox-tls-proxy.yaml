@@ -1,0 +1,58 @@
+{{- if and (ne .Values.global.environment "production") .Values.global.components.sandbox.localProxyUpstream }}
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: opensandbox, namespace: {{ .Values.global.namespaces.dependencies }} }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: opensandbox } }
+  template:
+    metadata: { labels: { app.kubernetes.io/name: opensandbox, agentx.io/plane: dependencies } }
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: tls-proxy
+          image: nginx:1.27-alpine
+          imagePullPolicy: {{ .Values.global.images.pullPolicy }}
+          ports: [{ name: https, containerPort: 8443 }]
+          readinessProbe: { tcpSocket: { port: https }, periodSeconds: 5 }
+          volumeMounts:
+            - { name: config, mountPath: /etc/nginx/conf.d, readOnly: true }
+            - { name: tls, mountPath: /tls, readOnly: true }
+      volumes:
+        - name: config
+          configMap: { name: opensandbox-tls-proxy }
+        - name: tls
+          secret: { secretName: {{ .Values.global.components.sandbox.caSecretName }} }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: opensandbox, namespace: {{ .Values.global.namespaces.dependencies }} }
+spec:
+  selector: { app.kubernetes.io/name: opensandbox }
+  ports: [{ name: https, port: 8443 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: opensandbox-tls-proxy, namespace: {{ .Values.global.namespaces.dependencies }} }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: opensandbox } }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { agentx.io/plane: runtime } }
+          podSelector: { matchLabels: { app.kubernetes.io/name: sandbox-manager } }
+        - namespaceSelector: { matchLabels: { agentx.io/plane: runtime } }
+          podSelector: { matchLabels: { agentx.io/opensandbox-health: allowed } }
+      ports: [{ protocol: TCP, port: 8443 }]
+  egress:
+    - to: [{ namespaceSelector: {}, podSelector: { matchLabels: { k8s-app: kube-dns } } }]
+      ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
+    - to:
+        {{- range .Values.global.network.externalEgress.opensandbox.cidrs }}
+        - ipBlock: { cidr: {{ . | quote }} }
+        {{- end }}
+      ports:
+        {{- range .Values.global.network.externalEgress.opensandbox.ports }}
+        - { protocol: TCP, port: {{ . }} }
+        {{- end }}
+{{- end }}

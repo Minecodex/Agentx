@@ -21,7 +21,7 @@ use crate::{
     vault::RuntimeVault,
     worker_support::{
         openai_chat_completions_endpoint, provider_secret_header, runtime_call_fingerprint,
-        runtime_call_span_name, stable_id,
+        stable_id,
     },
 };
 
@@ -41,19 +41,20 @@ mod agent_trace;
 mod builtin;
 mod mcp;
 #[path = "worker_runtime_output.rs"]
-mod output;
+pub(crate) mod output;
 #[path = "worker_runtime_plugin.rs"]
 pub(crate) mod plugin;
 #[path = "worker_runtime_provider.rs"]
 mod provider;
+#[path = "worker_runtime_stream.rs"]
+mod stream;
 
 #[cfg(test)]
 use output::system_prompt;
 use output::{
-    apply_model_price, finalize_rag_response, memory_execution_output, openai_chat_request,
-    openai_execution_output, provider_usage_detail, rag_execution_output, rag_query_request,
-    runtime_call_is_replayable, runtime_call_side_effect, sandbox_execution_output,
-    tool_execution_output,
+    apply_model_price, finalize_rag_response, memory_execution_output,
+    openai_chat_request_streaming, openai_execution_output, provider_usage_detail,
+    rag_execution_output, rag_query_request, sandbox_execution_output, tool_execution_output,
 };
 
 pub struct WorkerExecution {
@@ -74,7 +75,13 @@ pub struct WorkerProviderResponse {
 #[derive(Clone, Debug)]
 pub enum WorkerProviderError {
     Denied(String),
-    Request { message: String, is_connect: bool },
+    Request {
+        message: String,
+        is_connect: bool,
+    },
+    /// The provider stream violated the SSE/protocol contract; never retried
+    /// automatically (plan7 P7-B).
+    Protocol(String),
 }
 
 #[async_trait::async_trait]
@@ -140,16 +147,40 @@ pub trait WorkerProvider: Send + Sync {
     }
 
     async fn close_legacy_sse_session(&self, _session_key: &str) {}
+
+    /// Streams a JSON POST response body chunk by chunk (plan7 P7-B). The
+    /// default rejects so test doubles and alternate providers stay valid
+    /// until they opt into streaming.
+    async fn post_json_stream(
+        &self,
+        _endpoint: &str,
+        _context: EgressRequestContext,
+        _timeout: std::time::Duration,
+        _headers: HeaderMap,
+        _body: &Value,
+    ) -> Result<WorkerStreamResponse, WorkerProviderError> {
+        Err(WorkerProviderError::Denied(
+            "Streaming is not supported by this provider".into(),
+        ))
+    }
 }
 
-#[derive(Clone, Copy)]
+/// A streaming provider response: status and headers are buffered, the body
+/// is consumed incrementally by the caller.
+pub struct WorkerStreamResponse {
+    pub status: StatusCode,
+    pub response: reqwest::Response,
+}
+
+#[derive(Clone)]
 enum RuntimeHttpTransport {
     Provider,
+    ProviderStream(crate::worker_runtime_delta::ModelDeltaSink),
     SandboxManager,
 }
 
 impl WorkerExecution {
-    fn succeeded(value: Value) -> Self {
+    pub(crate) fn succeeded(value: Value) -> Self {
         Self {
             status: WorkerResultStatusV1::Succeeded,
             outputs: BTreeMap::from([(
@@ -165,7 +196,7 @@ impl WorkerExecution {
         }
     }
 
-    fn failed(code: &str, message: impl Into<String>, outcome_unknown: bool) -> Self {
+    pub(crate) fn failed(code: &str, message: impl Into<String>, outcome_unknown: bool) -> Self {
         Self {
             status: if outcome_unknown {
                 WorkerResultStatusV1::OutcomeUnknown
@@ -216,6 +247,9 @@ pub struct RuntimeWorker {
     plugin_parallelism: usize,
     pub(crate) plugin_trace: plugin::PluginTraceSink,
     pub(crate) plugin_artifacts: Arc<plugin::PluginArtifactCache>,
+    pub(crate) deltas: crate::worker_runtime_delta::ModelDeltaSink,
+    pub(crate) provider_breaker: std::sync::Arc<crate::provider_breaker::ProviderBreaker>,
+    pub(crate) provider_limiter: std::sync::Arc<crate::provider_breaker::FairnessLimiter>,
 }
 
 impl RuntimeWorker {
@@ -227,8 +261,15 @@ impl RuntimeWorker {
             .clamp(1, 64);
         let plugin_artifacts = Arc::new(plugin::PluginArtifactCache::from_env());
         let plugin_trace = plugin::PluginTraceSink::new(pool.clone(), objects.clone());
+        let deltas = crate::worker_runtime_delta::ModelDeltaSink::start(
+            pool.clone(),
+            crate::sse_wakeup::SseWakeup::disabled(),
+        );
         Ok(Self {
+            provider_breaker: crate::provider_breaker::ProviderBreaker::shared(),
+            provider_limiter: crate::provider_breaker::FairnessLimiter::shared(),
             plugin_trace,
+            deltas,
             pool,
             provider: Arc::new(ProviderHttpClient::from_env(
                 agentx_runtime_contracts::EgressRole::WorkflowWorker,
@@ -251,7 +292,10 @@ impl RuntimeWorker {
         let plugin_artifacts = Arc::new(plugin::PluginArtifactCache::for_tests());
         let plugin_trace = plugin::PluginTraceSink::new(pool.clone(), objects.clone());
         Self {
+            provider_breaker: crate::provider_breaker::ProviderBreaker::shared(),
+            provider_limiter: crate::provider_breaker::FairnessLimiter::shared(),
             plugin_trace,
+            deltas: crate::worker_runtime_delta::ModelDeltaSink::disabled(),
             pool,
             provider,
             vault: RuntimeVault::from_env().ok(),
@@ -262,12 +306,50 @@ impl RuntimeWorker {
         }
     }
 
+    /// Attaches a live delta sink plus the redis client used for SSE wakeup
+    /// publication (plan7 P7-B); production workers call this after
+    /// construction.
+    pub fn with_delta_sink(
+        mut self,
+        pool: MySqlPool,
+        wakeup: crate::sse_wakeup::SseWakeup,
+    ) -> Self {
+        self.deltas = crate::worker_runtime_delta::ModelDeltaSink::start(pool, wakeup);
+        self
+    }
+
+    pub fn provider_open_circuits(&self) -> usize {
+        self.provider_breaker.open_count()
+    }
+
+    pub fn provider_pool_utilization(&self) -> f64 {
+        self.provider_limiter.peak_utilization()
+    }
+
     pub fn plugin_parallelism(&self) -> usize {
         self.plugin_parallelism
     }
 
+    pub(crate) fn pool(&self) -> &MySqlPool {
+        &self.pool
+    }
+
+    pub(crate) fn objects_ref(&self) -> &Arc<dyn ObjectStore> {
+        &self.objects
+    }
+
     pub async fn execute(&self, claim: &ClaimedWorkerAttempt) -> WorkerExecution {
         self.emit_resolved_parameters(claim).await;
+        let execution = self.execute_claim(claim).await;
+        // Deltas must land before the attempt settles; the terminal event
+        // would otherwise cut the SSE stream ahead of pending frames.
+        if let Err(message) = self.deltas.flush(claim.task.attempt_id).await {
+            return WorkerExecution::failed("MODEL_DELTA_PERSISTENCE_FAILED", message, true);
+        }
+        execution
+    }
+
+    async fn execute_claim(&self, claim: &ClaimedWorkerAttempt) -> WorkerExecution {
         match claim.task.capability {
             NodeCapability::Builtin => self.execute_builtin(claim),
             NodeCapability::PluginNodejs => plugin::execute(self, claim).await,
@@ -424,7 +506,23 @@ impl RuntimeWorker {
     }
 
     async fn execute_agent_core(&self, claim: &ClaimedWorkerAttempt) -> WorkerExecution {
-        agent_core::execute(self, claim).await
+        // Agent Core uses synchronous ports. block_in_place inside those ports
+        // suspends the caller's select!, including Attempt Lease heartbeats.
+        // Keep the bounded Core run on a blocking task so the lease owner can
+        // keep polling cancellation, draining and renewal independently.
+        let worker = self.clone();
+        let claim = claim.clone();
+        let runtime = tokio::runtime::Handle::current();
+        match tokio::task::spawn_blocking(move || {
+            runtime.block_on(agent_core::execute(&worker, &claim))
+        })
+        .await
+        {
+            Ok(execution) => execution,
+            Err(error) => {
+                WorkerExecution::failed("AGENT_CORE_TASK_FAILED", error.to_string(), false)
+            }
+        }
     }
 
     async fn execute_resource(&self, claim: &ClaimedWorkerAttempt) -> WorkerExecution {
@@ -444,7 +542,7 @@ impl RuntimeWorker {
                 false,
             );
         };
-        let input = if expected_kind == RuntimeResourceKindV1::Model {
+        let (input, prompt) = if expected_kind == RuntimeResourceKindV1::Model {
             match self.model_input(claim).await {
                 Ok(input) => input,
                 Err(error) => {
@@ -456,12 +554,21 @@ impl RuntimeWorker {
                 }
             }
         } else {
-            first_input(claim).unwrap_or(Value::Null)
+            (first_input(claim).unwrap_or(Value::Null), None)
         };
-        self.execute_provider_call(claim, binding, input, 0).await
+        let resolved_claim = prompt.map(|prompt| {
+            let mut resolved = claim.clone();
+            resolved.node_parameters["prompt"] = Value::String(prompt);
+            resolved
+        });
+        self.execute_provider_call(resolved_claim.as_ref().unwrap_or(claim), binding, input, 0)
+            .await
     }
 
-    async fn model_input(&self, claim: &ClaimedWorkerAttempt) -> anyhow::Result<Value> {
+    async fn model_input(
+        &self,
+        claim: &ClaimedWorkerAttempt,
+    ) -> anyhow::Result<(Value, Option<String>)> {
         let target = first_input(claim).unwrap_or(Value::Null);
         let Some(prompt_object_id) = claim
             .node_parameters
@@ -470,18 +577,14 @@ impl RuntimeWorker {
             .and_then(Value::as_str)
             .and_then(|value| Uuid::parse_str(value).ok())
         else {
-            return Ok(target);
+            return Ok((target, None));
         };
         let bytes = self
             .load_runtime_object(claim.task.tenant_id, prompt_object_id)
             .await?;
-        let prompt = serde_json::from_slice::<Value>(&bytes)
-            .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned()));
-        Ok(json!({
-            "prompt": prompt,
-            "target": target,
-            "promptObjectId": prompt_object_id,
-        }))
+        let prompt = serde_json::from_slice::<Value>(&bytes)?;
+        let (input, prompt) = output::evaluator_model_input(&prompt, &target)?;
+        Ok((input, Some(prompt)))
     }
 
     async fn load_runtime_object(
@@ -541,9 +644,39 @@ impl RuntimeWorker {
             && provider == "openai_compatible"
         {
             let endpoint = openai_chat_completions_endpoint(endpoint);
-            let request = openai_chat_request(claim, model, price, &input);
-            let execution = self
-                .call_http(
+            let streaming = claim
+                .node_parameters
+                .get("stream")
+                .and_then(Value::as_str)
+                .map(|value| value != "false")
+                .unwrap_or(true);
+            let capabilities = match &binding.configuration {
+                RuntimeResourceConfigurationV1::Model { capabilities, .. } => capabilities.clone(),
+                _ => Vec::new(),
+            };
+            let input = match output::resolve_multimodal_content(
+                self,
+                claim,
+                &capabilities,
+                &claim
+                    .node_parameters
+                    .get("userQuestion")
+                    .cloned()
+                    .or_else(|| input.get("question").cloned())
+                    .unwrap_or_else(|| input.clone()),
+            )
+            .await
+            {
+                Ok(resolved) => {
+                    let mut patched = input;
+                    patched["question"] = resolved;
+                    patched
+                }
+                Err(failed) => return failed,
+            };
+            let request = openai_chat_request_streaming(claim, model, price, &input, streaming);
+            let execution = if streaming {
+                self.call_http_stream(
                     claim,
                     "model",
                     &endpoint,
@@ -553,7 +686,20 @@ impl RuntimeWorker {
                     "authorization",
                     Some(binding),
                 )
-                .await;
+                .await
+            } else {
+                self.call_http(
+                    claim,
+                    "model",
+                    &endpoint,
+                    request,
+                    call_index,
+                    credential.as_ref(),
+                    "authorization",
+                    Some(binding),
+                )
+                .await
+            };
             return openai_execution_output(execution, &claim.node_parameters);
         }
         if structured_model {
@@ -622,7 +768,7 @@ impl RuntimeWorker {
                     .unwrap_or("query");
                 let payload = claim.node_parameters.get("input").cloned().unwrap_or(input);
                 let (path, body, secret_header) = match rag_query_request(
-                    &provider,
+                    provider,
                     operation,
                     namespace,
                     index_version,
@@ -775,6 +921,36 @@ impl RuntimeWorker {
         .await
     }
 
+    /// Streaming variant (plan7 P7-B): the provider body is consumed as an
+    /// SSE token stream while deltas are emitted live; the aggregated
+    /// response keeps the buffered settlement/replay contract identical.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn call_http_stream(
+        &self,
+        claim: &ClaimedWorkerAttempt,
+        kind: &str,
+        endpoint: &str,
+        request: Value,
+        call_index: u32,
+        secret: Option<&agentx_runtime_contracts::VaultSecretReferenceV1>,
+        secret_header: &'static str,
+        binding: Option<&RuntimeResourceBindingV1>,
+    ) -> WorkerExecution {
+        self.call_http_with_transport(
+            claim,
+            kind,
+            endpoint,
+            request,
+            call_index,
+            secret,
+            secret_header,
+            binding,
+            None,
+            RuntimeHttpTransport::ProviderStream(self.deltas.clone()),
+        )
+        .await
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn call_http_effect(
         &self,
@@ -799,6 +975,35 @@ impl RuntimeWorker {
             binding,
             Some(effect_idempotency_key),
             RuntimeHttpTransport::Provider,
+        )
+        .await
+    }
+
+    /// Effect-keyed streaming call for agent model turns (plan7 P7-B).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn call_http_effect_stream(
+        &self,
+        claim: &ClaimedWorkerAttempt,
+        kind: &str,
+        endpoint: &str,
+        request: Value,
+        call_index: u32,
+        effect_idempotency_key: &str,
+        secret: Option<&agentx_runtime_contracts::VaultSecretReferenceV1>,
+        secret_header: &'static str,
+        binding: Option<&RuntimeResourceBindingV1>,
+    ) -> WorkerExecution {
+        self.call_http_with_transport(
+            claim,
+            kind,
+            endpoint,
+            request,
+            call_index,
+            secret,
+            secret_header,
+            binding,
+            Some(effect_idempotency_key),
+            RuntimeHttpTransport::ProviderStream(self.deltas.clone()),
         )
         .await
     }
@@ -867,12 +1072,80 @@ impl RuntimeWorker {
             )
             .await
         {
-            Ok(Some(value)) => return WorkerExecution::succeeded(value),
+            Ok(Some(value)) => {
+                // plan7 P7-B: an idempotent replay hit does not re-send the
+                // provider stream; emit the cached result as one merged
+                // delta frame so replayed streaming calls keep the same
+                // client experience as the first attempt.
+                if let RuntimeHttpTransport::ProviderStream(delta_sink) = &transport
+                    && let Some(text) = value
+                        .pointer("/choices/0/message/content")
+                        .and_then(Value::as_str)
+                    && !text.is_empty()
+                {
+                    if let Err(message) = delta_sink
+                        .emit(
+                            claim.task.tenant_id,
+                            claim.task.execution_id,
+                            claim.invocation_id,
+                            claim.task.attempt_id,
+                            &claim.node_key,
+                            text,
+                            None,
+                        )
+                        .await
+                    {
+                        return WorkerExecution::failed(
+                            "MODEL_DELTA_PERSISTENCE_FAILED",
+                            message,
+                            true,
+                        );
+                    }
+                }
+                return WorkerExecution::succeeded(value);
+            }
             Ok(None) => {}
             Err(result) => return result,
         }
+        // plan7 P7-D3: deterministic fail-fast while the provider breaker is
+        // open (the reserved ledger row records the rejection), then bound
+        // in-flight calls per tenant × kind × provider host. The permit is
+        // owned: every return path below releases the slot.
+        let breaker_key =
+            crate::provider_breaker::provider_key(claim.task.tenant_id, kind, endpoint);
+        if !self
+            .provider_breaker
+            .allow(&breaker_key, std::time::Instant::now())
+        {
+            return self
+                .fail_call(
+                    call_id,
+                    crate::provider_breaker::PROVIDER_CIRCUIT_OPEN,
+                    "Provider circuit is open after consecutive failures".to_string(),
+                    false,
+                )
+                .await;
+        }
+        let _fairness_permit = match self.provider_limiter.try_acquire(&breaker_key) {
+            Some(permit) => permit,
+            None => {
+                return self
+                    .fail_call(
+                        call_id,
+                        crate::provider_breaker::PROVIDER_BUSY,
+                        "Provider in-flight cap for this tenant/kind/host is reached".to_string(),
+                        true,
+                    )
+                    .await;
+            }
+        };
         let mut endpoint = endpoint.to_owned();
         let mut headers = HeaderMap::new();
+        if kind == "rag" && binding.is_some_and(|binding| matches!(&binding.configuration, RuntimeResourceConfigurationV1::Rag { provider, .. } if provider == "lightrag")) {
+            if let Some(workspace) = request.get("workspace").and_then(Value::as_str) {
+                headers.insert("LIGHTRAG-WORKSPACE", reqwest::header::HeaderValue::from_str(workspace).expect("validated LightRAG workspace"));
+            }
+        }
         let mut secret_redactions = Vec::new();
         headers.insert(
             "Idempotency-Key",
@@ -1024,7 +1297,89 @@ impl RuntimeWorker {
         }
         let context =
             EgressRequestContext::execution(claim.task.tenant_id, claim.task.execution_id);
+        // Time-to-first-token for streaming model calls; 0 means the call was
+        // non-streaming or produced no tokens.
+        let first_token_ms = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
         let response = match match transport {
+            RuntimeHttpTransport::ProviderStream(delta_sink) => {
+                let provider = self.provider.clone();
+                let endpoint = endpoint.clone();
+                let request = request.clone();
+                let timeout_ms = claim.timeout_ms;
+                let claim_tenant = claim.task.tenant_id;
+                let execution_id = claim.task.execution_id;
+                let invocation_id = claim.invocation_id;
+                let attempt_id = claim.task.attempt_id;
+                let node_key = claim.node_key.clone();
+                let first_token = std::sync::Arc::clone(&first_token_ms);
+                Box::pin(async move {
+                    let requested_at = std::time::Instant::now();
+                    let stream = provider
+                        .post_json_stream(
+                            &endpoint,
+                            context,
+                            std::time::Duration::from_millis(timeout_ms),
+                            headers,
+                            &request,
+                        )
+                        .await?;
+                    let status = stream.status;
+                    let headers = stream.response.headers().clone();
+                    if !status.is_success() {
+                        let body = stream
+                            .response
+                            .text()
+                            .await
+                            .unwrap_or_default()
+                            .chars()
+                            .take(400)
+                            .collect::<String>();
+                        return Err(WorkerProviderError::Protocol(format!(
+                            "model stream endpoint returned HTTP {status}: {body}"
+                        )));
+                    }
+                    let sink = delta_sink.clone();
+                    let mut first_token_seen = false;
+                    let aggregated = stream::aggregate_openai_sse_stream(
+                        stream.response,
+                        &request,
+                        &mut move |text: String, reasoning: Option<String>| {
+                            if !first_token_seen {
+                                first_token_seen = true;
+                                first_token.store(
+                                    requested_at.elapsed().as_millis() as u64,
+                                    std::sync::atomic::Ordering::Relaxed,
+                                );
+                            }
+                            let sink = sink.clone();
+                            let node_key = node_key.clone();
+                            async move {
+                                sink.emit(
+                                    claim_tenant,
+                                    execution_id,
+                                    invocation_id,
+                                    attempt_id,
+                                    &node_key,
+                                    &text,
+                                    reasoning.as_deref(),
+                                )
+                                .await
+                            }
+                        },
+                    )
+                    .await;
+                    match aggregated {
+                        Ok(value) => Ok(WorkerProviderResponse {
+                            status,
+                            headers,
+                            body: bytes::Bytes::from(
+                                serde_json::to_vec(&value).unwrap_or_else(|_| b"{}".to_vec()),
+                            ),
+                        }),
+                        Err(message) => Err(WorkerProviderError::Protocol(message)),
+                    }
+                })
+            }
             RuntimeHttpTransport::Provider if kind == "http" => self.provider.request_json(
                 request
                     .get("method")
@@ -1059,6 +1414,8 @@ impl RuntimeWorker {
         {
             Ok(response) => response,
             Err(WorkerProviderError::Denied(message)) => {
+                self.provider_breaker
+                    .record_failure(&breaker_key, std::time::Instant::now());
                 return self
                     .fail_call(
                         call_id,
@@ -1068,10 +1425,22 @@ impl RuntimeWorker {
                     )
                     .await;
             }
+            Err(WorkerProviderError::Protocol(message)) => {
+                return self
+                    .fail_call(
+                        call_id,
+                        "MODEL_STREAM_PROTOCOL_ERROR",
+                        redact_secret_text(&message, &secret_redactions),
+                        false,
+                    )
+                    .await;
+            }
             Err(WorkerProviderError::Request {
                 message,
                 is_connect,
             }) => {
+                self.provider_breaker
+                    .record_failure(&breaker_key, std::time::Instant::now());
                 let unknown = !is_connect;
                 return self
                     .fail_call(
@@ -1088,6 +1457,14 @@ impl RuntimeWorker {
             }
         };
         let status = response.status;
+        // plan7 P7-D3: HTTP-level outcome feeds the breaker; transport-level
+        // errors are recorded in the dispatch match arms below.
+        if status.is_success() {
+            self.provider_breaker.record_success(&breaker_key);
+        } else {
+            self.provider_breaker
+                .record_failure(&breaker_key, std::time::Instant::now());
+        }
         let provider_request_id = response
             .headers
             .get("x-request-id")
@@ -1155,6 +1532,10 @@ impl RuntimeWorker {
         } else {
             payload.clone()
         };
+        let usage_estimated = payload
+            .get("usage_estimated")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         let (input_tokens, output_tokens, cost_micros, cost_currency) =
             if let Some(RuntimeResourceBindingV1 {
                 configuration: RuntimeResourceConfigurationV1::Model { price, .. },
@@ -1223,8 +1604,12 @@ impl RuntimeWorker {
             };
             payload = json!({"statusCode":status.as_u16(),"headers":response_headers,"body":body,"files":files});
         }
+        let first_token_ms = {
+            let value = first_token_ms.load(std::sync::atomic::Ordering::Relaxed);
+            (value > 0).then_some(value as u32)
+        };
         if let Err(error) = sqlx::query(
-            "UPDATE runtime_calls SET status='succeeded',provider_request_id=?,response_json=?,response_artifact_id=?,input_tokens=?,output_tokens=?,cost_micros=?,cost_currency=?,ended_at=UTC_TIMESTAMP(6) WHERE id=? AND status='sent'",
+            "UPDATE runtime_calls SET status='succeeded',provider_request_id=?,response_json=?,response_artifact_id=?,input_tokens=?,output_tokens=?,cost_micros=?,cost_currency=?,usage_estimated=?,first_token_ms=?,ended_at=UTC_TIMESTAMP(6) WHERE id=? AND status='sent'",
         )
         .bind(provider_request_id)
         .bind(&payload)
@@ -1233,6 +1618,8 @@ impl RuntimeWorker {
         .bind(output_tokens)
         .bind(cost_micros)
         .bind(cost_currency)
+        .bind(usage_estimated)
+        .bind(first_token_ms)
         .bind(call_id)
         .execute(&self.pool)
         .await
@@ -1248,283 +1635,6 @@ impl RuntimeWorker {
         )
         .await;
         WorkerExecution::succeeded(payload)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    async fn reserve_call(
-        &self,
-        claim: &ClaimedWorkerAttempt,
-        call_id: Uuid,
-        kind: &str,
-        idempotency_key: &str,
-        fingerprint: &str,
-        request: &Value,
-        call_index: u32,
-        binding: Option<&RuntimeResourceBindingV1>,
-    ) -> Result<Option<Value>, WorkerExecution> {
-        let mut tx = self.pool.begin().await.map_err(|error| {
-            WorkerExecution::failed("RUNTIME_CALL_STATE_UNAVAILABLE", error.to_string(), false)
-        })?;
-        if let Some(row) = sqlx::query(
-            "SELECT id,status,side_effect,request_fingerprint,response_json,error_code,error_message FROM runtime_calls WHERE tenant_id=? AND idempotency_key=? FOR UPDATE",
-        )
-        .bind(claim.task.tenant_id)
-        .bind(idempotency_key)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(|error| WorkerExecution::failed("RUNTIME_CALL_STATE_UNAVAILABLE", error.to_string(), false))?
-        {
-            if row.try_get::<String, _>("request_fingerprint").map_err(|error| WorkerExecution::failed("RUNTIME_CALL_STATE_INVALID", error.to_string(), false))? != fingerprint {
-                return Err(WorkerExecution::failed("RUNTIME_CALL_IDEMPOTENCY_CONFLICT", "Runtime Call key was reused with different input", false));
-            }
-            let status: String = row.try_get("status").map_err(|error| WorkerExecution::failed("RUNTIME_CALL_STATE_INVALID", error.to_string(), false))?;
-            if status == "succeeded" {
-                let response = row.try_get::<Option<Value>, _>("response_json").map_err(|error| WorkerExecution::failed("RUNTIME_CALL_STATE_INVALID", error.to_string(), false))?.unwrap_or(Value::Null);
-                tx.commit().await.map_err(|error| WorkerExecution::failed("RUNTIME_CALL_STATE_UNAVAILABLE", error.to_string(), false))?;
-                return Ok(Some(response));
-            }
-            let side_effect: String = row.try_get("side_effect").map_err(|error| WorkerExecution::failed("RUNTIME_CALL_STATE_INVALID", error.to_string(), false))?;
-            let stdio_frame_requires_reconciliation =
-                kind == "sandbox" && request.get("frame").is_some() && status == "sent";
-            if runtime_call_is_replayable(&status, &side_effect)
-                && !stdio_frame_requires_reconciliation
-            {
-                sqlx::query(
-                    "UPDATE runtime_calls SET status='reserved',error_code=NULL,error_message=NULL,ended_at=NULL WHERE id=? AND status=?",
-                )
-                .bind(row.try_get::<Uuid, _>("id").map_err(|error| WorkerExecution::failed("RUNTIME_CALL_STATE_INVALID", error.to_string(), false))?)
-                .bind(&status)
-                .execute(&mut *tx)
-                .await
-                .map_err(|error| WorkerExecution::failed("RUNTIME_CALL_STATE_UNAVAILABLE", error.to_string(), false))?;
-                tx.commit().await.map_err(|error| WorkerExecution::failed("RUNTIME_CALL_STATE_UNAVAILABLE", error.to_string(), false))?;
-                return Ok(None);
-            }
-            return Err(WorkerExecution::failed(
-                row.try_get::<Option<String>, _>("error_code").ok().flatten().as_deref().unwrap_or("PROVIDER_OUTCOME_UNKNOWN"),
-                row.try_get::<Option<String>, _>("error_message").ok().flatten().unwrap_or_else(|| format!("Runtime Call remains {status}")),
-                status == "sent" || status == "outcome_unknown",
-            ));
-        }
-        let tool_name_snapshot = binding.and_then(|value| match &value.configuration {
-            RuntimeResourceConfigurationV1::Mcp { tool_name, .. } if kind == "mcp_tool" => {
-                Some(tool_name.as_str())
-            }
-            _ => None,
-        });
-        let side_effect = binding
-            .and_then(|binding| match &binding.configuration {
-                RuntimeResourceConfigurationV1::Mcp { side_effect, .. } if kind == "mcp_tool" => {
-                    Some(match side_effect.as_str() {
-                        "none" | "read_only" => "none",
-                        "idempotent" => "idempotent",
-                        _ => "irreversible",
-                    })
-                }
-                _ => None,
-            })
-            .unwrap_or_else(|| runtime_call_side_effect(kind, request));
-        sqlx::query(
-            "INSERT INTO runtime_calls(id,tenant_id,execution_id,node_execution_id,attempt_id,agent_run_id,plugin_parent_span_entity_id,iteration_index,call_index,call_kind,idempotency_key,request_fingerprint,resource_type,resource_id,resource_version_id,tool_name_snapshot,side_effect,status,request_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'reserved',?)",
-        )
-        .bind(call_id)
-        .bind(claim.task.tenant_id)
-        .bind(claim.task.execution_id)
-        .bind(claim.task.node_execution_id)
-        .bind(claim.task.attempt_id)
-        .bind((claim.node_type == "agent").then(|| stable_id(claim.task.attempt_id, b"agent-run")))
-        .bind(claim.trace_parent_span_entity_id)
-        .bind(if claim.node_type == "agent" { call_index / 2 } else { 0 })
-        .bind(call_index)
-        .bind(kind)
-        .bind(idempotency_key)
-        .bind(fingerprint)
-        .bind(binding.map(|value| resource_kind_name(value.resource_kind)))
-        .bind(binding.map(|value| value.resource_id))
-        .bind(binding.map(|value| value.resource_version.as_str()))
-        .bind(tool_name_snapshot)
-        .bind(side_effect)
-        .bind(request)
-        .execute(&mut *tx)
-        .await
-        .map_err(|error| WorkerExecution::failed("RUNTIME_CALL_STATE_UNAVAILABLE", error.to_string(), false))?;
-        tx.commit().await.map_err(|error| {
-            WorkerExecution::failed("RUNTIME_CALL_STATE_UNAVAILABLE", error.to_string(), false)
-        })?;
-        self.emit_runtime_call_trace(
-            call_id,
-            agentx_runtime_contracts::TraceEventKindV1::Started,
-            "reserved",
-            None,
-            Some(request),
-        )
-        .await;
-        Ok(None)
-    }
-
-    async fn fail_call(
-        &self,
-        call_id: Uuid,
-        code: &str,
-        message: impl Into<String>,
-        outcome_unknown: bool,
-    ) -> WorkerExecution {
-        let message = message.into();
-        let _ = sqlx::query(
-            "UPDATE runtime_calls SET status=?,error_code=?,error_message=?,ended_at=UTC_TIMESTAMP(6) WHERE id=? AND status IN ('reserved','sent')",
-        )
-        .bind(if outcome_unknown { "outcome_unknown" } else { "failed" })
-        .bind(code)
-        .bind(&message)
-        .bind(call_id)
-        .execute(&self.pool)
-        .await;
-        self.emit_runtime_call_trace(
-            call_id,
-            agentx_runtime_contracts::TraceEventKindV1::Finished,
-            if outcome_unknown {
-                "outcome_unknown"
-            } else {
-                "failed"
-            },
-            Some(code),
-            None,
-        )
-        .await;
-        WorkerExecution::failed(code, message, outcome_unknown)
-    }
-
-    async fn emit_runtime_call_trace(
-        &self,
-        call_id: Uuid,
-        event_kind: agentx_runtime_contracts::TraceEventKindV1,
-        status: &str,
-        error_code: Option<&str>,
-        content: Option<&Value>,
-    ) {
-        let row = match sqlx::query("SELECT tenant_id,execution_id,node_execution_id,attempt_id,agent_run_id,plugin_parent_span_entity_id,iteration_index,call_kind,resource_type,resource_id,resource_version_id,response_artifact_id,input_tokens,output_tokens,cost_micros,error_message FROM runtime_calls WHERE id=?")
-            .bind(call_id)
-            .fetch_optional(&self.pool)
-            .await
-        {
-            Ok(Some(row)) => row,
-            Ok(None) => return,
-            Err(error) => {
-                tracing::warn!(%error, %call_id, "Runtime Call Trace lookup failed");
-                return;
-            }
-        };
-        let tenant_id = match row.try_get::<Uuid, _>("tenant_id") {
-            Ok(value) => value,
-            Err(_) => return,
-        };
-        let execution_id = match row.try_get::<Uuid, _>("execution_id") {
-            Ok(value) => value,
-            Err(_) => return,
-        };
-        let attempt_id = match row.try_get::<Uuid, _>("attempt_id") {
-            Ok(value) => value,
-            Err(_) => return,
-        };
-        let kind = row
-            .try_get::<String, _>("call_kind")
-            .unwrap_or_else(|_| "runtime".into());
-        let agent_run_id = row
-            .try_get::<Option<Uuid>, _>("agent_run_id")
-            .ok()
-            .flatten();
-        let agent_iteration_id = agent_run_id.map(|run_id| {
-            let index = row.try_get::<u32, _>("iteration_index").unwrap_or_default();
-            stable_id(run_id, format!("iteration-{index}").as_bytes())
-        });
-        let plugin_parent = row
-            .try_get::<Option<Uuid>, _>("plugin_parent_span_entity_id")
-            .ok()
-            .flatten();
-        let parent = plugin_parent
-            .map(|id| {
-                (
-                    id,
-                    agentx_runtime_contracts::TraceSpanKindV1::PluginOperation,
-                )
-            })
-            .or_else(|| {
-                agent_iteration_id.map(|id| {
-                    (
-                        id,
-                        agentx_runtime_contracts::TraceSpanKindV1::AgentIteration,
-                    )
-                })
-            })
-            .unwrap_or((
-                attempt_id,
-                agentx_runtime_contracts::TraceSpanKindV1::Attempt,
-            ));
-        let mut trace = crate::trace_delivery::TraceDraft::span(
-            tenant_id,
-            execution_id,
-            call_id,
-            Some(parent),
-            agentx_runtime_contracts::TraceSpanKindV1::RuntimeCall,
-            runtime_call_span_name(&kind),
-            event_kind,
-            format!(
-                "runtime_call.{}",
-                if event_kind == agentx_runtime_contracts::TraceEventKindV1::Finished {
-                    "finished"
-                } else {
-                    "started"
-                }
-            ),
-            status,
-        );
-        trace.node_execution_id = row.try_get("node_execution_id").ok();
-        trace.attempt_id = Some(attempt_id);
-        trace.agent_run_id = agent_run_id;
-        trace.agent_iteration_id = agent_iteration_id;
-        trace.runtime_call_id = Some(call_id);
-        trace.resource_type = row.try_get("resource_type").ok();
-        trace.resource_id = row.try_get("resource_id").ok();
-        trace.resource_version = row
-            .try_get::<Option<Uuid>, _>("resource_version_id")
-            .ok()
-            .flatten()
-            .map(|value| value.to_string());
-        trace.input_tokens = row.try_get("input_tokens").ok();
-        trace.output_tokens = row.try_get("output_tokens").ok();
-        trace.cost_micros = row.try_get("cost_micros").unwrap_or_default();
-        trace.attributes = json!({
-            "meteringSource": if plugin_parent.is_some() { "plugin_host_call" } else { "platform_runtime_call" },
-            "costIncludedInParent": false,
-        });
-        trace.error_code = error_code.map(str::to_owned);
-        trace.error_message = row.try_get("error_message").ok();
-        trace.content_kind = Some(
-            if event_kind == agentx_runtime_contracts::TraceEventKindV1::Started {
-                agentx_runtime_contracts::TraceContentKindV1::RuntimeRequest
-            } else {
-                agentx_runtime_contracts::TraceContentKindV1::RuntimeResponse
-            },
-        );
-        trace.content_ref = row
-            .try_get::<Option<Uuid>, _>("response_artifact_id")
-            .ok()
-            .flatten();
-        trace.content_preview = if trace.content_ref.is_some() {
-            None
-        } else {
-            content.and_then(crate::trace_delivery::bounded_preview)
-        };
-        let Ok(mut tx) = self.pool.begin().await else {
-            return;
-        };
-        if let Err(error) = crate::trace_delivery::enqueue(&mut tx, trace).await {
-            tracing::warn!(%error, %call_id, "Runtime Call Trace enqueue failed");
-            return;
-        }
-        if let Err(error) = tx.commit().await {
-            tracing::warn!(%error, %call_id, "Runtime Call Trace commit failed");
-        }
     }
 }
 
@@ -1568,19 +1678,6 @@ fn capability_resource_kind(capability: &NodeCapability) -> RuntimeResourceKindV
         NodeCapability::Memory => RuntimeResourceKindV1::Memory,
         NodeCapability::Sandbox => RuntimeResourceKindV1::SandboxProfile,
         NodeCapability::Builtin | NodeCapability::PluginNodejs => RuntimeResourceKindV1::Credential,
-    }
-}
-
-fn resource_kind_name(kind: RuntimeResourceKindV1) -> &'static str {
-    match kind {
-        RuntimeResourceKindV1::Model => "model",
-        RuntimeResourceKindV1::Mcp => "mcp",
-        RuntimeResourceKindV1::Rag => "rag",
-        RuntimeResourceKindV1::Memory => "memory",
-        RuntimeResourceKindV1::Skill => "skill",
-        RuntimeResourceKindV1::Credential => "credential",
-        RuntimeResourceKindV1::SandboxProfile => "sandbox_profile",
-        RuntimeResourceKindV1::Composite => "composite",
     }
 }
 

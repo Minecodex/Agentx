@@ -220,6 +220,12 @@ async fn invoke(
     headers: &HeaderMap,
     request: InvocationRequestV1,
 ) -> RuntimeResult<(StatusCode, Json<InvocationResponseV1>)> {
+    crate::admission::check(
+        &state.pool,
+        state.admission_redis.as_ref(),
+        caller.tenant_id,
+    )
+    .await?;
     let idempotency_key = idempotency_key(headers)?;
     let mode = request.response_mode.as_deref().unwrap_or("async");
     if !matches!(mode, "sync" | "async") {
@@ -303,6 +309,12 @@ async fn send_message(
             }
         }
     }
+    crate::admission::check(
+        &state.pool,
+        state.admission_redis.as_ref(),
+        caller.tenant_id,
+    )
+    .await?;
     let input = chat_message_payload(&request);
     let accepted = create_chat_runtime_invocation_tx(
         &mut tx,
@@ -460,7 +472,7 @@ async fn invocation_events(
     let tenant_id = caller.tenant_id;
     let mut wakeups = state.wakeups.subscribe(id);
     let stream = async_stream::stream! {
-        metrics.add("agentx_sse_connections", 1.0).await;
+        let _connection = metrics.track("agentx_sse_connections").await;
         let mut cursor = after;
         loop {
             let mut terminal_seen = false;
@@ -481,6 +493,15 @@ async fn invocation_events(
             if terminal_seen {
                 break;
             }
+            // Reconnecting after the terminal cursor must drain too. A
+            // terminal transaction writes its event before committing state.
+            if sqlx::query_scalar::<_, bool>("SELECT status IN ('completed','failed','cancelled') FROM application_invocations WHERE tenant_id=? AND id=?")
+                .bind(tenant_id).bind(id).fetch_one(&pool).await.unwrap_or(false)
+            {
+                let latest = sqlx::query_scalar::<_, u64>("SELECT COALESCE(MAX(sequence_number),0) FROM invocation_events WHERE tenant_id=? AND invocation_id=?")
+                    .bind(tenant_id).bind(id).fetch_one(&pool).await;
+                if latest.is_ok_and(|latest| cursor >= latest) { break; }
+            }
             if lifecycle.is_draining() {
                 break;
             }
@@ -490,7 +511,7 @@ async fn invocation_events(
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
         }
-        metrics.add("agentx_sse_connections", -1.0).await;
+
     };
     Ok(Sse::new(stream).keep_alive(
         axum::response::sse::KeepAlive::new()
@@ -713,6 +734,20 @@ async fn commit_artifact_upload(
         .bind(hash)
         .bind(final_key)
         .bind(scope)
+        .bind(idempotency_key)
+        .bind(request_hash)
+        .execute(&mut *tx)
+        .await?;
+    // plan7 P7-B B5: the multimodal resolver reads artifacts through
+    // runtime_objects, so chat-uploaded artifacts must register the ready
+    // object row alongside the artifacts row.
+    sqlx::query("INSERT INTO runtime_objects(object_id,tenant_id,object_key,content_hash,size_bytes,media_type,status,idempotency_key,request_hash,temporary_expires_at,ready_at) VALUES(?,?,?,?,?,?,'ready',?,?,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6))")
+        .bind(artifact_id)
+        .bind(tenant_id)
+        .bind(final_key)
+        .bind(format!("sha256:{hash}"))
+        .bind(size_bytes)
+        .bind(content_type)
         .bind(idempotency_key)
         .bind(request_hash)
         .execute(&mut *tx)

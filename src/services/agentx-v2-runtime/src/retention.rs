@@ -396,6 +396,22 @@ async fn sweep_database_record(
             .bind(claim.run_id)
             .execute(&mut *tx)
             .await?;
+        sqlx::query("DELETE FROM execution_model_deltas WHERE tenant_id=? AND execution_id=?")
+            .bind(claim.tenant_id)
+            .bind(target_id)
+            .execute(&mut *tx)
+            .await?;
+        // plan7 P7-B: model.delta rows amplify invocation_events growth, so
+        // the events of a retained invocation are dropped with the same
+        // execution retention decision (live executions keep their events).
+        sqlx::query(
+            "DELETE FROM invocation_events WHERE tenant_id=? AND invocation_id IN (SELECT id FROM application_invocations WHERE tenant_id=? AND execution_id=?)",
+        )
+        .bind(claim.tenant_id)
+        .bind(claim.tenant_id)
+        .bind(target_id)
+        .execute(&mut *tx)
+        .await?;
     }
     tx.commit().await?;
     Ok(true)

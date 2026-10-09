@@ -84,6 +84,15 @@ global:
           user: observability_object
   network:
     egressGateway:
+      httpProviderServices:
+      - echo-mcp
+      - echo-node
+      - lightrag
+      - mem0
+      - ragflow
+      - mock-openai
+      - im-mock
+      deliveryDomainExtraAllowlist: im-mock
       allowedPublicPorts:
       - 443
       allowedPrivateCidrs:
@@ -155,6 +164,7 @@ runtime:
       - artifact
       - quota
       - trace-relay
+      - delivery
       mysqlPool: 10
     workflowWorker:
       replicas: 1

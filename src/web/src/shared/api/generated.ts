@@ -142,6 +142,78 @@ export interface components {
         CancelResourceGrantRequest: {
             expectedVersion: number;
         };
+        CanvasPlugin: {
+            defaultVersionId: string | null;
+            description: string;
+            displayName: string;
+            id: string;
+            nodeCount: number;
+            packageId: string;
+            /** @enum {string} */
+            sourceType: "builtin" | "imported";
+            updatedAt: string;
+            version: number;
+            versions: components["schemas"]["CanvasPluginVersion"][];
+        };
+        CanvasPluginAuditItem: {
+            action: string;
+            actorUserId: string;
+            createdAt: string;
+            detail: unknown;
+            id: string;
+        };
+        CanvasPluginImport: {
+            bundleDigest: string;
+            description: string;
+            displayName: string;
+            expiresAt: string;
+            id: string;
+            installedVersionId: string | null;
+            issues: {
+                [key: string]: unknown;
+            }[];
+            nodeTypes: string[];
+            packageId: string;
+            packageVersion: string;
+            /** @enum {string} */
+            status: "ready" | "installed" | "failed" | "cancelled";
+        };
+        CanvasPluginInstallRequest: {
+            bundleDigest: string;
+            enable: boolean;
+            setDefault: boolean;
+        };
+        CanvasPluginPage: {
+            items: components["schemas"]["CanvasPlugin"][];
+            page: number;
+            pageSize: number;
+            total: number;
+        };
+        CanvasPluginReferences: {
+            deployments: number;
+            drafts: number;
+            executions: number;
+            total: number;
+            workflowVersions: number;
+        };
+        CanvasPluginUpdateRequest: {
+            defaultVersionId: string;
+            expectedRevision: number;
+        };
+        CanvasPluginVersion: {
+            bundleDigest: string;
+            createdAt: string;
+            id: string;
+            nodeTypes: string[];
+            packageVersion: string;
+            sdkApiVersion: number;
+            /** @enum {string} */
+            status: "enabled" | "disabled";
+        };
+        CanvasPluginVersionUpdateRequest: {
+            enabled: boolean;
+            expectedRevision: number;
+        };
         CaseInput: {
             caseKey: string;
             context?: unknown;
@@ -212,6 +284,8 @@ export interface components {
             healthPath?: string | null;
             name: string;
             ownerDepartmentId: string;
+            /** @enum {string} */
+            provider?: "lightrag" | "ragflow";
         };
         CreateCredentialRequest: {
             credentialType: string;
@@ -287,6 +361,8 @@ export interface components {
         };
         CreateModelRequest: {
             alias?: string;
+            /** @description Input modality capabilities */
+            capabilities?: ("vision" | "audio")[];
             connectionName: string;
             credentialId?: string | null;
             defaultParameters?: unknown;
@@ -364,6 +440,7 @@ export interface components {
             name: string;
             /** @enum {string} */
             providerType: "dingtalk" | "wecom" | "feishu" | "agentx";
+            reply?: components["schemas"]["WebhookReplyConfig"];
         };
         CreateWorkflowRequest: {
             description?: string | null;
@@ -474,6 +551,48 @@ export interface components {
             sourceModule: string;
             sourceName: string;
             sourceType: string;
+        };
+        DeliveryDetail: {
+            applicationId?: string | null;
+            attemptCount: number;
+            channelBindingId: string;
+            createdAt: string;
+            executionId: string;
+            hasCredentialSnapshot?: boolean;
+            id: string;
+            invocationId?: string | null;
+            lastErrorCode?: string | null;
+            lastErrorMessage?: string | null;
+            origin: string;
+            payload: Record<string, never>;
+            provider: string;
+            providerMessageId?: string | null;
+            /** @enum {string} */
+            status: "pending" | "delivering" | "delivered" | "failed" | "dead";
+            target: Record<string, never>;
+            updatedAt: string;
+        };
+        DeliveryPage: {
+            apiVersion: number;
+            items: components["schemas"]["DeliverySummary"][];
+        };
+        DeliverySummary: {
+            applicationId?: string | null;
+            attemptCount: number;
+            channelBindingId: string;
+            createdAt: string;
+            executionId: string;
+            id: string;
+            invocationId?: string | null;
+            lastErrorCode?: string | null;
+            lastErrorMessage?: string | null;
+            origin: string;
+            payload: Record<string, never>;
+            provider: string;
+            providerMessageId?: string | null;
+            /** @enum {string} */
+            status: "pending" | "delivering" | "delivered" | "failed" | "dead";
+            updatedAt: string;
         };
         DepartmentResponse: {
             id: string;
@@ -655,6 +774,7 @@ export interface components {
             startedAt: string;
             stateVersion?: number;
             status: string;
+            traceEventCount?: number;
             traceId: string;
             traceWatermark?: number;
             triggerName?: string | null;
@@ -730,6 +850,21 @@ export interface components {
             definitionHash: string;
             draftId: string;
             workflowId: string;
+        };
+        KnowledgeDocument: {
+            contentType: string;
+            createdAt: string;
+            errorCode?: string | null;
+            errorMessage?: string | null;
+            externalDocumentId?: string | null;
+            id: string;
+            indexedAt?: string | null;
+            name: string;
+            ragResourceId: string;
+            sizeBytes: number;
+            /** @enum {string} */
+            status: "uploading" | "indexing" | "indexed" | "failed";
+            version: number;
         };
         KnowledgeResponse: {
             connectionId: string;
@@ -875,6 +1010,8 @@ export interface components {
         ModelResponse: {
             alias: string;
             aliasVersion: number;
+            /** @description Input modality capabilities */
+            capabilities?: ("vision" | "audio")[];
             connectionCheckedAt?: string | null;
             connectionName: string;
             connectionStatus: string;
@@ -971,6 +1108,17 @@ export interface components {
             manifest?: unknown;
             value: string;
         };
+        NodeProviderOptionsPage: {
+            items: ({
+                description?: string | null;
+                label: string;
+                manifest?: unknown;
+                value: string;
+            } & {
+                [key: string]: unknown;
+            })[];
+            nextCursor?: string | null;
+        };
         NodeProviderOptionsResponse: {
             items: components["schemas"]["NodeProviderOption"][];
         };
@@ -1011,6 +1159,41 @@ export interface components {
             publishStatus: "active" | "publishing" | "failed";
             publishedVersion: number | null;
             version: number;
+        };
+        PluginResolveDefinitionRequest: {
+            configuration: {
+                [key: string]: unknown;
+            };
+            upstreamContracts: {
+                [key: string]: unknown;
+            };
+        };
+        PluginResolvedDefinition: {
+            inputPorts?: {
+                /** @enum {string} */
+                kind: "main" | "error";
+                name: string;
+                required?: boolean;
+                variadic?: boolean;
+            }[];
+            issues?: {
+                code: string;
+                message: string;
+                path: string;
+            }[];
+            outputPortSchemas?: {
+                [key: string]: unknown;
+            };
+            outputPorts?: {
+                /** @enum {string} */
+                kind: "main" | "error";
+                name: string;
+                required?: boolean;
+                variadic?: boolean;
+            }[];
+            outputSchema?: unknown;
+            /** @enum {string} */
+            status: "complete" | "incomplete" | "invalid";
         };
         PublishAttemptResponse: {
             activationSequence: number;
@@ -1154,6 +1337,12 @@ export interface components {
             errorMessage?: string | null;
             id: string;
             status: string;
+        };
+        RetrievalTestResult: {
+            citations?: unknown[];
+            documents?: Record<string, never>[];
+            recordIds?: unknown[];
+            text?: string;
         };
         ReviewResourceGrantRequest: {
             comment?: string | null;
@@ -1424,7 +1613,9 @@ export interface components {
             complete: boolean;
             degraded: boolean;
             executionId: string;
+            expectedEventCount: number;
             expectedWatermark: number;
+            ingestedEventCount: number;
             ingestedWatermark: number;
             nextCursor?: string | null;
             spans: components["schemas"]["TraceSpanSummary"][];
@@ -1526,6 +1717,8 @@ export interface components {
         };
         UpdateModelRequest: {
             alias: string;
+            /** @description Input modality capabilities */
+            capabilities?: ("vision" | "audio")[];
             connectionName: string;
             credentialId?: string | null;
             defaultParameters: unknown;
@@ -1593,6 +1786,7 @@ export interface components {
             name: string;
             /** @enum {string} */
             providerType: "dingtalk" | "wecom" | "feishu" | "agentx";
+            reply?: components["schemas"]["WebhookReplyConfig"];
             status: string;
             version: number;
         };
@@ -1652,6 +1846,11 @@ export interface components {
             mode: string;
             provider: string;
         };
+        WebhookReplyConfig: {
+            enabled: boolean;
+            outputField: string;
+            template?: string;
+        };
         WebhookResponse: {
             channelMode?: string;
             configFields?: {
@@ -1675,6 +1874,7 @@ export interface components {
             path: string;
             providerType: string;
             publicId: string;
+            reply?: components["schemas"]["WebhookReplyConfig"];
             secret?: string | null;
             status: string;
             version: number;
@@ -1725,6 +1925,7 @@ export interface components {
             status: string;
         };
         WorkflowResponse: {
+            canEdit: boolean;
             description?: string | null;
             draftRevision: number;
             id: string;
@@ -1738,7 +1939,6 @@ export interface components {
             updatedAt: string;
             version: number;
             visibility: string;
-            canEdit: boolean;
         };
         WorkflowVersionResponse: {
             contentHash: string;
@@ -1751,124 +1951,6 @@ export interface components {
             sourceRevision: number;
             versionNumber: number;
             workflowId: string;
-        };
-        CanvasPluginVersion: {
-            id: string;
-            packageVersion: string;
-            bundleDigest: string;
-            /** @enum {string} */
-            status: "enabled" | "disabled";
-            sdkApiVersion: number;
-            nodeTypes: string[];
-            createdAt: string;
-        };
-        CanvasPlugin: {
-            id: string;
-            packageId: string;
-            displayName: string;
-            description: string;
-            /** @enum {string} */
-            sourceType: "builtin" | "imported";
-            defaultVersionId: string | null;
-            version: number;
-            versions: components["schemas"]["CanvasPluginVersion"][];
-            nodeCount: number;
-            updatedAt: string;
-        };
-        CanvasPluginPage: {
-            items: components["schemas"]["CanvasPlugin"][];
-            page: number;
-            pageSize: number;
-            total: number;
-        };
-        CanvasPluginImport: {
-            id: string;
-            /** @enum {string} */
-            status: "ready" | "installed" | "failed" | "cancelled";
-            bundleDigest: string;
-            packageId: string;
-            packageVersion: string;
-            displayName: string;
-            description: string;
-            nodeTypes: string[];
-            issues: {
-                [key: string]: unknown;
-            }[];
-            installedVersionId: string | null;
-            expiresAt: string;
-        };
-        CanvasPluginReferences: {
-            drafts: number;
-            workflowVersions: number;
-            deployments: number;
-            executions: number;
-            total: number;
-        };
-        CanvasPluginInstallRequest: {
-            bundleDigest: string;
-            enable: boolean;
-            setDefault: boolean;
-        };
-        CanvasPluginUpdateRequest: {
-            defaultVersionId: string;
-            expectedRevision: number;
-        };
-        CanvasPluginVersionUpdateRequest: {
-            enabled: boolean;
-            expectedRevision: number;
-        };
-        CanvasPluginAuditItem: {
-            id: string;
-            actorUserId: string;
-            action: string;
-            detail: unknown;
-            createdAt: string;
-        };
-        PluginResolvedDefinition: {
-            /** @enum {string} */
-            status: "complete" | "incomplete" | "invalid";
-            inputPorts?: {
-                name: string;
-                /** @enum {string} */
-                kind: "main" | "error";
-                required?: boolean;
-                variadic?: boolean;
-            }[];
-            outputPorts?: {
-                name: string;
-                /** @enum {string} */
-                kind: "main" | "error";
-                required?: boolean;
-                variadic?: boolean;
-            }[];
-            outputSchema?: unknown;
-            outputPortSchemas?: {
-                [key: string]: unknown;
-            };
-            issues?: {
-                path: string;
-                code: string;
-                message: string;
-            }[];
-        };
-        PluginResolveDefinitionRequest: {
-            configuration: {
-                [key: string]: unknown;
-            };
-            upstreamContracts: {
-                [key: string]: unknown;
-            };
-        };
-        NodeProviderOptionsPage: {
-            items: ({
-                value: string;
-                label: string;
-                description?: string | null;
-                manifest?: unknown;
-            } & {
-                [key: string]: unknown;
-            })[];
-            nextCursor?: string | null;
         };
     };
     responses: never;

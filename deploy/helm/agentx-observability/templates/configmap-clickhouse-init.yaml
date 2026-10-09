@@ -5,6 +5,19 @@ metadata:
   name: clickhouse-init
   namespace: {{ .Values.global.namespaces.runtime }}
 data:
+{{- if .Values.global.components.clickhouse.caSecretName }}
+  tls.xml: |
+    <clickhouse>
+      <http_port remove="remove" />
+      <https_port>8123</https_port>
+      <openSSL><server>
+        <certificateFile>/tls/tls.crt</certificateFile>
+        <privateKeyFile>/tls/tls.key</privateKeyFile>
+        <caConfig>/tls/ca.crt</caConfig>
+        <verificationMode>none</verificationMode>
+      </server></openSSL>
+    </clickhouse>
+{{- end }}
   01-users.sh: |
     #!/bin/sh
     set -eu

@@ -3,9 +3,11 @@ use agentx_runtime_contracts::{
     RuntimeUserAdmissionV1, RuntimeUserApplicationGrantV1,
 };
 use anyhow::Result;
-use sqlx::Row;
+use sqlx::{MySql, Row, Transaction};
 use std::collections::BTreeMap;
 use uuid::Uuid;
+
+const APPLICATION_USER_QUERY: &str = "SELECT u.id,u.display_name,ud.department_id,d.name department_name,u.token_version,u.status,EXISTS(SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id AND r.tenant_id=ur.tenant_id AND r.status='active' JOIN role_permissions rp ON rp.role_id=r.id AND rp.tenant_id=r.tenant_id JOIN permissions p ON p.id=rp.permission_id WHERE ur.tenant_id=u.tenant_id AND ur.user_id=u.id AND p.permission_key='application:invoke' AND (a.owner_user_id=u.id OR r.data_scope='company' OR (r.data_scope='department_tree' AND EXISTS(SELECT 1 FROM department_closure scoped WHERE scoped.tenant_id=a.tenant_id AND scoped.ancestor_id=COALESCE(ur.scope_department_id,ud.department_id) AND scoped.descendant_id=a.owner_department_id)) OR a.visibility='company' OR (a.visibility='department' AND EXISTS(SELECT 1 FROM department_closure visible WHERE visible.tenant_id=a.tenant_id AND ((visible.ancestor_id=a.owner_department_id AND visible.descendant_id=ud.department_id) OR (visible.ancestor_id=ud.department_id AND visible.descendant_id=a.owner_department_id)))))) can_invoke,EXISTS(SELECT 1 FROM user_roles qur JOIN roles qr ON qr.id=qur.role_id AND qr.tenant_id=qur.tenant_id AND qr.status='active' AND qr.data_scope='company' JOIN role_permissions qrp ON qrp.role_id=qr.id AND qrp.tenant_id=qr.tenant_id JOIN permissions qp ON qp.id=qrp.permission_id AND qp.permission_key='execution:view' WHERE qur.tenant_id=u.tenant_id AND qur.user_id=u.id) tenant_query_enabled FROM users u JOIN user_departments ud ON ud.tenant_id=u.tenant_id AND ud.user_id=u.id JOIN departments d ON d.tenant_id=ud.tenant_id AND d.id=ud.department_id JOIN applications a ON a.tenant_id=u.tenant_id AND a.id=? WHERE u.tenant_id=? AND (? IS NULL OR u.id=?) ORDER BY u.id";
 
 /// Materializes the smallest user admission projection needed by Runtime.
 ///
@@ -18,13 +20,13 @@ pub async fn application_user_targets(
     application_id: Uuid,
     grant_version: u64,
 ) -> Result<Vec<AdmissionTargetV1>> {
-    let rows = sqlx::query(
-        "SELECT u.id,u.display_name,ud.department_id,d.name department_name,u.token_version,u.status,EXISTS(SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id AND r.tenant_id=ur.tenant_id AND r.status='active' JOIN role_permissions rp ON rp.role_id=r.id AND rp.tenant_id=r.tenant_id JOIN permissions p ON p.id=rp.permission_id WHERE ur.tenant_id=u.tenant_id AND ur.user_id=u.id AND p.permission_key='application:invoke' AND (a.owner_user_id=u.id OR r.data_scope='company' OR (r.data_scope='department_tree' AND EXISTS(SELECT 1 FROM department_closure scoped WHERE scoped.tenant_id=a.tenant_id AND scoped.ancestor_id=COALESCE(ur.scope_department_id,ud.department_id) AND scoped.descendant_id=a.owner_department_id)) OR a.visibility='company' OR (a.visibility='department' AND EXISTS(SELECT 1 FROM department_closure visible WHERE visible.tenant_id=a.tenant_id AND ((visible.ancestor_id=a.owner_department_id AND visible.descendant_id=ud.department_id) OR (visible.ancestor_id=ud.department_id AND visible.descendant_id=a.owner_department_id)))))) can_invoke,EXISTS(SELECT 1 FROM user_roles qur JOIN roles qr ON qr.id=qur.role_id AND qr.tenant_id=qur.tenant_id AND qr.status='active' AND qr.data_scope='company' JOIN role_permissions qrp ON qrp.role_id=qr.id AND qrp.tenant_id=qr.tenant_id JOIN permissions qp ON qp.id=qrp.permission_id AND qp.permission_key='execution:view' WHERE qur.tenant_id=u.tenant_id AND qur.user_id=u.id) tenant_query_enabled FROM users u JOIN user_departments ud ON ud.tenant_id=u.tenant_id AND ud.user_id=u.id JOIN departments d ON d.tenant_id=ud.tenant_id AND d.id=ud.department_id JOIN applications a ON a.tenant_id=u.tenant_id AND a.id=? WHERE u.tenant_id=? ORDER BY u.id",
-    )
-    .bind(application_id)
-    .bind(tenant_id)
-    .fetch_all(pool)
-    .await?;
+    let rows = sqlx::query(APPLICATION_USER_QUERY)
+        .bind(application_id)
+        .bind(tenant_id)
+        .bind(Option::<Uuid>::None)
+        .bind(Option::<Uuid>::None)
+        .fetch_all(pool)
+        .await?;
     let mut roles_by_user = role_assignments_by_user(pool, tenant_id, None).await?;
     let mut targets = Vec::with_capacity(rows.len() * 2);
     for row in rows {
@@ -68,6 +70,42 @@ pub async fn user_role_assignments(
         .await?
         .remove(&user_id)
         .unwrap_or_default())
+}
+
+/// Refreshes existing Application grants in the same transaction as IAM facts.
+/// Each grant uses its Application admission epoch, not the User token version.
+pub(crate) async fn emit_user_application_grants(
+    tx: &mut Transaction<'_, MySql>,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> crate::api_error::ApiResult<()> {
+    let applications =
+        sqlx::query_scalar::<_, Uuid>("SELECT id FROM applications WHERE tenant_id=? ORDER BY id")
+            .bind(tenant_id)
+            .fetch_all(&mut **tx)
+            .await?;
+    for application_id in applications {
+        let row = sqlx::query(APPLICATION_USER_QUERY)
+            .bind(application_id)
+            .bind(tenant_id)
+            .bind(user_id)
+            .bind(user_id)
+            .fetch_one(&mut **tx)
+            .await?;
+        let enabled = row.try_get::<String, _>("status")? == "active";
+        let can_invoke = enabled && row.try_get::<bool, _>("can_invoke")?;
+        let can_query =
+            enabled && (can_invoke || row.try_get::<bool, _>("tenant_query_enabled")?);
+        crate::control_api::admission_outbox(
+            tx,
+            tenant_id,
+            application_id,
+            "RuntimeUserApplicationGrantChanged",
+            serde_json::json!({"userId":user_id,"canInvoke":can_invoke,"canQuery":can_query}),
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 async fn role_assignments_by_user(

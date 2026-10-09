@@ -6,25 +6,75 @@ use agentx_runtime_contracts::{
 use rust_decimal::{Decimal, RoundingStrategy, prelude::ToPrimitive as _};
 use serde_json::{Value, json};
 
+use sqlx::Row;
+
 use super::{ClaimedWorkerAttempt, WorkerExecution, mcp_tool_binding, successful_value};
 
-pub(super) fn openai_chat_request(
+pub(super) fn evaluator_model_input(
+    prompt_object: &Value,
+    target: &Value,
+) -> anyhow::Result<(Value, String)> {
+    let prompt = prompt_object
+        .get("prompt")
+        .and_then(Value::as_str)
+        .filter(|prompt| !prompt.trim().is_empty() && prompt.len() <= 64 * 1024)
+        .ok_or_else(|| {
+            anyhow::anyhow!("Evaluator prompt object requires a non-empty prompt of at most 64 KiB")
+        })?;
+    let actual = target
+        .get("actualOutput")
+        .ok_or_else(|| anyhow::anyhow!("Evaluator input has no actualOutput"))?;
+    let expected = target
+        .get("expectedOutput")
+        .ok_or_else(|| anyhow::anyhow!("Evaluator input has no expectedOutput"))?;
+    static VARIABLES: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let variables = VARIABLES.get_or_init(|| {
+        regex::Regex::new(r"\{\{\s*(actualOutput|expectedOutput)\s*\}\}")
+            .expect("fixed evaluator variable expression")
+    });
+    let prompt = variables
+        .replace_all(prompt, |captures: &regex::Captures<'_>| {
+            json_text(if &captures[1] == "actualOutput" {
+                actual
+            } else {
+                expected
+            })
+        })
+        .into_owned();
+    Ok((
+        json!({"question":{"actualOutput":actual,"expectedOutput":expected}}),
+        prompt,
+    ))
+}
+
+pub(super) fn openai_chat_request_streaming(
     claim: &ClaimedWorkerAttempt,
     model: &str,
     price: &RuntimeModelPriceV1,
     input: &Value,
+    stream: bool,
 ) -> Value {
     let mut messages = Vec::new();
     if let Some(system) = system_prompt(&claim.node_parameters, &claim.node_type) {
         messages.push(json!({"role":"system","content":system}));
     }
-    let content = claim
-        .node_parameters
-        .get("userQuestion")
+    // The runtime-resolved content (e.g. the multimodal parts from
+    // resolve_multimodal_content) patches input.question and must win over
+    // the raw parameter binding, which may still carry artifact references.
+    let content = input
+        .get("question")
+        .filter(|value| !value.is_null())
         .cloned()
-        .or_else(|| input.get("question").cloned())
+        .or_else(|| claim.node_parameters.get("userQuestion").cloned())
         .unwrap_or_else(|| input.clone());
-    messages.push(json!({"role":"user","content":json_text(&content)}));
+    // Native multimodal content (plan7 P7-B B5): pre-resolved parts arrays
+    // pass through; plain values fold to text as before.
+    let user_content = if content.is_array() {
+        content.clone()
+    } else {
+        json!(json_text(&content))
+    };
+    messages.push(json!({"role":"user","content":user_content}));
     if let Some(tool) = input.get("tool") {
         messages.push(json!({
             "role":"tool",
@@ -35,9 +85,12 @@ pub(super) fn openai_chat_request(
     let mut request = json!({
         "model":model,
         "messages":messages,
-        "stream":false,
+        "stream":stream,
         "metadata":{"priceVersion":price.version_id},
     });
+    if stream {
+        request["stream_options"] = json!({"include_usage":true});
+    }
     if let Some(tool) = mcp_tool_binding(&claim.resources)
         && let RuntimeResourceConfigurationV1::Mcp { tool_name, .. } = &tool.configuration
     {
@@ -284,11 +337,11 @@ pub(super) fn effective_agent_budget(parameters: &Value) -> Value {
     })
 }
 
-pub(super) fn runtime_call_is_replayable(status: &str, side_effect: &str) -> bool {
+pub(crate) fn runtime_call_is_replayable(status: &str, side_effect: &str) -> bool {
     status == "reserved" || (status == "sent" && matches!(side_effect, "none" | "idempotent"))
 }
 
-pub(super) fn runtime_call_side_effect(kind: &str, request: &Value) -> &'static str {
+pub(crate) fn runtime_call_side_effect(kind: &str, request: &Value) -> &'static str {
     match (kind, request.get("toolName").and_then(Value::as_str)) {
         ("model" | "compaction", _) => "irreversible",
         ("sandbox", Some("write" | "edit" | "bash")) => "irreversible",
@@ -484,28 +537,8 @@ fn string_ids(value: Option<&Value>) -> Value {
     )
 }
 
-pub(crate) const RAG_PROVIDER_LIGHT_RAG: &str = "lightrag";
 pub(crate) const RAG_PROVIDER_RAGFLOW: &str = "ragflow";
 
-fn rag_query_text(payload: &Value) -> String {
-    payload
-        .get("query")
-        .or_else(|| payload.get("question"))
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .unwrap_or_else(|| json_text(payload))
-}
-
-fn rag_top_k(payload: &Value) -> u64 {
-    payload
-        .get("topK")
-        .or_else(|| payload.get("top_k"))
-        .and_then(Value::as_u64)
-        .unwrap_or(5)
-}
-
-/// Build the provider-specific query request from the caller payload.
-/// Returns the URL path, the JSON body and the header carrying the secret.
 pub(super) fn rag_query_request(
     provider: &str,
     operation: &str,
@@ -513,65 +546,16 @@ pub(super) fn rag_query_request(
     index_version: &str,
     input: &Value,
 ) -> Result<(String, Value, &'static str), WorkerExecution> {
-    if provider == RAG_PROVIDER_RAGFLOW {
-        if operation != "query" {
-            return Err(WorkerExecution::failed(
-                "RAG_OPERATION_UNSUPPORTED",
-                "RAGFlow knowledge connections support query only",
-                false,
-            ));
-        }
-        let dataset_ids: Vec<String> = namespace
-            .split(',')
-            .map(str::trim)
-            .filter(|candidate| !candidate.is_empty())
-            .map(str::to_owned)
-            .collect();
-        if dataset_ids.is_empty() {
-            return Err(WorkerExecution::failed(
-                "RAG_DATASET_REQUIRED",
-                "RAGFlow knowledge resource must reference at least one dataset id",
-                false,
-            ));
-        }
-        return Ok((
-            "api/v1/retrieval".into(),
-            json!({
-                "question": rag_query_text(input),
-                "dataset_ids": dataset_ids,
-                "top_k": rag_top_k(input),
-            }),
-            "authorization",
-        ));
-    }
-    let mut body = if input.is_object() {
-        input.clone()
-    } else {
-        json!({"query": input, "mode": "naive"})
-    };
-    if let Some(object) = body.as_object_mut() {
-        if let Some(top_k) = object.remove("topK") {
-            object.insert("top_k".into(), top_k);
-        }
-        object
-            .entry("workspace".to_owned())
-            .or_insert_with(|| json!(namespace));
-        object
-            .entry("indexVersion".to_owned())
-            .or_insert_with(|| json!(index_version));
-    }
-    let path = if operation == "insert" {
-        "documents/text"
-    } else {
-        "query"
-    };
-    Ok((path.into(), body, "x-api-key"))
+    agentx_runtime_contracts::rag::rag_query_request(
+        provider,
+        operation,
+        namespace,
+        index_version,
+        input,
+    )
+    .map_err(|error| WorkerExecution::failed(error.code, error.message, false))
 }
 
-/// Normalize the provider envelope into the canonical rag payload consumed by
-/// rag_execution_output / knowledge_result_from_execution. LightRAG responses
-/// pass through unchanged; RAGFlow `{code, data}` envelopes are mapped and
-/// non-zero codes surface the provider message as a failure.
 pub(super) fn finalize_rag_response(provider: &str, execution: WorkerExecution) -> WorkerExecution {
     if provider != RAG_PROVIDER_RAGFLOW || execution.status != WorkerResultStatusV1::Succeeded {
         return execution;
@@ -579,40 +563,63 @@ pub(super) fn finalize_rag_response(provider: &str, execution: WorkerExecution) 
     let Some(value) = successful_value(&execution) else {
         return invalid_empty();
     };
-    match value.get("code").and_then(Value::as_i64) {
-        None | Some(0) => {}
-        Some(_) => {
-            let message = value
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("RAGFlow rejected the query");
-            return WorkerExecution::failed("PROVIDER_REJECTED", message, false);
-        }
+    match agentx_runtime_contracts::rag::finalize_rag_value(provider, value) {
+        Ok(normalized) => WorkerExecution::succeeded(normalized),
+        Err(error) => WorkerExecution::failed(error.code, error.message, false),
     }
-    let documents = value
-        .pointer("/data/chunks")
-        .cloned()
-        .unwrap_or_else(|| json!([]));
-    let record_ids = value
-        .pointer("/data/chunks")
-        .and_then(Value::as_array)
-        .map(|chunks| {
-            Value::Array(
-                chunks
-                    .iter()
-                    .filter_map(|chunk| chunk.get("id").and_then(Value::as_str))
-                    .map(str::to_owned)
-                    .map(Value::String)
-                    .collect(),
-            )
-        })
-        .unwrap_or_else(|| json!([]));
-    WorkerExecution::succeeded(json!({
-        "text": json_text(&documents),
-        "documents": documents,
-        "citations": [],
-        "recordIds": record_ids,
-    }))
+}
+
+pub(super) fn finalize_retrieval_response(
+    provider: &str,
+    execution: WorkerExecution,
+) -> WorkerExecution {
+    if execution.status != WorkerResultStatusV1::Succeeded {
+        return execution;
+    }
+    let Some(value) = successful_value(&execution) else {
+        return invalid_empty();
+    };
+    match agentx_runtime_contracts::rag::finalize_retrieval_value(provider, value) {
+        Ok(normalized) => WorkerExecution::succeeded(normalized),
+        Err(error) => WorkerExecution::failed(error.code, error.message, false),
+    }
+}
+
+#[cfg(test)]
+mod evaluator_prompt_tests {
+    use super::evaluator_model_input;
+    use serde_json::json;
+
+    #[test]
+    fn frozen_prompt_substitutes_case_values_once_and_keeps_typed_user_data() {
+        let actual = json!({"answer":"{{expectedOutput}}"});
+        let expected = json!({"answer":"expected"});
+        let (input, prompt) = evaluator_model_input(
+            &json!({"prompt":"actual={{actualOutput}}; expected={{ expectedOutput }}"}),
+            &json!({"actualOutput":actual,"expectedOutput":expected}),
+        )
+        .unwrap();
+        assert_eq!(prompt, format!("actual={actual}; expected={expected}"));
+        assert_eq!(
+            input["question"],
+            json!({"actualOutput":actual,"expectedOutput":expected})
+        );
+    }
+
+    #[test]
+    fn malformed_frozen_prompt_or_missing_case_values_fail() {
+        let target = json!({"actualOutput":{},"expectedOutput":null});
+        for object in [
+            json!({"instruction":"legacy"}),
+            json!({"prompt":""}),
+            json!({"prompt":"x".repeat(64 * 1024 + 1)}),
+        ] {
+            assert!(evaluator_model_input(&object, &target).is_err());
+        }
+        assert!(
+            evaluator_model_input(&json!({"prompt":"judge"}), &json!({"actualOutput":{}})).is_err()
+        );
+    }
 }
 
 #[cfg(test)]
@@ -669,7 +676,7 @@ mod rag_protocol_tests {
         let (path, body, header) = match rag_query_request(
             "lightrag",
             "query",
-            "kb-1",
+            "kb_1",
             "v3",
             &json!({"query": "hello", "topK": 4}),
         ) {
@@ -680,7 +687,7 @@ mod rag_protocol_tests {
         assert_eq!(header, "x-api-key");
         assert_eq!(
             body,
-            json!({"query": "hello", "top_k": 4, "workspace": "kb-1", "indexVersion": "v3"})
+            json!({"query": "hello", "top_k": 4, "workspace": "kb_1", "indexVersion": "v3"})
         );
     }
 
@@ -775,4 +782,126 @@ mod rag_protocol_tests {
             .expect("payload");
         assert_eq!(kept, payload);
     }
+}
+
+/// Resolves multimodal user content (plan7 P7-B B5): an array of artifact
+/// references becomes a native OpenAI content-parts array with base64 data
+/// URIs; plain values pass through unchanged. Enforces the capability gate
+/// (vision/audio) and the 8 MiB per-image limit.
+pub(super) async fn resolve_multimodal_content(
+    worker: &super::RuntimeWorker,
+    claim: &ClaimedWorkerAttempt,
+    capabilities: &[String],
+    content: &Value,
+) -> Result<Value, WorkerExecution> {
+    let Some(items) = content.as_array() else {
+        return Ok(content.clone());
+    };
+    let artifact_refs: Vec<&Value> = items
+        .iter()
+        .filter(|item| item.get("artifactId").is_some())
+        .collect();
+    if artifact_refs.is_empty() {
+        return Ok(content.clone());
+    }
+    let mut parts: Vec<Value> = Vec::new();
+    for item in items {
+        if item.get("artifactId").is_none() {
+            if let Some(text) = item.as_str() {
+                parts.push(json!({"type":"text","text":text}));
+            }
+            continue;
+        }
+        let artifact_id = item
+            .get("artifactId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let Ok(artifact_id) = uuid::Uuid::parse_str(artifact_id) else {
+            return Err(WorkerExecution::failed(
+                "MODEL_INPUT_UNSUPPORTED",
+                "Multimodal artifact reference is not a UUID",
+                false,
+            ));
+        };
+        let row = sqlx::query(
+            "SELECT o.size_bytes,a.content_type,CAST(o.object_key AS CHAR CHARACTER SET utf8mb4) AS object_key FROM runtime_objects o JOIN artifacts a ON a.tenant_id=o.tenant_id AND a.id=o.object_id WHERE o.tenant_id=? AND o.object_id=? AND o.status='ready'",
+        )
+        .bind(claim.task.tenant_id)
+        .bind(artifact_id)
+        .fetch_optional(worker_pool(worker))
+        .await
+        .map_err(|error| WorkerExecution::failed("RUNTIME_CALL_STATE_UNAVAILABLE", error.to_string(), false))?;
+        let Some(row) = row else {
+            return Err(WorkerExecution::failed(
+                "MODEL_INPUT_UNSUPPORTED",
+                "Multimodal artifact is not ready",
+                false,
+            ));
+        };
+        let size_bytes: u64 = row.try_get("size_bytes").map_err(|error| {
+            WorkerExecution::failed("MODEL_INPUT_UNSUPPORTED", error.to_string(), false)
+        })?;
+        if size_bytes > 8 * 1024 * 1024 {
+            return Err(WorkerExecution::failed(
+                "MODEL_INPUT_TOO_LARGE",
+                "Multimodal inputs are limited to 8 MiB per artifact",
+                false,
+            ));
+        }
+        let content_type: String = row
+            .try_get::<Option<String>, _>("content_type")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "application/octet-stream".into());
+        let modality = if content_type.starts_with("image/") {
+            "vision"
+        } else if content_type.starts_with("audio/") {
+            "audio"
+        } else {
+            return Err(WorkerExecution::failed(
+                "MODEL_INPUT_UNSUPPORTED",
+                format!("Multimodal content type {content_type} is not supported"),
+                false,
+            ));
+        };
+        if !capabilities.iter().any(|capability| capability == modality) {
+            return Err(WorkerExecution::failed(
+                "MODEL_INPUT_UNSUPPORTED",
+                format!("Model does not declare the {modality} capability"),
+                false,
+            ));
+        }
+        let object_key: String = row.try_get("object_key").map_err(|error| {
+            WorkerExecution::failed("MODEL_INPUT_UNSUPPORTED", error.to_string(), false)
+        })?;
+        let bytes = worker_objects(worker)
+            .get(&object_store::path::Path::from(object_key))
+            .await
+            .map_err(|error| {
+                WorkerExecution::failed("MODEL_INPUT_UNSUPPORTED", error.to_string(), false)
+            })?
+            .bytes()
+            .await
+            .map_err(|error| {
+                WorkerExecution::failed("MODEL_INPUT_UNSUPPORTED", error.to_string(), false)
+            })?;
+        let encoded =
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes.as_ref());
+        if modality == "vision" {
+            parts.push(json!({"type":"image_url","image_url":{"url":format!("data:{content_type};base64,{encoded}")}}));
+        } else {
+            let format = content_type.strip_prefix("audio/").unwrap_or("wav");
+            parts
+                .push(json!({"type":"input_audio","input_audio":{"data":encoded,"format":format}}));
+        }
+    }
+    Ok(Value::Array(parts))
+}
+
+fn worker_pool(worker: &super::RuntimeWorker) -> &sqlx::MySqlPool {
+    worker.pool()
+}
+
+fn worker_objects(worker: &super::RuntimeWorker) -> &std::sync::Arc<dyn object_store::ObjectStore> {
+    worker.objects_ref()
 }

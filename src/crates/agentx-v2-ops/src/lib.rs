@@ -88,7 +88,22 @@ impl ObservabilitySettings {
     }
 
     pub fn object_store(&self) -> Result<Arc<dyn ObjectStore>> {
-        use object_store::{ClientOptions, aws::AmazonS3Builder};
+        use object_store::{Certificate, ClientOptions, aws::AmazonS3Builder};
+        let mut options = ClientOptions::new().with_allow_http(self.s3_allow_http);
+        if let Some(path) =
+            env::var_os("AGENTX_OBSERVABILITY_S3_TLS_CA_PATH").filter(|path| !path.is_empty())
+        {
+            let pem = std::fs::read(path).context("failed reading Observability S3 CA")?;
+            let certificates =
+                Certificate::from_pem_bundle(&pem).context("invalid Observability S3 CA bundle")?;
+            anyhow::ensure!(
+                !certificates.is_empty(),
+                "Observability S3 CA bundle contains no certificates"
+            );
+            for certificate in certificates {
+                options = options.with_root_certificate(certificate);
+            }
+        }
         Ok(Arc::new(
             AmazonS3Builder::new()
                 .with_bucket_name(&self.s3_bucket)
@@ -97,7 +112,7 @@ impl ObservabilitySettings {
                 .with_access_key_id(self.s3_access_key.expose_secret())
                 .with_secret_access_key(self.s3_secret_key.expose_secret())
                 .with_virtual_hosted_style_request(!self.s3_path_style)
-                .with_client_options(ClientOptions::new().with_allow_http(self.s3_allow_http))
+                .with_client_options(options)
                 .build()
                 .context("failed to build Observability S3 client")?,
         ))

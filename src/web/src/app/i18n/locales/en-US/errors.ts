@@ -1,8 +1,16 @@
 const translations = {
   "requestFailed": "Request failed ({{code}})",
   "requestFailedWithId": "The request could not be completed. Request ID: {{requestId}}",
+  "requestUnavailable": "The request could not be completed. Please try again later.",
   "requiredField": "This field is required",
+  "pageLoad": {
+    "title": "This page could not be opened",
+    "description": "Page resources could not be loaded. Refresh to retry. If the problem continues, try again later.",
+    "reload": "Refresh page",
+    "home": "Back to home"
+  },
   "codes": {
+    "NETWORK_ERROR": "Unable to connect to the service. Check your network, the service address, or browser security warnings, then try again.",
     "INVALID_REQUEST_BODY": "The submitted form contains missing or invalid values.",
     "REQUIRED_FIELD": "This field is required.",
     "INVALID_FIELD": "This field has an invalid value.",
@@ -12,6 +20,15 @@ const translations = {
     "DEPARTMENT_NAME_EXISTS": "A department with this name already exists under the selected parent.",
     "USERNAME_EXISTS": "This username is already in use.",
     "ROLE_CODE_EXISTS": "A role with this code already exists.",
+    "APPLICATION_WORKFLOW_VERSION_REQUIRED": "Create a workflow version before configuring channels.",
+    "INVALID_WEBHOOK_REPLY_OUTPUT_FIELD": "Select an output field when replies are enabled.",
+    "WEBHOOK_REPLY_OUTPUT_FIELD_UNKNOWN": "Select a field from the current workflow outputs.",
+    "WEBHOOK_REQUIRED_INPUT_UNMAPPED": "Configure mappings or fixed values for every required workflow input.",
+    "WEBHOOK_MAPPING_TARGET_UNKNOWN": "Select a field from the current workflow inputs.",
+    "WEBHOOK_FIXED_INPUT_TARGET_UNKNOWN": "Select a fixed input from the current workflow inputs.",
+    "WEBHOOK_MAPPING_TYPE_MISMATCH": "Message sources are strings; select a string input.",
+    "WEBHOOK_MAPPING_CONFLICT": "Mapping targets repeat or conflict with fixed inputs.",
+    "INVALID_WEBHOOK_SOURCE": "Select a valid message source field.",
     "APPLICATION_SLUG_EXISTS": "An application with this slug already exists.",
     "ENVIRONMENT_CODE_EXISTS": "An environment with this code already exists.",
     "MCP_SERVER_NAME_EXISTS": "An MCP server with this name already exists.",

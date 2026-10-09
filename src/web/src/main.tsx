@@ -5,11 +5,14 @@ import * as Tooltip from '@radix-ui/react-tooltip'
 import { RouterProvider } from 'react-router-dom'
 
 import './app/i18n'
+import { registerChunkRecovery } from './app/chunk-recovery'
 import { router } from './app/router'
 import { ThemeProvider } from './app/providers/theme-provider'
 import { AuthProvider } from './app/providers/auth-provider'
 import { ToastProvider } from './shared/ui/toast'
 import './styles/globals.css'
+
+registerChunkRecovery(import.meta.url)
 
 const queryClient = new QueryClient()
 

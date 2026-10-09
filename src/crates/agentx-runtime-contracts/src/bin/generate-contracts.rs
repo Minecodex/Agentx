@@ -344,6 +344,7 @@ fn observability_trace_get() -> Value {
         "parameters": [
             {"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},
             {"name":"expectedWatermark","in":"query","required":true,"schema":{"type":"integer","format":"uint64"}},
+            {"name":"expectedEventCount","in":"query","required":true,"schema":{"type":"integer","format":"uint64"}},
             {"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":1000}},
             {"name":"cursor","in":"query","required":false,"schema":{"type":"string"}},
             {"name":"nodeExecutionId","in":"query","required":false,"schema":{"type":"string","format":"uuid"}}

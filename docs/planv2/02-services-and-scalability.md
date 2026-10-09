@@ -169,7 +169,9 @@ Coordinator 只保留低延迟状态机接口：
 
 一个 Execution 的一次状态转换仍然串行化；横向扩展提高不同 Execution 之间的并行度，不允许多个 Coordinator 无锁并改同一状态机。
 
-V2 首期使用 `execution_id + state_version` 乐观条件更新配合短事务行锁串行化单次状态转换，不引入按 Execution 的常驻 Actor。Report Result 必须携带 `attempt_id + lease_token + result_hash`；Coordinator 已提交但响应丢失时，Worker 重报得到相同终态，不能重新执行节点。
+Runtime MySQL 应用连接统一使用 `READ COMMITTED`；每个 Execution 的修改仍以父行 `FOR UPDATE`、Lease/Fencing 和版本 CAS 保证原子串行化。默认 `REPEATABLE READ` 对不存在的配额幂等键保留 gap lock，使不同 Execution 的新预留插入互相死锁；连接初始化明确设置隔离级别，不提供配置开关，也不改变 Control 的事务策略。配额策略行锁仍串行化同一维度的上限检查，非锁定查询读取当前已提交额度。只读分页使用既有 cursor/upper bound，而不能依赖跨语句重复读。此决定依据 [MySQL 8.4 隔离级别文档](https://dev.mysql.com/doc/refman/8.4/en/innodb-transaction-isolation-levels.html)，真实 MySQL 回归覆盖独立并发预留及上限不超额。
+
+V2 首期使用 `execution_id + state_version` 乐观条件更新配合短事务行锁串行化单次状态转换，不引入按 Execution 的常驻 Actor。Report Result 必须携带 `attempt_id + worker_id + fencing_token + result_hash`；Coordinator 已提交但响应丢失时，Worker 重报得到相同终态，不能重新执行节点。租约台账以 Attempt 为主键，稳定 Worker UUID 不是跨任务唯一 Token；同一 Worker 的多个 Attempt 保留并独立释放各自的租约行。
 
 ## 7. Workflow Worker
 
@@ -201,6 +203,14 @@ V2 不设置异步 Runtime Projector。Invocation/Assistant Message、Approval R
 
 同一事务可以写 Runtime Event/Outbox，但 Event 只用于 Control 治理投影、通知、审计和可观测投递。删除 Event 或暂停 Consumer 不能导致 Runtime 丢失当前状态、无法查询、无法恢复或无法继续推进。Control 治理投影仍由 `platform-control --role=projector → Runtime Event Export API` 按 Cursor 拉取，并独立维护 Receipt。
 
+每次状态转换在同一事务内锁住已存状态版本，并与上次完整状态机比较；`node_executions`、边投递和结束投递只写新增或变化的记录，Loop 公共输出只更新受影响的来源。完整状态机、Hash 和 Checkpoint 仍原子持久化，查询表不成为恢复权威。不得随每个节点结算重复 upsert 全部历史节点和投递，以免大工作流的 SQL 次数和持锁时间不断增长。
+
+评测收敛与取消以 Work Package 父行串行化；目标 Case 与 judge 规则分别按租户/执行 ID 索引定位，只锁当前 Case 或规则。终态数量在同一条一致视图聚合中读取，不锁住全部历史 Case。确定性规则已结算、无待启动的模型规则时，不读取整份签名包。终态报告一次按租户/评测 Run 读取全部规则，再按 Case 分组，避免在父行锁内逐 Case 查询；Case/规则顺序、评分、成本与终态事件仍在原事务中确认。
+
+血缘查询索引保留所有来源与目标 Item 序号，每批最多 256 行写入；不能在父行锁内逐条发起相同 INSERT。批次仍属于原有状态转换事务，失败整体回滚，唯一约束维持重报幂等。
+
+Trace 索引采用数据库递增游标分配顺序，不在 `workflow_executions` 主行递增诊断计数器。`execution_events` 与 `trace_outbox` 同事务提交，业务状态转换失败时同步回滚。查询以租户/执行范围内的 MAX 游标及 COUNT 为一致快照；ClickHouse 按 watermark 范围内的唯一事件数判定完整性，不能只比较最大序号。这样外置大输入的诊断 Trace 不需要等待大工作流的权威状态行锁，也不引入新的计数器表或后台权威。
+
 ## 9. Sandbox Manager
 
 Sandbox Manager API 可以多副本，但必须删除“每个 Pod 无条件扫描全部到期 Lease”的实现。Reaper 使用：
@@ -222,6 +232,10 @@ ready/running/orphaned
 - `observability --role=trace-consumer`：Runtime Redis Trace Stream → ClickHouse。
 
 Relay 必须先 Claim Outbox，再 XADD，禁止多个副本先读取相同 Pending 行。Consumer 使用 Consumer Group；ClickHouse 行包含稳定 Event ID，并采用可验证的去重策略。写入成功、Runtime MySQL 标记成功和 Redis ACK 之间允许重复，但不能丢事件。
+
+Relay 每次以 `SKIP LOCKED` 领取最多 100 个 ID、批量取得 Payload，提交 Claim 后使用 Redis pipeline 发出 XADD，再以每条 Event 的 Owner/Fencing/有效租约批量记录对应 Stream ID。失败批次按每条 Fencing 计算退避；旧 Owner 不能确认新 Owner 的租约。Redis pipeline 部分成功或结果未知时允许同 Event 重放，由消费者稳定 ID/Hash 去重。
+
+Consumer 每批最多 100 条，整批校验后一次写入 Trace，随后一次查询批内 Event ID 的 Hash 冲突、批量写冲突记录及健康记录，再整批 ACK。同 Hash 的重放由既有 `ReplacingMergeTree` 与查询 `FINAL` 去重；不同 Hash 保留冲突内容并将所有受影响的租户/执行标记为 degraded。冲突检查放在持久写入之后，避免并发消费者都在插入前读到空结果。任一步失败都保留 Redis Pending 供重试。
 
 Consumer 默认不持有 Runtime MySQL Credential。若未来因合规需要对 Runtime Trace Receipt 反向确认，只能通过最小 Runtime Internal API，不能开放业务库直连。
 

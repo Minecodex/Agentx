@@ -47,8 +47,8 @@ type ExecutionRow = {
 }
 
 type ExecutionPage = { items: ExecutionRow[]; limit: number; total: number; nextCursor?: string | null }
-type FilterKey = 'applicationIds' | 'workflowIds' | 'toolIds' | 'initiatorUserIds' | 'initiatorDepartmentIds' | 'triggerTypes' | 'statuses'
-const filterKeys: FilterKey[] = ['applicationIds', 'workflowIds', 'toolIds', 'initiatorUserIds', 'initiatorDepartmentIds', 'triggerTypes', 'statuses']
+type FilterKey = 'applicationIds' | 'workflowIds' | 'toolIds' | 'initiatorUserIds' | 'initiatorDepartmentIds' | 'triggerTypes' | 'statuses' | 'errorCodes'
+const filterKeys: FilterKey[] = ['applicationIds', 'workflowIds', 'toolIds', 'initiatorUserIds', 'initiatorDepartmentIds', 'triggerTypes', 'statuses', 'errorCodes']
 const triggerTypes = ['user', 'api_key', 'webhook', 'schedule', 'poll', 'lifecycle', 'debug', 'evaluation', 'fork', 'composite']
 const statuses = ['created', 'queued', 'running', 'waiting', 'waiting_approval', 'suspended', 'succeeded', 'failed', 'cancelled', 'timed_out']
 

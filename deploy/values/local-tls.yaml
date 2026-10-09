@@ -1,0 +1,208 @@
+# Local TLS acceptance uses the same agentxctl install/upgrade/doctor as production.
+# Configure Ingress DNS and source CIDRs for your local cluster; use --run-id for E2E.
+global:
+  environment: local
+  namespaces:
+    control: agentx-tls-control
+    runtime: agentx-tls-runtime
+    dependencies: agentx-tls-deps
+  images:
+    registry: agentx
+    repositoryPrefix: ''
+    tag: tls-dev
+    pullPolicy: IfNotPresent
+    services:
+    - agentx-migrate
+    - agentx-bootstrap
+    - agentx-doctor
+    - platform-control
+    - web-console
+    - runtime-gateway
+    - workflow-runtime
+    - workflow-worker
+    - sandbox-manager
+    - agentx-egress-gateway
+    - observability
+  ingress:
+    className: agentx-tls-nginx
+    controlHost: agentx.localhost
+    runtimeHost: run.agentx.localhost
+    controlTlsSecretName: agentx-tls-control-ingress
+    runtimeTlsSecretName: agentx-tls-runtime-ingress
+    serviceType: NodePort
+    httpNodePort: 30080
+    httpsNodePort: 30443
+  components:
+    controlMysql:
+      mode: bundled
+      host: control-mysql.agentx-tls-control.svc
+      port: 3306
+      database: agentx_control
+      appUser: control_app
+      migrateUser: control_migrate
+      tlsMode: verify_identity
+      maxConnections: 60
+      serverMaxConnections: 151
+      caSecretName: agentx-tls-control-mysql-ca
+    runtimeMysql:
+      mode: bundled
+      host: runtime-mysql.agentx-tls-runtime.svc
+      port: 3306
+      database: agentx_runtime
+      appUser: runtime_app
+      migrateUser: runtime_migrate
+      tlsMode: verify_identity
+      maxConnections: 105
+      serverMaxConnections: 151
+      caSecretName: agentx-tls-runtime-mysql-ca
+    runtimeRedis:
+      mode: bundled
+      url: rediss://runtime-redis.agentx-tls-runtime.svc:6379/
+      caSecretName: agentx-tls-redis-ca
+    secretProvider:
+      mode: vault_kv_v2
+      endpoint: https://vault.agentx-tls-deps.svc:8200
+      mount: secret
+      caSecretName: agentx-tls-vault-ca
+    sandbox:
+      mode: external_opensandbox
+      endpoint: https://opensandbox.agentx-tls-deps.svc:8443
+      secureAccess: true
+      caSecretName: agentx-tls-opensandbox-ca
+      localProxyUpstream: http://host.docker.internal:18080
+    clickhouse:
+      mode: bundled
+      url: https://clickhouse.agentx-tls-runtime.svc:8123
+      database: agentx_observability
+      queryUser: observability_query
+      consumerUser: observability_consumer
+      migrateUser: observability_migrate
+      caSecretName: agentx-tls-clickhouse-ca
+    objectStorage:
+      mode: bundled-minio
+      endpoint: https://object-storage.agentx-tls-deps.svc:9000
+      region: us-east-1
+      allowHttp: false
+      pathStyle: true
+      domains:
+        control:
+          bucket: agentx-control
+          user: control_object
+        runtime:
+          bucket: agentx-runtime
+          user: runtime_object
+        observability:
+          bucket: agentx-observability
+          user: observability_object
+      caSecretName: agentx-tls-s3-ca
+  network:
+    egressGateway:
+      httpProviderServices:
+      - echo-mcp
+      - echo-node
+      - lightrag
+      - mem0
+      - ragflow
+      - mock-openai
+      - im-mock
+      deliveryDomainExtraAllowlist: im-mock
+      allowedPublicPorts:
+      - 443
+      allowedPrivateCidrs:
+      - 192.168.0.0/16
+      blockedCidrs:
+      - 0.0.0.0/8
+      - 10.96.0.0/12
+      - 10.244.0.0/16
+      - 127.0.0.0/8
+      - 169.254.0.0/16
+      - 198.18.0.0/15
+      - 224.0.0.0/4
+      - 240.0.0.0/4
+      - ::1/128
+      - fe80::/10
+      - ff00::/8
+      sandboxAccess:
+        mode: nodePort
+        endpoint: https://host.docker.internal:31429
+        port: 31429
+        tlsSecretName: agentx-egress-tls
+        caSecretName: agentx-egress-tls
+        sourceCidrs:
+        - 192.168.0.0/16
+        - 172.17.0.0/16
+        - 172.18.0.0/16
+        serviceAnnotations: {}
+    externalEgress:
+      opensandbox:
+        cidrs:
+        - 192.168.0.0/16
+        - 172.17.0.0/16
+        - 172.18.0.0/16
+        ports:
+        - 18080
+  secrets:
+    mode: generated-local
+    control: agentx-control-secrets
+    runtime: agentx-runtime-secrets
+    observability: agentx-observability-secrets
+    dependencies: agentx-dependencies-secrets
+control:
+  services:
+    webConsole:
+      replicas: 1
+      maxReplicas: 4
+    platformControl:
+      replicas: 1
+      maxReplicas: 4
+      roles:
+      - api
+      - publisher
+      - projector
+      - retention
+      mysqlPool: 10
+runtime:
+  services:
+    runtimeGateway:
+      replicas: 1
+      maxReplicas: 4
+      mysqlPool: 8
+    workflowRuntime:
+      replicas: 1
+      maxReplicas: 4
+      roles:
+      - coordinator
+      - trigger
+      - stream
+      - command
+      - outbox
+      - recovery
+      - artifact
+      - quota
+      - trace-relay
+      - delivery
+      mysqlPool: 10
+    workflowWorker:
+      replicas: 1
+      maxReplicas: 4
+      capability: all
+      pluginMaxProcesses: 8
+      pluginMemoryMb: 96
+      mysqlPool: 6
+    sandboxManager:
+      replicas: 1
+      maxReplicas: 4
+      mysqlPool: 2
+observability:
+  services:
+    observability:
+      replicas: 1
+      maxReplicas: 4
+      roles:
+      - trace-consumer
+      - query
+dependencies:
+  services:
+    egressGateway:
+      replicas: 1
+      maxReplicas: 4
