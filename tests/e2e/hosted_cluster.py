@@ -16,7 +16,7 @@ import yaml
 from tests.e2e.support import ROOT, redact, run
 
 MINIKUBE_VERSION = "v1.39.0"
-MINIKUBE_SHA256 = "099477eaf248bcb5bcea8ce78a2898e93ac01461c35189da1848c3de82ecd22e"
+MINIKUBE_SHA256 = "b738496da01be06bbaf80c688f57ce25acd3849fbb518155f3a88e03ef555aa4"
 KUBERNETES_VERSION = "v1.36.1"
 PROFILE = "agentx-ci"
 MEMORY_MIB = 12288

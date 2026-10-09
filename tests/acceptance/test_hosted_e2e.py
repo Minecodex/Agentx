@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,44 @@ import yaml
 from tests.e2e.capacity.baseline import baseline_matches
 from tests.e2e.hosted_cluster import CPU_COUNT, MEMORY_MIB, PROFILE, hosted_values
 from tests.e2e.product.live_text_support import live_kimi_secret
+
+
+@pytest.mark.parametrize("tampered", [False, True])
+def test_minikube_download_must_match_the_pinned_release_digest(monkeypatch, tmp_path, tampered):
+    from types import SimpleNamespace
+
+    from tests.e2e import hosted_cluster as module
+
+    trusted = b"isolated-minikube-binary-fixture"
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    monkeypatch.setattr(module, "MINIKUBE_SHA256", hashlib.sha256(trusted).hexdigest())
+    monkeypatch.setattr(module.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(module.platform, "machine", lambda: "x86_64")
+    monkeypatch.setenv("PATH", "isolated-test-path")
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url):
+            assert "/v1.39.0/minikube-linux-amd64" in url
+            return SimpleNamespace(content=b"tampered" if tampered else trusted, raise_for_status=lambda: None)
+
+    monkeypatch.setattr(module.httpx, "Client", Client)
+    binary = tmp_path / ".local/tools/minikube"
+    if tampered:
+        with pytest.raises(ValueError, match="checksum mismatch"):
+            module.install_minikube()
+        assert not binary.exists()
+    else:
+        module.install_minikube()
+        assert binary.read_bytes() == trusted
 
 
 def test_hosted_values_keep_the_candidate_images_and_limit_private_network_access():
