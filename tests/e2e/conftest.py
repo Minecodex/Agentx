@@ -659,6 +659,15 @@ def _wait_http(process: ManagedProcess, url: str) -> None:
 
 @pytest.fixture(scope="session")
 def service_urls(installed_agentx: dict[str, str]) -> Iterator[dict[str, str]]:
+    yield from forwarded_service_urls(installed_agentx)
+
+
+@pytest.fixture(scope="module")
+def tls_service_urls(tls_agentx: dict[str, str]) -> Iterator[dict[str, str]]:
+    yield from forwarded_service_urls(tls_agentx)
+
+
+def forwarded_service_urls(installed_agentx: dict[str, str]) -> Iterator[dict[str, str]]:
     artifact_dir = Path(installed_agentx["artifact_dir"])
     web_port, runtime_port, sandbox_manager_port = _free_port(), _free_port(), _free_port()
     forwards = [
