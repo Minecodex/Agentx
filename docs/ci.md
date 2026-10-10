@@ -30,6 +30,8 @@ Bundled MinIO 和 RAGFlow 的 MinIO 使用固定多架构摘要的 Chainguard �
 
 E2E 数据库断言通过共享 MySQL 客户端使用容器内 loopback TCP，不依赖镜像的默认 socket 路径；冷初始化回归会使用不同 server socket，并验证应用探针与管理断言都可实际查询。
 
+共享管理客户端在已挂载 TLS CA 的数据库容器中使用 VERIFY_CA；明文 local profile 使用 MySQL 8 caching_sha2_password 的 RSA 公钥交换，避免热连接缓存掩盖冷库认证失败。生产数据库强制安全传输和应用身份校验的既有策略继续由部署合同执行。
+
 `agentxctl-release` 支持手动输入已有 Tag、原始构建 Run ID 和不同的兼容 Worker 摘要重新认证。手动运行先验证原始 Run 属于该 Tag、原生 Windows/Linux 构建均已成功，再下载原始二进制并分别在原生系统重验安装包，保留原始构建 provenance。公开镜像必须匹配 Tag 的源码 Commit 和 Tree 摘要；手动重跑只核验已推送的镜像，不覆盖它们。认证工具与被测源码分别检出，所有发布证据绑定被测 Tag，而不是工具分支。
 
 CI 失败会阻止合并。修复失败后在同一个功能分支继续提交，重新运行检查；不要通过删除必需检查或设置管理员绕过来把失败当作通过。

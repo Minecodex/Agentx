@@ -20,8 +20,10 @@ ROOT = Path(__file__).resolve().parents[2]
 # paths. Administrative assertions run inside the database container and
 # always connect to its explicitly bound loopback TCP listener.
 MYSQL_ROOT_CLIENT = (
+    'mysql_tls="--ssl-mode=DISABLED --get-server-public-key"; '
+    'if test -r /tls/ca.crt; then mysql_tls="--ssl-mode=VERIFY_CA --ssl-ca=/tls/ca.crt"; fi; '
     'MYSQL_PWD="$(cat /run/secrets/agentx/root-password)" '
-    "mysql --protocol=TCP --host=127.0.0.1 --port=3306 --ssl-mode=DISABLED"
+    "mysql --protocol=TCP --host=127.0.0.1 --port=3306 $mysql_tls"
 )
 
 
