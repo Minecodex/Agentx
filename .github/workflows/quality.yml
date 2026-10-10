@@ -70,7 +70,7 @@ jobs:
               --junitxml=.local/artifacts/kubernetes-e2e.xml --timeout=18000
           else
             uv run --frozen --group test pytest tests/e2e --minikube \
-              --values deploy/values/local.yaml -m "not capacity and not live_model" --maxfail=1 \
+              --values deploy/values/local.yaml -m "not capacity and not live_model" \
               --evidence-run-id "ci-${{ github.run_id }}-${{ github.run_attempt }}" \
               --junitxml=.local/artifacts/kubernetes-e2e.xml --timeout=14400
           fi
