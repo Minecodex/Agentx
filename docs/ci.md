@@ -34,9 +34,9 @@ E2E 数据库断言通过共享 MySQL 客户端使用容器内 loopback TCP，�
 
 Bundled MySQL 的 TLS 服务材料先由同一非 root 数据库身份从 Secret 投射到内存卷中的普通文件，校验证书链并使用 0600 权限；缺少材料或不可读取时初始化即失败。客户端仍只读取其 CA 投射。该路径覆盖 Control/Runtime 两套数据库，保持 require_secure_transport 与身份校验，并在完整 TLS 安装套件中验证。
 
-MySQL 服务材料挂载在 `/etc/mysql/agentx-tls`，符合 Linux 宿主 MySQL AppArmor 配置目录策略。托管 Docker/Minikube 的实际探针确认 `/tls` 被 `/usr/sbin/mysqld (enforce)` 拒绝，而相同 UID/权限/证书在配置目录成功协商 TLS_AES_128_GCM_SHA256；没有停用宿主策略或改为 root。默认初始化、服务启动及探针均使用同一目录，材料仍是只读内存卷，不持久化私钥。数据库内管理断言优先使用新路径，并能读取原有候选的 `/tls` CA。
+MySQL 服务材料挂载在 `/etc/mysql/agentx-tls`，符合 Linux 宿主 MySQL AppArmor 配置目录策略。托管 Docker/Minikube 的实际探针确认 `/tls` 被 `/usr/sbin/mysqld (enforce)` 拒绝，而相同 UID/权限/证书在配置目录成功协商 TLS_AES_128_GCM_SHA256；没有停用宿主策略或改为 root。默认初始化、服务启动、探针与数据库内管理断言均使用同一目录，材料仍是只读内存卷，不持久化私钥。
 
-`MySQL TLS diagnostic` 可手动运行，或通过 PR 标签 `ci:mysql-diagnostic` 触发。在独立临时 Minikube 中比较 `/tls`、MySQL 配置目录和显式 RuntimeDefault 策略的实际 TLS 连接，收集进程身份、策略与文件元数据；不输出证书私钥，不停用宿主策略。它只用于定位环境故障，不替代必需系统 E2E 或发布认证。诊断结束删除自己的集群，没有定时触发。
+MySQL AppArmor 定位证据来自独立临时 Minikube 的路径/策略对照，收集进程身份、策略、文件元数据及实际 TLS 连接。临时诊断工具已移出最终仓库；Kubernetes 正式系统验收继续使用唯一的 `pytest tests/e2e` 编排入口，由现有 TLS 安装/错误 CA/升级套件验证完整部署行为。
 
 `agentxctl-release` 支持手动输入已有 Tag、原始构建 Run ID 和不同的兼容 Worker 摘要重新认证。手动运行先验证原始 Run 属于该 Tag、原生 Windows/Linux 构建均已成功，再下载原始二进制并分别在原生系统重验安装包，保留原始构建 provenance。公开镜像必须匹配 Tag 的源码 Commit 和 Tree 摘要；手动重跑只核验已推送的镜像，不覆盖它们。认证工具与被测源码分别检出，所有发布证据绑定被测 Tag，而不是工具分支。
 

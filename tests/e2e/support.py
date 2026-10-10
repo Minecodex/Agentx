@@ -21,8 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 # always connect to its explicitly bound loopback TCP listener.
 MYSQL_ROOT_CLIENT = (
     'mysql_tls="--ssl-mode=DISABLED --get-server-public-key"; '
-    "for mysql_ca in /etc/mysql/agentx-tls/ca.crt /tls/ca.crt; do "
-    'if test -r "$mysql_ca"; then mysql_tls="--ssl-mode=VERIFY_CA --ssl-ca=$mysql_ca"; break; fi; done; '
+    'if test -r /etc/mysql/agentx-tls/ca.crt; then mysql_tls="--ssl-mode=VERIFY_CA --ssl-ca=/etc/mysql/agentx-tls/ca.crt"; fi; '
     'MYSQL_PWD="$(cat /run/secrets/agentx/root-password)" '
     "mysql --protocol=TCP --host=127.0.0.1 --port=3306 $mysql_tls"
 )
