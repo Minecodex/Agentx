@@ -549,9 +549,11 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
             json!({"tool_calls":[{"index":0,"id":call["id"],"type":"function","function":{"name":call["function"]["name"],"arguments":call["function"]["arguments"]}}]})
         } else {
             let content = if large_trace_response {
-                content.map(|text| format!("{text}\n{}", "trace-artifact-marker|".repeat(1_024)))
-            } else {
                 content
+                    .as_ref()
+                    .map(|text| format!("{text}\n{}", "trace-artifact-marker|".repeat(1_024)))
+            } else {
+                content.clone()
             };
             json!({"content":content})
         };
