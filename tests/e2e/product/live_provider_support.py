@@ -191,7 +191,7 @@ def live_providers(
                 {
                     "name": f"P7 live knowledge {run_id}",
                     "connectionId": rag_connection["id"],
-                    "externalResourceId": f"p7_live_{run_id}",
+                    "externalResourceId": f"p7_live_{run_id.replace('-', '_')}",
                     "ownerDepartmentId": app["departmentId"],
                 },
             )

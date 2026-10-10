@@ -547,9 +547,9 @@ def opensandbox_server(run_id: str, deployment_values: Path) -> Iterator[None]:
             f'path = "{artifact_dir / "opensandbox.db"}"',
         )
     )
-    network = os.environ.get("AGENTX_E2E_DOCKER_NETWORK")
-    if network:
-        config = config.replace('network_mode = "bridge"', f'network_mode = "{network}"')
+    # OpenSandbox's egress sidecar requires the default Docker bridge.
+    # The manager reaches execd through the lifecycle server proxy, so the
+    # sandbox does not need to share Minikube's named Docker network.
     config_path = artifact_dir / "opensandbox.local.toml"
     config_path.write_text(config, encoding="utf-8")
     server = start_process(
@@ -682,6 +682,7 @@ def forwarded_service_urls(installed_agentx: dict[str, str]) -> Iterator[dict[st
             ),
             stdout_path=artifact_dir / "port-forward-web.log",
             stderr_path=artifact_dir / "port-forward-web-error.log",
+            health_url=f"http://127.0.0.1:{web_port}/health/live",
         ),
         RestartingPortForward(
             (
@@ -694,6 +695,7 @@ def forwarded_service_urls(installed_agentx: dict[str, str]) -> Iterator[dict[st
             ),
             stdout_path=artifact_dir / "port-forward-runtime.log",
             stderr_path=artifact_dir / "port-forward-runtime-error.log",
+            health_url=f"http://127.0.0.1:{runtime_port}/health/live",
         ),
         RestartingPortForward(
             (
@@ -706,6 +708,7 @@ def forwarded_service_urls(installed_agentx: dict[str, str]) -> Iterator[dict[st
             ),
             stdout_path=artifact_dir / "port-forward-sandbox-manager.log",
             stderr_path=artifact_dir / "port-forward-sandbox-manager-error.log",
+            health_url=f"http://127.0.0.1:{sandbox_manager_port}/health/live",
         ),
     ]
     urls = {

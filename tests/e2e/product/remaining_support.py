@@ -294,6 +294,7 @@ def boundary_gateway_metrics(installed_agentx):
         ),
         stdout_path=directory / "boundary-metrics.log",
         stderr_path=directory / "boundary-metrics-error.log",
+        health_url=f"http://127.0.0.1:{port}/metrics",
     )
     try:
         url = f"http://127.0.0.1:{port}"

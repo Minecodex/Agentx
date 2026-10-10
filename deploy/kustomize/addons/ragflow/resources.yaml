@@ -184,7 +184,7 @@ spec:
             - --default-authentication-plugin=mysql_native_password
           readinessProbe:
             exec:
-              command: ["mysqladmin", "ping", "-uroot", "-pinfini_rag_flow"]
+              command: ["mysql", "--protocol=TCP", "--host=127.0.0.1", "--user=root", "--password=infini_rag_flow", "--execute=SELECT 1"]
             initialDelaySeconds: 20
             periodSeconds: 10
             failureThreshold: 30

@@ -48,6 +48,12 @@ CI 失败会阻止合并。修复失败后在同一个功能分支继续提交�
 
 受控系统套件保留全部失败结果，避免首个业务断言遮住其他领域的验收。L3 出站消息先发布基础 Workflow 版本，再创建引用该版本输入合同的渠道，最后发布带真实渠道 ID 的 send_message 版本；这与当前渠道保存规则一致，保留幂等投递、真实 pod 崩溃与恢复断言。
 
+RAGFlow MySQL 就绪探针实际查询容器内 loopback TCP，避免镜像客户端默认 socket 与服务端 socket 不一致使已经运行的数据库永远不进入 Service endpoints。真实 LightRAG 工作区使用符合当前 ASCII 字母/数字/下划线合同的隔离 ID；Insights 等待本次工作流的真实 ClickHouse 行，而不是已有容量/业务测试的其他工作流行。
+
+OpenSandbox 0.2.2 继续使用默认 Docker bridge 与实际 egress sidecar，通过 lifecycle server proxy 访问 execd；不把沙盒改到不支持 networkPolicy 的 Minikube 命名网络。真实模型浏览器验收显式准备 Agent 工作流及缺少应用会话的受控失败，按返回的工作流 ID 读取，不依赖其他测试先执行或首屏列表恰好包含该工作流。
+
+稳定测试 URL 的 port-forward supervisor 定期发送只读健康请求，提前发现 rollout 后仍指向已删除 Pod 的旧隧道并重连；不通过重试业务 POST 隐藏重复执行或投递错误。
+
 安装期间持续保存失败容器的日志，避免 Helm 的自动回滚删除故障现场；最终诊断分别采集每个初始化容器、业务容器及上一次崩溃的日志，未启动的容器不会阻断其他日志。证据会脱敏，保留 Kubernetes Secret 引用和 YAML / JSON 结构。
 
 Rust 格式检查使用仓库指定的 1.97.1 工具链；修复了首次 CI 检出的五个既有源文件格式问题。

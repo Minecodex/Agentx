@@ -6,6 +6,7 @@ import re
 import signal
 import subprocess
 import threading
+import time
 import uuid
 import zipfile
 from collections.abc import Sequence
@@ -13,6 +14,8 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -115,10 +118,11 @@ def start_process(
 class RestartingPortForward:
     """Keep a test URL stable when its target pod is replaced or scaled down."""
 
-    def __init__(self, command: Sequence[str | Path], *, stdout_path: Path, stderr_path: Path):
+    def __init__(self, command: Sequence[str | Path], *, stdout_path: Path, stderr_path: Path, health_url: str):
         self.command = command
         self.stdout_path = stdout_path
         self.stderr_path = stderr_path
+        self.health_url = health_url
         self.stopped = threading.Event()
         self.current = start_process(command, stdout_path=stdout_path, stderr_path=stderr_path)
         self.thread = threading.Thread(target=self._supervise, daemon=True)
@@ -130,8 +134,16 @@ class RestartingPortForward:
 
     def _supervise(self):
         restart = 0
+        next_probe = time.monotonic()
         while not self.stopped.wait(0.5):
             if self.current.process.poll() is None:
+                if time.monotonic() >= next_probe:
+                    next_probe = time.monotonic() + 5
+                    # kubectl can retain the old pod tunnel until the first
+                    # connection after a rollout. Discover that stale tunnel
+                    # with a read-only request before a business POST reaches it.
+                    with suppress(httpx.HTTPError):
+                        httpx.get(self.health_url, timeout=1, trust_env=False)
                 continue
             self.current.stop()
             restart += 1
