@@ -47,7 +47,7 @@ def material() -> dict[str, str]:
     server_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     certificate = (
         x509.CertificateBuilder()
-        .subject_name(name)
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")]))
         .issuer_name(name)
         .public_key(server_key.public_key())
         .serial_number(x509.random_serial_number())
@@ -166,6 +166,9 @@ def main() -> None:
             )
             if result.returncode == 0:
                 break
+            status = kubectl("get", "pod", name, "-o", "json")
+            if status.returncode == 0 and json.loads(status.stdout).get("status", {}).get("phase") == "Failed":
+                break
             time.sleep(3)
         results[name] = {"returncode": result.returncode, "stdout": result.stdout, "stderr": result.stderr}
         for label, command in {
@@ -180,6 +183,7 @@ def main() -> None:
                 f"id; grep -E '^(Uid|Gid):' /proc/1/status; cat /proc/1/attr/current; stat -c '%a %u:%g %n' '{path}' '{path}/ca.crt' '{path}/tls.crt' '{path}/tls.key'",
             ),
             "logs": ("logs", name, "-c", "mysql"),
+            "init": ("logs", name, "-c", "prepare"),
             "status": ("get", "pod", name, "-o", "json"),
         }.items():
             evidence = kubectl(*command)
