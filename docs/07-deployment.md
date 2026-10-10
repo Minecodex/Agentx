@@ -91,7 +91,7 @@ Bundled MySQL 的启动和就绪检查使用应用账户在业务 Database 执�
 
 MySQL 账户初始化脚本以只读、不可执行的 ConfigMap 文件挂载，由官方入口脚本 source，并调用其 `docker_process_sql` 函数；继承入口的错误处理与实际 socket 配置。不能在独立 shell 中依赖 MySQL 客户端的默认 socket 路径。
 
-Bundled MySQL 在非 root 初始化容器中读取并校验 TLS Secret，将材料写入内存卷的 0600 普通文件，由同一数据库 UID 使用。客户端 CA 仍按组件投射；初始化失败不降级为明文。本地 MySQL 证书同时具备 serverAuth/clientAuth，用于 MySQL 的证书用途验证；生产证书由平台提供并须满足[MySQL TLS 证书要求](https://dev.mysql.com/doc/refman/8.4/en/using-encrypted-connections.html)。
+Bundled MySQL 在非 root 初始化容器中读取并校验 TLS Secret，将材料写入内存卷的 0600 普通文件，由同一数据库 UID 使用。服务挂载目录为 `/etc/mysql/agentx-tls`，与 Linux MySQL AppArmor 配置目录策略兼容；不需要停用宿主策略，也不把私钥持久化到数据库 PVC。客户端 CA 仍按组件投射；初始化失败不降级为明文。本地 MySQL 证书同时具备 serverAuth/clientAuth，用于 MySQL 的证书用途验证；生产证书由平台提供并须满足[MySQL TLS 证书要求](https://dev.mysql.com/doc/refman/8.4/en/using-encrypted-connections.html)。
 
 - Control：Control MySQL、S3、Vault CA。
 - Runtime：Runtime MySQL、Redis、S3、Vault、OpenSandbox CA。
