@@ -16,6 +16,25 @@ spec:
       serviceAccountName: platform-control
       automountServiceAccountToken: false
       securityContext: { runAsNonRoot: true, runAsUser: 999, runAsGroup: 999, fsGroup: 999, seccompProfile: { type: RuntimeDefault } }
+{{- if .Values.global.components.controlMysql.caSecretName }}
+      initContainers:
+        - name: prepare-mysql-tls
+          image: mysql:8.4
+          command: [sh, -ec]
+          args:
+            - |
+              umask 077
+              for file in ca.crt tls.crt tls.key; do
+                test -s "/tls-source/$file"
+                cat "/tls-source/$file" > "/tls/$file"
+                chmod 0600 "/tls/$file"
+              done
+              openssl verify -CAfile /tls/ca.crt /tls/tls.crt
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+          volumeMounts:
+            - { name: tls-source, mountPath: /tls-source, readOnly: true }
+            - { name: tls, mountPath: /tls }
+{{- end }}
       containers:
         - name: mysql
           image: mysql:8.4
@@ -45,8 +64,10 @@ spec:
             - { name: mysql-secrets, mountPath: /run/secrets/agentx, readOnly: true }
       volumes:
 {{- if .Values.global.components.controlMysql.caSecretName }}
+        - name: tls-source
+          secret: { secretName: {{ .Values.global.components.controlMysql.caSecretName }}, defaultMode: 0440 }
         - name: tls
-          secret: { secretName: {{ .Values.global.components.controlMysql.caSecretName }} }
+          emptyDir: { medium: Memory }
 {{- end }}
         - name: init
           configMap: { name: control-mysql-init, defaultMode: 0444 }

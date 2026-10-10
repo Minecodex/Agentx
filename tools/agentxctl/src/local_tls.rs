@@ -226,6 +226,12 @@ mod tests {
             roots.add(certificate.unwrap()).unwrap();
         }
         let verifier = rustls::client::WebPkiServerVerifier::builder_with_provider(
+            Arc::new(roots.clone()),
+            Arc::new(rustls::crypto::aws_lc_rs::default_provider()),
+        )
+        .build()
+        .unwrap();
+        let mysql_verifier = rustls::server::WebPkiClientVerifier::builder_with_provider(
             Arc::new(roots),
             Arc::new(rustls::crypto::aws_lc_rs::default_provider()),
         )
@@ -238,6 +244,11 @@ mod tests {
             .next()
             .unwrap()
             .unwrap();
+            if matches!(identity.name.as_str(), "controlMysql" | "runtimeMysql") {
+                mysql_verifier
+                    .verify_client_cert(&cert, &[], UnixTime::now())
+                    .unwrap();
+            }
             for name in identity.sans {
                 verifier
                     .verify_server_cert(
