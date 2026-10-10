@@ -27,6 +27,13 @@ pub fn local_tls_material(subjects: &BTreeMap<String, Vec<String>>) -> Result<Lo
         let mut params = CertificateParams::new(sans.clone())?;
         params.distinguished_name.push(DnType::CommonName, name);
         params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+        // MySQL validates its own server certificate using the client purpose.
+        // These keys remain confined to the database's server namespace.
+        if matches!(name.as_str(), "controlMysql" | "runtimeMysql") {
+            params
+                .extended_key_usages
+                .push(ExtendedKeyUsagePurpose::ClientAuth);
+        }
         params.key_usages = vec![KeyUsagePurpose::DigitalSignature];
         let key = KeyPair::generate()?;
         let certificate = params.signed_by(&key, &ca, &ca_key)?;

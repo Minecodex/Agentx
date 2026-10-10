@@ -98,6 +98,8 @@ test('channel dialog renders provider-specific fields and stream channels hide t
   await dialog.getByLabel('名称', { exact: true }).fill(`钉钉长连接渠道 ${suffix}`)
   await dialog.getByLabel('Client ID (AppKey)').fill('ding-e2e-client-id')
   await dialog.getByLabel('Client Secret').fill('ding-e2e-client-secret')
+  await dialog.getByRole('combobox', { name: '来源字段', exact: true }).click()
+  await page.getByRole('option', { name: '消息内容', exact: true }).click()
   await dialog.getByRole('button', { name: '保存' }).click()
   await expect(dialog).toHaveCount(0)
 

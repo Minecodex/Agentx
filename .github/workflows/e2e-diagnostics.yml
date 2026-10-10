@@ -1,0 +1,58 @@
+name: E2E diagnostics
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Focused diagnostic scope; never release certification
+        type: choice
+        options: [capacity, live_model, controlled]
+        default: capacity
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'ci:diagnostic'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/e2e-tools
+      - name: Run a focused suite in the disposable cluster
+        env:
+          SUITE: ${{ inputs.suite || 'capacity' }}
+          RUN_ID: diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          AGENTX_E2E_KIMI_API_KEY: ${{ secrets.AGENTX_E2E_KIMI_API_KEY }}
+        shell: python
+        run: |
+          import os
+          import subprocess
+
+          markers = {
+              'capacity': 'capacity',
+              'live_model': 'live_model',
+              'controlled': 'not capacity and not live_model',
+          }
+          suite = os.environ['SUITE']
+          command = [
+              'uv', 'run', '--frozen', '--group', 'test', 'pytest', 'tests/e2e',
+              '--minikube', '--values', 'deploy/values/local.yaml', '-m', markers[suite],
+              '--evidence-run-id', os.environ['RUN_ID'],
+              '--junitxml=.local/artifacts/e2e-diagnostic.xml', '--timeout=9000',
+          ]
+          if suite == 'capacity':
+              command.extend(['--capacity-smoke', '--previous-worker-image',
+                  'kakj/agentx-workflow-worker:v0.0.4-beta@sha256:daa72d3f6ada839a0102e9ef6ed36c8546ebe8622e0a2ebcf1fe716c0e9be746'])
+          subprocess.run(command, check=True)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-diagnostic-${{ inputs.suite || 'capacity' }}
+          path: |
+            .local/artifacts/e2e-diagnostic.xml
+            .local/artifacts/e2e
+            .local/artifacts/playwright

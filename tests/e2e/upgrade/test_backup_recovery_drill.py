@@ -32,12 +32,12 @@ from tests.e2e.product.test_channel_delivery import (
     _signed_dingtalk_post,
 )
 from tests.e2e.runtime.test_agent_attachments import _runtime_mysql
-from tests.e2e.support import run
+from tests.e2e.support import MYSQL_ROOT_CLIENT, run
 from tools.scripts.release.evidence import evidence_identity
 
 pytestmark = [pytest.mark.cluster, pytest.mark.upgrade]
 
-_MYSQL_ENV = 'MYSQL_PWD="$(cat /run/secrets/agentx/root-password)" mysql --ssl-mode=DISABLED -uroot'
+_MYSQL_ENV = f"{MYSQL_ROOT_CLIENT} -uroot"
 # Sentinel tables per Control migration; the highest present table identifies
 # the observed schema level for the receipt's schemaVersionObserved field.
 _SCHEMA_SENTINELS = [

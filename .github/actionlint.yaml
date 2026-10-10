@@ -1,5 +1,0 @@
-self-hosted-runner:
-  labels:
-    - agentx-e2e
-    - strict-cni
-    - docker-desktop

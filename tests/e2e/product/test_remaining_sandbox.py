@@ -137,6 +137,8 @@ def test_real_python_cpu_memory_and_deny_network_policy(boundary_state):
                 "docker",
                 "run",
                 "--rm",
+                "--add-host",
+                "host.docker.internal:host-gateway",
                 "--entrypoint",
                 "/usr/bin/python3",
                 _sandbox_image_digest(),

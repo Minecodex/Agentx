@@ -11,7 +11,7 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 import pytest
 
-from tests.e2e.support import run, run_playwright
+from tests.e2e.support import MYSQL_ROOT_CLIENT, run, run_playwright
 
 
 def _build_canvas_plugin_v2(root: str) -> None:
@@ -89,8 +89,7 @@ def _assert_execution_context_snapshot(installed_agentx: dict[str, str], evidenc
             "--",
             "sh",
             "-ec",
-            'MYSQL_PWD="$(cat /run/secrets/agentx/root-password)" mysql --ssl-mode=DISABLED '
-            '--batch --skip-column-names -uroot agentx_runtime -e "$1"',
+            f'{MYSQL_ROOT_CLIENT} --batch --skip-column-names -uroot agentx_runtime -e "$1"',
             "agentx-e2e-query",
             query,
         ),

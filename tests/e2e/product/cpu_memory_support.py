@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import secrets
 import socket
 import time
@@ -82,6 +83,10 @@ def cpu_memory_service(cpu_embedding_service: dict[str, Any]) -> Iterator[dict[s
     for document in documents:
         if document["kind"] == "Deployment":
             document["spec"]["template"]["metadata"].setdefault("labels", {})["agentx.io/runtime-provider"] = "allowed"
+            if document["metadata"]["name"] == "mem0" and os.environ.get("AGENTX_E2E_MEM0_IMAGE"):
+                pod = document["spec"]["template"]["spec"]
+                for container in (*pod.get("initContainers", []), *pod["containers"]):
+                    container["image"] = os.environ["AGENTX_E2E_MEM0_IMAGE"]
     run(("kubectl", "-n", namespace, "apply", "-f", "-"), input_text=yaml.safe_dump_all(documents))
     forward = None
     try:

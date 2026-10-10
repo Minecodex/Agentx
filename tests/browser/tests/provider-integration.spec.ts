@@ -612,7 +612,7 @@ test.describe.serial('Provider integration', () => {
     await login(page)
     const stamp = Date.now()
     const knowledgeName = `Provider RAGflow ${stamp}`
-    await createKnowledgeViaUi(page, `Provider RAGflow Connection ${stamp}`, ragflowRejectedBaseUrl, '/', knowledgeName, `ragflow-${stamp}`)
+    await createKnowledgeViaUi(page, `Provider RAGflow Connection ${stamp}`, ragflowRejectedBaseUrl, '/', knowledgeName, `ragflow_${stamp}`)
     await openResourceDetail(page, '知识库', knowledgeName)
     await page.getByRole('button', { name: '测试连接' }).click()
     await expect(page.getByText('连接正常')).toHaveCount(0)

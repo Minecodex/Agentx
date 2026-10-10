@@ -79,7 +79,7 @@ Agentx 采用三平面分离架构，每个逻辑域独立部署，通过 Helm �
 
 - 对应平台的 `agentxctl` 单文件二进制
 - Helm 3、kubectl 和一个可访问且具有默认 StorageClass 的 Kubernetes 集群
-- 集群可以拉取 Docker Hub、ingress-nginx 和基础依赖镜像
+- 集群可以拉取 Docker Hub、`cgr.dev`、ingress-nginx 和基础依赖镜像
 - OpenSandbox 已独立安装，并可从 Agentx Runtime Namespace 访问
 
 默认 OpenSandbox 地址为 `http://opensandbox.agentx-deps.svc:8080`。如果使用其他地址或主机上的 OpenSandbox，请先按 [OpenSandbox 接入说明](deploy/opensandbox/README.md) 准备自定义 Values，并在安装时传入 `--values`。
@@ -274,6 +274,8 @@ cargo xtask images --values deploy/values/local.yaml --service platform-control 
 ### E2E 测试
 
 领域 E2E 使用临时 Namespace；浏览器场景由 TypeScript Playwright 执行：
+
+GitHub CI 在托管 Ubuntu 上由 pytest 自动创建 Minikube / Calico 集群，Linux 集群 E2E 是必需检查；Windows 保留 ctl 原生构建、测试和打包。Release 使用相同环境完成完整九领域、两小时容量与镜像签名门禁，通过后才公开发布。配置和手动重跑说明见 [CI 说明](docs/ci.md)。
 
 ```bash
 # 基础设施测试

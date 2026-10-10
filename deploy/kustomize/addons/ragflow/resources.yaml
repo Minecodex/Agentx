@@ -184,7 +184,7 @@ spec:
             - --default-authentication-plugin=mysql_native_password
           readinessProbe:
             exec:
-              command: ["mysqladmin", "ping", "-uroot", "-pinfini_rag_flow"]
+              command: ["mysql", "--protocol=TCP", "--host=127.0.0.1", "--user=root", "--password=infini_rag_flow", "--execute=SELECT 1"]
             initialDelaySeconds: 20
             periodSeconds: 10
             failureThreshold: 30
@@ -281,9 +281,10 @@ spec:
       labels:
         app.kubernetes.io/name: ragflow-minio
     spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532 }
       containers:
         - name: minio
-          image: quay.io/minio/minio:RELEASE.2025-06-13T11-33-47Z
+          image: cgr.dev/chainguard/minio@sha256:f74600a1a46330cdbda1ef760d17a96bd6e0f4a6f0a2c49792ca3ee7e4c6fa18
           ports:
             - { name: http, containerPort: 9000 }
           env:

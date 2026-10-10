@@ -148,10 +148,13 @@ test('Insights error links retain the failed workflow and error-code filters', a
   })
   const token = await login(page)
   const name = `P7 real Agent ${process.env.AGENTX_E2E_RUN_ID}`
-  const response = await page.request.get('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}` }, params: { search: name, pageSize: 100 } })
+  const workflowId = process.env.AGENTX_E2E_INSIGHTS_WORKFLOW_ID
+  if (!workflowId) throw new Error('Controlled Agent failure workflow fixture is required')
+  const response = await page.request.get(`/api/v1/workflows/${workflowId}`, { headers: { Authorization: `Bearer ${token}` } })
   expect(response.ok()).toBe(true)
-  const workflow = ((await response.json()) as { items: Array<{ id: string; name: string }> }).items.find((item) => item.name === name)
-  if (!workflow) throw new Error('Controlled Agent failure workflow is required')
+  const workflow = (await response.json()) as { id: string; name: string }
+  expect(workflow.id).toBe(workflowId)
+  expect(workflow.name).toBe(name)
   await page.goto('/insights')
   await page.getByRole('combobox', { name: '工作流筛选', exact: true }).click()
   await page.getByRole('option', { name, exact: true }).click()

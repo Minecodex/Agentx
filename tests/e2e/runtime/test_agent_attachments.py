@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 import pytest
 
-from tests.e2e.support import redact, run
+from tests.e2e.support import MYSQL_ROOT_CLIENT, redact, run
 
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "agentx-e2e-admin-password"  # noqa: S105 -- isolated E2E company
@@ -29,8 +29,7 @@ def _runtime_mysql(installed_agentx: dict[str, str], query: str) -> str:
             "--",
             "sh",
             "-ec",
-            'MYSQL_PWD="$(cat /run/secrets/agentx/root-password)" mysql --ssl-mode=DISABLED '
-            '--batch --skip-column-names -uroot agentx_runtime -e "$1"',
+            f'{MYSQL_ROOT_CLIENT} --batch --skip-column-names -uroot agentx_runtime -e "$1"',
             "agentx-p3-04-query",
             query,
         ),
@@ -50,8 +49,7 @@ def _control_mysql(installed_agentx: dict[str, str], query: str) -> str:
             "--",
             "sh",
             "-ec",
-            'MYSQL_PWD="$(cat /run/secrets/agentx/root-password)" mysql --ssl-mode=DISABLED '
-            '--batch --skip-column-names -uroot agentx_control -e "$1"',
+            f'{MYSQL_ROOT_CLIENT} --batch --skip-column-names -uroot agentx_control -e "$1"',
             "agentx-p3-05-query",
             query,
         ),
@@ -402,7 +400,7 @@ def test_agent_attachments_follow_the_published_workflow_main_chain(
         calls = details.json()["calls"]
         assert sum(call["callKind"] == "model" for call in calls) == 2
         assert sum(call["callKind"] == "mcp_tool" for call in calls) == 1
-        assert all(call["status"] == "succeeded" for call in calls)
+        assert all(call["status"] == "succeeded" for call in calls), calls
 
         registry_json = _runtime_mysql(
             installed_agentx,

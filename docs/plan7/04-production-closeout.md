@@ -136,6 +136,6 @@ Gateway 负载生成器在临时 namespace 内复用现有 Python 镜像与 uv �
 
 候选证据共用 runId/sourceCommit/sourceTreeSha256/imageManifestSha256。最终汇总器要求九域 JUnit 全部非空、失败/错误/跳过为零，容量、PITR、Redis 重建、滚动升级及供应链专项报告与同一候选匹配。所有 11 镜像必须为摘要引用；旧 passed marker 先删除，缺证据不能发布。
 
-供应链必须实际调用 Cosign verify 和 verify-attestation，并核对签名/attestation subject、SPDX 文件与其规范化摘要。缺 Cosign/信任策略、缺镜像或篡改均阻断。本地 TLS Registry 使用显式公钥和 CA，以及 Cosign 3 的无公共 tlog signing config；公网发布采用固定 OIDC 证书身份与 issuer。inspect-only 和 skip-sign 不产生 passed。GitHub 发布工作流先在绑定硬件的 macOS self-hosted runner 完成全链认证，再由 publish job 重新验签和审查证据。
+供应链必须实际调用 Cosign verify 和 verify-attestation，并核对签名/attestation subject、SPDX 文件与其规范化摘要。缺 Cosign/信任策略、缺镜像或篡改均阻断。本地 TLS Registry 使用显式公钥和 CA，以及 Cosign 3 的无公共 tlog signing config；公网发布采用固定 OIDC 证书身份与 issuer。inspect-only 和 skip-sign 不产生 passed。GitHub 发布工作流在固定的托管 Ubuntu / Minikube 基准完成完整九领域及两小时容量验收，再由 publish job 重新验签和审查证据；不依赖本机 macOS Runner，不跳过认证。硬件基准见 [容量阈值](../planv2/evidence/capacity-thresholds.md)。
 
 本轮修复与验证结果见 [代码审查修复证据](evidence/p7-code-review-fixes.md)；代码完成不等于正式发布认证通过。

@@ -87,6 +87,12 @@ Control、Runtime和 Observability Chart通过投影 Secret把私有 CA只读挂
 
 TLS 挂载和迁移等待按各组件的 `caSecretName` 配置，和环境名解耦。bundled MySQL 使用挂载密码文件和 `REQUIRE SSL`；Redis 禁用明文监听；ClickHouse、S3、Vault 对客户端提供 HTTPS。本地 Vault 保持开发模式，通过同 Pod 的 TLS 入口访问。独立 OpenSandbox 的本地 HTTPS 入口由 Dependencies Release 的代理提供，`localProxyUpstream` 只允许 local/test；production 直接连接平台提供的 HTTPS OpenSandbox。
 
+Bundled MySQL 的启动和就绪检查使用应用账户在业务 Database 执行 `SELECT 1`，同时验证账户初始化、密码和连接；TLS 配置存在时校验 CA。不能使用认证失败仍返回成功的 `mysqladmin ping` 判断 Ready。Migration 的等待容器保留 MySQL 错误输出，以区分连接、认证和 TLS 失败。
+
+MySQL 账户初始化脚本以只读、不可执行的 ConfigMap 文件挂载，由官方入口脚本 source，并调用其 `docker_process_sql` 函数；继承入口的错误处理与实际 socket 配置。不能在独立 shell 中依赖 MySQL 客户端的默认 socket 路径。
+
+Bundled MySQL 在非 root 初始化容器中读取并校验 TLS Secret，将材料写入内存卷的 0600 普通文件，由同一数据库 UID 使用。服务挂载目录为 `/etc/mysql/agentx-tls`，与 Linux MySQL AppArmor 配置目录策略兼容；不需要停用宿主策略，也不把私钥持久化到数据库 PVC。客户端 CA 仍按组件投射；初始化失败不降级为明文。本地 MySQL 证书同时具备 serverAuth/clientAuth，用于 MySQL 的证书用途验证；生产证书由平台提供并须满足[MySQL TLS 证书要求](https://dev.mysql.com/doc/refman/8.4/en/using-encrypted-connections.html)。
+
 - Control：Control MySQL、S3、Vault CA。
 - Runtime：Runtime MySQL、Redis、S3、Vault、OpenSandbox CA。
 - Observability：ClickHouse、受限 Redis、S3 CA。

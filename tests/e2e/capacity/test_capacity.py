@@ -12,6 +12,7 @@ import httpx
 import pytest
 import yaml
 
+from tests.e2e.capacity.baseline import baseline_matches
 from tests.e2e.capacity.collector import (
     CapacityCollector,
     redis_command,
@@ -93,14 +94,11 @@ def test_frozen_capacity_matrix(installed_agentx, service_urls, streaming_applic
     context["capacity_node"] = nodes[0]["metadata"]["name"]
     capacity = nodes[0]["status"]["capacity"]
     info = nodes[0]["status"]["nodeInfo"]
-    baseline_verified = (
-        len(nodes) == 1
-        and capacity["cpu"] == "10"
-        and capacity["memory"].endswith("Ki")
-        and abs(int(capacity["memory"][:-2]) / 1024**2 - 15.6) < 0.1
-        and info["architecture"] == "arm64"
-        and info["kubeletVersion"] == "v1.36.1"
+    hosted = pytestconfig.getoption("--minikube")
+    environment = (
+        json.loads((Path(context["artifact_dir"]) / "hosted-environment.json").read_text()) if hosted else None
     )
+    baseline_verified = baseline_matches(nodes, hosted=hosted, environment=environment)
     if not smoke:
         assert baseline_verified, "capacity certification hardware differs from the frozen baseline"
     collector = CapacityCollector(context)
@@ -116,6 +114,8 @@ def test_frozen_capacity_matrix(installed_agentx, service_urls, streaming_applic
     }
     report["baselineVerified"] = baseline_verified
     report["environment"] = {"capacity": capacity, "nodeInfo": info}
+    if environment:
+        report["environment"]["hostedRunner"] = environment
     all_samples = []
     try:
         for scenario, app, concurrency, count in [
