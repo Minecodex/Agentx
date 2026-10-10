@@ -18,9 +18,6 @@ from tests.e2e.product.test_live_knowledge_memory import (
     _ask,
 )
 from tests.e2e.product.test_live_knowledge_memory import (
-    live_agent_application as live_agent_application,
-)
-from tests.e2e.product.test_live_knowledge_memory import (
     live_indexed_document as live_indexed_document,
 )
 from tests.e2e.product.test_provider_integration import _publish_application_deployment, _sandbox_image_digest

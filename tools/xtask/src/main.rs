@@ -114,6 +114,21 @@ fn check(root: &Path, fast: bool) -> Result<()> {
         "uv",
         &["run", "--group", "test", "pytest", "tests/acceptance"],
     )?;
+    run(
+        root,
+        "uv",
+        &[
+            "run",
+            "--group",
+            "test",
+            "pytest",
+            "tests/e2e",
+            "--collect-only",
+            "-q",
+            "--values",
+            "deploy/values/local.yaml",
+        ],
+    )?;
     for values in [
         "local.yaml",
         "local-tls.yaml",
