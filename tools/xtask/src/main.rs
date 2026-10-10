@@ -84,7 +84,15 @@ fn check(root: &Path, fast: bool) -> Result<()> {
     run(
         root,
         "cargo",
-        &["test", "-p", "agentxctl", "-p", "agentx-key-material"],
+        &[
+            "test",
+            "-p",
+            "agentxctl",
+            "-p",
+            "agentx-key-material",
+            "-p",
+            "echo-mcp",
+        ],
     )?;
     run(root, "uv", &["lock", "--check"])?;
     run(

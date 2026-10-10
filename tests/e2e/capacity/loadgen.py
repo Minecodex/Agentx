@@ -10,6 +10,7 @@ from collections import Counter
 from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -33,6 +34,7 @@ class LoadReport:
     duration_seconds: float = 0
     connection_setup_ms: float = 0
     transport: str = "local-http"
+    first_intake_batch: dict[str, float | int] = field(default_factory=dict)
 
     def summary(self) -> dict[str, Any]:
         latencies = sorted(sample.accepted_ms for sample in self.samples if sample.status == 202)
@@ -59,6 +61,7 @@ class LoadReport:
             "rejected429Rate": sum(sample.status == 429 for sample in self.samples) / total if total else None,
             "durationSeconds": self.duration_seconds,
             "connectionSetupMs": self.connection_setup_ms,
+            "loadGeneratorFirstBatch": self.first_intake_batch,
             "transport": self.transport,
             "gatewayTargets": dict(
                 Counter(sample.gateway_url for sample in self.samples if sample.status == 202 and sample.gateway_url)
@@ -83,6 +86,15 @@ async def wait_terminal(
         if status in TERMINAL:
             return status
     raise TimeoutError("accepted invocation did not reach a terminal state")
+
+
+def cpu_stat() -> dict[str, int]:
+    path = Path("/sys/fs/cgroup/cpu.stat")
+    return (
+        {name: int(value) for name, value in (line.split() for line in path.read_text().splitlines())}
+        if path.exists()
+        else {}
+    )
 
 
 async def drive_invocations(
@@ -144,11 +156,15 @@ async def drive_invocations(
             response.raise_for_status()
         report.connection_setup_ms = (time.monotonic() - setup_started) * 1000
         started_run = time.monotonic()
+        started_cpu = time.process_time()
+        started_stats = cpu_stat()
+        intake_responses = 0
+        first_batch_size = min(concurrent, max_requests) if max_requests is not None else concurrent
         deadline = started_run + duration_seconds
         next_request = started_run
 
         async def worker(index: int) -> None:
-            nonlocal sequence, next_request
+            nonlocal sequence, next_request, intake_responses
             headers = {"Authorization": f"Bearer {api_keys[index % len(api_keys)]}"}
             client = clients[index]
             while time.monotonic() < deadline:
@@ -174,6 +190,19 @@ async def drive_invocations(
                     )
                     sample.accepted_ms = (time.monotonic() - started) * 1000
                     sample.status = response.status_code
+                    intake_responses += 1
+                    if intake_responses == first_batch_size:
+                        observed_stats = cpu_stat()
+                        report.first_intake_batch = {
+                            "responses": intake_responses,
+                            "wallMs": (time.monotonic() - started_run) * 1000,
+                            "processCpuMs": (time.process_time() - started_cpu) * 1000,
+                            **{
+                                f"{name}Delta": value - started_stats[name]
+                                for name, value in observed_stats.items()
+                                if name in started_stats
+                            },
+                        }
                     if response.status_code == 202:
                         sample.invocation_id = response.json()["id"]
                         sample.final_status = await wait_terminal(

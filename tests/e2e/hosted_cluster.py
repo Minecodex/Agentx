@@ -52,7 +52,7 @@ def node_image(image: str) -> str:
     return f"{matches[0][0].rsplit(':', 1)[0]}@{matches[0][2]}"
 
 
-def hosted_values(source: dict, *, gateway: str, subnet: str) -> dict:
+def hosted_values(source: dict, *, gateway: str, subnet: str, sandbox_gateway: str, sandbox_subnet: str) -> dict:
     # Values are a run artifact; the repository's versioned defaults remain intact.
     values = json.loads(json.dumps(source))
     global_values = values["global"]
@@ -60,7 +60,10 @@ def hosted_values(source: dict, *, gateway: str, subnet: str) -> dict:
     global_values["components"]["sandbox"].update(endpoint=f"http://{gateway}:18080", secureAccess=False)
     egress = global_values["network"]["egressGateway"]
     egress["sandboxAccess"].update(
-        mode="nodePort", endpoint=f"https://{PROFILE}:31129", port=31129, sourceCidrs=[subnet]
+        mode="nodePort",
+        endpoint=f"https://{sandbox_gateway}:31129",
+        port=31129,
+        sourceCidrs=[subnet, sandbox_subnet],
     )
     egress["allowedPrivateCidrs"] = sorted(set([*egress.get("allowedPrivateCidrs", []), subnet]))
     global_values["network"].setdefault("externalEgress", {})["opensandbox"] = {
@@ -98,6 +101,10 @@ def minikube_environment(values_path: Path, directory: Path) -> Iterator[Path]:
     }
     owned_network = False
     try:
+        bridge = run(("docker", "network", "inspect", "bridge")).json()[0]["IPAM"]["Config"][0]
+        sandbox_gateway, sandbox_subnet = bridge["Gateway"], bridge["Subnet"]
+        ipaddress.ip_address(sandbox_gateway)
+        ipaddress.ip_network(sandbox_subnet)
         run(("docker", "network", "create", "--subnet=192.168.49.0/24", "--gateway=192.168.49.1", PROFILE))
         owned_network = True
         run(
@@ -114,6 +121,7 @@ def minikube_environment(values_path: Path, directory: Path) -> Iterator[Path]:
                 f"--cpus={CPU_COUNT}",
                 f"--memory={MEMORY_MIB}",
                 f"--network={PROFILE}",
+                f"--ports={sandbox_gateway}:31129:31129,{sandbox_gateway}:31429:31429",
                 "--disk-size=40g",
                 "--wait=all",
                 "--wait-timeout=10m",
@@ -135,7 +143,17 @@ def minikube_environment(values_path: Path, directory: Path) -> Iterator[Path]:
         source = yaml.safe_load(values_path.read_text(encoding="utf-8"))
         prepare_images(source)
         path = directory / "hosted-values.yaml"
-        path.write_text(yaml.safe_dump(hosted_values(source, gateway=gateway, subnet=subnet)))
+        path.write_text(
+            yaml.safe_dump(
+                hosted_values(
+                    source,
+                    gateway=gateway,
+                    subnet=subnet,
+                    sandbox_gateway=sandbox_gateway,
+                    sandbox_subnet=sandbox_subnet,
+                )
+            )
+        )
         node = run(("kubectl", "get", "nodes", "-o", "json")).json()
         docker = run(("docker", "inspect", PROFILE)).json()[0]
         (directory / "hosted-environment.json").write_text(
@@ -149,6 +167,8 @@ def minikube_environment(values_path: Path, directory: Path) -> Iterator[Path]:
                     "nodeIp": node_ip,
                     "hostGateway": gateway,
                     "dockerSubnet": subnet,
+                    "sandboxBridgeGateway": sandbox_gateway,
+                    "sandboxBridgeSubnet": sandbox_subnet,
                     "nodeResources": docker["HostConfig"],
                     "nodes": node["items"],
                 },

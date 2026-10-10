@@ -301,7 +301,7 @@ def tls_agentx(
         sandbox["localProxyUpstream"] = source["global"]["components"]["sandbox"]["endpoint"]
         access = values["global"]["network"]["egressGateway"]["sandboxAccess"]
         access.update(source["global"]["network"]["egressGateway"]["sandboxAccess"])
-        access.update(endpoint="https://agentx-ci:31429", port=31429)
+        access.update(endpoint=f"{access['endpoint'].rsplit(':', 1)[0]}:31429", port=31429)
         values["global"]["network"]["externalEgress"]["opensandbox"] = source["global"]["network"]["externalEgress"][
             "opensandbox"
         ]

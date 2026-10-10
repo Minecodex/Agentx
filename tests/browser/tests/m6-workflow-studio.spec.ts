@@ -909,7 +909,7 @@ test('M6 Studio creates, debugs, versions and publishes a manifest-driven Workfl
   }, { timeout: 60_000, intervals: [500, 1_000, 2_000] }).toEqual([])
   expect(traceSnapshot?.complete).toBe(true)
   const modelCall = traceSnapshot?.spans.find((span) => span.spanKind === 'runtime_call' && span.spanName === 'Model call')
-  const mcpCall = traceSnapshot?.spans.find((span) => span.spanKind === 'runtime_call' && span.spanName === 'MCP tool call')
+  const mcpCall = traceSnapshot?.spans.find((span) => span.spanKind === 'runtime_call' && span.resourceType === 'mcp' && span.spanName === 'echo')
   expect(modelCall).toMatchObject({ status: 'succeeded', resourceType: 'model' })
   expect(modelCall?.costMicros ?? 0).toBeGreaterThan(0)
   expect((modelCall?.inputTokens ?? 0) + (modelCall?.outputTokens ?? 0)).toBeGreaterThan(0)
@@ -1741,7 +1741,8 @@ test('M6 Studio renders all thirteen dedicated node panels in the focused editor
         await page.waitForTimeout(750)
         await panel.getByTestId('parameter-input').getByRole('textbox', { name: 'Value' }).click()
         await expect(page.getByTestId('reference-picker')).toBeVisible()
-        await expect(page.getByTestId('node-details-view')).toHaveScreenshot('loop-variable-picker-light-zh.png', {
+        const loopPickerSnapshot = process.platform === 'linux' ? 'loop-variable-picker-light-zh-linux.png' : 'loop-variable-picker-light-zh.png'
+        await expect(page.getByTestId('node-details-view')).toHaveScreenshot(loopPickerSnapshot, {
           animations: 'disabled',
           maxDiffPixelRatio: 0.002,
         })

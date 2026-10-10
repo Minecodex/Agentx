@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import json
 import time
+import uuid
 from typing import Any
 
 import httpx
@@ -218,6 +219,7 @@ def streaming_application(
     service_urls: dict[str, str],
     e2e_providers: dict[str, str],
     run_id: str,
+    request: pytest.FixtureRequest,
 ) -> dict[str, Any]:
     """A published chat application whose model node binds the slow-stream mock."""
     with httpx.Client(base_url=service_urls["web"], timeout=60) as control:
@@ -265,7 +267,7 @@ def streaming_application(
             json={
                 "workflowId": workflow_id,
                 "name": f"Streaming App {run_id}",
-                "slug": f"stream-{run_id[:8]}",
+                "slug": f"stream-{uuid.uuid5(uuid.NAMESPACE_URL, f'{run_id}:{request.node.nodeid}').hex}",
                 "description": "plan7 P7-B streaming e2e",
                 "visibility": "company",
             },

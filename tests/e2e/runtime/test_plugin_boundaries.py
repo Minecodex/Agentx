@@ -216,9 +216,8 @@ def test_dynamic_plugin_chain_in_browser(
         "AGENTX_E2E_RUN_ID": installed_agentx["run_id"],
         "AGENTX_PLUGIN_BOUNDARY_PACKAGE": str(boundary_package),
     }
-    pnpm = ("corepack.cmd", "pnpm") if os.name == "nt" else ("corepack", "pnpm")
     _run_playwright(
-        pnpm, "plugin-boundaries", ("tests/canvas-plugin-boundaries.spec.ts",), environment, installed_agentx["root"]
+        "plugin-boundaries", ("tests/canvas-plugin-boundaries.spec.ts",), environment, installed_agentx["root"]
     )
 
 
@@ -306,5 +305,5 @@ def test_plugin_publish_versions_and_historical_trace(
         "AGENTX_PLUGIN_EXECUTION_OUTPUT": str(evidence),
     }
     pnpm = ("corepack.cmd", "pnpm") if os.name == "nt" else ("corepack", "pnpm")
-    _run_playwright(pnpm, "canvas-plugins", ("tests/canvas-plugins.spec.ts",), environment, root)
+    _run_playwright("canvas-plugins", ("tests/canvas-plugins.spec.ts",), environment, root)
     _verify_plugin_trace_degradation(pnpm, environment, root, installed_agentx["runtime_namespace"], evidence)

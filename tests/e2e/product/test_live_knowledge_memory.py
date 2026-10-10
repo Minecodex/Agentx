@@ -20,10 +20,10 @@ pytestmark = [pytest.mark.cluster, pytest.mark.product, pytest.mark.live_model]
 
 
 @pytest.fixture(scope="module")
-def live_indexed_document(live_providers, installed_agentx, run_id):
+def live_indexed_document(live_providers, installed_agentx, run_id, request):
     control = live_providers["control"]
     path = f"/api/v1/knowledge/resources/{live_providers['ragId']}"
-    marker = f"sapphire-orbit-{run_id}"
+    marker = f"sapphire-orbit-{run_id}-{request.node.name}"
     content = f"水星计划由蓝桥团队负责。水星计划唯一发布代号是 {marker}。正式上线日期为2026年11月5日。负责人是林晓。"
     uploaded = control.post(
         f"{path}/documents", files={"file": ("p7-live-document.md", content.encode(), "text/markdown")}

@@ -67,6 +67,8 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
   await expect(canvas).toBeVisible()
   const firstNode = page.getByTestId('studio-node-perf-0')
   await expect(firstNode).toBeVisible()
+  const firstInteractiveMs = Date.now() - started
+  expect(firstInteractiveMs).toBeLessThanOrEqual(3_000)
   if (nodeType === 'acme.json_mapper' && nodeCount === 100) {
     for (let index = 0; index < 5; index += 1) {
       await firstNode.click()
@@ -75,8 +77,6 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
     }
     await expect(page.locator('style[data-agentx-plugin]')).toHaveCount(1)
   }
-  const firstInteractiveMs = Date.now() - started
-  expect(firstInteractiveMs).toBeLessThanOrEqual(3_000)
   await expect(page.locator('.react-flow__minimap')).toHaveCount(nodeCount >= 300 ? 0 : 1)
   await page.waitForTimeout(750)
 

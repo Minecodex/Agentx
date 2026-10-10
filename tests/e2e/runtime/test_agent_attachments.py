@@ -400,7 +400,7 @@ def test_agent_attachments_follow_the_published_workflow_main_chain(
         calls = details.json()["calls"]
         assert sum(call["callKind"] == "model" for call in calls) == 2
         assert sum(call["callKind"] == "mcp_tool" for call in calls) == 1
-        assert all(call["status"] == "succeeded" for call in calls)
+        assert all(call["status"] == "succeeded" for call in calls), calls
 
         registry_json = _runtime_mysql(
             installed_agentx,

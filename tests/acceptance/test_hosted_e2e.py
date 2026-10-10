@@ -53,14 +53,20 @@ def test_minikube_download_must_match_the_pinned_release_digest(monkeypatch, tmp
 def test_hosted_values_keep_the_candidate_images_and_limit_private_network_access():
     source = yaml.safe_load(Path("deploy/values/dockerhub-beta.yaml").read_text())
     snapshot = copy.deepcopy(source)
-    values = hosted_values(source, gateway="192.168.49.1", subnet="192.168.49.0/24")
+    values = hosted_values(
+        source,
+        gateway="192.168.49.1",
+        subnet="192.168.49.0/24",
+        sandbox_gateway="172.17.0.1",
+        sandbox_subnet="172.17.0.0/16",
+    )
     assert source == snapshot
     assert values["global"]["images"] == source["global"]["images"]
     assert values["global"]["ingress"]["serviceType"] == "NodePort"
     assert values["global"]["components"]["sandbox"]["endpoint"] == "http://192.168.49.1:18080"
     access = values["global"]["network"]["egressGateway"]["sandboxAccess"]
-    assert access["endpoint"] == f"https://{PROFILE}:31129"
-    assert access["sourceCidrs"] == ["192.168.49.0/24"]
+    assert access["endpoint"] == "https://172.17.0.1:31129"
+    assert access["sourceCidrs"] == ["192.168.49.0/24", "172.17.0.0/16"]
     assert values["global"]["network"]["externalEgress"]["opensandbox"] == {
         "cidrs": ["192.168.49.1/32"],
         "ports": [18080],
@@ -133,6 +139,10 @@ def test_hosted_cluster_is_deleted_even_when_startup_and_diagnostics_fail(monkey
 
     def command(args, **kwargs):
         commands.append(args)
+        if args == ("docker", "network", "inspect", "bridge"):
+            return Result(
+                tuple(args), '[{"IPAM":{"Config":[{"Subnet":"172.17.0.0/16","Gateway":"172.17.0.1"}]}}]', "", 0
+            )
         if args[:2] == ("minikube", "start"):
             raise RuntimeError("cluster startup failed")
         if args[0] == "kubectl":
@@ -155,6 +165,10 @@ def test_hosted_cluster_does_not_delete_a_preexisting_network(monkeypatch, tmp_p
 
     def command(args, **kwargs):
         commands.append(args)
+        if args == ("docker", "network", "inspect", "bridge"):
+            return Result(
+                tuple(args), '[{"IPAM":{"Config":[{"Subnet":"172.17.0.0/16","Gateway":"172.17.0.1"}]}}]', "", 0
+            )
         if args[:3] == ("docker", "network", "create"):
             raise RuntimeError("network already exists")
         return Result(tuple(args), "", "", 0)
@@ -184,6 +198,8 @@ def test_hosted_cluster_enforces_the_measured_cpu_limit(monkeypatch, tmp_path):
         if args[:2] == ("docker", "update"):
             assert args == ("docker", "update", f"--cpus={CPU_COUNT}", PROFILE)
             resources["NanoCpus"] = CPU_COUNT * 10**9
+        elif args == ("docker", "network", "inspect", "bridge"):
+            payload = json.dumps([{"IPAM": {"Config": [{"Subnet": "172.17.0.0/16", "Gateway": "172.17.0.1"}]}}])
         elif args[:3] == ("docker", "network", "inspect"):
             payload = json.dumps([{"IPAM": {"Config": [{"Subnet": "192.168.49.0/24", "Gateway": "192.168.49.1"}]}}])
         elif args == ("minikube", "-p", PROFILE, "ip"):
