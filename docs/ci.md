@@ -20,6 +20,8 @@ Ubuntu / Windows 原有 `cargo xtask check --fast` 门禁与新增前端 lint、
 
 Kubernetes E2E 固定在 GitHub 托管 `ubuntu-24.04` 上运行，由 `pytest tests/e2e --minikube` 创建 Minikube 1.39.0 / Kubernetes 1.36.1 / Calico 临时集群，结束时删除集群和 Docker 网络。它是必需任务，失败、取消或跳过均阻止 `CI`；不再使用自托管 Runner 或启用开关。
 
+临时集群显式使用 API 端口 6443，符合现有 Ingress controller/证书 Job 的 API Egress 合同；Minikube 默认 8443 会在安装后已有默认拒绝策略的升级阶段被阻止。保持原网络策略，升级期间额外保存所有当前 run 所属 Namespace 的容器及 Helm Hook 失败日志。
+
 Windows 保留原生 Rust、ctl、Python/Helm 检查和 Release 二进制打包。服务镜像与 Kubernetes 节点为 Linux，因此不再重复部署一套 Windows Docker Desktop 集群 E2E。
 
 Linux E2E 从当前 PR 源码调用 `cargo xtask images` 构建正式镜像及 Echo、CPU Embedding、Mem0、LightRAG 缓存测试镜像，并导入临时节点。Minikube 启动后显式设置 Docker 的 4 CPU 配额和 12 GiB 内存上限，容量证据核对实际容器限制。OpenSandbox 0.2.2 使用同一 Docker 网络自动启动。PR 必须完成受控提供商的实际业务、数据库、浏览器、恢复和隔离检查；真实模型质量与容量不计入这个 PR 检查的通过范围。

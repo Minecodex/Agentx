@@ -11,7 +11,10 @@ from tests.e2e.support import redact, run
 
 
 def workload_logs(namespace: str, selector: str) -> str:
-    result = run(("kubectl", "-n", namespace, "get", "pods", "-l", selector, "-o", "json"), check=False, timeout=60)
+    command = ("kubectl", "-n", namespace, "get", "pods", "-o", "json")
+    if selector:
+        command += ("-l", selector)
+    result = run(command, check=False, timeout=60)
     if result.returncode:
         return redact(result.stdout + result.stderr)
     sections = []

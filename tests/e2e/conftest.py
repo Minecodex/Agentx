@@ -157,8 +157,9 @@ def _collect_artifacts(context: dict[str, str], artifact_dir: Path, timeline: li
             result = run(command, check=False, timeout=180)
             content = result.stdout + (f"\n{result.stderr}" if result.stderr else "")
             (artifact_dir / f"{plane}-{label}.txt").write_text(redact(content), encoding="utf-8")
-        selector = "agentx.io/plane in (runtime,observability)" if plane == "runtime" else f"agentx.io/plane={plane}"
-        (artifact_dir / f"{plane}-logs.txt").write_text(workload_logs(namespace, selector), encoding="utf-8")
+        # These namespaces belong to this run. Include dependency Helm hooks
+        # whose upstream labels do not use agentx.io/plane.
+        (artifact_dir / f"{plane}-logs.txt").write_text(workload_logs(namespace, ""), encoding="utf-8")
     (artifact_dir / "timeline.txt").write_text("\n".join(timeline) + "\n", encoding="utf-8")
 
 

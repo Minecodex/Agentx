@@ -108,6 +108,7 @@ def minikube_environment(values_path: Path, directory: Path) -> Iterator[Path]:
                 PROFILE,
                 "--driver=docker",
                 "--container-runtime=containerd",
+                "--apiserver-port=6443",
                 f"--kubernetes-version={KUBERNETES_VERSION}",
                 "--cni=calico",
                 f"--cpus={CPU_COUNT}",
