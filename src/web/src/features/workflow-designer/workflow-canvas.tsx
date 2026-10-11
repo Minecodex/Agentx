@@ -81,6 +81,10 @@ type StudioValidationIssue = {
   values?: Record<string, string>;
 };
 
+function combineFrozenManifests(results: Array<{ data?: { manifest: NodeManifest } }>) {
+  return results.flatMap((result) => result.data ? [result.data.manifest] : []);
+}
+
 export function WorkflowCanvas() {
   const { workflowId = "" } = useParams();
   const { t, i18n } = useTranslation();
@@ -147,12 +151,13 @@ export function WorkflowCanvas() {
       .filter((key) => !available.has(key)))]
       .map((key) => { const separator = key.lastIndexOf("@"); return { nodeType: key.slice(0, separator), version: Number(key.slice(separator + 1)) }; });
   }, [catalog.data, draft.data?.definition]);
-  const frozenManifestQueries = useQueries({
+  const documentManifests = useQueries({
     queries: missingManifestKeys.map(({ nodeType, version }) => ({
       queryKey: ["node-definition-frozen", nodeType, version],
       queryFn: () => loadNodeDefinition(nodeType, version),
       staleTime: Infinity,
     })),
+    combine: combineFrozenManifests,
   });
   const versions = useQuery({
     queryKey: ["workflow-versions", workflowId],
@@ -185,10 +190,6 @@ export function WorkflowCanvas() {
   const manifests = useMemo(
     () => (catalog.data ?? []).map((item) => item.manifest),
     [catalog.data],
-  );
-  const documentManifests = useMemo(
-    () => frozenManifestQueries.flatMap((query) => query.data ? [query.data.manifest] : []),
-    [frozenManifestQueries],
   );
   const subworkflowOptions = useProviderOptions(
     manifests.find((manifest) => manifest.nodeType === "sub_workflow"),

@@ -263,7 +263,14 @@ def test_hosted_image_builder_includes_every_local_provider_fixture(monkeypatch)
 
 
 def test_hosted_ci_keeps_core_system_e2e_and_defers_dedicated_environment_acceptance():
-    quality = yaml.safe_load(Path(".github/workflows/quality.yml").read_text())["jobs"]
+    workflow = yaml.safe_load(Path(".github/workflows/quality.yml").read_text())
+    assert workflow["concurrency"]["cancel-in-progress"] == "${{ !inputs.full }}"
+    assert "github.sha" in workflow["concurrency"]["group"]
+    quality = workflow["jobs"]
+    for job in quality.values():
+        for step in job.get("steps", []):
+            if step.get("uses") == "actions/checkout@v4":
+                assert step["with"]["ref"] == "${{ inputs.ref || github.sha }}"
     assert "kubernetes-e2e-windows" not in quality
     linux = quality["kubernetes-e2e-linux"]
     assert linux["runs-on"] == "ubuntu-24.04" and "if" not in linux

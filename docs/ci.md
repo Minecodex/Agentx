@@ -20,9 +20,13 @@
 
 画布的插件契约和变量目录只订阅节点数据、连接、Start/End 和执行设置；拖动、尺寸测量与视口变化不再重新序列化全部插件或重建变量目录。参数修改即使不改变 GraphIndex revision 也会刷新定义；保存、恢复与历史记录仍读取当前完整文档。
 
-performance diagnostics 额外记录 300 节点 CPU profile，用于定位主线程热点；其带采样器的数字不作为性能通过证明。正常 full 不启动 CPU profiler。两种入口都保留原始逐帧、输入事件和长任务样本，拖动与滚轮延迟可分别追溯。
+冻结节点查询通过 TanStack Query combine 保持相同数据的引用稳定。工具栏脏状态变化不再重新生成基础契约 Map，避免连带重建所有插件、图索引和可见节点。
+
+performance-profile diagnostics 额外记录 300 节点 CPU profile，用于定位主线程热点；其带采样器的数字不作为性能通过证明。正常 full 和 performance diagnostics 不启动 CPU profiler。两种测量都保留原始逐帧、输入事件和长任务样本，拖动与滚轮延迟可分别追溯。
 
 系统入口保持 `pytest tests/e2e`，通过 `--ci-profile pr|release|independent` 选择范围。独立验收默认保留全部测试及原有容量阈值；Actions 不提供真实模型密钥，不把环境测试排除报告为通过。Minikube/网络及证据按运行所有权创建和清理。
+
+所有 quality Job 默认检出触发时的 github.sha；可复用的发布入口显式传入同一不可变 ref。full 并发组包含候选 SHA/ref，不会因修复分支继续提交而取消另一候选的完整验收；普通 PR 保留只检验当前提交的取消行为。
 
 完整托管软件验证：
 ```sh

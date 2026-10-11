@@ -11,6 +11,7 @@ import { deserializeDraft, serializeStudio } from './model/serializer'
 import { samePersistedDraft } from './model/draft-persistence'
 import type { NodeManifest, WorkflowDefinition } from './model/types'
 import { useEditorStore } from './store/editor-store'
+import { useCanvasRenderStore } from './store/canvas-render-store'
 import { WorkflowCanvas } from './workflow-canvas'
 
 const editorDocument = { nodeLayouts: [{ nodeId: 'trigger', x: 100, y: 100 }, { nodeId: 'exit', x: 560, y: 100 }], boundaryLayouts: [], edges: [], annotations: [], groups: [], viewport: { x: 0, y: 0, zoom: 1 } }
@@ -48,6 +49,17 @@ describe('workflow studio shell', () => {
       if (path.endsWith('/environments') || path.endsWith('/versions') || path.endsWith('/mcp/tools')) return json([])
       return json({ items: [], page: 1, pageSize: 100, total: 0 })
     }))
+  })
+
+  it('keeps resolved render contracts stable when a drag only changes toolbar and position state', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/editor']}><Routes><Route element={<WorkflowCanvas />} path="/workflows/:workflowId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
+    await screen.findByTestId('workflow-canvas')
+    const contracts = useCanvasRenderStore.getState().manifests
+    expect(contracts.size).toBeGreaterThan(0)
+    act(() => useEditorStore.getState().onNodesChange([{ id: 'trigger', type: 'position', position: { x: 140, y: 180 }, dragging: true }]))
+    await screen.findByText(/Unsaved/)
+    expect(useCanvasRenderStore.getState().manifests).toBe(contracts)
   })
 
   it('keeps edits made during an earlier save dirty and available to the next save', async () => {

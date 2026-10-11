@@ -8,7 +8,7 @@ on:
       suite:
         description: Focused diagnostic scope; never release certification
         type: choice
-        options: [pr, controlled, performance, attachments, studio]
+        options: [pr, controlled, performance, performance-profile, attachments, studio]
         default: pr
 
 permissions:
@@ -31,18 +31,19 @@ jobs:
           import os
           import subprocess
 
-          profiles = {'pr': 'pr', 'controlled': 'release', 'performance': 'independent', 'attachments': 'independent', 'studio': 'independent'}
+          profiles = {'pr': 'pr', 'controlled': 'release', 'performance': 'independent', 'performance-profile': 'independent', 'attachments': 'independent', 'studio': 'independent'}
           suite = os.environ['SUITE']
           selections = {
               'performance': ['tests/e2e/product/test_canvas_performance.py'],
+              'performance-profile': ['tests/e2e/product/test_canvas_performance.py'],
               'attachments': ['tests/e2e/product/test_remaining_faults.py::test_model_transport_faults_are_failed_and_have_call_trace', 'tests/e2e/runtime/test_agent_attachments.py'],
               'studio': ['tests/e2e/product/test_playwright.py'],
           }
           selected = selections.get(suite, ['tests/e2e'])
           environment = os.environ.copy()
-          if suite in ('performance', 'attachments', 'studio'):
+          if suite in ('performance', 'performance-profile', 'attachments', 'studio'):
               environment['AGENTX_E2E_RAGFLOW_DISABLE'] = '1'
-          if suite == 'performance':
+          if suite == 'performance-profile':
               environment['AGENTX_E2E_CANVAS_PROFILE'] = '1'
           if suite == 'studio':
               environment['AGENTX_E2E_ONLY_SUITE'] = 'product-closure'
