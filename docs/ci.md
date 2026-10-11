@@ -8,18 +8,26 @@
 | --- | --- |
 | 普通 PR / master push | Windows/Linux 原生源码、前端 lint/单测/构建；临时 Minikube 中 30 项核心系统测试 |
 | quality 手动 full / 版本候选 | 全部受控系统、浏览器、提供商容器、权限、故障及升级回归；排除真实模型与生产容量 |
+| full 画布性能 Job | 独立托管 Runner 与全新临时 Minikube，只运行原画布 benchmark，保留原帧率/输入延迟阈值 |
 | agentxctl-release | 同一不可变 Tag 的完整托管软件检查；Windows/Linux 候选包构建、解压和原生执行；只保存 Actions 制品 |
 | 独立环境 | 真实 Kimi/知识记忆质量、冻结容量矩阵和两小时窗口、公共注册表签名及正式发布认证 |
 
 核心测试清单在 [ci_profiles.py](../tests/e2e/ci_profiles.py)。PR 保留安装、镜像归属、初始化、流式模型、应用会话、渠道投递、Loop 恢复、幂等与鉴权，以及画布插件/API-first/应用文档和资源加载的真实浏览器流程。完整提供商、画布性能、复杂业务组合和全部故障矩阵在托管发布范围执行。清单中的测试缺失或选择为空时直接失败。
 
+当前收集为 PR 30 项、完整受控功能 107 项及独立性能 1 项；默认 independent 保留全部 130 项，包括 22 项真实模型/容量参数化测试。依赖真实 Kimi 凭证的测试必须声明 live_model，遗漏声明在托管收集阶段直接报错。性能 Job 不部署与指标无关的 RAGFlow；仍使用实际安装的 UI/API、实际插件制品和原 benchmark，不在普通 PR 执行。
+
 系统入口保持 `pytest tests/e2e`，通过 `--ci-profile pr|release|independent` 选择范围。独立验收默认保留全部测试及原有容量阈值；Actions 不提供真实模型密钥，不把环境测试排除报告为通过。Minikube/网络及证据按运行所有权创建和清理。
 
 完整托管软件验证：
 ```sh
-uv run --frozen --group test pytest tests/e2e --minikube --values deploy/values/local.yaml --ci-profile release
+uv run --frozen --group test pytest tests/e2e --minikube --values deploy/values/local.yaml --ci-profile release -m 'not browser_performance'
+
+# 独立的一次托管性能运行；CI 为该步骤另起 Runner/临时集群
+uv run --frozen --group test pytest tests/e2e/product/test_canvas_performance.py --minikube --values deploy/values/local.yaml
 ```
 
 独立环境具备后使用默认 independent 范围、真实临时提供商凭据和实际兼容 Worker 摘要执行既有认证；现有 `tools/scripts/release` 的完整证据、签名与公开发布校验继续保留。Actions 不推送 Docker Hub 镜像、不创建公开 CLI Release，也不依赖专用 Runner、Actions Secret 或 Environment。
 
 `E2E diagnostics` 仅聚焦 PR/受控范围，不产生必需 CI 或正式认证。源码固定在当前候选，截图基线必须显式更新并正常比较复验。包、存储、网络、权限、TLS 与供给链的原有断言不放宽。没有定时任务。
+
+Minikube 显式映射的 NodePort 地址/端口在 agentxctl --run-id 作用域处理后保留，避免被改写为容器中不可解析的 Docker Desktop 地址。当前节点矩阵截图已与实际 Linux UI 对照并显式更新，像素比较保持有效。Redis 恢复等待 Gateway 观察到重连，拒绝期间仍不得产生 Receipt；调用投影等待终态，失败调用仍使测试失败。

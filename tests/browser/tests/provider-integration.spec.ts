@@ -659,7 +659,7 @@ test.describe.serial('Provider integration', () => {
     await ensureModelResources(page, token)
     const stamp = Date.now()
     const knowledgeName = `Provider RAGflow Alias ${stamp}`
-    await createKnowledgeViaUi(page, `Provider RAGflow Alias Connection ${stamp}`, ragflowAliasBaseUrl, '/', knowledgeName, `ragflow-alias-${stamp}`)
+    await createKnowledgeViaUi(page, `Provider RAGflow Alias Connection ${stamp}`, ragflowAliasBaseUrl, '/', knowledgeName, `ragflow_alias_${stamp}`)
     const workflowName = `Provider RAGflow Workflow ${stamp}`
     const workflowId = await createWorkflow(page, workflowName)
     for (const [type, name] of [['credential', providerCredentialName], ['model', providerModelAlias], ['rag', knowledgeName]] as Array<[keyof typeof resourceTabs, string]>) {

@@ -33,6 +33,7 @@ import { useResolvedPluginManifests } from "./api/use-resolved-plugin-manifests"
 import { useResourceOptions, type ResourceOptionRequest } from "./api/use-resource-options";
 import { WorkflowFlow, type WorkflowFlowHandle } from "./canvas/workflow-flow";
 import { deserializeDraft, serializeStudio } from "./model/serializer";
+import { samePersistedDraft } from "./model/draft-persistence";
 import type { ExitNodeData, NodeManifest, ResourceOption, ResourceRequestContext, ResourceType, StudioDocument } from "./model/types";
 import {
   canvasNodeMetrics,
@@ -180,15 +181,6 @@ export function WorkflowCanvas() {
     await queryClient.invalidateQueries({ queryKey: ["studio-resource-options", workflowId] });
     showToast(t("studio.toasts.resourceAuthorized"));
   }, [queryClient, showToast, t, workflowId]);
-  const requestResource = useCallback(async (option: ResourceOption, context?: ResourceRequestContext) => {
-    await apiRequest(`/workflows/${workflowId}/resource-grant-requests`, {
-      method: "POST",
-      headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: jsonBody({ resourceType: option.resourceType ?? "model", resourceId: option.value, resourceVersionId: option.versionId ?? null, operation: option.operation ?? "use", sourceNodeId: context?.sourceNodeId, sourceRevision: draft.data?.revision, message: context?.message }),
-    });
-    await queryClient.invalidateQueries({ queryKey: ["studio-resource-options", workflowId] });
-    showToast(t("studio.toasts.resourceRequested"));
-  }, [draft.data?.revision, queryClient, showToast, t, workflowId]);
   const manifests = useMemo(
     () => (catalog.data ?? []).map((item) => item.manifest),
     [catalog.data],
@@ -437,6 +429,7 @@ export function WorkflowCanvas() {
     return () => window.removeEventListener("beforeunload", beforeUnload);
   }, []);
 
+  const saveInFlight = useRef<ReturnType<typeof saveDraft> | undefined>(undefined);
   const saveMutation = useMutation({
     mutationFn: ({
       expectedRevision,
@@ -453,10 +446,12 @@ export function WorkflowCanvas() {
         serialized.editorDocument,
       );
     },
-    onSuccess: async (value) => {
+    onSuccess: async (value, { document }) => {
       setRevision(value.revision);
       setLocatedIssue(undefined);
-      editor.markSaved();
+      if (samePersistedDraft(document, studioDocument(useEditorStore.getState()))) {
+        editor.markSaved();
+      }
       clearRecovery(workflowId);
       queryClient.setQueryData(["workflow-draft", workflowId], value);
       await Promise.all([
@@ -494,20 +489,59 @@ export function WorkflowCanvas() {
       } else showToast(error.message);
     },
   });
+  const persistDocument = useCallback((input: Parameters<typeof saveMutation.mutateAsync>[0]) => {
+    if (saveInFlight.current) return saveInFlight.current;
+    const pending = saveMutation.mutateAsync(input);
+    saveInFlight.current = pending;
+    const clear = () => {
+      if (saveInFlight.current === pending) saveInFlight.current = undefined;
+    };
+    void pending.then(clear, clear);
+    return pending;
+  }, [saveMutation]);
   const saveDocument = useCallback(
     (showValidation = true) => {
-      if (saveMutation.isPending) return;
+      if (saveInFlight.current || saveMutation.isPending) return;
       const document = studioDocument(useEditorStore.getState());
       const structuralIssues = definitionIssues(document);
       if (structuralIssues.length) {
         if (showValidation) setIssues(structuralIssues);
         return;
       }
-      saveMutation.mutate({ expectedRevision: revision, document });
+      void persistDocument({ expectedRevision: revision, document }).catch(() => undefined);
     },
-    [revision, saveMutation],
+    [persistDocument, revision, saveMutation],
   );
   const saveNow = useCallback(() => saveDocument(), [saveDocument]);
+
+  const requestResource = useCallback(async (option: ResourceOption, context?: ResourceRequestContext) => {
+    // A request is reviewed against a saved revision. Serialize with any
+    // autosave, then persist edits made while that earlier save was pending.
+    if (saveInFlight.current) await saveInFlight.current;
+    let sourceRevision: number | undefined = queryClient.getQueryData<WorkflowDraft>(["workflow-draft", workflowId])?.revision ?? revision;
+    while (useEditorStore.getState().dirty) {
+      const document = studioDocument(useEditorStore.getState());
+      // An incomplete Agent may need this resource before it can be saved.
+      // Such requests use the existing subject/package scope, without
+      // claiming an earlier saved draft as their source.
+      if (definitionIssues(document).length) {
+        sourceRevision = undefined;
+        break;
+      }
+      const saved = await persistDocument({
+        expectedRevision: sourceRevision,
+        document,
+      });
+      sourceRevision = saved.revision;
+    }
+    await apiRequest(`/workflows/${workflowId}/resource-grant-requests`, {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: jsonBody({ resourceType: option.resourceType ?? "model", resourceId: option.value, resourceVersionId: option.versionId ?? null, operation: option.operation ?? "use", sourceNodeId: context?.sourceNodeId, sourceRevision, message: context?.message }),
+    });
+    await queryClient.invalidateQueries({ queryKey: ["studio-resource-options", workflowId] });
+    showToast(t("studio.toasts.resourceRequested"));
+  }, [persistDocument, queryClient, revision, showToast, t, workflowId]);
 
   useEffect(() => {
     let timer: number | undefined;
@@ -843,10 +877,10 @@ export function WorkflowCanvas() {
     const local = studioDocument(useEditorStore.getState());
     const result = await draft.refetch();
     if (result.data)
-      saveMutation.mutate({
+      void persistDocument({
         expectedRevision: result.data.revision,
         document: local,
-      });
+      }).catch(() => undefined);
     setConflictOpen(false);
   };
   const locateIssue = (issue: StudioValidationIssue) => {

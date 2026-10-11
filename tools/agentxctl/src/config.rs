@@ -203,10 +203,9 @@ impl DeploymentConfig {
             .values
             .pointer_mut("/global/ingress/className")
             .unwrap() = format!("agentx-e2e-{normalized}").into();
-        if matches!(
-            self.string("/global/network/egressGateway/sandboxAccess/mode"),
-            Some("nodePort" | "privateLoadBalancer")
-        ) {
+        if self.string("/global/network/egressGateway/sandboxAccess/mode")
+            == Some("privateLoadBalancer")
+        {
             let port = deterministic_e2e_node_port(&normalized);
             *self
                 .values
@@ -851,6 +850,39 @@ mod tests {
         assert_eq!(
             config.string("/global/components/sandbox/endpoint"),
             Some("http://host.docker.internal:18080")
+        );
+    }
+
+    #[test]
+    fn run_id_preserves_an_explicit_external_node_port_binding() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut values: serde_yaml::Value = serde_yaml::from_str(
+            &std::fs::read_to_string(root.join("deploy/values/local.yaml")).unwrap(),
+        )
+        .unwrap();
+        let access = &mut values["global"]["network"]["egressGateway"]["sandboxAccess"];
+        access["mode"] = "nodePort".into();
+        access["endpoint"] = "https://172.18.0.1:31129".into();
+        access["port"] = serde_yaml::Value::Number(31_129.into());
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("hosted.yaml");
+        std::fs::write(&path, serde_yaml::to_string(&values).unwrap()).unwrap();
+        let config = DeploymentConfig::load(path, Some("hosted-binding")).unwrap();
+        assert_eq!(
+            config.string("/global/network/egressGateway/sandboxAccess/endpoint"),
+            Some("https://172.18.0.1:31129")
+        );
+        assert_eq!(
+            config.u64("/global/network/egressGateway/sandboxAccess/port"),
+            Some(31_129)
+        );
+        assert_eq!(
+            config.string("/global/network/egressGateway/sandboxAccess/mode"),
+            Some("nodePort")
+        );
+        assert_eq!(
+            config.namespace("runtime"),
+            "agentx-e2e-runtime-hosted-binding"
         );
     }
 

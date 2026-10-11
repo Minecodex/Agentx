@@ -59,6 +59,7 @@ def test_model_transport_faults_are_failed_and_have_call_trace(boundary_state, f
     )
 
 
+@pytest.mark.live_model
 def test_real_lightrag_unavailable_restart_and_invalid_auth_are_observable(
     boundary_state, live_providers, live_indexed_document, cpu_embedding_service
 ):
@@ -202,6 +203,7 @@ def memory_ask(state, app):
     return result, [c for c in calls if c["callKind"] == "memory"]
 
 
+@pytest.mark.live_model
 def test_real_mem0_outage_auth_failure_and_same_application_recovery(
     boundary_state, live_providers, cpu_embedding_service
 ):
@@ -280,6 +282,7 @@ def test_real_mem0_outage_auth_failure_and_same_application_recovery(
     )
 
 
+@pytest.mark.live_model
 def test_real_kimi_stream_resumes_after_gateway_restart_without_duplicate_deltas(boundary_state, live_application):
     state = boundary_state
     app = live_application

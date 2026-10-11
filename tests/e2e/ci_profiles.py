@@ -43,6 +43,8 @@ def select_ci_profile(config: pytest.Config, items: list[pytest.Item]) -> None:
         raise pytest.UsageError(f"Core PR scenarios missing from collection: {sorted(missing)}")
     selected, deselected = [], []
     for item in items:
+        if "live_kimi_secret" in item.fixturenames and not item.get_closest_marker("live_model"):
+            raise pytest.UsageError(f"Real credential dependency must be declared live_model: {item.nodeid}")
         node = item.nodeid.replace("\\", "/").removeprefix("tests/e2e/").split("[", 1)[0]
         special_environment = any(item.get_closest_marker(mark) for mark in ("capacity", "live_model"))
         include = not special_environment and (profile == "release" or node in PR_TESTS)

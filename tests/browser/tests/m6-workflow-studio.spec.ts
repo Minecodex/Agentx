@@ -169,11 +169,17 @@ async function openNodeBasics(details: Locator) {
 async function connect(page: Page, source: Locator, sourceHandle: string, target: Locator, targetHandle: string) {
   const edges = page.locator('.react-flow__edge')
   const edgeCount = await edges.count()
+  const sourceId = await source.evaluate(element => element.closest('.react-flow__node')?.getAttribute('data-id'))
+  const targetId = await target.evaluate(element => element.closest('.react-flow__node')?.getAttribute('data-id'))
+  expect(sourceId).toBeTruthy()
+  expect(targetId).toBeTruthy()
+  const connection = page.locator(`.react-flow__edge[aria-label="Edge from ${sourceId} to ${targetId}"]`)
+  const connectionCount = await connection.count()
   const from = source.locator(`.react-flow__handle.source[data-handleid="${sourceHandle}"]`)
   const to = target.locator(`.react-flow__handle.target[data-handleid="${targetHandle}"]`)
   await expect(from).toBeVisible()
   await expect(to).toBeVisible()
-  for (let attempt = 0; attempt < 3 && await edges.count() === edgeCount; attempt += 1) {
+  for (let attempt = 0; attempt < 3 && await connection.count() === connectionCount; attempt += 1) {
     let boxes: Awaited<ReturnType<Locator['boundingBox']>>[] | undefined
     await expect.poll(async () => {
       const next = await Promise.all([from.boundingBox(), to.boundingBox()])
@@ -189,6 +195,7 @@ async function connect(page: Page, source: Locator, sourceHandle: string, target
     await page.mouse.up()
     await page.waitForTimeout(200)
   }
+  await expect(connection).toHaveCount(connectionCount + 1)
   await expect(edges).toHaveCount(edgeCount + 1)
 }
 type InputBinding =

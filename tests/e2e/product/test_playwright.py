@@ -199,13 +199,17 @@ def test_product_playwright_suite(
                 ),
             ),
             ("workflow-multi-exit", ("tests/workflow-multi-exit.spec.ts",)),
-            ("workflow-performance", ("tests/workflow-canvas-performance.spec.ts", "--workers=1")),
         )
         only_suites = {
             suite.strip() for suite in os.environ.get("AGENTX_E2E_ONLY_SUITE", "").split(",") if suite.strip()
         }
         if core_pr:
             only_suites = {"canvas-plugins", "api-first", "application-docs"}
+        unknown = only_suites - {name for name, _ in suites}
+        if unknown:
+            raise pytest.UsageError(
+                f"Unknown product suites: {sorted(unknown)}; canvas performance uses test_canvas_performance.py"
+            )
         playwright_grep = os.environ.get("AGENTX_E2E_PLAYWRIGHT_GREP")
         failures: list[str] = []
         for suite, tests in suites:

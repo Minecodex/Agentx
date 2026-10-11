@@ -8,6 +8,7 @@ import { ToastProvider } from '../../shared/ui/toast'
 import { i18n } from '../../app/i18n'
 import { ThemeProvider } from '../../app/providers/theme-provider'
 import { deserializeDraft, serializeStudio } from './model/serializer'
+import { samePersistedDraft } from './model/draft-persistence'
 import type { NodeManifest, WorkflowDefinition } from './model/types'
 import { useEditorStore } from './store/editor-store'
 import { WorkflowCanvas } from './workflow-canvas'
@@ -47,6 +48,39 @@ describe('workflow studio shell', () => {
       if (path.endsWith('/environments') || path.endsWith('/versions') || path.endsWith('/mcp/tools')) return json([])
       return json({ items: [], page: 1, pageSize: 100, total: 0 })
     }))
+  })
+
+  it('keeps edits made during an earlier save dirty and available to the next save', async () => {
+    const fallback = vi.mocked(fetch).getMockImplementation()!
+    let finishSave: ((response: Response) => void) | undefined
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      if (String(input).endsWith('/draft') && init?.method === 'PUT') {
+        return new Promise<Response>(resolve => { finishSave = resolve })
+      }
+      return fallback(input, init)
+    })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/editor']}><Routes><Route element={<WorkflowCanvas />} path="/workflows/:workflowId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Search nodes' }), { target: { value: 'set' } })
+    fireEvent.click(await screen.findByTestId('palette-action-set'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(finishSave).toBeDefined())
+    const movedNode = useEditorStore.getState().nodes.at(-1)!.id
+    act(() => useEditorStore.getState().onNodesChange([{ id: movedNode, type: 'position', position: { x: 990, y: 330 }, dragging: true }]))
+    const editedNodes = useEditorStore.getState().nodes.length
+    await act(async () => { finishSave!(json({ ...draft, revision: 1 })) })
+    await waitFor(() => expect(queryClient.getQueryData<{ revision: number }>(['workflow-draft', 'workflow-1'])?.revision).toBe(1))
+    expect(useEditorStore.getState().nodes).toHaveLength(editedNodes)
+    expect(useEditorStore.getState().nodes.find(node => node.id === movedNode)?.position).toEqual({ x: 990, y: 330 })
+    expect(useEditorStore.getState().dirty).toBe(true)
+  })
+
+  it('compares persisted data while ignoring selection changes', () => {
+    const saved = deserializeDraft(draft)
+    const selection = { ...saved, nodes: saved.nodes.map(node => ({ ...node, selected: true })) }
+    expect(samePersistedDraft(saved, selection)).toBe(true)
+    const moved = { ...saved, nodes: saved.nodes.map(node => ({ ...node, position: { x: node.position.x + 20, y: node.position.y } })) }
+    expect(samePersistedDraft(saved, moved)).toBe(false)
   })
 
   it('keeps local edits and offers all explicit conflict choices', async () => {

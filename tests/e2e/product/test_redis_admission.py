@@ -206,12 +206,24 @@ def test_redis_unavailable_refuses_and_recovers_without_accepting_work(boundary_
             assert invocation_count(context, app["applicationId"]) == baseline
         finally:
             scale(context, "statefulset/runtime-redis", 1)
-        recovered = gateway.post(
-            f"/gateway/v1/applications/{app['slug']}/invocations",
-            headers={"Idempotency-Key": "redis-after-unavailable"},
-            json={"input": {"message": "recovered"}},
-        )
+        # Pod readiness precedes reconnecting the Gateway's existing socket.
+        # Refusals remain receipt-free; the same key permits exactly one
+        # admission when the client observes the restored Redis service.
+        deadline = time.monotonic() + 30
+        while True:
+            recovered = gateway.post(
+                f"/gateway/v1/applications/{app['slug']}/invocations",
+                headers={"Idempotency-Key": "redis-after-unavailable"},
+                json={"input": {"message": "recovered"}},
+            )
+            if recovered.status_code == 202:
+                break
+            assert recovered.status_code == 503 and recovered.json()["code"] == "RUNTIME_STORAGE_UNAVAILABLE", recovered.text
+            assert invocation_count(context, app["applicationId"]) == baseline
+            assert time.monotonic() < deadline, recovered.text
+            time.sleep(0.5)
         assert recovered.status_code == 202, recovered.text
+        assert invocation_count(context, app["applicationId"]) == baseline + 1
         metric(boundary_gateway_metrics, "agentx_redis_admission_available", lambda value: value == 1)
         report(
             state, "remaining-redis-unavailable", {"failedClosed": True, "noRejectedReceipt": True, "recovered": True}
