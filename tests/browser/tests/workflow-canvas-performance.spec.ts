@@ -67,11 +67,23 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
   })
 
   const started = Date.now()
+  const contractReady = nodeType === 'acme.json_mapper'
+    ? page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/workflows/${workflow.id}/draft/resolve-plugins`))
+    : undefined
   await page.goto(`/workflows/${workflow.id}/editor`)
   const canvas = page.getByTestId('workflow-canvas')
   await expect(canvas).toBeVisible()
   const firstNode = page.getByTestId('studio-node-perf-0')
   await expect(firstNode).toBeVisible()
+  if (contractReady) {
+    const response = await contractReady
+    expect(response.ok(), await response.text()).toBeTruthy()
+    const contracts = await response.json() as { nodes: Record<string, { status: string }> }
+    expect(Object.keys(contracts.nodes)).toHaveLength(nodeCount)
+    expect(Object.values(contracts.nodes).every(value => value.status === 'complete')).toBeTruthy()
+    await expect(firstNode).toContainText('Label: performance')
+  }
+  await page.evaluate(() => document.fonts.ready)
   const firstInteractiveMs = Date.now() - started
   expect(firstInteractiveMs).toBeLessThanOrEqual(3_000)
   if (nodeType === 'acme.json_mapper' && nodeCount === 100) {
