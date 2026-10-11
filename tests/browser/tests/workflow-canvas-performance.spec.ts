@@ -3,6 +3,10 @@ import { writeFile } from 'node:fs/promises'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
+// Recording video and DOM/screenshot traces adds work to every input frame.
+// Functional suites keep recording; this benchmark exports its raw metrics.
+test.use({ trace: 'off', video: 'off' })
+
 const password = 'agentx-e2e-admin-password'
 type Draft = { revision: number; updatedAt: string; [key: string]: unknown }
 type Metric = { nodeCount: number; firstInteractiveMs: number; medianFps: number; p95InputDelayMs: number; renderedNodes: number }
@@ -126,6 +130,10 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
     p95InputDelayMs: Number(percentile(samples.inputDelays, 0.95).toFixed(1)),
     renderedNodes: await page.locator('.react-flow__node-manifest').count(),
   }
+  await test.info().attach(`canvas-metric-${nodeCount}.json`, {
+    body: Buffer.from(JSON.stringify(metric, null, 2)),
+    contentType: 'application/json',
+  })
   if (nodeCount >= 300) expect(metric.renderedNodes).toBeLessThan(nodeCount)
   else expect(metric.renderedNodes).toBe(nodeCount)
   expect(metric.medianFps).toBeGreaterThanOrEqual(nodeCount <= 500 ? 50 : 30)
