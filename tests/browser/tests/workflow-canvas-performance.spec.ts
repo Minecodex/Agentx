@@ -2,6 +2,7 @@ import { expect, type APIResponse, type Page, test } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { deserializeDraft, serializeStudio } from '../../../src/web/src/features/workflow-designer/model/serializer'
 
 // Recording video and DOM/screenshot traces adds work to every input frame.
 // Functional suites keep recording; this benchmark exports its raw metrics.
@@ -9,7 +10,7 @@ test.use({ trace: 'off', video: 'off' })
 
 const password = 'agentx-e2e-admin-password'
 type Draft = { revision: number; updatedAt: string; [key: string]: unknown }
-type Metric = { nodeCount: number; firstInteractiveMs: number; contractReadyMs?: number; medianFps: number; p95InputDelayMs: number; renderedNodes: number }
+type Metric = { nodeCount: number; firstInteractiveMs: number; fixtureContractPreparationMs?: number; contractReadyMs?: number; medianFps: number; p95InputDelayMs: number; renderedNodes: number }
 type CanvasSamples = { frames: number[]; inputDelays: number[]; inputEvents: Array<{ kind: string; at: number; delay: number }>; longTasks: Array<{ at: number; duration: number }>; started: number; lastFrame?: number }
 type CatalogPage = { items: Array<{ nodeType: string; version: number; [key: string]: unknown }> }
 
@@ -23,8 +24,8 @@ async function login(page: Page) {
   return ((await (await response).json()) as { accessToken: string }).accessToken
 }
 
-async function request<T>(page: Page, token: string, path: string, method = 'GET', body?: unknown): Promise<T> {
-  const response = await page.request.fetch(`/api/v1${path}`, { method, data: body, headers: { Authorization: `Bearer ${token}` } })
+async function request<T>(page: Page, token: string, path: string, method = 'GET', body?: unknown, timeout = 30_000): Promise<T> {
+  const response = await page.request.fetch(`/api/v1${path}`, { method, data: body, timeout, headers: { Authorization: `Bearer ${token}` } })
   await expectResponse(response, path)
   return response.json() as Promise<T>
 }
@@ -61,6 +62,23 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
   const workflow = await createWorkflow(page, token, nodeCount)
   const base = await request<Draft>(page, token, `/workflows/${workflow.id}/draft`)
   const draft = syntheticDraft(base, nodeCount, nodeType, typeVersion, parameters)
+  let fixtureContractPreparationMs: number | undefined
+  if (nodeType === 'acme.json_mapper') {
+    const preparedAt = Date.now()
+    const definition = JSON.parse(JSON.stringify(serializeStudio(deserializeDraft(draft as Parameters<typeof deserializeDraft>[0])).definition))
+    const contracts = await request<{ nodes: Record<string, { status: string }> }>(page, token,
+      `/workflows/${workflow.id}/draft/resolve-plugins`, 'POST', { definition }, 60_000)
+    expect(Object.keys(contracts.nodes)).toHaveLength(nodeCount)
+    expect(Object.values(contracts.nodes).every(value => value.status === 'complete')).toBeTruthy()
+    fixtureContractPreparationMs = Date.now() - preparedAt
+    // Draft/catalog are already fixed fixtures. Feed the same actual SDK
+    // result to the current batch endpoint, rather than timing cold server
+    // compilation during the UI benchmark or fabricating a contract.
+    await page.route(`**/api/v1/workflows/${workflow.id}/draft/resolve-plugins`, async route => {
+      expect(route.request().postDataJSON().definition).toEqual(definition)
+      await route.fulfill({ json: contracts })
+    })
+  }
   await page.route(`**/api/v1/workflows/${workflow.id}/draft`, async (route) => {
     if (route.request().method() === 'GET') await route.fulfill({ json: draft })
     else await route.fulfill({ json: { ...draft, revision: base.revision + 1, updatedAt: new Date().toISOString() } })
@@ -164,6 +182,7 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
   const metric = {
     nodeCount,
     firstInteractiveMs,
+    fixtureContractPreparationMs,
     contractReadyMs,
     medianFps: Number((1_000 / medianFrame).toFixed(1)),
     p95InputDelayMs: Number(percentile(samples.inputDelays, 0.95).toFixed(1)),
