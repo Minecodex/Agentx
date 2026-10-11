@@ -1,8 +1,10 @@
 import { expect, type Locator, type Page } from '@playwright/test'
 
 export async function connectStudioPorts(page: Page, source: Locator, sourceHandle: string, target: Locator, targetHandle: string) {
-  const edges = page.locator('.react-flow__edge')
-  const edgeCount = await edges.count()
+  const canvas = page.getByTestId('workflow-canvas')
+  // ReactFlow can mount an already-created edge after its parent state has
+  // committed. Use the canonical count, then verify the intended DOM pair.
+  const edgeCount = Number(await canvas.getAttribute('data-canonical-edge-count'))
   const sourceId = await source.evaluate(element => element.closest('.react-flow__node')?.getAttribute('data-id'))
   const targetId = await target.evaluate(element => element.closest('.react-flow__node')?.getAttribute('data-id'))
   expect(sourceId).toBeTruthy()
@@ -30,5 +32,5 @@ export async function connectStudioPorts(page: Page, source: Locator, sourceHand
     await page.waitForTimeout(200)
   }
   await expect(connection).toHaveCount(connectionCount + 1)
-  await expect(edges).toHaveCount(edgeCount + 1)
+  await expect(canvas).toHaveAttribute('data-canonical-edge-count', String(edgeCount + 1))
 }

@@ -31,3 +31,5 @@ uv run --frozen --group test pytest tests/e2e/product/test_canvas_performance.py
 `E2E diagnostics` 仅聚焦 PR/受控范围，不产生必需 CI 或正式认证。源码固定在当前候选，截图基线必须显式更新并正常比较复验。包、存储、网络、权限、TLS 与供给链的原有断言不放宽。没有定时任务。
 
 Minikube 显式映射的 NodePort 地址/端口在 agentxctl --run-id 作用域处理后保留，避免被改写为容器中不可解析的 Docker Desktop 地址。当前节点矩阵截图已与实际 Linux UI 对照并显式更新，像素比较保持有效。Redis 恢复等待 Gateway 观察到重连，拒绝期间仍不得产生 Receipt；调用投影等待终态，失败调用仍使测试失败。
+
+边界鉴权使用独立 boundary-echo-mcp Deployment/Service 与随机密钥，不修改其他场景的共享 Echo 凭据。连线测试同时核验规范图中只增加一条连接和指定节点对，不把 ReactFlow 延迟挂载的 SVG 总数当作新增操作的起点；最终四条连接的持久化断言保留。diagnostics 的 performance、attachments、studio 仅用于这些聚焦复验，不替代完整发布门禁。
