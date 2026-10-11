@@ -59,6 +59,12 @@ def hosted_values(source: dict, *, gateway: str, subnet: str, sandbox_gateway: s
     global_values["ingress"].update(serviceType="NodePort", httpNodePort=31080, httpsNodePort=31443)
     global_values["components"]["sandbox"].update(endpoint=f"http://{gateway}:18080", secureAccess=False)
     egress = global_values["network"]["egressGateway"]
+    default_services = yaml.safe_load((ROOT / "deploy/helm/agentx-runtime/values.yaml").read_text())["global"][
+        "network"
+    ]["egressGateway"]["httpProviderServices"]
+    egress["httpProviderServices"] = sorted(
+        set([*egress.get("httpProviderServices", default_services), "boundary-echo-mcp"])
+    )
     egress["sandboxAccess"].update(
         mode="nodePort",
         endpoint=f"https://{sandbox_gateway}:31129",

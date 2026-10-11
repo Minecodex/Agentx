@@ -130,10 +130,9 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
     p95InputDelayMs: Number(percentile(samples.inputDelays, 0.95).toFixed(1)),
     renderedNodes: await page.locator('.react-flow__node-manifest').count(),
   }
-  await test.info().attach(`canvas-metric-${nodeCount}.json`, {
-    body: Buffer.from(JSON.stringify(metric, null, 2)),
-    contentType: 'application/json',
-  })
+  const metricPath = test.info().outputPath(`canvas-metric-${nodeCount}.json`)
+  await writeFile(metricPath, JSON.stringify(metric, null, 2), 'utf8')
+  await test.info().attach(`canvas-metric-${nodeCount}.json`, { path: metricPath, contentType: 'application/json' })
   if (nodeCount >= 300) expect(metric.renderedNodes).toBeLessThan(nodeCount)
   else expect(metric.renderedNodes).toBe(nodeCount)
   expect(metric.medianFps).toBeGreaterThanOrEqual(nodeCount <= 500 ? 50 : 30)

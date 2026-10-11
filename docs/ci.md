@@ -18,6 +18,8 @@
 
 性能测量关闭视频和逐操作 DOM/截图 trace，避免记录器进入帧与输入延迟样本；功能套件继续记录。每档原始指标在断言前保存，失败档也保留证据；50/100 ms 输入延迟和原帧率阈值不变，没有按失败结果调参或自动重试。
 
+画布的插件契约和变量目录只订阅节点数据、连接、Start/End 和执行设置；拖动、尺寸测量与视口变化不再重新序列化全部插件或重建变量目录。参数修改即使不改变 GraphIndex revision 也会刷新定义；保存、恢复与历史记录仍读取当前完整文档。
+
 系统入口保持 `pytest tests/e2e`，通过 `--ci-profile pr|release|independent` 选择范围。独立验收默认保留全部测试及原有容量阈值；Actions 不提供真实模型密钥，不把环境测试排除报告为通过。Minikube/网络及证据按运行所有权创建和清理。
 
 完整托管软件验证：
@@ -29,6 +31,8 @@ uv run --frozen --group test pytest tests/e2e/product/test_canvas_performance.py
 ```
 
 独立环境具备后使用默认 independent 范围、真实临时提供商凭据和实际兼容 Worker 摘要执行既有认证；现有 `tools/scripts/release` 的完整证据、签名与公开发布校验继续保留。Actions 不推送 Docker Hub 镜像、不创建公开 CLI Release，也不依赖专用 Runner、Actions Secret 或 Environment。
+
+隔离的 boundary-echo-mcp 仅加入 local 测试 values 和托管临时集群的 HTTP 提供商服务白名单；生产默认值和 HTTPS/域名校验保持原有要求。使用自定义独立验收 values 时，也需显式列入该测试服务。
 
 `E2E diagnostics` 仅聚焦 PR/受控范围，不产生必需 CI 或正式认证。源码固定在当前候选，截图基线必须显式更新并正常比较复验。包、存储、网络、权限、TLS 与供给链的原有断言不放宽。没有定时任务。
 

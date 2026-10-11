@@ -62,6 +62,11 @@ def test_hosted_values_keep_the_candidate_images_and_limit_private_network_acces
     )
     assert source == snapshot
     assert values["global"]["images"] == source["global"]["images"]
+    provider_services = values["global"]["network"]["egressGateway"]["httpProviderServices"]
+    default_services = yaml.safe_load(Path("deploy/helm/agentx-runtime/values.yaml").read_text())["global"]["network"][
+        "egressGateway"
+    ]["httpProviderServices"]
+    assert set(provider_services) == {*default_services, "boundary-echo-mcp"}
     assert values["global"]["ingress"]["serviceType"] == "NodePort"
     assert values["global"]["components"]["sandbox"]["endpoint"] == "http://192.168.49.1:18080"
     access = values["global"]["network"]["egressGateway"]["sandboxAccess"]

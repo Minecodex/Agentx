@@ -58,6 +58,7 @@ import {
 } from "./panels/debug-run-dialog";
 import { buildReferenceCatalog } from "./forms/reference-picker/reference-path";
 import { useEditorStore } from "./store/editor-store";
+import { createDefinitionSelector } from "./store/definition-selector";
 import { autoLayout } from "./utils/layout";
 import { useStudioShortcuts } from "./utils/use-studio-shortcuts";
 import { configurationIssues } from "./utils/configuration";
@@ -208,11 +209,8 @@ export function WorkflowCanvas() {
     },
     [documentManifests, manifests, subworkflowOptions.workflowVersionId],
   );
-  const resolvingDocument = useEditorStore(useShallow((state) => ({
-    start: state.start, nodes: state.nodes, edges: state.edges, end: state.end,
-    settings: state.settings, viewport: state.viewport, boundaryLayouts: state.boundaryLayouts,
-    annotations: state.annotations, groups: state.groups,
-  })));
+  const definitionSelector = useMemo(createDefinitionSelector, []);
+  const resolvingDocument = useEditorStore(definitionSelector);
   const pluginDefinitions = useResolvedPluginManifests(
     workflowId,
     resolvingDocument,
@@ -246,9 +244,8 @@ export function WorkflowCanvas() {
       setEnd: state.setEnd,
     })),
   );
-  const selected = useEditorStore((state) =>
-    state.nodes.find((node) => node.id === state.selectedId),
-  );
+  const selectedId = useEditorStore((state) => state.selectedId);
+  const selected = resolvingDocument.nodes.find((node) => node.id === selectedId);
   const dirty = useEditorStore((state) => state.dirty);
   const readOnly = workflow.data?.canEdit === false || workflow.data?.status === "archived";
   const canUndo = useEditorStore((state) => state.past.length > 0);
@@ -260,7 +257,7 @@ export function WorkflowCanvas() {
       ).length,
   );
   const edgeInsertRequest = useEditorStore((state) => state.edgeInsertRequest);
-  const canvasNodes = useEditorStore(useShallow((state) => state.nodes));
+  const canvasNodes = resolvingDocument.nodes;
   const exitNodes = useMemo(
     () =>
       canvasNodes
@@ -268,14 +265,7 @@ export function WorkflowCanvas() {
         .map((node) => ({ id: node.id, data: node.data as ExitNodeData })),
     [canvasNodes],
   );
-  const referenceSource = useEditorStore(
-    useShallow((state) => ({
-      start: state.start,
-      nodes: state.nodes,
-      edges: state.edges,
-      end: state.end,
-    })),
-  );
+  const referenceSource = resolvingDocument;
   const selectedManifest = selected ? manifestForNode(manifestMap, selected) : undefined;
   const pluginVersionContext = useMemo(() => {
     if (!selected || !selectedManifest?.plugin) return undefined;
