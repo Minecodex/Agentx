@@ -475,7 +475,7 @@ test('M7 closes Application, Trigger, Evaluation, Approval and governance paths 
 
   await page.route('**/gateway/v1/artifacts', async (route) => route.abort('connectionfailed'))
   await page.locator('input[type=file]').setInputFiles({ name: 'failed-upload.png', mimeType: 'image/png', buffer: Buffer.from('failed upload') })
-  await expect(page.getByRole('region', { name: 'Notifications (F8)' }).getByText(/请求暂时无法完成/).first()).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Notifications (F8)' }).getByText(/无法连接服务/).first()).toBeVisible()
   await page.unroute('**/gateway/v1/artifacts')
 
   await page.route('**/gateway/v1/sessions/*/messages', async (route) => {

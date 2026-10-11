@@ -305,7 +305,7 @@ def test_p305_application_session_continues_across_gateway_executions(
         "AND e.stable_agent_node_key=r.stable_agent_node_key))) "
         "FROM agent_session_registers r "
         f"WHERE r.tenant_id=UUID_TO_BIN('{me['companyId']}') "
-        "AND r.session_key LIKE 'application:%';",
+        f"AND r.session_key='application:{application_id}:{session_id}';",
     )
     items = json.loads(rows) if rows and rows.lower() != "null" else []
     assert len(items) == 1, items
@@ -428,7 +428,7 @@ def test_p305_provider_overflow_compaction_retries_once(
     assert len(model_calls) == 3, {"calls": calls, "compactionKind": compaction_kind}
     assert model_calls[0]["status"] == "failed", calls
     assert sum(call["kind"] == "compaction" for call in calls) == 1, calls
-    assert any(call["error"] == "PROVIDER_REJECTED" for call in model_calls)
+    assert model_calls[0]["error"] == "PROVIDER_REJECTED", calls
 
 
 @pytest.mark.cluster

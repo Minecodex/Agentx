@@ -5,13 +5,26 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      full:
+        description: Include the complete hosted software E2E; dedicated environment acceptance is independent
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      full:
+        type: boolean
+        default: false
+      ref:
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 concurrency:
-  group: quality-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: quality-${{ github.event.pull_request.number || github.ref }}-${{ inputs.full && (inputs.ref || github.sha) || 'pr' }}
+  cancel-in-progress: ${{ !inputs.full }}
 
 jobs:
   python-helm:
@@ -22,6 +35,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - name: Install the repository Rust toolchain
         shell: bash
         run: rustup show
@@ -42,40 +57,72 @@ jobs:
       - run: cargo xtask check --fast
 
   kubernetes-e2e-linux:
-    if: ${{ vars.AGENTX_E2E_LINUX_ENABLED == 'true' }}
     needs: python-helm
-    runs-on: [self-hosted, linux, agentx-e2e, strict-cni]
-    timeout-minutes: 180
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.full && 360 || 120 }}
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.13"
-      - run: uv sync --frozen --group test
-      - run: cargo build -p agentxctl -p agentx-backup-test-adapter
-      - run: corepack enable && pnpm install --frozen-lockfile
-      - run: uv run --frozen --group test pytest tests/e2e --values deploy/values/dockerhub-beta.yaml --capacity-smoke --timeout=7200
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: ./.github/actions/e2e-tools
+      - name: Run required system E2E or full release acceptance in disposable Minikube
+        env:
+          FULL_ACCEPTANCE: ${{ inputs.full }}
+        run: |
+          if [ "$FULL_ACCEPTANCE" = "true" ]; then
+            uv run --frozen --group test pytest tests/e2e --minikube \
+              --values deploy/values/local.yaml --ci-profile release -m 'not browser_performance' \
+              --evidence-run-id "ci-${{ github.run_id }}-${{ github.run_attempt }}" \
+              --junitxml=.local/artifacts/kubernetes-e2e.xml --timeout=18000
+          else
+            uv run --frozen --group test pytest tests/e2e --minikube \
+              --values deploy/values/local.yaml --ci-profile pr \
+              --evidence-run-id "ci-${{ github.run_id }}-${{ github.run_attempt }}" \
+              --junitxml=.local/artifacts/kubernetes-e2e.xml --timeout=14400
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kubernetes-e2e-linux
+          path: |
+            .local/artifacts/kubernetes-e2e.xml
+            .local/artifacts/e2e
+            .local/artifacts/playwright
 
-  kubernetes-e2e-windows:
-    if: ${{ vars.AGENTX_E2E_WINDOWS_ENABLED == 'true' }}
+  canvas-performance-linux:
+    if: ${{ inputs.full }}
     needs: python-helm
-    runs-on: [self-hosted, windows, agentx-e2e, docker-desktop]
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
+    env:
+      AGENTX_E2E_RAGFLOW_DISABLE: '1'
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.13"
-      - run: uv sync --frozen --group test
-      - run: cargo build -p agentxctl -p agentx-backup-test-adapter
-      - run: corepack enable; pnpm install --frozen-lockfile
-      - run: uv run --frozen --group test pytest tests/e2e --values deploy/values/dockerhub-beta.yaml --capacity-smoke --timeout=7200
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: ./.github/actions/e2e-tools
+      - name: Measure the same canvas in a fresh disposable cluster
+        run: |
+          uv run --frozen --group test pytest tests/e2e/product/test_canvas_performance.py --minikube \
+            --values deploy/values/local.yaml --ci-profile independent \
+            --evidence-run-id "canvas-${{ github.run_id }}-${{ github.run_attempt }}" \
+            --junitxml=.local/artifacts/canvas-performance.xml --timeout=9000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: canvas-performance-linux
+          path: |
+            .local/artifacts/canvas-performance.xml
+            .local/artifacts/e2e
+            .local/artifacts/playwright
 
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -90,26 +137,27 @@ jobs:
   ci-gate:
     name: CI
     if: ${{ always() }}
-    needs: ["python-helm", "frontend", "kubernetes-e2e-linux", "kubernetes-e2e-windows"]
+    needs: ["python-helm", "frontend", "kubernetes-e2e-linux", "canvas-performance-linux"]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require every mandatory job to succeed
         env:
           JOB_RESULTS: ${{ toJSON(needs) }}
+          FULL_ACCEPTANCE: ${{ inputs.full }}
         run: |
           python3 - <<'PY'
           import json
           import os
           import sys
 
-          optional = set(["kubernetes-e2e-linux", "kubernetes-e2e-windows"])
           jobs = json.loads(os.environ["JOB_RESULTS"])
+          full = os.environ["FULL_ACCEPTANCE"] == "true"
           failed = {
               name: job["result"]
               for name, job in jobs.items()
               if job["result"] != "success"
-              and not (name in optional and job["result"] == "skipped")
+              and not (name == "canvas-performance-linux" and not full and job["result"] == "skipped")
           }
           if failed:
               print(f"Required CI jobs did not succeed: {failed}")

@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 import pytest
 
-from tests.e2e.support import run
+from tests.e2e.support import MYSQL_ROOT_CLIENT, run
 
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "agentx-e2e-admin-password"  # noqa: S105 -- fixed disposable E2E credential
@@ -347,8 +347,7 @@ def _runtime_mysql(installed_agentx: dict[str, str], query: str) -> str:
             "--",
             "sh",
             "-ec",
-            'MYSQL_PWD="$(cat /run/secrets/agentx/root-password)" mysql --ssl-mode=DISABLED '
-            '--batch --skip-column-names -uroot agentx_runtime -e "$1"',
+            f'{MYSQL_ROOT_CLIENT} --batch --skip-column-names -uroot agentx_runtime -e "$1"',
             "agentx-p3-04-query",
             query,
         ),

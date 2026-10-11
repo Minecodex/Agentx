@@ -11,10 +11,12 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: bootstrap
-          image: quay.io/minio/mc:latest
+          image: cgr.dev/chainguard/minio@sha256:5ed9207c9d1bf50e2b0aa917ffb0fede5507651178b7bd4119ff75319e7fdeec
           imagePullPolicy: {{ .Values.global.images.pullPolicy }}
+          env:
+            - { name: MC_CONFIG_DIR, value: /tmp/mc }
 {{- if .Values.global.components.objectStorage.caSecretName }}
-          env: [{ name: SSL_CERT_FILE, value: /tls/ca.crt }]
+            - { name: SSL_CERT_FILE, value: /tls/ca.crt }
           volumeMounts: [{ name: tls, mountPath: /tls, readOnly: true }]
 {{- end }}
           envFrom: [{ secretRef: { name: {{ .Values.global.secrets.dependencies }} } }]

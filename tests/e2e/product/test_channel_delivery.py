@@ -763,22 +763,14 @@ def test_l3_send_message_idempotency_and_pod_crash_resilience(
     with httpx.Client(base_url=service_urls["web"], timeout=60) as control:
         token, me = _access_token(control)
         headers = {"Authorization": f"Bearer {token}"}
-        created = control.post(
-            "/api/v1/workflows",
-            headers=headers,
-            json={"name": f"L3 Send E2E {run_id}", "description": "P7-A L3", "visibility": "company"},
-        )
-        created.raise_for_status()
-        workflow_id = created.json()["id"]
+        # Channel input mappings come from an immutable Workflow version.
+        # Publish the initial passthrough contract before creating channels;
+        # the second version below binds the real send-message channel IDs.
+        initial = _passthrough_workflow(control, headers, f"L3 Send E2E {run_id}")
+        workflow_id = initial["workflowId"]
         draft = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
         draft.raise_for_status()
         definition = draft.json()["definition"]
-        definition["start"]["inputs"] = {
-            "type": "object",
-            "properties": {"message": {"type": "string"}},
-            "required": ["message"],
-            "additionalProperties": False,
-        }
         exit_node = next(node for node in definition["nodes"] if node["type"] == "exit")
         application = control.post(
             "/api/v1/applications",

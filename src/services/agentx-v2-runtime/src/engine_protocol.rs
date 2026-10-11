@@ -53,16 +53,40 @@ pub(crate) fn ensure_task_matches(
     capability: &str,
     task: &WorkerTaskV1,
 ) -> RuntimeResult<()> {
-    if row.try_get::<Uuid, _>("tenant_id")? != task.tenant_id
-        || row.try_get::<Uuid, _>("execution_id")? != task.execution_id
-        || row.try_get::<Uuid, _>("node_execution_id")? != task.node_execution_id
-        || row.try_get::<String, _>("capability")? != capability
-        || task.capability.as_str() != capability
-        || row.try_get::<u16, _>("worker_protocol_version")? != task.protocol_version as u16
-    {
+    let bindings = [
+        (
+            "tenant",
+            row.try_get::<Uuid, _>("tenant_id")? == task.tenant_id,
+        ),
+        (
+            "execution",
+            row.try_get::<Uuid, _>("execution_id")? == task.execution_id,
+        ),
+        (
+            "node_execution",
+            row.try_get::<Uuid, _>("node_execution_id")? == task.node_execution_id,
+        ),
+        (
+            "attempt_capability",
+            row.try_get::<String, _>("capability")? == capability,
+        ),
+        ("task_capability", task.capability.as_str() == capability),
+        (
+            "protocol_version",
+            row.try_get::<u16, _>("worker_protocol_version")? == task.protocol_version as u16,
+        ),
+    ];
+    let mismatches: Vec<_> = bindings
+        .iter()
+        .filter_map(|(name, matches)| (!matches).then_some(*name))
+        .collect();
+    if !mismatches.is_empty() {
         return Err(runtime_bad_request(
             "WORKER_TASK_MISMATCH",
-            "Worker Task does not match the authoritative Attempt",
+            &format!(
+                "Worker Task does not match the authoritative Attempt: {}",
+                mismatches.join(", ")
+            ),
         ));
     }
     Ok(())

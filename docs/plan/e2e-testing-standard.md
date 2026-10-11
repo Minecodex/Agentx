@@ -91,8 +91,9 @@ uv run --frozen --group test pytest tests/e2e --values deploy/values/local.yaml 
 
 ## 8. 平台门禁
 
-- Linux严格 E2E必须使用执行 NetworkPolicy的 CNI，并接入生产等价 OpenSandbox RuntimeClass。
-- Windows使用同一 uv命令在 Docker Desktop Kubernetes运行功能闭环。
+- GitHub 托管 Linux E2E 使用 `pytest tests/e2e --minikube` 创建固定版本临时集群和 Calico，实际执行 NetworkPolicy 负向测试，并自动启动 OpenSandbox Docker Runtime。临时集群、测试进程和 Docker 网络都由 pytest 清理。
+- Windows 保留 ctl 原生构建、打包和命令测试；Linux 容器集群的功能闭环只运行一套 Linux E2E，不再重复使用 Windows Docker Desktop Runner。
+- Docker Runtime 的功能与网络隔离证据不替代生产 gVisor/Kata RuntimeClass 强隔离验收；生产隔离仍须在对应计算节点完成。
 - 不执行 NetworkPolicy的本地 CNI只能运行明确标注的非生产子集，不能跳过后形成生产安全证据。
 - OpenSandbox官方 Go SDK Oracle位于 `tests/e2e/oracles/opensandbox/`；Docker镜像 Entrypoint仍使用 POSIX Shell，不要求容器安装 Python。
 

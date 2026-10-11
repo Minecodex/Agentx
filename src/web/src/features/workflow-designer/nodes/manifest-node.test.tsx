@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { CanvasNodeRole, NodeManifest, StudioNode } from '../model/types'
 import { useCanvasRenderStore } from '../store/canvas-render-store'
 import { ManifestNode } from './manifest-node'
+import * as localization from '../model/manifest-localization'
 
 const roles: CanvasNodeRole[] = ['default', 'trigger', 'branch', 'flow', 'merge', 'loop', 'suspend', 'approval', 'sub_workflow', 'agent', 'code']
 
@@ -20,6 +21,21 @@ const props = (role: CanvasNodeRole, data: Partial<Extract<StudioNode['data'], {
 } as unknown as NodeProps<StudioNode>)
 
 describe('ManifestNode roles', () => {
+  it('keeps card content stable through drag coordinates while refreshing data and runtime state', () => {
+    const localize = vi.spyOn(localization, 'localizeManifest')
+    useCanvasRenderStore.setState({ manifests: new Map([['default@1', manifest('default')]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
+    const value = props('default')
+    const view = render(<ReactFlowProvider><ManifestNode {...value} positionAbsoluteX={0} positionAbsoluteY={0} /></ReactFlowProvider>)
+    const before = localize.mock.calls.length
+    view.rerender(<ReactFlowProvider><ManifestNode {...value} positionAbsoluteX={100} positionAbsoluteY={180} dragging /></ReactFlowProvider>)
+    expect(localize).toHaveBeenCalledTimes(before)
+    view.rerender(<ReactFlowProvider><ManifestNode {...value} data={{ ...value.data, label: 'Updated card' }} positionAbsoluteX={100} positionAbsoluteY={180} /></ReactFlowProvider>)
+    expect(screen.getByText('Updated card')).toBeInTheDocument()
+    act(() => useCanvasRenderStore.setState({ runtimeStatuses: new Map([[value.id, 'failed']]) }))
+    expect(screen.getByTestId(`studio-node-${value.id}`).querySelector('.studio-card')).toHaveClass('studio-node-failed')
+    localize.mockRestore()
+  })
+
   for (const role of roles) it(`renders the controlled ${role} role`, () => {
     const value = manifest(role)
     useCanvasRenderStore.setState({ manifests: new Map([[`${role}@${value.version}`, value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })

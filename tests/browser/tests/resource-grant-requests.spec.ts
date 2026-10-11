@@ -65,6 +65,7 @@ async function createEditorRole(page: Page) {
     await form.locator('label').filter({ hasText: permission }).getByRole('checkbox').check()
   }
   await submit(form)
+  await page.getByRole('searchbox', { name: '搜索角色' }).fill('Workflow Resource Editor')
   await expect(page.getByRole('row').filter({ hasText: 'Workflow Resource Editor' })).toBeVisible()
 }
 

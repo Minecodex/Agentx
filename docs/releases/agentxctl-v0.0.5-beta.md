@@ -2,6 +2,8 @@
 
 本版本包含 plan7 的渠道回复、模型流式、评测与运行洞察、知识库管理和真实服务验收修复。同步提供 Windows/Linux x64 的 agentxctl、归档及 SHA-256 校验文件，以及全部 11 个 Linux AMD64 集群镜像。
 
+发布工作流使用 GitHub 托管 Ubuntu / Minikube 执行完整系统验收和两小时容量门禁，不跳过认证。Windows 保留 ctl 原生构建与打包；Linux 容器集群只运行一套 Linux E2E。验收失败时 Release 不会公开。
+
 `agentxctl 0.0.5-beta` 内嵌对应版本的 Helm Chart、Schema 和 `kakj/agentx-*:v0.0.5-beta` 配置。下载并校验 ctl 后执行 `install`，即可部署这一版本；使用旧 ctl 不会自动安装新镜像。
 
 ## 本版本内容

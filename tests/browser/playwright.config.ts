@@ -15,7 +15,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   timeout: 600_000,
-  updateSnapshots: process.env.AGENTX_E2E_UPDATE_SNAPSHOTS === '1' ? 'all' : 'missing',
+  updateSnapshots: process.env.AGENTX_E2E_UPDATE_SNAPSHOTS === '1' ? 'all' : 'none',
   use: {
     ...devices['Desktop Chrome'],
     actionTimeout: 20_000,

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.e2e.diagnostics import installation_diagnostics
 from tests.e2e.support import agentxctl, redact, run
 
 pytestmark = [pytest.mark.cluster, pytest.mark.infrastructure]
@@ -114,7 +115,8 @@ def test_ctl_upgrade_reuses_tls_and_waits_for_bootstrap(tls_agentx: dict[str, st
     namespace = tls_agentx["dependencies_namespace"]
     ca_name = values["global"]["components"]["objectStorage"]["caSecretName"]
     original = _ca(namespace, ca_name)
-    result = run(_ctl(tls_agentx, "upgrade", "dependencies"), timeout=3600).json()
+    with installation_diagnostics([namespace], Path(tls_agentx["artifact_dir"])):
+        result = run(_ctl(tls_agentx, "upgrade", "dependencies"), timeout=3600).json()
     assert result["status"] == "ready"
     assert _ca(namespace, ca_name) == original
     jobs = run(("kubectl", "-n", namespace, "get", "jobs", "-o", "json")).json()["items"]

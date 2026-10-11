@@ -375,6 +375,47 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
+    if request
+        .pointer("/response_format/type")
+        .and_then(Value::as_str)
+        == Some("json_object")
+        && messages.iter().any(|message| {
+            message.get("role").and_then(Value::as_str) == Some("system")
+                && message
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .is_some_and(|text| text.contains("Memory Extractor"))
+        })
+    {
+        let extraction = messages
+            .iter()
+            .rev()
+            .find(|message| message.get("role").and_then(Value::as_str) == Some("user"))
+            .and_then(|message| message.get("content").and_then(Value::as_str))
+            .and_then(|text| text.split_once("## New Messages\n"))
+            .and_then(|(_, text)| text.split_once("\n## Observation Date"))
+            .map(|(text, _)| text);
+        let Some(extraction) = extraction else {
+            return (
+                StatusCode::BAD_REQUEST,
+                AxumJson(json!({"error":{"message":"Mem0 fixture omitted New Messages section"}})),
+            )
+                .into_response();
+        };
+        let memory: Vec<Value> = extraction
+            .lines()
+            .filter_map(|line| line.strip_prefix("user: "))
+            .filter(|text| !text.trim().is_empty())
+            .enumerate()
+            .map(|(index, text)| json!({"id":index.to_string(),"text":text,"attributed_to":"user"}))
+            .collect();
+        return AxumJson(json!({
+            "id":"mem0-extraction-fixture", "object":"chat.completion",
+            "model":request.get("model").cloned().unwrap_or_else(|| json!("echo-model")),
+            "choices":[{"index":0,"message":{"role":"assistant","content":json!({"memory":memory}).to_string()},"finish_reason":"stop"}],
+            "usage":{"prompt_tokens":24,"completion_tokens":9,"total_tokens":33}
+        })).into_response();
+    }
     let agent_purpose = request
         .pointer("/metadata/agentPurpose")
         .and_then(Value::as_str)
@@ -548,6 +589,13 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
         let delta = if let Some(call) = tool_call {
             json!({"tool_calls":[{"index":0,"id":call["id"],"type":"function","function":{"name":call["function"]["name"],"arguments":call["function"]["arguments"]}}]})
         } else {
+            let content = if large_trace_response {
+                content
+                    .as_ref()
+                    .map(|text| format!("{text}\n{}", "trace-artifact-marker|".repeat(1_024)))
+            } else {
+                content.clone()
+            };
             json!({"content":content})
         };
         // plan7 P7-B B6: behavior fixtures switch on the model name so the
@@ -658,7 +706,7 @@ mod tests {
     use super::{chat_completions, embeddings, schema_example};
     use axum::{
         Json,
-        http::{HeaderMap, HeaderValue, header},
+        http::{HeaderMap, HeaderValue, StatusCode, header},
         response::IntoResponse,
     };
     use bytes::Bytes;
@@ -829,6 +877,83 @@ mod tests {
         assert_eq!(
             value.pointer("/choices/0/message/content"),
             Some(&json!("你好，我叫 kakj。"))
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_model_fixture_emits_large_assistant_content_for_trace() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer m5-model-secret"),
+        );
+        let response = chat_completions(
+            headers,
+            Json(json!({"stream":true,"messages":[{
+                "role":"system",
+                "content":"你叫 kakj\nTRACE_LARGE_RESPONSE"
+            }]})),
+        )
+        .await
+        .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()[header::CONTENT_TYPE],
+            "text/event-stream"
+        );
+        let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let body = std::str::from_utf8(&bytes).unwrap();
+        let frame: serde_json::Value = serde_json::from_str(
+            body.lines()
+                .find_map(|line| line.strip_prefix("data: "))
+                .unwrap(),
+        )
+        .unwrap();
+        let content = frame
+            .pointer("/choices/0/delta/content")
+            .unwrap()
+            .as_str()
+            .unwrap();
+        assert!(content.starts_with("你好，我叫 kakj。"));
+        assert!(content.len() > 16 * 1024);
+        assert!(body.ends_with("data: [DONE]\n\n"));
+    }
+
+    #[tokio::test]
+    async fn mem0_extraction_fixture_keeps_the_actual_new_user_facts() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer m5-model-secret"),
+        );
+        let response = chat_completions(headers, Json(json!({
+            "response_format":{"type":"json_object"},
+            "messages":[
+                {"role":"system","content":"You are a Memory Extractor."},
+                {"role":"user","content":"## Existing Memories\n[{\"text\":\"do not copy existing data\"}]\n## New Messages\nuser: p3-subject-memory\nuser: second-scoped-fact\n## Observation Date\n2026-10-10"}
+            ]
+        }))).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let value: Value = serde_json::from_slice(&body).unwrap();
+        let extraction: Value = serde_json::from_str(
+            value
+                .pointer("/choices/0/message/content")
+                .unwrap()
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            extraction,
+            json!({"memory":[
+                {"id":"0","text":"p3-subject-memory","attributed_to":"user"},
+                {"id":"1","text":"second-scoped-fact","attributed_to":"user"}
+            ]})
         );
     }
 

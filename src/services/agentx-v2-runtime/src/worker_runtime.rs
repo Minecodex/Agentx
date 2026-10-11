@@ -1326,17 +1326,18 @@ impl RuntimeWorker {
                     let status = stream.status;
                     let headers = stream.response.headers().clone();
                     if !status.is_success() {
-                        let body = stream
-                            .response
-                            .text()
-                            .await
-                            .unwrap_or_default()
-                            .chars()
-                            .take(400)
-                            .collect::<String>();
-                        return Err(WorkerProviderError::Protocol(format!(
-                            "model stream endpoint returned HTTP {status}: {body}"
-                        )));
+                        // A provider's HTTP rejection is a valid HTTP response,
+                        // not malformed SSE. Use the shared response ledger and
+                        // error classification before decoding successful streams.
+                        let body =
+                            stream.response.bytes().await.map_err(|error| {
+                                WorkerProviderError::Protocol(error.to_string())
+                            })?;
+                        return Ok(WorkerProviderResponse {
+                            status,
+                            headers,
+                            body,
+                        });
                     }
                     let sink = delta_sink.clone();
                     let mut first_token_seen = false;

@@ -11,7 +11,7 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 import pytest
 
-from tests.e2e.support import run, run_playwright
+from tests.e2e.support import MYSQL_ROOT_CLIENT, run, run_playwright
 
 
 def _build_canvas_plugin_v2(root: str) -> None:
@@ -89,8 +89,7 @@ def _assert_execution_context_snapshot(installed_agentx: dict[str, str], evidenc
             "--",
             "sh",
             "-ec",
-            'MYSQL_PWD="$(cat /run/secrets/agentx/root-password)" mysql --ssl-mode=DISABLED '
-            '--batch --skip-column-names -uroot agentx_runtime -e "$1"',
+            f'{MYSQL_ROOT_CLIENT} --batch --skip-column-names -uroot agentx_runtime -e "$1"',
             "agentx-e2e-query",
             query,
         ),
@@ -139,7 +138,9 @@ def test_product_playwright_suite(
     service_urls: dict[str, str],
     e2e_providers: dict[str, str],
     code_egress_fixtures: dict[str, str],
+    pytestconfig: pytest.Config,
 ) -> None:
+    core_pr = pytestconfig.getoption("--ci-profile") == "pr"
     environment = os.environ.copy()
     environment["AGENTX_E2E_RUN_ID"] = installed_agentx["run_id"]
     environment["AGENTX_E2E_STAGE"] = "helm-agentxctl"
@@ -198,11 +199,17 @@ def test_product_playwright_suite(
                 ),
             ),
             ("workflow-multi-exit", ("tests/workflow-multi-exit.spec.ts",)),
-            ("workflow-performance", ("tests/workflow-canvas-performance.spec.ts",)),
         )
         only_suites = {
             suite.strip() for suite in os.environ.get("AGENTX_E2E_ONLY_SUITE", "").split(",") if suite.strip()
         }
+        if core_pr:
+            only_suites = {"canvas-plugins", "api-first", "application-docs"}
+        unknown = only_suites - {name for name, _ in suites}
+        if unknown:
+            raise pytest.UsageError(
+                f"Unknown product suites: {sorted(unknown)}; canvas performance uses test_canvas_performance.py"
+            )
         playwright_grep = os.environ.get("AGENTX_E2E_PLAYWRIGHT_GREP")
         failures: list[str] = []
         for suite, tests in suites:
@@ -211,7 +218,7 @@ def test_product_playwright_suite(
             selected_tests = (*tests, "--grep", playwright_grep) if playwright_grep else tests
             try:
                 _run_playwright(suite, selected_tests, environment, root)
-                if suite == "canvas-plugins" and not playwright_grep:
+                if suite == "canvas-plugins" and not playwright_grep and not core_pr:
                     _verify_plugin_trace_degradation(
                         environment,
                         root,

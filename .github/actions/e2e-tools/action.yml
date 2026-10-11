@@ -1,0 +1,50 @@
+name: Linux Kubernetes E2E tools
+description: Prepare the native Linux toolchain and browser dependencies for pytest E2E
+runs:
+  using: composite
+  steps:
+    - name: Reclaim unused hosted runner SDK space
+      shell: bash
+      run: |
+        sudo python3 - <<'PY'
+        import shutil
+        from pathlib import Path
+
+        for name in ("/usr/share/dotnet", "/opt/ghc", "/usr/local/lib/android"):
+            path = Path(name)
+            if path.is_dir():
+                shutil.rmtree(path)
+        print(f"Available disk bytes: {shutil.disk_usage('/').free}")
+        PY
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - uses: astral-sh/setup-uv@v6
+      with:
+        version: "0.8.13"
+        enable-cache: true
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: 1.97.1
+    - uses: azure/setup-helm@v4
+      with:
+        version: v3.18.4
+    - uses: azure/setup-kubectl@v4
+      with:
+        version: v1.36.1
+    - uses: pnpm/action-setup@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '24.10.0'
+        cache: pnpm
+    - uses: sigstore/cosign-installer@v4.1.0
+    - uses: anchore/sbom-action/download-syft@v0.20.6
+    - name: Build test tools and install Chromium
+      shell: bash
+      run: |
+        uv sync --frozen --group test
+        cargo build --locked -p agentxctl -p agentx-backup-test-adapter
+        npm install --global corepack@0.34.2
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm --filter @agentx/e2e exec playwright install --with-deps chromium

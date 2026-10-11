@@ -26,27 +26,25 @@ def _set_token(namespace, secret_name, key, value):
     assert result.returncode == 0, "Vault fault-injection Secret update failed"
 
 
-def test_tls_credential_creation_and_rotation_ui(installed_agentx, service_urls):
-    values = yaml.safe_load(Path(installed_agentx["values"]).read_text())
+def test_tls_credential_creation_and_rotation_ui(tls_agentx, tls_service_urls):
+    values = yaml.safe_load(Path(tls_agentx["values"]).read_text())
     assert values["global"]["components"]["secretProvider"]["endpoint"].startswith("https://")
-    with httpx.Client(base_url=service_urls["web"], timeout=60) as control:
+    with httpx.Client(base_url=tls_service_urls["web"], timeout=60) as control:
         _access_token(control)
     environment = {
         **os.environ,
-        "AGENTX_E2E_RUN_ID": installed_agentx["run_id"],
+        "AGENTX_E2E_RUN_ID": tls_agentx["run_id"],
         "AGENTX_E2E_STAGE": "helm-agentxctl",
-        "AGENTX_E2E_BASE_URL": service_urls["web"],
-        "AGENTX_E2E_RUNTIME_URL": service_urls["runtime"],
+        "AGENTX_E2E_BASE_URL": tls_service_urls["web"],
+        "AGENTX_E2E_RUNTIME_URL": tls_service_urls["runtime"],
     }
-    run_playwright(
-        Path(installed_agentx["root"]), "vault-credentials", ("tests/vault-credentials.spec.ts",), environment
-    )
+    run_playwright(Path(tls_agentx["root"]), "vault-credentials", ("tests/vault-credentials.spec.ts",), environment)
 
 
 @pytest.mark.parametrize("role", ["control", "runtime"])
-def test_doctor_rejects_invalid_vault_service_token(installed_agentx, role):
-    values = yaml.safe_load(Path(installed_agentx["values"]).read_text())
-    namespace = installed_agentx["dependencies_namespace"]
+def test_doctor_rejects_invalid_vault_service_token(tls_agentx, role):
+    values = yaml.safe_load(Path(tls_agentx["values"]).read_text())
+    namespace = tls_agentx["dependencies_namespace"]
     secret_name = values["global"]["secrets"]["dependencies"]
     key = f"{role.upper()}_VAULT_TOKEN"
     original = run(("kubectl", "-n", namespace, "get", "secret", secret_name, "-o", f"jsonpath={{.data.{key}}}")).stdout
@@ -55,9 +53,9 @@ def test_doctor_rejects_invalid_vault_service_token(installed_agentx, role):
         agentxctl(),
         "doctor",
         "--values",
-        installed_agentx["values"],
+        tls_agentx["values"],
         "--run-id",
-        installed_agentx["run_id"],
+        tls_agentx["run_id"],
         "--target",
         "dependencies",
         "--output",

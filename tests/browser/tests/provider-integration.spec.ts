@@ -612,7 +612,7 @@ test.describe.serial('Provider integration', () => {
     await login(page)
     const stamp = Date.now()
     const knowledgeName = `Provider RAGflow ${stamp}`
-    await createKnowledgeViaUi(page, `Provider RAGflow Connection ${stamp}`, ragflowRejectedBaseUrl, '/', knowledgeName, `ragflow-${stamp}`)
+    await createKnowledgeViaUi(page, `Provider RAGflow Connection ${stamp}`, ragflowRejectedBaseUrl, '/', knowledgeName, `ragflow_${stamp}`)
     await openResourceDetail(page, '知识库', knowledgeName)
     await page.getByRole('button', { name: '测试连接' }).click()
     await expect(page.getByText('连接正常')).toHaveCount(0)
@@ -659,7 +659,7 @@ test.describe.serial('Provider integration', () => {
     await ensureModelResources(page, token)
     const stamp = Date.now()
     const knowledgeName = `Provider RAGflow Alias ${stamp}`
-    await createKnowledgeViaUi(page, `Provider RAGflow Alias Connection ${stamp}`, ragflowAliasBaseUrl, '/', knowledgeName, `ragflow-alias-${stamp}`)
+    await createKnowledgeViaUi(page, `Provider RAGflow Alias Connection ${stamp}`, ragflowAliasBaseUrl, '/', knowledgeName, `ragflow_alias_${stamp}`)
     const workflowName = `Provider RAGflow Workflow ${stamp}`
     const workflowId = await createWorkflow(page, workflowName)
     for (const [type, name] of [['credential', providerCredentialName], ['model', providerModelAlias], ['rag', knowledgeName]] as Array<[keyof typeof resourceTabs, string]>) {

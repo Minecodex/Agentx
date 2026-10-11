@@ -216,9 +216,8 @@ def test_dynamic_plugin_chain_in_browser(
         "AGENTX_E2E_RUN_ID": installed_agentx["run_id"],
         "AGENTX_PLUGIN_BOUNDARY_PACKAGE": str(boundary_package),
     }
-    pnpm = ("corepack.cmd", "pnpm") if os.name == "nt" else ("corepack", "pnpm")
     _run_playwright(
-        pnpm, "plugin-boundaries", ("tests/canvas-plugin-boundaries.spec.ts",), environment, installed_agentx["root"]
+        "plugin-boundaries", ("tests/canvas-plugin-boundaries.spec.ts",), environment, installed_agentx["root"]
     )
 
 
@@ -270,22 +269,35 @@ def test_plugin_files_concurrency_trace_and_cleanup(
             ),
             encoding="utf-8",
         )
-    for deployment in ("workflow-worker", "runtime-gateway"):
-        result = run(
-            (
-                "kubectl",
-                "-n",
-                installed_agentx["runtime_namespace"],
-                "exec",
-                f"deployment/{deployment}",
-                "--",
-                "sh",
-                "-ec",
-                'find "$AGENTX_PLUGIN_WORK_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l',
-            ),
-            timeout=30,
-        )
-        assert result.stdout.strip() == "0", (deployment, result.stdout)
+    _assert_invocation_workspaces_reclaimed(installed_agentx)
+
+
+def _assert_invocation_workspaces_reclaimed(context, timeout_seconds=30):
+    deadline = time.monotonic() + timeout_seconds
+    counts = {}
+    while time.monotonic() < deadline:
+        for deployment in ("workflow-worker", "runtime-gateway"):
+            remaining = deadline - time.monotonic()
+            assert remaining > 0, f"Plugin workspaces were not reclaimed: {counts}"
+            result = run(
+                (
+                    "kubectl",
+                    "-n",
+                    context["runtime_namespace"],
+                    "exec",
+                    f"deployment/{deployment}",
+                    "--",
+                    "sh",
+                    "-ec",
+                    'find "$AGENTX_PLUGIN_WORK_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l',
+                ),
+                timeout=min(30, remaining),
+            )
+            counts[deployment] = int(result.stdout.strip())
+        if all(count == 0 for count in counts.values()):
+            return
+        time.sleep(0.2)
+    raise AssertionError(f"Plugin workspaces were not reclaimed: {counts}")
 
 
 @pytest.mark.cluster
@@ -305,6 +317,5 @@ def test_plugin_publish_versions_and_historical_trace(
         "AGENTX_E2E_RUN_ID": installed_agentx["run_id"],
         "AGENTX_PLUGIN_EXECUTION_OUTPUT": str(evidence),
     }
-    pnpm = ("corepack.cmd", "pnpm") if os.name == "nt" else ("corepack", "pnpm")
-    _run_playwright(pnpm, "canvas-plugins", ("tests/canvas-plugins.spec.ts",), environment, root)
-    _verify_plugin_trace_degradation(pnpm, environment, root, installed_agentx["runtime_namespace"], evidence)
+    _run_playwright("canvas-plugins", ("tests/canvas-plugins.spec.ts",), environment, root)
+    _verify_plugin_trace_degradation(environment, root, installed_agentx["runtime_namespace"], evidence)

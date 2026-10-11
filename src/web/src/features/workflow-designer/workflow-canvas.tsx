@@ -33,6 +33,7 @@ import { useResolvedPluginManifests } from "./api/use-resolved-plugin-manifests"
 import { useResourceOptions, type ResourceOptionRequest } from "./api/use-resource-options";
 import { WorkflowFlow, type WorkflowFlowHandle } from "./canvas/workflow-flow";
 import { deserializeDraft, serializeStudio } from "./model/serializer";
+import { samePersistedDraft } from "./model/draft-persistence";
 import type { ExitNodeData, NodeManifest, ResourceOption, ResourceRequestContext, ResourceType, StudioDocument } from "./model/types";
 import {
   canvasNodeMetrics,
@@ -57,6 +58,7 @@ import {
 } from "./panels/debug-run-dialog";
 import { buildReferenceCatalog } from "./forms/reference-picker/reference-path";
 import { useEditorStore } from "./store/editor-store";
+import { createDefinitionSelector } from "./store/definition-selector";
 import { autoLayout } from "./utils/layout";
 import { useStudioShortcuts } from "./utils/use-studio-shortcuts";
 import { configurationIssues } from "./utils/configuration";
@@ -78,6 +80,10 @@ type StudioValidationIssue = {
   fieldPath?: string | null;
   values?: Record<string, string>;
 };
+
+function combineFrozenManifests(results: Array<{ data?: { manifest: NodeManifest } }>) {
+  return results.flatMap((result) => result.data ? [result.data.manifest] : []);
+}
 
 export function WorkflowCanvas() {
   const { workflowId = "" } = useParams();
@@ -145,12 +151,13 @@ export function WorkflowCanvas() {
       .filter((key) => !available.has(key)))]
       .map((key) => { const separator = key.lastIndexOf("@"); return { nodeType: key.slice(0, separator), version: Number(key.slice(separator + 1)) }; });
   }, [catalog.data, draft.data?.definition]);
-  const frozenManifestQueries = useQueries({
+  const documentManifests = useQueries({
     queries: missingManifestKeys.map(({ nodeType, version }) => ({
       queryKey: ["node-definition-frozen", nodeType, version],
       queryFn: () => loadNodeDefinition(nodeType, version),
       staleTime: Infinity,
     })),
+    combine: combineFrozenManifests,
   });
   const versions = useQuery({
     queryKey: ["workflow-versions", workflowId],
@@ -180,22 +187,9 @@ export function WorkflowCanvas() {
     await queryClient.invalidateQueries({ queryKey: ["studio-resource-options", workflowId] });
     showToast(t("studio.toasts.resourceAuthorized"));
   }, [queryClient, showToast, t, workflowId]);
-  const requestResource = useCallback(async (option: ResourceOption, context?: ResourceRequestContext) => {
-    await apiRequest(`/workflows/${workflowId}/resource-grant-requests`, {
-      method: "POST",
-      headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: jsonBody({ resourceType: option.resourceType ?? "model", resourceId: option.value, resourceVersionId: option.versionId ?? null, operation: option.operation ?? "use", sourceNodeId: context?.sourceNodeId, sourceRevision: draft.data?.revision, message: context?.message }),
-    });
-    await queryClient.invalidateQueries({ queryKey: ["studio-resource-options", workflowId] });
-    showToast(t("studio.toasts.resourceRequested"));
-  }, [draft.data?.revision, queryClient, showToast, t, workflowId]);
   const manifests = useMemo(
     () => (catalog.data ?? []).map((item) => item.manifest),
     [catalog.data],
-  );
-  const documentManifests = useMemo(
-    () => frozenManifestQueries.flatMap((query) => query.data ? [query.data.manifest] : []),
-    [frozenManifestQueries],
   );
   const subworkflowOptions = useProviderOptions(
     manifests.find((manifest) => manifest.nodeType === "sub_workflow"),
@@ -216,11 +210,8 @@ export function WorkflowCanvas() {
     },
     [documentManifests, manifests, subworkflowOptions.workflowVersionId],
   );
-  const resolvingDocument = useEditorStore(useShallow((state) => ({
-    start: state.start, nodes: state.nodes, edges: state.edges, end: state.end,
-    settings: state.settings, viewport: state.viewport, boundaryLayouts: state.boundaryLayouts,
-    annotations: state.annotations, groups: state.groups,
-  })));
+  const definitionSelector = useMemo(createDefinitionSelector, []);
+  const resolvingDocument = useEditorStore(definitionSelector);
   const pluginDefinitions = useResolvedPluginManifests(
     workflowId,
     resolvingDocument,
@@ -254,9 +245,8 @@ export function WorkflowCanvas() {
       setEnd: state.setEnd,
     })),
   );
-  const selected = useEditorStore((state) =>
-    state.nodes.find((node) => node.id === state.selectedId),
-  );
+  const selectedId = useEditorStore((state) => state.selectedId);
+  const selected = resolvingDocument.nodes.find((node) => node.id === selectedId);
   const dirty = useEditorStore((state) => state.dirty);
   const readOnly = workflow.data?.canEdit === false || workflow.data?.status === "archived";
   const canUndo = useEditorStore((state) => state.past.length > 0);
@@ -268,7 +258,7 @@ export function WorkflowCanvas() {
       ).length,
   );
   const edgeInsertRequest = useEditorStore((state) => state.edgeInsertRequest);
-  const canvasNodes = useEditorStore(useShallow((state) => state.nodes));
+  const canvasNodes = resolvingDocument.nodes;
   const exitNodes = useMemo(
     () =>
       canvasNodes
@@ -276,14 +266,7 @@ export function WorkflowCanvas() {
         .map((node) => ({ id: node.id, data: node.data as ExitNodeData })),
     [canvasNodes],
   );
-  const referenceSource = useEditorStore(
-    useShallow((state) => ({
-      start: state.start,
-      nodes: state.nodes,
-      edges: state.edges,
-      end: state.end,
-    })),
-  );
+  const referenceSource = resolvingDocument;
   const selectedManifest = selected ? manifestForNode(manifestMap, selected) : undefined;
   const pluginVersionContext = useMemo(() => {
     if (!selected || !selectedManifest?.plugin) return undefined;
@@ -437,6 +420,7 @@ export function WorkflowCanvas() {
     return () => window.removeEventListener("beforeunload", beforeUnload);
   }, []);
 
+  const saveInFlight = useRef<ReturnType<typeof saveDraft> | undefined>(undefined);
   const saveMutation = useMutation({
     mutationFn: ({
       expectedRevision,
@@ -453,10 +437,12 @@ export function WorkflowCanvas() {
         serialized.editorDocument,
       );
     },
-    onSuccess: async (value) => {
+    onSuccess: async (value, { document }) => {
       setRevision(value.revision);
       setLocatedIssue(undefined);
-      editor.markSaved();
+      if (samePersistedDraft(document, studioDocument(useEditorStore.getState()))) {
+        editor.markSaved();
+      }
       clearRecovery(workflowId);
       queryClient.setQueryData(["workflow-draft", workflowId], value);
       await Promise.all([
@@ -494,20 +480,59 @@ export function WorkflowCanvas() {
       } else showToast(error.message);
     },
   });
+  const persistDocument = useCallback((input: Parameters<typeof saveMutation.mutateAsync>[0]) => {
+    if (saveInFlight.current) return saveInFlight.current;
+    const pending = saveMutation.mutateAsync(input);
+    saveInFlight.current = pending;
+    const clear = () => {
+      if (saveInFlight.current === pending) saveInFlight.current = undefined;
+    };
+    void pending.then(clear, clear);
+    return pending;
+  }, [saveMutation]);
   const saveDocument = useCallback(
     (showValidation = true) => {
-      if (saveMutation.isPending) return;
+      if (saveInFlight.current || saveMutation.isPending) return;
       const document = studioDocument(useEditorStore.getState());
       const structuralIssues = definitionIssues(document);
       if (structuralIssues.length) {
         if (showValidation) setIssues(structuralIssues);
         return;
       }
-      saveMutation.mutate({ expectedRevision: revision, document });
+      void persistDocument({ expectedRevision: revision, document }).catch(() => undefined);
     },
-    [revision, saveMutation],
+    [persistDocument, revision, saveMutation],
   );
   const saveNow = useCallback(() => saveDocument(), [saveDocument]);
+
+  const requestResource = useCallback(async (option: ResourceOption, context?: ResourceRequestContext) => {
+    // A request is reviewed against a saved revision. Serialize with any
+    // autosave, then persist edits made while that earlier save was pending.
+    if (saveInFlight.current) await saveInFlight.current;
+    let sourceRevision: number | undefined = queryClient.getQueryData<WorkflowDraft>(["workflow-draft", workflowId])?.revision ?? revision;
+    while (useEditorStore.getState().dirty) {
+      const document = studioDocument(useEditorStore.getState());
+      // An incomplete Agent may need this resource before it can be saved.
+      // Such requests use the existing subject/package scope, without
+      // claiming an earlier saved draft as their source.
+      if (definitionIssues(document).length) {
+        sourceRevision = undefined;
+        break;
+      }
+      const saved = await persistDocument({
+        expectedRevision: sourceRevision,
+        document,
+      });
+      sourceRevision = saved.revision;
+    }
+    await apiRequest(`/workflows/${workflowId}/resource-grant-requests`, {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: jsonBody({ resourceType: option.resourceType ?? "model", resourceId: option.value, resourceVersionId: option.versionId ?? null, operation: option.operation ?? "use", sourceNodeId: context?.sourceNodeId, sourceRevision, message: context?.message }),
+    });
+    await queryClient.invalidateQueries({ queryKey: ["studio-resource-options", workflowId] });
+    showToast(t("studio.toasts.resourceRequested"));
+  }, [persistDocument, queryClient, revision, showToast, t, workflowId]);
 
   useEffect(() => {
     let timer: number | undefined;
@@ -843,10 +868,10 @@ export function WorkflowCanvas() {
     const local = studioDocument(useEditorStore.getState());
     const result = await draft.refetch();
     if (result.data)
-      saveMutation.mutate({
+      void persistDocument({
         expectedRevision: result.data.revision,
         document: local,
-      });
+      }).catch(() => undefined);
     setConflictOpen(false);
   };
   const locateIssue = (issue: StudioValidationIssue) => {

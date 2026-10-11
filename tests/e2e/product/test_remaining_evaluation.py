@@ -23,6 +23,7 @@ from tests.e2e.product.remaining_support import (
 pytestmark = [pytest.mark.cluster, pytest.mark.product]
 
 
+@pytest.mark.live_model
 def test_real_kimi_nonzero_price_matches_calls_execution_and_insights(boundary_state, live_kimi_secret):
     state = boundary_state
     model = new_model(

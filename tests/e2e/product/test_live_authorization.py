@@ -30,7 +30,7 @@ from tests.e2e.runtime.test_agent_attachments import _control_mysql, _runtime_my
 from tests.e2e.support import run_playwright
 from tools.scripts.release.evidence import write_report
 
-pytestmark = [pytest.mark.cluster, pytest.mark.product]
+pytestmark = [pytest.mark.cluster, pytest.mark.product, pytest.mark.live_model]
 
 
 def test_resource_review_desktop_flow(installed_agentx, service_urls, approval_resources, run_id):

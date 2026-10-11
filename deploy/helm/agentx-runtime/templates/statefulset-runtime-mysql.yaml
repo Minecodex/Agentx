@@ -12,11 +12,30 @@ spec:
       serviceAccountName: workflow-runtime
       automountServiceAccountToken: false
       securityContext: { runAsNonRoot: true, runAsUser: 999, runAsGroup: 999, fsGroup: 999, seccompProfile: { type: RuntimeDefault } }
+{{- if .Values.global.components.runtimeMysql.caSecretName }}
+      initContainers:
+        - name: prepare-mysql-tls
+          image: mysql:8.4
+          command: [sh, -ec]
+          args:
+            - |
+              umask 077
+              for file in ca.crt tls.crt tls.key; do
+                test -s "/tls-source/$file"
+                cat "/tls-source/$file" > "/etc/mysql/agentx-tls/$file"
+                chmod 0600 "/etc/mysql/agentx-tls/$file"
+              done
+              openssl verify -CAfile /etc/mysql/agentx-tls/ca.crt /etc/mysql/agentx-tls/tls.crt
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+          volumeMounts:
+            - { name: tls-source, mountPath: /tls-source, readOnly: true }
+            - { name: tls, mountPath: /etc/mysql/agentx-tls }
+{{- end }}
       containers:
         - name: mysql
           image: mysql:8.4
 {{- if .Values.global.components.runtimeMysql.caSecretName }}
-          args: [--ssl-ca=/tls/ca.crt, --ssl-cert=/tls/tls.crt, --ssl-key=/tls/tls.key, --require_secure_transport=ON]
+          args: [--ssl-ca=/etc/mysql/agentx-tls/ca.crt, --ssl-cert=/etc/mysql/agentx-tls/tls.crt, --ssl-key=/etc/mysql/agentx-tls/tls.key, --require_secure_transport=ON]
 {{- end }}
           securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
           env:
@@ -24,26 +43,30 @@ spec:
             - { name: MYSQL_ROOT_PASSWORD_FILE, value: /run/secrets/agentx/root-password }
           ports: [{ name: mysql, containerPort: 3306 }]
           startupProbe:
-            exec: { command: [sh, -ec, 'mysqladmin ping -h 127.0.0.1 -uroot -p"$(cat /run/secrets/agentx/root-password)"'] }
+            exec: { command: [sh, -ec, 'MYSQL_PWD="$(cat /run/secrets/agentx/app-password)" mysql --protocol=TCP --connect-timeout=2 {{ if .Values.global.components.runtimeMysql.caSecretName }}--ssl-mode=VERIFY_CA --ssl-ca=/etc/mysql/agentx-tls/ca.crt{{ else }}--ssl-mode=DISABLED --get-server-public-key{{ end }} -h 127.0.0.1 -uruntime_app agentx_runtime -e "SELECT 1"'] }
             failureThreshold: 60
             periodSeconds: 2
+            timeoutSeconds: 5
           readinessProbe:
-            exec: { command: [sh, -ec, 'mysqladmin ping -h 127.0.0.1 -uroot -p"$(cat /run/secrets/agentx/root-password)"'] }
+            exec: { command: [sh, -ec, 'MYSQL_PWD="$(cat /run/secrets/agentx/app-password)" mysql --protocol=TCP --connect-timeout=2 {{ if .Values.global.components.runtimeMysql.caSecretName }}--ssl-mode=VERIFY_CA --ssl-ca=/etc/mysql/agentx-tls/ca.crt{{ else }}--ssl-mode=DISABLED --get-server-public-key{{ end }} -h 127.0.0.1 -uruntime_app agentx_runtime -e "SELECT 1"'] }
             periodSeconds: 5
+            timeoutSeconds: 5
           volumeMounts:
 {{- if .Values.global.components.runtimeMysql.caSecretName }}
-            - { name: tls, mountPath: /tls, readOnly: true }
+            - { name: tls, mountPath: /etc/mysql/agentx-tls, readOnly: true }
 {{- end }}
             - { name: data, mountPath: /var/lib/mysql }
             - { name: init, mountPath: /docker-entrypoint-initdb.d, readOnly: true }
             - { name: mysql-secrets, mountPath: /run/secrets/agentx, readOnly: true }
       volumes:
 {{- if .Values.global.components.runtimeMysql.caSecretName }}
+        - name: tls-source
+          secret: { secretName: {{ .Values.global.components.runtimeMysql.caSecretName }}, defaultMode: 0440 }
         - name: tls
-          secret: { secretName: {{ .Values.global.components.runtimeMysql.caSecretName }} }
+          emptyDir: { medium: Memory }
 {{- end }}
         - name: init
-          configMap: { name: runtime-mysql-init, defaultMode: 0555 }
+          configMap: { name: runtime-mysql-init, defaultMode: 0444 }
         - name: mysql-secrets
           secret:
             secretName: agentx-runtime-secrets

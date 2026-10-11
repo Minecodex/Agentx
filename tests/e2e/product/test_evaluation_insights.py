@@ -146,7 +146,7 @@ def test_insights_aggregates_degradation_and_grant_gate(
         rows = payload.get("rows") or payload.get("items") or []
         # Trace spans reach ClickHouse asynchronously; poll until they land.
         deadline = time.monotonic() + 180
-        while time.monotonic() < deadline and not rows:
+        while time.monotonic() < deadline and not any(row["dimensions"].get("workflow") == workflow_id for row in rows):
             time.sleep(5)
             aggregates = control.post(
                 "/api/v1/insights/aggregates",
