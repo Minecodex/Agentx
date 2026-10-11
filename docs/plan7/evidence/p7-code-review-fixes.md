@@ -143,4 +143,4 @@ env PATH=/opt/homebrew/opt/helm@3/bin:$PATH \
   --junitxml=.local/artifacts/certification.xml --timeout=14400
 ```
 
-公网发布认证由 `.github/workflows/agentxctl-release.yml` 的 certify → publish 两阶段执行。Cosign 3 的配置方式依据 [Sigstore 配置文档](https://docs.sigstore.dev/cosign/system_config/custom_components/)。
+公网发布认证保留 `tools/scripts/release` 独立入口，待真实模型、容量、签名与注册表环境具备后执行。2026-10-11 起 `.github/workflows/agentxctl-release.yml` 仅验证同一候选的托管软件和原生 CLI 并保存内部制品，原 certify → publish 阶段已移出 Actions；具体范围见 [CI 规则](../../ci.md)。Cosign 3 的配置方式依据 [Sigstore 配置文档](https://docs.sigstore.dev/cosign/system_config/custom_components/)。
