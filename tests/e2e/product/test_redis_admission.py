@@ -218,7 +218,9 @@ def test_redis_unavailable_refuses_and_recovers_without_accepting_work(boundary_
             )
             if recovered.status_code == 202:
                 break
-            assert recovered.status_code == 503 and recovered.json()["code"] == "RUNTIME_STORAGE_UNAVAILABLE", recovered.text
+            assert recovered.status_code == 503 and recovered.json()["code"] == "RUNTIME_STORAGE_UNAVAILABLE", (
+                recovered.text
+            )
             assert invocation_count(context, app["applicationId"]) == baseline
             assert time.monotonic() < deadline, recovered.text
             time.sleep(0.5)

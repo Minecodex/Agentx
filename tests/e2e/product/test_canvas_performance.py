@@ -1,4 +1,5 @@
 """Measure canvas budgets in an isolated run, retaining the real installed UI/API."""
+
 from __future__ import annotations
 
 import os
@@ -28,4 +29,6 @@ def test_workflow_canvas_performance(installed_agentx, service_urls):
         "AGENTX_E2E_BASE_URL": service_urls["web"],
         "AGENTX_E2E_RUNTIME_URL": service_urls["runtime"],
     }
-    run_playwright(root, "workflow-performance", ("tests/workflow-canvas-performance.spec.ts", "--workers=1"), environment)
+    run_playwright(
+        root, "workflow-performance", ("tests/workflow-canvas-performance.spec.ts", "--workers=1"), environment
+    )

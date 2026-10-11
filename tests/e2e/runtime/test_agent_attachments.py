@@ -414,7 +414,8 @@ def test_agent_attachments_follow_the_published_workflow_main_chain(
         assert sum(call["callKind"] == "mcp_tool" for call in calls) == 1
         assert all(call["status"] == "succeeded" for call in calls), [
             {key: call.get(key) for key in ("callKind", "status", "errorCode", "errorMessage", "callId")}
-            for call in calls if call["status"] != "succeeded"
+            for call in calls
+            if call["status"] != "succeeded"
         ]
 
         registry_json = _runtime_mysql(
