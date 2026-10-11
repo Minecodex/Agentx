@@ -1,7 +1,25 @@
 import { expect, type Locator, type Page } from '@playwright/test'
 
 export async function showEdgeToolbar(edge: Locator, toolbar: Locator) {
-  await edge.locator('path[stroke="transparent"]').dispatchEvent('mouseover')
+  const path = edge.locator('path[stroke="transparent"]').first()
+  await expect(path).toBeAttached()
+  await expect.poll(() => path.evaluate((element) => (element as SVGPathElement).getTotalLength())).toBeGreaterThan(0)
+  const point = await path.evaluate((element) => {
+    const curve = element as SVGPathElement
+    const matrix = curve.getScreenCTM()
+    if (!matrix) throw new Error('Edge has no screen transform')
+    // The label toolbar covers the midpoint; hovering a quarter along the
+    // actual stroke reveals it without accidentally clicking Delete.
+    const owner = curve.closest('.react-flow__edge')!
+    for (const fraction of [.25, .75, .15, .85]) {
+      const local = curve.getPointAtLength(curve.getTotalLength() * fraction)
+      const screen = new DOMPoint(local.x, local.y).matrixTransform(matrix)
+      const hit = document.elementFromPoint(screen.x, screen.y)
+      if (hit && owner.contains(hit)) return { x: screen.x, y: screen.y }
+    }
+    throw new Error('Edge has no unobstructed stroke in the viewport')
+  })
+  await edge.page().mouse.move(point.x, point.y)
   await expect(toolbar).toHaveCSS('opacity', '1')
 }
 

@@ -22,6 +22,8 @@
 
 冻结节点查询通过 TanStack Query combine 保持相同数据的引用稳定。工具栏脏状态变化不再重新生成基础契约 Map，避免连带重建所有插件、图索引和可见节点。
 
+连线工具栏通过 SVG 路径四分之一处的真实鼠标悬停显示，再单次点击删除并核验连接消失。避免强制点击包围盒中心时，悬浮工具栏覆盖该坐标而提前触发删除。动态插件链的端口传播、保存、重载和版本发布断言完整保留；plugins diagnostics 只聚焦这一业务场景。
+
 performance-profile diagnostics 额外记录 300 节点 CPU profile，用于定位主线程热点；其带采样器的数字不作为性能通过证明。正常 full 和 performance diagnostics 不启动 CPU profiler。两种测量都保留原始逐帧、输入事件和长任务样本，拖动与滚轮延迟可分别追溯。
 
 系统入口保持 `pytest tests/e2e`，通过 `--ci-profile pr|release|independent` 选择范围。独立验收默认保留全部测试及原有容量阈值；Actions 不提供真实模型密钥，不把环境测试排除报告为通过。Minikube/网络及证据按运行所有权创建和清理。
