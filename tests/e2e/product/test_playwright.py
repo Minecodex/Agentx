@@ -199,7 +199,7 @@ def test_product_playwright_suite(
                 ),
             ),
             ("workflow-multi-exit", ("tests/workflow-multi-exit.spec.ts",)),
-            ("workflow-performance", ("tests/workflow-canvas-performance.spec.ts",)),
+            ("workflow-performance", ("tests/workflow-canvas-performance.spec.ts", "--workers=1")),
         )
         only_suites = {
             suite.strip() for suite in os.environ.get("AGENTX_E2E_ONLY_SUITE", "").split(",") if suite.strip()

@@ -117,7 +117,7 @@ def _access_token(client: httpx.Client) -> tuple[str, dict[str, Any]]:
         response = client.post(
             "/api/v1/bootstrap",
             json={
-                "companyName": "Agentx P3-04 E2E",
+                "companyName": "Agentx E2E",
                 "adminUsername": ADMIN_USERNAME,
                 "adminDisplayName": "Agentx E2E Admin",
                 "password": ADMIN_PASSWORD,
@@ -400,7 +400,10 @@ def test_agent_attachments_follow_the_published_workflow_main_chain(
         calls = details.json()["calls"]
         assert sum(call["callKind"] == "model" for call in calls) == 2
         assert sum(call["callKind"] == "mcp_tool" for call in calls) == 1
-        assert all(call["status"] == "succeeded" for call in calls), calls
+        assert all(call["status"] == "succeeded" for call in calls), [
+            {key: call.get(key) for key in ("callKind", "status", "errorCode", "errorMessage", "callId")}
+            for call in calls
+        ]
 
         registry_json = _runtime_mysql(
             installed_agentx,
