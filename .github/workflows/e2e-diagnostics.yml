@@ -38,7 +38,7 @@ jobs:
               'performance-profile': ['tests/e2e/product/test_canvas_performance.py'],
               'attachments': ['tests/e2e/product/test_remaining_faults.py::test_model_transport_faults_are_failed_and_have_call_trace', 'tests/e2e/runtime/test_agent_attachments.py'],
               'studio': ['tests/e2e/product/test_playwright.py'],
-              'plugins': ['tests/e2e/runtime/test_plugin_boundaries.py::test_dynamic_plugin_chain_in_browser'],
+              'plugins': ['tests/e2e/runtime/test_plugin_boundaries.py'],
           }
           selected = selections.get(suite, ['tests/e2e'])
           environment = os.environ.copy()
@@ -48,7 +48,7 @@ jobs:
               environment['AGENTX_E2E_CANVAS_PROFILE'] = '1'
           if suite == 'studio':
               environment['AGENTX_E2E_ONLY_SUITE'] = 'product-closure'
-              environment['AGENTX_E2E_PLAYWRIGHT_GREP'] = 'builds and reopens Start to IF|renders all thirteen'
+              environment['AGENTX_E2E_PLAYWRIGHT_GREP'] = 'builds and reopens Start to IF|renders all thirteen|dual-Agent output selection'
           command = [
               'uv', 'run', '--frozen', '--group', 'test', 'pytest', *selected,
               '--minikube', '--values', 'deploy/values/local.yaml', '--ci-profile', profiles[suite],

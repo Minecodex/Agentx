@@ -11,7 +11,8 @@ export async function showEdgeToolbar(edge: Locator, toolbar: Locator) {
     // The label toolbar covers the midpoint; hovering a quarter along the
     // actual stroke reveals it without accidentally clicking Delete.
     const owner = curve.closest('.react-flow__edge')!
-    for (const fraction of [.25, .75, .15, .85]) {
+    const fractions = [.25, .75, ...Array.from({ length: 19 }, (_, index) => (index + 1) / 20)]
+    for (const fraction of fractions) {
       const local = curve.getPointAtLength(curve.getTotalLength() * fraction)
       const screen = new DOMPoint(local.x, local.y).matrixTransform(matrix)
       const hit = document.elementFromPoint(screen.x, screen.y)
