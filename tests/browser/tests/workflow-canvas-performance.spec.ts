@@ -10,6 +10,7 @@ test.use({ trace: 'off', video: 'off' })
 const password = 'agentx-e2e-admin-password'
 type Draft = { revision: number; updatedAt: string; [key: string]: unknown }
 type Metric = { nodeCount: number; firstInteractiveMs: number; medianFps: number; p95InputDelayMs: number; renderedNodes: number }
+type CanvasSamples = { frames: number[]; inputDelays: number[]; inputEvents: Array<{ kind: string; at: number; delay: number }>; longTasks: Array<{ at: number; duration: number }>; started: number; lastFrame?: number }
 type CatalogPage = { items: Array<{ nodeType: string; version: number; [key: string]: unknown }> }
 
 async function login(page: Page) {
@@ -84,13 +85,28 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
   await expect(page.locator('.react-flow__minimap')).toHaveCount(nodeCount >= 300 ? 0 : 1)
   await page.waitForTimeout(750)
 
+  const profiler = process.env.AGENTX_E2E_CANVAS_PROFILE === '1' && nodeCount === 300
+    ? await page.context().newCDPSession(page) : undefined
+  if (profiler) {
+    await profiler.send('Profiler.enable')
+    await profiler.send('Profiler.start')
+  }
+
   await page.evaluate(() => {
-    const target = window as Window & { __agentxPerf?: { frames: number[]; inputDelays: number[]; started: number; lastFrame?: number } }
-    const metrics = { frames: [] as number[], inputDelays: [] as number[], started: performance.now(), lastFrame: undefined as number | undefined }
+    const target = window as Window & { __agentxPerf?: CanvasSamples }
+    const metrics: CanvasSamples = { frames: [], inputDelays: [], inputEvents: [], longTasks: [], started: performance.now() }
     target.__agentxPerf = metrics
-    const input = () => {
+    const observer = new PerformanceObserver((entries) => entries.getEntries().forEach((entry) => {
+      metrics.longTasks.push({ at: entry.startTime - metrics.started, duration: entry.duration })
+    }))
+    observer.observe({ type: 'longtask' })
+    const input = (event: Event) => {
       const eventAt = performance.now()
-      requestAnimationFrame(() => metrics.inputDelays.push(performance.now() - eventAt))
+      requestAnimationFrame(() => {
+        const delay = performance.now() - eventAt
+        metrics.inputDelays.push(delay)
+        metrics.inputEvents.push({ kind: event.type, at: eventAt - metrics.started, delay })
+      })
     }
     document.addEventListener('pointermove', input, { passive: true })
     document.addEventListener('wheel', input, { passive: true })
@@ -101,6 +117,7 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
       else {
         document.removeEventListener('pointermove', input)
         document.removeEventListener('wheel', input)
+        observer.disconnect()
       }
     }
     requestAnimationFrame(frame)
@@ -121,7 +138,14 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
   for (let index = 0; index < 12; index += 1) await page.mouse.wheel(0, index % 2 === 0 ? -80 : 80)
   await page.waitForTimeout(1_900)
 
-  const samples = await page.evaluate(() => (window as Window & { __agentxPerf?: { frames: number[]; inputDelays: number[] } }).__agentxPerf!)
+  const samples = await page.evaluate(() => (window as Window & { __agentxPerf?: CanvasSamples }).__agentxPerf!)
+  if (profiler) {
+    const { profile } = await profiler.send('Profiler.stop')
+    const profilePath = test.info().outputPath(`canvas-${nodeCount}.cpuprofile`)
+    await writeFile(profilePath, JSON.stringify(profile), 'utf8')
+    await test.info().attach(`canvas-${nodeCount}.cpuprofile`, { path: profilePath, contentType: 'application/json' })
+    await profiler.detach()
+  }
   const medianFrame = percentile(samples.frames, 0.5)
   const metric = {
     nodeCount,
@@ -131,7 +155,7 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
     renderedNodes: await page.locator('.react-flow__node-manifest').count(),
   }
   const metricPath = test.info().outputPath(`canvas-metric-${nodeCount}.json`)
-  await writeFile(metricPath, JSON.stringify(metric, null, 2), 'utf8')
+  await writeFile(metricPath, JSON.stringify({ ...metric, samples }, null, 2), 'utf8')
   await test.info().attach(`canvas-metric-${nodeCount}.json`, { path: metricPath, contentType: 'application/json' })
   if (nodeCount >= 300) expect(metric.renderedNodes).toBeLessThan(nodeCount)
   else expect(metric.renderedNodes).toBe(nodeCount)

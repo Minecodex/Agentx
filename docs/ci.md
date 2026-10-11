@@ -20,6 +20,8 @@
 
 画布的插件契约和变量目录只订阅节点数据、连接、Start/End 和执行设置；拖动、尺寸测量与视口变化不再重新序列化全部插件或重建变量目录。参数修改即使不改变 GraphIndex revision 也会刷新定义；保存、恢复与历史记录仍读取当前完整文档。
 
+performance diagnostics 额外记录 300 节点 CPU profile，用于定位主线程热点；其带采样器的数字不作为性能通过证明。正常 full 不启动 CPU profiler。两种入口都保留原始逐帧、输入事件和长任务样本，拖动与滚轮延迟可分别追溯。
+
 系统入口保持 `pytest tests/e2e`，通过 `--ci-profile pr|release|independent` 选择范围。独立验收默认保留全部测试及原有容量阈值；Actions 不提供真实模型密钥，不把环境测试排除报告为通过。Minikube/网络及证据按运行所有权创建和清理。
 
 完整托管软件验证：

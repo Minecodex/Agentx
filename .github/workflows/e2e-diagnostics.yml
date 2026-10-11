@@ -42,6 +42,8 @@ jobs:
           environment = os.environ.copy()
           if suite in ('performance', 'attachments', 'studio'):
               environment['AGENTX_E2E_RAGFLOW_DISABLE'] = '1'
+          if suite == 'performance':
+              environment['AGENTX_E2E_CANVAS_PROFILE'] = '1'
           if suite == 'studio':
               environment['AGENTX_E2E_ONLY_SUITE'] = 'product-closure'
               environment['AGENTX_E2E_PLAYWRIGHT_GREP'] = 'builds and reopens Start to IF|renders all thirteen'
