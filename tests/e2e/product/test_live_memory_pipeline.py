@@ -71,7 +71,15 @@ def _memory_results(context, execution):
         context,
         f"SELECT response_json FROM runtime_calls WHERE execution_id=UUID_TO_BIN('{execution['executionId']}') AND call_kind='memory' AND status='succeeded' ORDER BY ended_at DESC LIMIT 1;",
     )
-    assert result, "Expected a real successful Mem0 call"
+    if not result:
+        ledger = _runtime_mysql(
+            context,
+            "SELECT JSON_ARRAYAGG(JSON_OBJECT('kind',call_kind,'status',status,'code',error_code,'message',error_message)) "
+            f"FROM runtime_calls WHERE execution_id=UUID_TO_BIN('{execution['executionId']}');",
+        )
+        raise AssertionError(
+            f"Expected a real successful Mem0 call; execution={execution['executionId']}; ledger={ledger}"
+        )
     return json.loads(result)["results"]
 
 

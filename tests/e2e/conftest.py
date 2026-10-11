@@ -19,6 +19,7 @@ import yaml
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding as asymmetric_padding
 
+from tests.e2e.ci_profiles import select_ci_profile
 from tests.e2e.support import (
     ManagedProcess,
     RestartingPortForward,
@@ -32,6 +33,12 @@ from tools.scripts.release.evidence import write_identity
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--ci-profile",
+        choices=("pr", "release", "independent"),
+        default="independent",
+        help="core PR, complete hosted software, or independent environment acceptance",
+    )
     parser.addoption("--values", action="store", default=os.getenv("AGENTX_E2E_VALUES"))
     parser.addoption("--keep-on-failure", action="store_true", default=False)
     parser.addoption("--scale-down-development", action="store_true", default=False)
@@ -44,6 +51,11 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--evidence-run-id", help="candidate run ID from prepare_candidate")
     parser.addoption("--minikube", action="store_true", help="prepare and clean up a Linux Minikube test cluster")
     parser.addoption("--candidate-root", help="immutable application source checkout used to bind release evidence")
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    select_ci_profile(config, items)
 
 
 @pytest.hookimpl(wrapper=True, tryfirst=True)
@@ -70,14 +82,16 @@ def release_evidence_properties(pytestconfig: pytest.Config, record_testsuite_pr
 
 
 @pytest.fixture(scope="session")
-def deployment_values(pytestconfig: pytest.Config, run_id: str) -> Iterator[Path]:
+def deployment_values(pytestconfig: pytest.Config, run_id: str, request: pytest.FixtureRequest) -> Iterator[Path]:
     value = pytestconfig.getoption("--values")
     if not value:
         pytest.skip("cluster E2E requires --values or AGENTX_E2E_VALUES")
     path = Path(value).resolve()
     if pytestconfig.getoption("--minikube"):
-        if not os.environ.get("AGENTX_E2E_KIMI_API_KEY"):
-            raise ValueError("GitHub E2E requires the AGENTX_E2E_KIMI_API_KEY Actions secret")
+        if any(item.get_closest_marker("live_model") for item in request.session.items) and not os.environ.get(
+            "AGENTX_E2E_KIMI_API_KEY"
+        ):
+            raise ValueError("Independent real-model acceptance requires AGENTX_E2E_KIMI_API_KEY")
         from tests.e2e.hosted_cluster import minikube_environment
 
         directory = Path(__file__).resolve().parents[2] / ".local/artifacts/e2e" / run_id

@@ -7,13 +7,17 @@ on:
   workflow_dispatch:
     inputs:
       full:
-        description: Include live providers and the complete release capacity matrix
+        description: Include the complete hosted software E2E; dedicated environment acceptance is independent
         type: boolean
         default: false
-      previous_worker_image:
-        description: Distinct compatible Worker digest for full capacity acceptance
+  workflow_call:
+    inputs:
+      full:
+        type: boolean
+        default: false
+      ref:
         type: string
-        default: kakj/agentx-workflow-worker:v0.0.4-beta@sha256:daa72d3f6ada839a0102e9ef6ed36c8546ebe8622e0a2ebcf1fe716c0e9be746
+        default: ''
 
 permissions:
   contents: read
@@ -31,6 +35,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - name: Install the repository Rust toolchain
         shell: bash
         run: rustup show
@@ -53,24 +59,24 @@ jobs:
   kubernetes-e2e-linux:
     needs: python-helm
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    timeout-minutes: ${{ inputs.full && 360 || 120 }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - uses: ./.github/actions/e2e-tools
       - name: Run required system E2E or full release acceptance in disposable Minikube
         env:
-          AGENTX_E2E_KIMI_API_KEY: ${{ secrets.AGENTX_E2E_KIMI_API_KEY }}
           FULL_ACCEPTANCE: ${{ inputs.full }}
-          PREVIOUS_WORKER_IMAGE: ${{ inputs.previous_worker_image }}
         run: |
           if [ "$FULL_ACCEPTANCE" = "true" ]; then
             uv run --frozen --group test pytest tests/e2e --minikube \
-              --values deploy/values/local.yaml --previous-worker-image "$PREVIOUS_WORKER_IMAGE" \
+              --values deploy/values/local.yaml --ci-profile release \
               --evidence-run-id "ci-${{ github.run_id }}-${{ github.run_attempt }}" \
               --junitxml=.local/artifacts/kubernetes-e2e.xml --timeout=18000
           else
             uv run --frozen --group test pytest tests/e2e --minikube \
-              --values deploy/values/local.yaml -m "not capacity and not live_model" \
+              --values deploy/values/local.yaml --ci-profile pr \
               --evidence-run-id "ci-${{ github.run_id }}-${{ github.run_attempt }}" \
               --junitxml=.local/artifacts/kubernetes-e2e.xml --timeout=14400
           fi
@@ -88,6 +94,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:

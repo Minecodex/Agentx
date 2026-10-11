@@ -257,7 +257,7 @@ def test_hosted_image_builder_includes_every_local_provider_fixture(monkeypatch)
     assert required <= selected, f"fixture images omitted from the build: {required - selected}"
 
 
-def test_linux_cluster_e2e_is_mandatory_and_release_keeps_full_certification():
+def test_hosted_ci_keeps_core_system_e2e_and_defers_dedicated_environment_acceptance():
     quality = yaml.safe_load(Path(".github/workflows/quality.yml").read_text())["jobs"]
     assert "kubernetes-e2e-windows" not in quality
     linux = quality["kubernetes-e2e-linux"]
@@ -266,9 +266,17 @@ def test_linux_cluster_e2e_is_mandatory_and_release_keeps_full_certification():
     matrix = quality["python-helm"]["strategy"]["matrix"]["os"]
     assert "windows-latest" in matrix
     release = yaml.safe_load(Path(".github/workflows/agentxctl-release.yml").read_text())["jobs"]
-    certify = release["certify"]
-    assert certify["runs-on"] == "ubuntu-24.04" and "if" not in certify
-    suite = next(step["run"] for step in certify["steps"] if "pytest tests/e2e" in step.get("run", ""))
-    assert "--capacity-smoke" not in suite
-    assert "--minikube" in suite and "--previous-worker-image" in suite
-    assert "certify" in release["publish"]["needs"]
+    assert release["source-ci"]["uses"] == "./.github/workflows/quality.yml"
+    assert release["source-ci"]["with"]["full"] is True
+    assert set(release["release-gate"]["needs"]) == {"source-ci", "build"}
+    assert release["release-gate"]["if"] == "always()"
+    suite = next(step["run"] for step in linux["steps"] if "pytest tests/e2e" in step.get("run", ""))
+    assert "--ci-profile pr" in suite and "--ci-profile release" in suite
+    assert "--minikube" in suite
+    for path in Path(".github/workflows").glob("*.yml"):
+        workflow = path.read_text()
+        assert "secrets.AGENTX_E2E_KIMI_API_KEY" not in workflow
+        assert "self-hosted" not in workflow
+    # The original real-provider credential handling remains enforced by the
+    # independent acceptance fixture test above; hosted CI cannot certify it.
+    assert "publish" not in release

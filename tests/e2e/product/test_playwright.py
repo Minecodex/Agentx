@@ -138,7 +138,9 @@ def test_product_playwright_suite(
     service_urls: dict[str, str],
     e2e_providers: dict[str, str],
     code_egress_fixtures: dict[str, str],
+    pytestconfig: pytest.Config,
 ) -> None:
+    core_pr = pytestconfig.getoption("--ci-profile") == "pr"
     environment = os.environ.copy()
     environment["AGENTX_E2E_RUN_ID"] = installed_agentx["run_id"]
     environment["AGENTX_E2E_STAGE"] = "helm-agentxctl"
@@ -202,6 +204,8 @@ def test_product_playwright_suite(
         only_suites = {
             suite.strip() for suite in os.environ.get("AGENTX_E2E_ONLY_SUITE", "").split(",") if suite.strip()
         }
+        if core_pr:
+            only_suites = {"canvas-plugins", "api-first", "application-docs"}
         playwright_grep = os.environ.get("AGENTX_E2E_PLAYWRIGHT_GREP")
         failures: list[str] = []
         for suite, tests in suites:
@@ -210,7 +214,7 @@ def test_product_playwright_suite(
             selected_tests = (*tests, "--grep", playwright_grep) if playwright_grep else tests
             try:
                 _run_playwright(suite, selected_tests, environment, root)
-                if suite == "canvas-plugins" and not playwright_grep:
+                if suite == "canvas-plugins" and not playwright_grep and not core_pr:
                     _verify_plugin_trace_degradation(
                         environment,
                         root,

@@ -78,7 +78,7 @@ def _ask(gateway, app, title, question):
     session_id = session(gateway, app, title)
     invocation = message(gateway, session_id, question)
     result = terminal(gateway, invocation)
-    assert result["status"] == "completed", result
+    assert result["status"] == "completed", json.dumps(result, ensure_ascii=False)
     messages = gateway.get(f"/gateway/v1/sessions/{session_id}/messages").json()
     answer = next(item for item in messages if item["role"] == "assistant")
     return result, "".join(part.get("content", "") for part in answer["parts"] if isinstance(part.get("content"), str))
