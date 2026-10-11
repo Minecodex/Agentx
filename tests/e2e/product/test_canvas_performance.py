@@ -16,7 +16,7 @@ pytestmark = [pytest.mark.cluster, pytest.mark.product, pytest.mark.browser_perf
 
 
 def test_workflow_canvas_performance(installed_agentx, service_urls):
-    with httpx.Client(base_url=service_urls["control"], timeout=30) as client:
+    with httpx.Client(base_url=service_urls["web"], timeout=30) as client:
         _access_token(client)
     root = Path(installed_agentx["root"])
     pnpm = ("corepack.cmd", "pnpm") if os.name == "nt" else ("corepack", "pnpm")

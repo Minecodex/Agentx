@@ -8,7 +8,7 @@ on:
       suite:
         description: Focused diagnostic scope; never release certification
         type: choice
-        options: [pr, controlled]
+        options: [pr, controlled, performance]
         default: pr
 
 permissions:
@@ -31,15 +31,19 @@ jobs:
           import os
           import subprocess
 
-          profiles = {'pr': 'pr', 'controlled': 'release'}
+          profiles = {'pr': 'pr', 'controlled': 'release', 'performance': 'independent'}
           suite = os.environ['SUITE']
+          selected = 'tests/e2e/product/test_canvas_performance.py' if suite == 'performance' else 'tests/e2e'
+          environment = os.environ.copy()
+          if suite == 'performance':
+              environment['AGENTX_E2E_RAGFLOW_DISABLE'] = '1'
           command = [
-              'uv', 'run', '--frozen', '--group', 'test', 'pytest', 'tests/e2e',
+              'uv', 'run', '--frozen', '--group', 'test', 'pytest', selected,
               '--minikube', '--values', 'deploy/values/local.yaml', '--ci-profile', profiles[suite],
               '--evidence-run-id', os.environ['RUN_ID'],
               '--junitxml=.local/artifacts/e2e-diagnostic.xml', '--timeout=9000',
           ]
-          subprocess.run(command, check=True)
+          subprocess.run(command, check=True, env=environment)
       - uses: actions/upload-artifact@v4
         if: always()
         with:
