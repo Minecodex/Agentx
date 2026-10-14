@@ -1067,6 +1067,13 @@ pub async fn heartbeat_attempt(
     .bind(lease.fencing_token)
     .execute(pool)
     .await?;
+    sqlx::query("UPDATE sandbox_workspaces w JOIN node_attempts a ON a.id=w.attempt_id AND a.tenant_id=w.tenant_id SET w.lease_expires_at=? WHERE w.attempt_id=? AND w.worker_id=? AND w.fencing_token=? AND a.lease_token=w.worker_id AND a.fencing_token=w.fencing_token AND a.status='running' AND a.locked_until>UTC_TIMESTAMP(6) AND w.status='active' AND w.lease_id IS NOT NULL AND w.lease_expires_at>UTC_TIMESTAMP(6) AND w.workspace_expires_at>UTC_TIMESTAMP(6)")
+        .bind(locked_until)
+        .bind(lease.attempt_id)
+        .bind(lease.worker_id)
+        .bind(lease.fencing_token)
+        .execute(pool)
+        .await?;
     Ok(WorkerAttemptLeaseV1 {
         locked_until,
         ..lease.clone()

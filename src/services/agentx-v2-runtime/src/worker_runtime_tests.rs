@@ -7,6 +7,7 @@ use super::{
     secret_fragments, system_prompt,
 };
 use crate::worker_runtime_calls::runtime_call_side_effect;
+use crate::worker_support::memory_secret_header;
 use agentx_runtime_contracts::{
     ContentHash, RuntimeResourceBindingV1, RuntimeResourceConfigurationV1, RuntimeResourceKindV1,
     WorkerResultStatusV1,
@@ -71,6 +72,58 @@ fn mcp_server_closure_never_shadows_the_executable_tool_binding() {
     assert!(
         matches!(&selected.configuration, RuntimeResourceConfigurationV1::Mcp { tool_name, .. } if tool_name == "echo")
     );
+}
+
+#[test]
+fn memory_auth_uses_the_exact_frozen_credential_type_and_secret_version() {
+    use agentx_runtime_contracts::VaultSecretReferenceV1;
+
+    let secret = VaultSecretReferenceV1 {
+        mount: "agentx".into(),
+        path: "credentials/memory".into(),
+        key: "value".into(),
+        version: 3,
+    };
+    let mut binding = mcp_binding(Uuid::now_v7(), "unused");
+    binding.resource_kind = RuntimeResourceKindV1::Credential;
+    for (kind, header) in [("api_key", "x-api-key"), ("bearer", "authorization")] {
+        binding.configuration = RuntimeResourceConfigurationV1::Credential {
+            credential_type: kind.into(),
+            secret: secret.clone(),
+            allowed_operations: BTreeSet::from(["use".into()]),
+        };
+        assert_eq!(
+            memory_secret_header(&[binding.clone()], Some(&secret)),
+            Ok(header)
+        );
+        let value = provider_secret_header(b"memory-secret", header);
+        assert_eq!(
+            value,
+            if kind == "bearer" {
+                b"Bearer memory-secret".to_vec()
+            } else {
+                b"memory-secret".to_vec()
+            }
+        );
+    }
+    let rotated = VaultSecretReferenceV1 {
+        version: 4,
+        ..secret.clone()
+    };
+    assert_eq!(
+        memory_secret_header(&[binding.clone()], Some(&rotated)),
+        Err("MEMORY_CREDENTIAL_BINDING_MISSING")
+    );
+    binding.configuration = RuntimeResourceConfigurationV1::Credential {
+        credential_type: "basic".into(),
+        secret: secret.clone(),
+        allowed_operations: BTreeSet::from(["use".into()]),
+    };
+    assert_eq!(
+        memory_secret_header(&[binding], Some(&secret)),
+        Err("MEMORY_CREDENTIAL_TYPE_UNSUPPORTED")
+    );
+    assert_eq!(memory_secret_header(&[], None), Ok("authorization"));
 }
 
 #[test]
@@ -423,6 +476,17 @@ fn provider_usage_detail_accepts_raw_and_normalized_token_names() {
     assert_eq!(
         provider_usage_detail(&json!({"usage":{"inputTokens":11,"outputTokens":4,"costMicros":9}})),
         (11, 4, 9)
+    );
+}
+
+#[test]
+fn chat_usage_is_not_lost_when_gateway_aliases_are_zero() {
+    assert_eq!(
+        provider_usage_detail(&json!({"usage":{
+            "prompt_tokens":17,"completion_tokens":3,
+            "input_tokens":0,"output_tokens":0
+        }})),
+        (17, 3, 0)
     );
 }
 

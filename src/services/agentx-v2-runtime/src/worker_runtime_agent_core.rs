@@ -1653,6 +1653,11 @@ impl<'a> AgentToolRouter<'a> {
                 if let Some(secret) = credential {
                     self.authorize_secret_dependency(secret)?;
                 }
+                let secret_header = crate::worker_support::memory_secret_header(
+                    &self.claim.resources,
+                    credential.as_ref(),
+                )
+                .map_err(|code| ToolPortError::Unauthorized(code.into()))?;
                 let write = descriptor.name == "memory_write";
                 let scope = if !subject_scope {
                     let run_scope = crate::worker_support::raw_hash(&json!({
@@ -1752,7 +1757,7 @@ impl<'a> AgentToolRouter<'a> {
                         index,
                         &context.idempotency_key,
                         credential.as_ref(),
-                        "authorization",
+                        secret_header,
                         Some(&binding),
                     ))
                 });

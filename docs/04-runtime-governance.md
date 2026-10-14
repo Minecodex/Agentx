@@ -290,6 +290,8 @@ SSE、取消和重试边界：
 - Credential 优先通过 OpenSandbox Credential Vault 或 Agentx 短期凭证代理注入，不得进入命令行、stdout、stderr、Trace 或持久镜像。
 - Sandbox 完成、超时、取消、Worker 失联或 Lease 过期时都必须幂等终止；回收失败进入 Reaper，不得把节点标记为虚假成功。
 
+长时间 Agent 推理或工具执行期间，成功的 Attempt 心跳计入 Worker Role 的健康进度，并联动续租同一 Worker、Attempt 和 fencing token 下的活动 Workspace Lease。续租必须校验父 Attempt 仍在运行且未失效，以及工作区 TTL 尚未到期；不能恢复已经丢失的租约或延长 Profile TTL。Sandbox Manager 继续负责工作区创建、工具执行和回收。
+
 运行环境边界：
 
 - 本地开发和 CI 可使用 OpenSandbox Docker Runtime + runc，用于功能、资源限制和网络策略 E2E。

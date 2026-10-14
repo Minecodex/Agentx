@@ -222,7 +222,6 @@ impl<'a> ProviderModelPort<'a> {
             provider,
             endpoint,
             model,
-            price,
             credential,
             ..
         } = &self.binding.configuration
@@ -268,11 +267,11 @@ impl<'a> ProviderModelPort<'a> {
                 tools.push(json!({"type":"function","function":{"name":tool.name,"description":tool.description,"parameters":tool.input_schema}}));
             }
         }
-        let (purpose, call_kind) = match request.purpose {
-            agentx_agent_core::ModelPurposeV1::AgentTurn => ("agent_turn", "model"),
-            agentx_agent_core::ModelPurposeV1::Compaction => ("compaction", "compaction"),
+        let call_kind = match request.purpose {
+            agentx_agent_core::ModelPurposeV1::AgentTurn => "model",
+            agentx_agent_core::ModelPurposeV1::Compaction => "compaction",
         };
-        let mut body = json!({"model":model,"messages":messages,"stream":streaming,"metadata":{"priceVersion":price.version_id,"agentPurpose":purpose}});
+        let mut body = json!({"model":model,"messages":messages,"stream":streaming});
         if streaming {
             body["stream_options"] = json!({"include_usage":true});
         }

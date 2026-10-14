@@ -393,24 +393,16 @@ async fn run_sandbox_operation(
         });
     }
 
-    let (image, cpu_millis, memory_bytes, disk_bytes, pid_limit, profile_egress_mode) =
+    let (image, cpu_millis, memory_bytes, disk_bytes, profile_egress_mode) =
         match &request.profile.configuration {
             RuntimeResourceConfigurationV1::SandboxProfile {
                 image,
                 cpu_millis,
                 memory_bytes,
                 disk_bytes,
-                pid_limit,
                 egress_mode,
                 ..
-            } => (
-                image,
-                cpu_millis,
-                memory_bytes,
-                disk_bytes,
-                pid_limit,
-                egress_mode,
-            ),
+            } => (image, cpu_millis, memory_bytes, disk_bytes, egress_mode),
             _ => unreachable!(),
         };
     let (requested_egress_mode, _) = requested_egress_policy(&request.parameters)?;
@@ -459,7 +451,6 @@ async fn run_sandbox_operation(
                 *cpu_millis,
                 *memory_bytes,
                 *disk_bytes,
-                *pid_limit,
                 requested_egress_mode,
                 metadata,
                 &request.idempotency_key,
@@ -875,7 +866,6 @@ async fn create_provider_sandbox(
     cpu_millis: u32,
     memory_bytes: u64,
     disk_bytes: u64,
-    pid_limit: u32,
     egress_mode: SandboxEgressModeV1,
     metadata: BTreeMap<String, String>,
     idempotency_key: &str,
@@ -901,8 +891,7 @@ async fn create_provider_sandbox(
         "resourceLimits":{
             "cpu":format!("{cpu_millis}m"),
             "memory":memory_bytes.to_string(),
-            "ephemeral-storage":disk_bytes.to_string(),
-            "pids":pid_limit.to_string()
+            "ephemeral-storage":disk_bytes.to_string()
         },
         "entrypoint":["tail","-f","/dev/null"],
         "metadata":metadata,

@@ -20,8 +20,8 @@ use crate::{
     engine::ClaimedWorkerAttempt,
     vault::RuntimeVault,
     worker_support::{
-        openai_chat_completions_endpoint, provider_secret_header, runtime_call_fingerprint,
-        stable_id,
+        memory_secret_header, openai_chat_completions_endpoint, provider_secret_header,
+        runtime_call_fingerprint, stable_id,
     },
 };
 
@@ -637,7 +637,6 @@ impl RuntimeWorker {
             provider,
             endpoint,
             model,
-            price,
             credential,
             ..
         } = &binding.configuration
@@ -674,7 +673,7 @@ impl RuntimeWorker {
                 }
                 Err(failed) => return failed,
             };
-            let request = openai_chat_request_streaming(claim, model, price, &input, streaming);
+            let request = openai_chat_request_streaming(claim, model, &input, streaming);
             let execution = if streaming {
                 self.call_http_stream(
                     claim,
@@ -792,6 +791,17 @@ impl RuntimeWorker {
                 credential,
                 ..
             } => {
+                let secret_header =
+                    match memory_secret_header(&claim.resources, credential.as_ref()) {
+                        Ok(header) => header,
+                        Err(code) => {
+                            return WorkerExecution::failed(
+                                code,
+                                "Memory requires a frozen api_key or bearer Credential",
+                                false,
+                            );
+                        }
+                    };
                 let operation = claim
                     .node_parameters
                     .get("operation")
@@ -821,7 +831,7 @@ impl RuntimeWorker {
                     format!("{}/{}", endpoint.trim_end_matches('/'), path),
                     request,
                     credential.as_ref(),
-                    "authorization",
+                    secret_header,
                 )
             }
             RuntimeResourceConfigurationV1::SandboxProfile { .. } => {

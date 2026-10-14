@@ -18,7 +18,7 @@ use reqwest::{Url, header::HeaderMap};
 use serde_json::{Value, json};
 use sqlx::Row;
 use tokio_tungstenite::{
-    MaybeTlsStream, WebSocketStream, connect_async,
+    Connector, MaybeTlsStream, WebSocketStream, connect_async_tls_with_config,
     tungstenite::{
         Message,
         protocol::{CloseFrame, frame::coding::CloseCode},
@@ -544,8 +544,8 @@ async fn start_provider_process(
     process_session_id: Uuid,
     ttl: u32,
 ) -> Result<(String, String), ProviderError> {
-    let (image, cpu, memory, disk, pids, egress) = process_profile_limits(&request.profile)
-        .map_err(|error| ProviderError {
+    let (image, cpu, memory, disk, _, egress) =
+        process_profile_limits(&request.profile).map_err(|error| ProviderError {
             message: format!("{error:?}"),
             outcome_unknown: false,
         })?;
@@ -570,7 +570,6 @@ async fn start_provider_process(
         cpu,
         memory,
         disk,
-        pids,
         egress,
         metadata,
         &request.idempotency_key,
@@ -816,6 +815,10 @@ async fn open_socket(
     since: u64,
     viewer: bool,
 ) -> RuntimeResult<ProviderSocket> {
+    use tokio_rustls::rustls::{
+        ClientConfig, RootCertStore,
+        pki_types::{CertificateDer, pem::PemObject},
+    };
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
     let mode = if viewer { "viewer" } else { "holder" };
     let mut url = endpoint
@@ -832,10 +835,38 @@ async fn open_socket(
     for (name, value) in headers.iter() {
         request.headers_mut().insert(name, value.clone());
     }
-    connect_async(request)
+    let mut roots = RootCertStore {
+        roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+    };
+    if let Some(path) =
+        std::env::var_os("AGENTX_OPENSANDBOX_TLS_CA_PATH").filter(|value| !value.is_empty())
+    {
+        let pem = std::fs::read(path).map_err(|_| RuntimeError::Unavailable)?;
+        let certificates = CertificateDer::pem_slice_iter(&pem)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| RuntimeError::Unavailable)?;
+        if certificates.is_empty() {
+            return Err(RuntimeError::Unavailable);
+        }
+        for certificate in certificates {
+            roots
+                .add(certificate)
+                .map_err(|_| RuntimeError::Unavailable)?;
+        }
+    }
+    agentx_service_kit::install_tls_provider();
+    let connector = Connector::Rustls(std::sync::Arc::new(
+        ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth(),
+    ));
+    connect_async_tls_with_config(request, None, false, Some(connector))
         .await
         .map(|value| value.0)
-        .map_err(|_| RuntimeError::Unavailable)
+        .map_err(|error| {
+            tracing::warn!(%error, "OpenSandbox PTY WebSocket connection failed");
+            RuntimeError::Unavailable
+        })
 }
 
 async fn wait_connected(socket: &mut ProviderSocket) -> RuntimeResult<()> {

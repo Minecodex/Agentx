@@ -265,6 +265,7 @@ async fn worker_loop(
             &capability,
             &consumer,
             &lifecycle,
+            &progress,
         )
         .await
         {
@@ -313,6 +314,7 @@ async fn process_worker_batch(
     capability: &str,
     consumer: &str,
     lifecycle: &agentx_service_kit::ServiceLifecycle,
+    progress: &agentx_service_kit::RoleProgressWatchdog,
 ) -> Result<()> {
     // XREAD itself blocks for one second. Bound the full queue read so a
     // multiplexed connection left half-open by a Redis Pod replacement cannot
@@ -359,6 +361,7 @@ async fn process_worker_batch(
                         capability,
                         "execution",
                     ).await?;
+                    progress.progress();
                 }
             }
         };

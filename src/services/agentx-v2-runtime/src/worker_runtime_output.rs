@@ -50,7 +50,6 @@ pub(super) fn evaluator_model_input(
 pub(super) fn openai_chat_request_streaming(
     claim: &ClaimedWorkerAttempt,
     model: &str,
-    price: &RuntimeModelPriceV1,
     input: &Value,
     stream: bool,
 ) -> Value {
@@ -86,7 +85,6 @@ pub(super) fn openai_chat_request_streaming(
         "model":model,
         "messages":messages,
         "stream":stream,
-        "metadata":{"priceVersion":price.version_id},
     });
     if stream {
         request["stream_options"] = json!({"include_usage":true});
@@ -241,16 +239,16 @@ pub(super) fn provider_usage_detail(value: &Value) -> (u64, u64, u64) {
     let usage = value.get("usage").unwrap_or(value);
     let input = usage
         .get("inputTokens")
-        .or_else(|| usage.get("input_tokens"))
-        .or_else(|| usage.get("promptTokens"))
         .or_else(|| usage.get("prompt_tokens"))
+        .or_else(|| usage.get("promptTokens"))
+        .or_else(|| usage.get("input_tokens"))
         .and_then(Value::as_u64)
         .unwrap_or(0);
     let output = usage
         .get("outputTokens")
-        .or_else(|| usage.get("output_tokens"))
-        .or_else(|| usage.get("completionTokens"))
         .or_else(|| usage.get("completion_tokens"))
+        .or_else(|| usage.get("completionTokens"))
+        .or_else(|| usage.get("output_tokens"))
         .and_then(Value::as_u64)
         .unwrap_or(0);
     let cost = usage
