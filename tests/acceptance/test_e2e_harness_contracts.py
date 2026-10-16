@@ -117,25 +117,27 @@ def test_shared_resource_auth_refreshes_only_live_test_identities(monkeypatch, s
         requested.append(name)
         return values[name]
 
-    class Client:
-        def __init__(self, **kwargs):
-            assert kwargs["base_url"] == "http://control.invalid"
+    class Auth:
+        def __init__(self, url, token):
+            assert url == "http://control.invalid"
+            self.token = token
 
-        def __enter__(self):
-            return self
+        def refresh_if_needed(self):
+            self.token.value = "new-access-token"
 
-        def __exit__(self, *_args):
-            pass
-
-    monkeypatch.setattr(product.httpx, "Client", Client)
-    monkeypatch.setattr(product, "_access_token", lambda _control: ("new-access-token", {}))
+    monkeypatch.setattr(product, "UserTokenAuth", Auth)
     names = ["live_application", "live_providers", "boundary_state"] if shared else []
-    product._refresh_shared_auth(SimpleNamespace(fixturenames=names, getfixturevalue=fixture))
+    product.refresh_shared_user_credentials.__wrapped__(
+        SimpleNamespace(fixturenames=names, getfixturevalue=fixture), values["service_urls"]
+    )
     if shared:
         assert token.value == "new-access-token"
-        assert provider.headers["Authorization"] == boundary.headers["Authorization"] == "Bearer new-access-token"
+        assert boundary.headers["Authorization"] == "Bearer new-access-token"
+        assert requested == ["live_application", "boundary_state"]
     else:
         assert token.value == "old-access-token" and requested == []
+    # Provider-specific authentication remains owned by its HTTP Auth handler.
+    assert provider.headers["Authorization"] == "Bearer old-access-token"
     assert values["boundary_state"]["mcpKey"] == "unchanged-provider-secret"
 
 
