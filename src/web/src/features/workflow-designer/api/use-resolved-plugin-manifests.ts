@@ -13,6 +13,7 @@ export type PluginDefinitionState = {
 
 export function useResolvedPluginManifests(
   workflowId: string,
+  draftId: string,
   document: StudioDocument,
   manifests: Map<string, NodeManifest>,
 ) {
@@ -29,9 +30,9 @@ export function useResolvedPluginManifests(
     connections: definition.connections,
   }
   const query = useQuery({
-    queryKey: ['resolved-workflow-plugin-definitions', workflowId, contractInputs,
+    queryKey: ['resolved-workflow-plugin-definitions', workflowId, draftId, contractInputs,
       candidates.map(({ manifest }) => manifest.plugin?.bundleDigest)],
-    enabled: Boolean(workflowId) && candidates.length > 0,
+    enabled: Boolean(workflowId && draftId) && candidates.length > 0,
     queryFn: async ({ signal }) => {
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve() }, 150)
@@ -39,7 +40,7 @@ export function useResolvedPluginManifests(
         signal.addEventListener('abort', abort, { once: true })
         if (signal.aborted) abort()
       })
-      return apiRequest<{ nodes: Record<string, ResolvedNodeDefinition> }>(`/workflows/${workflowId}/draft/resolve-plugins`, {
+      return apiRequest<{ nodes: Record<string, ResolvedNodeDefinition> }>(`/workflows/${workflowId}/drafts/${draftId}/resolve-plugins`, {
         method: 'POST', body: jsonBody({ definition }), signal,
       })
     },

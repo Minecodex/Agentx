@@ -5,5 +5,7 @@ spec:
   podSelector: { matchLabels: { app.kubernetes.io/name: sandbox-manager } }
   policyTypes: [Ingress]
   ingress:
-    - from: [{ podSelector: { matchLabels: { app.kubernetes.io/name: workflow-worker } } }]
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/name: workflow-worker } }
+        - podSelector: { matchLabels: { app.kubernetes.io/name: runtime-gateway } }
       ports: [{ protocol: TCP, port: 8080 }]

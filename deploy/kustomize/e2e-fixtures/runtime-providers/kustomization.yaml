@@ -17,7 +17,8 @@ patches:
         path: /spec/template/spec/initContainers
         value:
           - name: wait-for-tokenizer-cache
-            image: busybox:1.37.0
+            image: agentx/lightrag:dev
+            imagePullPolicy: IfNotPresent
             command: ["/bin/sh", "-ec"]
             args: ["until test -f /app/data/tiktoken-cache/fb374d419588a4632f3f557e76b4b70aebbca790; do sleep 1; done"]
             resources:

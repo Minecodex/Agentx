@@ -14,6 +14,7 @@ async fn v2_publish_execution_query_recovery_and_gc_are_fenced_and_idempotent() 
         .with_env_var("MYSQL_USER", "agentx")
         .with_env_var("MYSQL_PASSWORD", "agentx-test-password")
         .with_env_var("MYSQL_ROOT_PASSWORD", "agentx-root-password")
+        .with_mapped_port(0, 3306.tcp())
         .start()
         .await
         .expect("Runtime MySQL container should start");
@@ -25,6 +26,7 @@ async fn v2_publish_execution_query_recovery_and_gc_are_fenced_and_idempotent() 
     agentx_runtime_infrastructure::migrate_runtime_mysql(&pool)
         .await
         .unwrap();
+    resolve_sessions_reuse_only_their_container_and_fence_cleanup(&pool).await;
     trace_watermarks_are_atomic_under_concurrency(&pool).await;
     trace_batches_are_disjoint_fenced_and_published(&pool).await;
     composite_timeout_commands_are_idempotent(&pool).await;
@@ -34,6 +36,7 @@ async fn v2_publish_execution_query_recovery_and_gc_are_fenced_and_idempotent() 
     let redis_container = GenericImage::new("redis", "7.4-alpine")
         .with_exposed_port(6379.tcp())
         .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
+        .with_mapped_port(0, 6379.tcp())
         .start().await.unwrap();
     let redis_port = redis_container.get_host_port_ipv4(6379.tcp()).await.unwrap();
     let redis = redis::Client::open(format!("redis://127.0.0.1:{redis_port}/"))
@@ -191,6 +194,48 @@ async fn v2_publish_execution_query_recovery_and_gc_are_fenced_and_idempotent() 
     quota_projection_covers_all_dimensions_and_has_no_terminal_residue(&fixture).await;
     retention_dry_run_reference_block_and_object_sweep_are_fenced(&fixture).await;
     event_sequencer_quarantines_invalid_payload_without_blocking_valid_events(&fixture).await;
+    runtime_user_projection_orders_by_token_version(&fixture).await;
+}
+
+async fn runtime_user_projection_orders_by_token_version(fixture: &Fixture) {
+    let user_id = Uuid::now_v7();
+    let department_id = Uuid::now_v7();
+    for (epoch, version, enabled, expected_version, expected_enabled) in [
+        (101, 1, true, 1, true),
+        (2, 2, false, 2, false),
+        (999, 1, true, 2, false),
+        (3, 3, true, 3, true),
+    ] {
+        let target = AdmissionTargetV1::RuntimeUser {
+            state: agentx_runtime_contracts::RuntimeUserAdmissionV1 {
+                tenant_id: fixture.tenant_id,
+                user_id,
+                user_name: format!("User version {version}"),
+                department_id,
+                department_name: format!("Department version {version}"),
+                token_version: version,
+                enabled,
+                tenant_query_enabled: enabled,
+                role_assignments: vec![],
+            },
+        };
+        let request = admission_request(fixture, epoch, target, &format!("user-epoch:{user_id}:{epoch}"));
+        let receipt = apply_admission(
+            State(fixture.state.clone()),
+            publisher_headers("runtime.admission.apply"),
+            Json(request),
+        ).await.unwrap().0;
+        assert!(receipt.applied);
+        let projected: (u64, String, String, bool) = sqlx::query_as(
+            "SELECT token_version,status,department_name,tenant_query_enabled FROM runtime_user_admission WHERE tenant_id=? AND user_id=?",
+        ).bind(fixture.tenant_id).bind(user_id).fetch_one(&fixture.state.pool).await.unwrap();
+        assert_eq!(projected, (
+            expected_version,
+            if expected_enabled { "active" } else { "disabled" }.into(),
+            format!("Department version {expected_version}"),
+            expected_enabled,
+        ));
+    }
 }
 
 async fn execution_context_projection_changes_only_affect_future_executions(fixture: &Fixture) {
@@ -1172,7 +1217,7 @@ async fn start_suspending_work_package_with_parameters(
     source.definition = suspension_definition(node_type, parameters);
     let compiled = compile_workflow_version(&source.definition, package_id).unwrap();
     source.spec = agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Debug {
-        draft_revision: 1,
+        source: agentx_runtime_contracts::WorkflowDesignSourceV1::DraftRevision { draft_id: uuid::Uuid::now_v7(), revision_id: uuid::Uuid::now_v7(), revision: 1 },
         debug_plan: agentx_runtime_contracts::RuntimeDebugPlanV1::whole(&compiled),
     };
     let package = build_work_package(

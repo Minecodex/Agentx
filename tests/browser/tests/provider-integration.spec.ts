@@ -1,5 +1,6 @@
+import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { fillMonaco, showEdgeToolbar } from './workflow-studio-editor-helpers'
+import { fillMonaco, sandboxImageDigest, showEdgeToolbar } from './workflow-studio-editor-helpers'
 
 const password = 'agentx-e2e-admin-password'
 const company = 'Agentx E2E'
@@ -9,7 +10,6 @@ const mem0BaseUrl = process.env.AGENTX_E2E_MEM0_BASE_URL ?? 'http://mem0:8000'
 const ragflowBaseUrl = process.env.AGENTX_E2E_RAGFLOW_BASE_URL ?? ''
 const ragflowRejectedBaseUrl = process.env.AGENTX_E2E_RAGFLOW_REJECTED_BASE_URL ?? 'http://host.docker.internal:19380'
 const ragflowAliasBaseUrl = process.env.AGENTX_E2E_RAGFLOW_ALIAS_BASE_URL ?? ''
-const sandboxImage = process.env.AGENTX_E2E_SANDBOX_IMAGE ?? 'opensandbox/code-interpreter@sha256:64cd01f03f54ba347d1a1310dcbc18ac5cb17d01714e23b4ea4b840fbb0d6623'
 const sandboxUiCreate = process.env.AGENTX_E2E_SANDBOX_UI_CREATE === '1'
 const providerCredentialName = 'Provider Integration Credential'
 const providerRagKeyName = 'Provider Integration LightRAG Key'
@@ -72,7 +72,7 @@ async function freshApiToken(page: Page, token: string) {
 async function ensureFreshEditorSession(page: Page, token: string, workflowId: string) {
   if (await tokenAlive(page, token)) return token
   const fresh = await login(page)
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible({ timeout: 60_000 })
   return fresh
 }
@@ -202,7 +202,7 @@ async function verifyConnectionTest(page: Page, navName: string, resourceName: s
   await openResourceDetail(page, navName, resourceName)
   await page.getByRole('button', { name: '测试连接' }).click()
   await expect(page.getByText(/连接正常 · \d+ ms/)).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: `provider-${navName === '知识库' ? 'knowledge' : 'memory'}-connection-test-${Date.now()}.png`, fullPage: true })
+  await page.screenshot({ path: test.info().outputPath(`provider-${navName === '知识库' ? 'knowledge' : 'memory'}-connection-test.png`), fullPage: true })
 }
 
 async function createSandboxViaUi(page: Page, name: string) {
@@ -212,7 +212,7 @@ async function createSandboxViaUi(page: Page, name: string) {
   await (await field(form, '名称')).fill(name)
   await select(form, '所属部门', company)
   await select(form, 'Runner', 'python')
-  await (await field(form, '镜像 Digest')).fill(sandboxImage)
+  await (await field(form, '镜像 Digest')).fill(sandboxImageDigest())
   await (await field(form, 'CPU（milliCPU，1000 = 1 核）')).fill('500')
   await (await field(form, '内存（GB）')).fill('0.5')
   await (await field(form, '进程数（个）')).fill('256')
@@ -235,7 +235,7 @@ async function ensureSandboxProfile(page: Page, token: string, departmentId: str
       description: 'Provider integration OpenSandbox fixture',
       ownerDepartmentId: departmentId,
       runner: 'python',
-      imageDigest: sandboxImage,
+      imageDigest: sandboxImageDigest(),
       cpuMillis: 500,
       memoryBytes: 536870912,
       pidsLimit: 256,
@@ -395,13 +395,13 @@ async function setStartQuestionInput(page: Page) {
 async function saveAndReadDraft(page: Page, token: string, workflowId: string) {
   const save = page.getByRole('button', { name: '保存', exact: true })
   if (await save.isEnabled()) {
-    const responsePromise = page.waitForResponse((response) => response.url().endsWith(`/api/v1/workflows/${workflowId}/draft`) && response.request().method() === 'PUT')
+    const responsePromise = page.waitForResponse((response) => response.url().endsWith(`/api/v1/workflows/${workflowId}/drafts/${fixtureDraftIdKnown(workflowId)}`) && response.request().method() === 'PUT')
     await save.click()
     const response = await responsePromise
     if (!response.ok()) throw new Error(`save workflow draft: ${response.status()} ${await response.text()}`)
   }
   await expect(page.locator('header').getByText(/修订号 \d+ · 已保存/)).toBeVisible({ timeout: 30_000 })
-  return api<StudioDraft>(page, token, `/workflows/${workflowId}/draft`)
+  return api<StudioDraft>(page, token, `/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}`)
 }
 
 async function startDebug(page: Page, action: () => Promise<void>, question = 'Run the provider integration workflow.') {
@@ -466,7 +466,7 @@ async function expectRuntimeTrace(page: Page, token: string, executionId: string
 }
 
 async function buildAgentWorkflow(page: Page, token: string, workflowId: string, options: { knowledgeName: string, memoryName: string | null, sandboxName: string | null }) {
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   await setStartQuestionInput(page)
   await addFromCreator(page, 'palette-action-agent')
@@ -519,7 +519,7 @@ async function buildAgentWorkflow(page: Page, token: string, workflowId: string,
 
   const draft = await saveAndReadDraft(page, token, workflowId)
   codeKey = draft.definition.nodes.find((node) => node.type === 'code')?.key ?? null
-  await page.screenshot({ path: `provider-${options.sandboxName ?? 'agent'}-canvas.png`, fullPage: true })
+  await page.screenshot({ path: test.info().outputPath('provider-canvas.png'), fullPage: true })
   return { draft, codeKey }
 }
 
@@ -590,9 +590,9 @@ test.describe.serial('Provider integration', () => {
     // end-user subject (AGENT_LONG_TERM_MEMORY_SUBJECT_REQUIRED), so a debug
     // run must surface that refusal instead of touching the provider.
     token = await freshApiToken(page, token)
-    const latestDraft = await api<{ revision: number, definition: { nodes: Array<{ id: string, type: string }> } }>(page, token, `/workflows/${workflowId}/draft`)
+    const latestDraft = await api<{ revision: number, definition: { nodes: Array<{ id: string, type: string }> } }>(page, token, `/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}`)
     const sideEffectDecisions = Object.fromEntries(latestDraft.definition.nodes.filter((node) => node.type !== 'exit').map((node) => [node.id, 'execute']))
-    const refusalResponse = await page.request.post(`/api/v1/workflows/${workflowId}/debug-executions`, {
+    const refusalResponse = await page.request.post(`/api/v1/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/debug-executions`, {
       headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': `provider-refusal-${stamp}` },
       data: { expectedRevision: latestDraft.revision, mode: 'full', input: { question: 'P3_MEMORY_RECALL recall the attached long-term memory' }, context: {}, overlayIds: [], sideEffectDecisions },
     })
@@ -609,15 +609,16 @@ test.describe.serial('Provider integration', () => {
   test('RAGflow endpoint is rejected by the provider egress policy', async ({ page }) => {
     test.skip(!ragflowRejectedBaseUrl, 'RAGflow rejected endpoint is not configured')
     test.setTimeout(300_000)
-    await login(page)
+    const token = await login(page)
+    await ensureModelResources(page, token)
     const stamp = Date.now()
     const knowledgeName = `Provider RAGflow ${stamp}`
-    await createKnowledgeViaUi(page, `Provider RAGflow Connection ${stamp}`, ragflowRejectedBaseUrl, '/', knowledgeName, `ragflow_${stamp}`)
+    await createKnowledgeViaUi(page, `Provider RAGflow Connection ${stamp}`, ragflowRejectedBaseUrl, '/', knowledgeName, '0'.repeat(32), ragflowCredentialName, 'ragflow')
     await openResourceDetail(page, '知识库', knowledgeName)
     await page.getByRole('button', { name: '测试连接' }).click()
     await expect(page.getByText('连接正常')).toHaveCount(0)
     await expect(page.getByRole('status').filter({ hasText: /.+/ }).first()).toBeVisible({ timeout: 30_000 })
-    await page.screenshot({ path: `provider-ragflow-policy-rejected-${Date.now()}.png`, fullPage: true })
+    await page.screenshot({ path: test.info().outputPath('provider-ragflow-policy-rejected.png'), fullPage: true })
   })
 
   test('RAGflow knowledge speaks the RAGFlow retrieval protocol end to end', async ({ page }, testInfo) => {
@@ -681,6 +682,6 @@ test.describe.serial('Provider integration', () => {
     expect(JSON.stringify(response ?? {})).toContain('100')
     expect(documents ?? []).toHaveLength(0)
     await page.goto(`/executions/${executionId}`)
-    await page.screenshot({ path: `provider-ragflow-protocol-mismatch-${Date.now()}.png`, fullPage: true })
+    await page.screenshot({ path: test.info().outputPath('provider-ragflow-protocol-mismatch.png'), fullPage: true })
   })
 })

@@ -9,7 +9,6 @@ import yaml
 
 from tests.e2e.capacity.baseline import baseline_matches
 from tests.e2e.hosted_cluster import CPU_COUNT, MEMORY_MIB, PROFILE, hosted_values
-from tests.e2e.product.live_text_support import live_kimi_secret
 
 
 @pytest.mark.parametrize("tampered", [False, True])
@@ -122,17 +121,58 @@ def test_changed_hosted_hardware_cannot_pass_the_frozen_capacity_gate(section, f
     assert not baseline_matches(nodes, hosted=True, environment=environment)
 
 
-def test_ci_model_credential_is_required_hidden_and_cleared(monkeypatch):
-    monkeypatch.delenv("AGENTX_E2E_KIMI_API_KEY", raising=False)
-    with pytest.raises(RuntimeError, match="AGENTX_E2E_KIMI_API_KEY"):
-        next(live_kimi_secret.__wrapped__("missing"))
-    monkeypatch.setenv("AGENTX_E2E_KIMI_API_KEY", "isolated-fixture-key")
-    generator = live_kimi_secret.__wrapped__("hosted")
+def test_configured_model_credential_is_hidden_and_cleared(monkeypatch, tmp_path):
+    import base64
+    from types import SimpleNamespace
+
+    import httpx
+
+    from tests.e2e.product import existing_model_support as source
+
+    stopped = []
+    monkeypatch.setattr(source, "ROOT", tmp_path)
+    monkeypatch.setattr(source.ssl, "create_default_context", lambda **kwargs: True)
+    monkeypatch.setattr(
+        source, "start_process", lambda *args, **kwargs: SimpleNamespace(stop=lambda: stopped.append(True))
+    )
+    monkeypatch.setattr(
+        source,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            json=lambda: {
+                "data": {
+                    "AGENTX_CONTROL_VAULT_TOKEN": base64.b64encode(b"test-vault-token").decode(),
+                    "ca.crt": base64.b64encode(b"test-ca").decode(),
+                }
+            }
+        ),
+    )
+
+    class Vault:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def get(self, url, **kwargs):
+            assert url.endswith("/v1/agentx-v2/data/model-secret")
+            assert kwargs["params"] == {"version": 2}
+            return httpx.Response(200, json={"data": {"data": {"value": "isolated-fixture-key"}}})
+
+    monkeypatch.setattr(source.httpx, "Client", Vault)
+    generator = source.existing_model_secret.__wrapped__(
+        "configured", {"secretRef": "model-secret", "secretVersion": 2}
+    )
     secret = next(generator)
     assert secret.value == "isolated-fixture-key"
     assert "isolated-fixture-key" not in repr(secret)
     generator.close()
     assert secret.value == ""
+    assert stopped == [True]
 
 
 def test_hosted_cluster_is_deleted_even_when_startup_and_diagnostics_fail(monkeypatch, tmp_path):

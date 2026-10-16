@@ -23,10 +23,10 @@ describe('loadResourceOptions', () => {
         total: 101,
       })
 
-    const options = await loadResourceOptions('workflow-1', { resourceType: 'rag', operation: 'read' })
+    const options = await loadResourceOptions('workflow-1', 'draft-1', { resourceType: 'rag', operation: 'read' })
 
-    expect(apiRequest).toHaveBeenNthCalledWith(1, '/workflows/workflow-1/resource-options?resourceType=rag&operation=read&page=1&pageSize=100')
-    expect(apiRequest).toHaveBeenNthCalledWith(2, '/workflows/workflow-1/resource-options?resourceType=rag&operation=read&page=2&pageSize=100')
+    expect(apiRequest).toHaveBeenNthCalledWith(1, '/workflows/workflow-1/resource-options?draftId=draft-1&resourceType=rag&operation=read&page=1&pageSize=100')
+    expect(apiRequest).toHaveBeenNthCalledWith(2, '/workflows/workflow-1/resource-options?draftId=draft-1&resourceType=rag&operation=read&page=2&pageSize=100')
     expect(options).toHaveLength(101)
     expect(options.at(-1)).toMatchObject({ value: 'rag-100', resourceType: 'rag', operation: 'read' })
   })
@@ -46,7 +46,7 @@ describe('loadResourceOptions', () => {
       total: 1,
     })
 
-    const options = await loadResourceOptions('workflow-1', { resourceType: 'model', operation: 'use' })
+    const options = await loadResourceOptions('workflow-1', 'draft-1', { resourceType: 'model', operation: 'use' })
 
     expect(options[0]).toMatchObject({
       value: 'model-1',

@@ -240,6 +240,13 @@ async fn delete_profile(
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     actor.require("sandbox:manage")?;
+    let mut tx = crate::workflow_revision_resources::begin_delete(
+        &state.pool,
+        actor.tenant_id,
+        "sandbox_profile",
+        id,
+    )
+    .await?;
     require_visible(&state, &actor, id).await?;
     let references:i64=sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM workflow_draft_resources WHERE tenant_id=? AND resource_type='sandbox_profile' AND resource_id=?)+(SELECT COUNT(*) FROM workflow_version_resources WHERE tenant_id=? AND resource_type='sandbox_profile' AND resource_id=?)").bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
     if references != 0 {
@@ -248,7 +255,7 @@ async fn delete_profile(
             "Sandbox Profile is referenced",
         ));
     }
-    let mut tx = state.pool.begin().await?;
+
     sqlx::query("DELETE FROM sandbox_profile_versions WHERE tenant_id=? AND profile_id=?")
         .bind(actor.tenant_id)
         .bind(id)

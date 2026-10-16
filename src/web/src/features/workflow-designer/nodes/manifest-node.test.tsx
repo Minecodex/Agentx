@@ -4,9 +4,11 @@ import { Profiler } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { CanvasNodeRole, NodeManifest, StudioNode } from '../model/types'
-import { useCanvasRenderStore } from '../store/canvas-render-store'
+import { CanvasRenderProvider, createCanvasRenderStore } from '../store/canvas-render-store'
 import { ManifestNode } from './manifest-node'
 import * as localization from '../model/manifest-localization'
+
+const canvasStore = createCanvasRenderStore()
 
 const roles: CanvasNodeRole[] = ['default', 'trigger', 'branch', 'flow', 'merge', 'loop', 'suspend', 'approval', 'sub_workflow', 'agent', 'code']
 
@@ -23,23 +25,23 @@ const props = (role: CanvasNodeRole, data: Partial<Extract<StudioNode['data'], {
 describe('ManifestNode roles', () => {
   it('keeps card content stable through drag coordinates while refreshing data and runtime state', () => {
     const localize = vi.spyOn(localization, 'localizeManifest')
-    useCanvasRenderStore.setState({ manifests: new Map([['default@1', manifest('default')]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
+    canvasStore.setState({ manifests: new Map([['default@1', manifest('default')]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
     const value = props('default')
-    const view = render(<ReactFlowProvider><ManifestNode {...value} positionAbsoluteX={0} positionAbsoluteY={0} /></ReactFlowProvider>)
+    const view = render(<CanvasRenderProvider store={canvasStore}><ReactFlowProvider><ManifestNode {...value} positionAbsoluteX={0} positionAbsoluteY={0} /></ReactFlowProvider></CanvasRenderProvider>)
     const before = localize.mock.calls.length
-    view.rerender(<ReactFlowProvider><ManifestNode {...value} positionAbsoluteX={100} positionAbsoluteY={180} dragging /></ReactFlowProvider>)
+    view.rerender(<CanvasRenderProvider store={canvasStore}><ReactFlowProvider><ManifestNode {...value} positionAbsoluteX={100} positionAbsoluteY={180} dragging /></ReactFlowProvider></CanvasRenderProvider>)
     expect(localize).toHaveBeenCalledTimes(before)
-    view.rerender(<ReactFlowProvider><ManifestNode {...value} data={{ ...value.data, label: 'Updated card' }} positionAbsoluteX={100} positionAbsoluteY={180} /></ReactFlowProvider>)
+    view.rerender(<CanvasRenderProvider store={canvasStore}><ReactFlowProvider><ManifestNode {...value} data={{ ...value.data, label: 'Updated card' }} positionAbsoluteX={100} positionAbsoluteY={180} /></ReactFlowProvider></CanvasRenderProvider>)
     expect(screen.getByText('Updated card')).toBeInTheDocument()
-    act(() => useCanvasRenderStore.setState({ runtimeStatuses: new Map([[value.id, 'failed']]) }))
+    act(() => canvasStore.setState({ runtimeStatuses: new Map([[value.id, 'failed']]) }))
     expect(screen.getByTestId(`studio-node-${value.id}`).querySelector('.studio-card')).toHaveClass('studio-node-failed')
     localize.mockRestore()
   })
 
   for (const role of roles) it(`renders the controlled ${role} role`, () => {
     const value = manifest(role)
-    useCanvasRenderStore.setState({ manifests: new Map([[`${role}@${value.version}`, value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
-    render(<ReactFlowProvider><ManifestNode {...props(role)} /></ReactFlowProvider>)
+    canvasStore.setState({ manifests: new Map([[`${role}@${value.version}`, value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
+    render(<CanvasRenderProvider store={canvasStore}><ReactFlowProvider><ManifestNode {...props(role)} /></ReactFlowProvider></CanvasRenderProvider>)
     const node = screen.getByTestId(`studio-node-node-${role}`)
     expect(node).toHaveAttribute('data-role', role)
     expect(node).toHaveStyle({ width: '240px' })
@@ -49,7 +51,7 @@ describe('ManifestNode roles', () => {
   })
 
   it('renders the card body summaries and attachment badges for an agent', () => {
-    useCanvasRenderStore.setState({
+    canvasStore.setState({
       manifests: new Map([['agent@2', manifest('agent')]]), runtimeStatuses: new Map([['node-agent', 'succeeded']]),
       bindingSummaries: new Map([['node-agent', [
         { role: 'mcp_tools', resourceType: 'mcp_tool', label: 'Weather tool' },
@@ -59,7 +61,7 @@ describe('ManifestNode roles', () => {
       occupiedHandlesByNodeId: new Map(),
       zoomTier: 'full',
     })
-    render(<ReactFlowProvider><ManifestNode {...props('agent', { parameters: { maxIterations: 8 }, resourceReferences: [{ bindingRole: 'model', resourceType: 'model', resourceId: 'gpt-4o', resourceVersionId: 'model-v1', operation: 'use' }] })} /></ReactFlowProvider>)
+    render(<CanvasRenderProvider store={canvasStore}><ReactFlowProvider><ManifestNode {...props('agent', { parameters: { maxIterations: 8 }, resourceReferences: [{ bindingRole: 'model', resourceType: 'model', resourceId: 'gpt-4o', resourceVersionId: 'model-v1', operation: 'use' }] })} /></ReactFlowProvider></CanvasRenderProvider>)
     const node = screen.getByTestId('studio-node-node-agent')
     expect(node.querySelector('.studio-card')).toHaveClass('studio-node-succeeded')
     expect(node.querySelectorAll('.studio-card-row')).toHaveLength(2)
@@ -84,8 +86,8 @@ describe('ManifestNode roles', () => {
     for (const { nodeType, parameters, pattern } of cases) {
       const value = manifest('default')
       value.nodeType = value.displayName = nodeType
-      useCanvasRenderStore.setState({ manifests: new Map([[`${nodeType}@1`, value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
-      const { unmount } = render(<ReactFlowProvider><ManifestNode {...props('default', { nodeType, parameters })} /></ReactFlowProvider>)
+      canvasStore.setState({ manifests: new Map([[`${nodeType}@1`, value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
+      const { unmount } = render(<CanvasRenderProvider store={canvasStore}><ReactFlowProvider><ManifestNode {...props('default', { nodeType, parameters })} /></ReactFlowProvider></CanvasRenderProvider>)
       expect(screen.getByTestId('studio-node-node-default').querySelector('.studio-card-body')).toHaveTextContent(pattern)
       unmount()
     }
@@ -99,14 +101,14 @@ describe('ManifestNode roles', () => {
       { name: 'else', kind: 'main', required: false, variadic: false },
       { name: 'error', kind: 'error', required: false, variadic: false },
     ]
-    useCanvasRenderStore.setState({ manifests: new Map([['if@1', value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
-    render(<ReactFlowProvider><ManifestNode {...props('branch', {
+    canvasStore.setState({ manifests: new Map([['if@1', value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
+    render(<CanvasRenderProvider store={canvasStore}><ReactFlowProvider><ManifestNode {...props('branch', {
       nodeType: 'if',
       parameters: { cases: [
         { id: 'c1', name: 'high', conditions: [{ condition: 'amount >= 1000', label: '金额 ≥ 1000' }], logicalOp: 'and' },
         { id: 'c2', name: 'mid', conditions: [{ condition: 'amount >= 500', label: '金额 ≥ 500' }, { condition: 'level = vip' }], logicalOp: 'or' },
       ] },
-    })} /></ReactFlowProvider>)
+    })} /></ReactFlowProvider></CanvasRenderProvider>)
     const node = screen.getByTestId('studio-node-node-branch')
     const rows = node.querySelectorAll('.studio-branch-row')
     expect(rows).toHaveLength(4)
@@ -135,8 +137,8 @@ describe('ManifestNode roles', () => {
       { name: 'timed_out', kind: 'main', required: false, variadic: false },
       { name: 'error', kind: 'error', required: false, variadic: false },
     ]
-    useCanvasRenderStore.setState({ manifests: new Map([['approval@1', value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
-    render(<ReactFlowProvider><ManifestNode {...props('approval', { nodeType: 'approval', parameters: {} })} /></ReactFlowProvider>)
+    canvasStore.setState({ manifests: new Map([['approval@1', value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
+    render(<CanvasRenderProvider store={canvasStore}><ReactFlowProvider><ManifestNode {...props('approval', { nodeType: 'approval', parameters: {} })} /></ReactFlowProvider></CanvasRenderProvider>)
     const node = screen.getByTestId('studio-node-node-approval')
     const rows = node.querySelectorAll('.studio-branch-row')
     expect(rows).toHaveLength(4)
@@ -162,8 +164,8 @@ describe('ManifestNode roles', () => {
       { name: 'timed_out', kind: 'main', required: false, variadic: false },
       { name: 'error', kind: 'error', required: false, variadic: false },
     ]
-    useCanvasRenderStore.setState({ manifests: new Map([['approval@1', value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full', onQuickAdd })
-    render(<ReactFlowProvider><ManifestNode {...props('approval', { nodeType: 'approval', parameters: { buttons: [{ id: 'ok', label: '同意' }], timeoutMs: 90_000_000 } })} /></ReactFlowProvider>)
+    canvasStore.setState({ manifests: new Map([['approval@1', value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full', onQuickAdd })
+    render(<CanvasRenderProvider store={canvasStore}><ReactFlowProvider><ManifestNode {...props('approval', { nodeType: 'approval', parameters: { buttons: [{ id: 'ok', label: '同意' }], timeoutMs: 90_000_000 } })} /></ReactFlowProvider></CanvasRenderProvider>)
     const node = screen.getByTestId('studio-node-node-approval')
     const rows = node.querySelectorAll('.studio-branch-row')
     expect(rows).toHaveLength(3)
@@ -185,8 +187,8 @@ describe('ManifestNode roles', () => {
       { name: 'left', kind: 'main', required: false, variadic: false },
       { name: 'right', kind: 'main', required: false, variadic: false },
     ]
-    useCanvasRenderStore.setState({ manifests: new Map([['merge@1', value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
-    render(<ReactFlowProvider><ManifestNode {...props('merge', { nodeType: 'merge', parameters: { mode: 'append' } })} /></ReactFlowProvider>)
+    canvasStore.setState({ manifests: new Map([['merge@1', value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
+    render(<CanvasRenderProvider store={canvasStore}><ReactFlowProvider><ManifestNode {...props('merge', { nodeType: 'merge', parameters: { mode: 'append' } })} /></ReactFlowProvider></CanvasRenderProvider>)
     const node = screen.getByTestId('studio-node-node-merge')
     expect(node.querySelectorAll('.studio-branch-row-input')).toHaveLength(0)
     expect(node.querySelector('.studio-card-row')).toHaveTextContent(/追加|Append/)
@@ -202,8 +204,8 @@ describe('ManifestNode roles', () => {
       { name: 'else', kind: 'main', required: false, variadic: false },
       { name: 'error', kind: 'error', required: false, variadic: false },
     ]
-    useCanvasRenderStore.setState({ manifests: new Map([['if@1', value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'compact' })
-    render(<ReactFlowProvider><ManifestNode {...props('branch', { nodeType: 'if', parameters: { cases: [{ id: 'c1', conditions: [{ label: '金额 ≥ 1000' }], logicalOp: 'and' }] } })} /></ReactFlowProvider>)
+    canvasStore.setState({ manifests: new Map([['if@1', value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'compact' })
+    render(<CanvasRenderProvider store={canvasStore}><ReactFlowProvider><ManifestNode {...props('branch', { nodeType: 'if', parameters: { cases: [{ id: 'c1', conditions: [{ label: '金额 ≥ 1000' }], logicalOp: 'and' }] } })} /></ReactFlowProvider></CanvasRenderProvider>)
     const node = screen.getByTestId('studio-node-node-branch')
     expect(node).toHaveClass('studio-node-zoom-compact')
     expect(node.querySelectorAll('.studio-branch-row')).toHaveLength(3)
@@ -215,13 +217,13 @@ describe('ManifestNode roles', () => {
 
   it('keeps handles interactive at low zoom and shows actual Agent bindings', () => {
     const onSourceHover = vi.fn()
-    useCanvasRenderStore.setState({
+    canvasStore.setState({
       manifests: new Map([['agent@2', manifest('agent')]]), runtimeStatuses: new Map(),
       bindingSummaries: new Map([['node-agent', [{ role: 'mcp_tools', resourceType: 'mcp_tool', label: 'Weather tool' }]]]),
       occupiedHandlesByNodeId: new Map(),
       zoomTier: 'compact', onQuickAdd: () => undefined, onSourceHover,
     })
-    render(<ReactFlowProvider><ManifestNode {...props('agent')} /></ReactFlowProvider>)
+    render(<CanvasRenderProvider store={canvasStore}><ReactFlowProvider><ManifestNode {...props('agent')} /></ReactFlowProvider></CanvasRenderProvider>)
     const node = screen.getByTestId('studio-node-node-agent')
     expect(node).toHaveClass('studio-node-zoom-compact')
     expect(screen.getByTitle(/Weather tool/)).toBeInTheDocument()
@@ -241,8 +243,8 @@ describe('ManifestNode roles', () => {
       { name: 'error', kind: 'error', required: false, variadic: false },
       { name: 'main', kind: 'main', required: false, variadic: false },
     ]
-    useCanvasRenderStore.setState({ manifests: new Map([['default@1', value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
-    render(<ReactFlowProvider><ManifestNode {...props('default')} /></ReactFlowProvider>)
+    canvasStore.setState({ manifests: new Map([['default@1', value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
+    render(<CanvasRenderProvider store={canvasStore}><ReactFlowProvider><ManifestNode {...props('default')} /></ReactFlowProvider></CanvasRenderProvider>)
     const node = screen.getByTestId('studio-node-node-default')
     const main = node.querySelector<HTMLElement>('.react-flow__handle.source[data-handleid="main"]')!
     const error = node.querySelector<HTMLElement>('.react-flow__handle.source[data-handleid="error"]')!
@@ -259,30 +261,30 @@ describe('ManifestNode roles', () => {
 
   it('keeps quick add visible only for unoccupied or repeatable ports', () => {
     const single = manifest('agent')
-    useCanvasRenderStore.setState({
+    canvasStore.setState({
       manifests: new Map([['agent@2', single]]), runtimeStatuses: new Map(), bindingSummaries: new Map(),
       occupiedHandlesByNodeId: new Map([['node-agent', 'error']]), zoomTier: 'full', onQuickAdd: () => undefined,
     })
-    render(<ReactFlowProvider><ManifestNode {...props('agent')} /></ReactFlowProvider>)
+    render(<CanvasRenderProvider store={canvasStore}><ReactFlowProvider><ManifestNode {...props('agent')} /></ReactFlowProvider></CanvasRenderProvider>)
     const node = screen.getByTestId('studio-node-node-agent')
     expect(node.querySelectorAll('.studio-port-add')).toHaveLength(0)
 
     const repeatable = manifest('agent')
     repeatable.outputPorts[0].variadic = true
-    act(() => useCanvasRenderStore.setState({ manifests: new Map([['agent@2', repeatable]]) }))
+    act(() => canvasStore.setState({ manifests: new Map([['agent@2', repeatable]]) }))
     expect(node.querySelectorAll('.studio-port-add')).toHaveLength(1)
   })
 
   it('rerenders only the node whose runtime status changes', () => {
     const value = manifest('default')
-    useCanvasRenderStore.setState({ manifests: new Map([['default@1', value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
+    canvasStore.setState({ manifests: new Map([['default@1', value]]), runtimeStatuses: new Map(), bindingSummaries: new Map(), occupiedHandlesByNodeId: new Map(), zoomTier: 'full' })
     const first = vi.fn()
     const second = vi.fn()
-    render(<ReactFlowProvider><Profiler id="first" onRender={first}><ManifestNode {...props('default')} id="first" /></Profiler><Profiler id="second" onRender={second}><ManifestNode {...props('default')} id="second" /></Profiler></ReactFlowProvider>)
+    render(<CanvasRenderProvider store={canvasStore}><ReactFlowProvider><Profiler id="first" onRender={first}><ManifestNode {...props('default')} id="first" /></Profiler><Profiler id="second" onRender={second}><ManifestNode {...props('default')} id="second" /></Profiler></ReactFlowProvider></CanvasRenderProvider>)
     first.mockClear()
     second.mockClear()
 
-    act(() => useCanvasRenderStore.setState({ runtimeStatuses: new Map([['first', 'running']]) }))
+    act(() => canvasStore.setState({ runtimeStatuses: new Map([['first', 'running']]) }))
     expect(first).toHaveBeenCalledOnce()
     expect(second).not.toHaveBeenCalled()
   })

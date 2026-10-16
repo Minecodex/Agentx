@@ -602,6 +602,7 @@ fn open_operation_id(value: Option<&agentx_agent_core::OperationRecordV1>) -> Op
 fn recovery_action(phase: &agentx_agent_core::OperationPhaseV1) -> Option<String> {
     Some(
         match phase {
+            agentx_agent_core::OperationPhaseV1::Pending { .. } => "resume_pending",
             agentx_agent_core::OperationPhaseV1::IntentPersisted => "execute_or_reconcile",
             agentx_agent_core::OperationPhaseV1::EffectStarted
             | agentx_agent_core::OperationPhaseV1::EffectCompleted { .. } => "reconcile_effect",

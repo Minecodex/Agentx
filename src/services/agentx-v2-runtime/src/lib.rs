@@ -1,8 +1,10 @@
 pub mod admission;
+mod agent_model_protocol;
 pub mod agent_session_queue;
 pub mod artifact;
 mod assistant_message;
 pub mod auth;
+pub mod builder_model;
 mod composite;
 pub mod composite_execution;
 mod debug_overlay;

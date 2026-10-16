@@ -7,6 +7,7 @@ import type { Execution, NodeExecution } from '../../shared/api/types'
 import { TraceWorkspace } from './trace-workspace'
 
 const execution: Execution = {
+  source: {kind:'version',versionId:'version-1',versionNumber:1},
   id: 'execution-1', workflowId: 'workflow-1', workflowName: 'Semantic trace', workflowVersionId: 'version-1', workflowVersionNumber: 1,
   invocationId: null, sessionId: null, traceId: 'trace-1', triggerType: 'manual', executionType: 'whole', parentExecutionId: null,
   callerExecutionId: null, forkCheckpointId: null, status: 'succeeded', startedAt: '2026-08-21T04:00:00Z', endedAt: '2026-08-21T04:00:02Z',

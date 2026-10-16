@@ -1,3 +1,4 @@
+import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { fillMonaco, showEdgeToolbar } from './workflow-studio-editor-helpers'
@@ -147,7 +148,7 @@ test('Python Code is configured through Studio and executes in a real OpenSandbo
   await grant.getByRole('button', { name: '添加授权', exact: true }).click()
   await expect(grant.getByRole('button', { name: '撤销授权' })).toHaveCount(1)
   await grant.getByRole('button', { name: '取消', exact: true }).click()
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   const initial = page.locator('.react-flow__edge[data-testid="rf__edge-start-exit"]')
   const toolbar = page.locator('.studio-edge-toolbar[data-edge-id="start-exit"]')
@@ -179,7 +180,7 @@ test('Python Code is configured through Studio and executes in a real OpenSandbo
   await page.getByRole('button', { name: /^(适应画布|Fit view)$/ }).click()
   await connect(page, page.getByTestId('workflow-start'), code)
   await connect(page, code, page.getByTestId('exit-node-exit'))
-  const saved = page.waitForResponse((response) => response.url().endsWith(`/api/v1/workflows/${workflowId}/draft`) && response.request().method() === 'PUT')
+  const saved = page.waitForResponse((response) => response.url().endsWith(`/api/v1/workflows/${workflowId}/drafts/${fixtureDraftIdKnown(workflowId)}`) && response.request().method() === 'PUT')
   await page.getByRole('button', { name: '保存', exact: true }).click()
   const saveResponse = await saved
   expect(saveResponse.ok()).toBe(true)

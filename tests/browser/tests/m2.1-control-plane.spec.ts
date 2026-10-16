@@ -389,12 +389,18 @@ async function configureCentralResourceGrants(page: Page) {
 
 async function configureAndPublishWorkflow(page: Page) {
   let latestDraftPayload: { definition: { nodes: Array<{ type: string; parameters: Record<string, unknown>; resourceReferences: Array<{ bindingRole?: string; resourceVersionId?: string }> }> } } | undefined
-  page.on('request', (request) => {
-    if (request.method() === 'PUT' && /\/workflows\/[^/]+\/draft$/.test(request.url())) latestDraftPayload = request.postDataJSON() as typeof latestDraftPayload
-  })
   await page.getByRole('link', { name: /^工作流/ }).click()
   await page.getByRole('row', { name: /MCP Echo Workflow/ }).getByRole('link', { name: '打开画布' }).click()
+  await expect(page.getByRole('heading', { name: 'MCP Echo Workflow', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: '打开画布', exact: true }).click()
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
+  const source = new URL(page.url()).pathname.match(/^\/workflows\/([^/]+)\/drafts\/([^/]+)\/editor$/)
+  if (!source) throw new Error('The selected Workflow Draft is missing from the editor URL')
+  const [, workflowId, draftId] = source
+  const draftPath = `/workflows/${workflowId}/drafts/${draftId}`
+  page.on('request', (request) => {
+    if (request.method() === 'PUT' && request.url().endsWith(draftPath)) latestDraftPayload = request.postDataJSON() as typeof latestDraftPayload
+  })
   const initialEdge = page.locator('.react-flow__edge').first()
   await initialEdge.click({ force: true })
   await page.keyboard.press('Delete')
@@ -476,7 +482,7 @@ async function configureAndPublishWorkflow(page: Page) {
   await endPanel.getByRole('button', { name: /关闭|Close/ }).first().click()
   const save = page.getByRole('button', { name: '保存', exact: true })
   if (await save.isEnabled()) {
-    const savedResponsePromise = page.waitForResponse((response) => response.request().method() === 'PUT' && /\/workflows\/[^/]+\/draft$/.test(response.url()))
+    const savedResponsePromise = page.waitForResponse((response) => response.request().method() === 'PUT' && response.url().endsWith(draftPath))
     await save.click()
     const savedResponse = await savedResponsePromise
     expect(savedResponse.status(), await savedResponse.text()).toBe(200)
@@ -492,6 +498,8 @@ async function configureAndPublishWorkflow(page: Page) {
   const exit = payload.definition.nodes.find((node) => node.type === 'exit')
   expect((exit?.parameters.outputs as Record<string, unknown>).answer).toMatchObject({ kind: 'reference', selector: { namespace: 'outputs', port: 'main', path: ['text'] } })
   await page.getByRole('link', { name: '返回', exact: true }).click()
+  await page.getByRole('combobox', { name: '选择当前草稿', exact: true }).click()
+  await page.locator(`[data-option-value="${draftId}"]`).click()
   await expect(page.getByText('资源与授权校验通过')).toBeVisible()
   const versionResponsePromise = page.waitForResponse((response) => response.request().method() === 'POST' && /\/workflows\/[^/]+\/versions$/.test(response.url()))
   await page.getByRole('button', { name: '保存为版本' }).click()

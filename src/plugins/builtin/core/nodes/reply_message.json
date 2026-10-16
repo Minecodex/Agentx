@@ -96,7 +96,31 @@
   "additionalProperties": false,
   "properties": {
    "content": {
-    "type": "string"
+    "type": "string",
+    "x-agentx-binding": {
+     "acceptedCardinality": [
+      "single"
+     ],
+     "acceptedKinds": [
+      "literal",
+      "reference",
+      "template"
+     ],
+     "allowedNamespaces": [
+      "inputs",
+      "outputs",
+      "contexts",
+      "execution",
+      "item",
+      "loop"
+     ],
+     "missingPolicies": [
+      "error",
+      "null",
+      "omit"
+     ],
+     "recursive": false
+    }
    }
   }
  },

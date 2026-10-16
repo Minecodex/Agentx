@@ -16,7 +16,7 @@ import { useToast } from '../../shared/ui/toast'
 import { TraceWorkspace } from '../traces/trace-workspace'
 import { useExecutionArtifactDownload } from '../traces/use-execution-artifact-download'
 import { localizedValue } from '../../shared/lib/localized-value'
-import { executionStatus } from './execution-format'
+import { designSourceLabel, executionStatus } from './execution-format'
 import { ExecutionForkDialog } from './execution-fork-dialog'
 import { ExecutionRecoveryRail } from './execution-recovery-rail'
 import { SideEffectDialog } from './side-effect-dialog'
@@ -112,7 +112,7 @@ export function ExecutionDetailPage() {
     <header className="border-b border-border bg-surface px-4 py-3 lg:px-6">
       <div className="grid grid-cols-[2.25rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 md:flex md:flex-wrap md:gap-3">
         <Button asChild aria-label={t('executions.backToList')} size="icon" variant="ghost"><Link to={canViewExecution ? '/executions' : '/playground'}><ArrowLeft className="size-4" /></Link></Button>
-        <div className="min-w-0 md:flex-1"><div className="flex min-w-0 items-center gap-2"><h1 className="min-w-0 flex-1 truncate text-base font-semibold">{value.workflowName}</h1><StatusBadge label={localizedValue(t, 'common', value.status)} status={executionStatus(value.status)} /></div><p className="mt-1 truncate text-[10px] text-muted-foreground">{t('executions.executionId', { id: value.id })} · {t('executions.workflowVersion', { version: value.workflowVersionNumber ?? '—' })} · {localizedValue(t, 'executions.executionTypes', value.executionType)}</p></div>
+        <div className="min-w-0 md:flex-1"><div className="flex min-w-0 items-center gap-2"><h1 className="min-w-0 flex-1 truncate text-base font-semibold">{value.workflowName}</h1><StatusBadge label={localizedValue(t, 'common', value.status)} status={executionStatus(value.status)} /></div><p className="mt-1 truncate text-[10px] text-muted-foreground">{t('executions.executionId', { id: value.id })} · {designSourceLabel(value.source, value.workflowVersionNumber, (revision, draft) => t('executions.draftRevision', {revision, draft}))} · {localizedValue(t, 'executions.executionTypes', value.executionType)}</p></div>
         <div className="col-start-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[10px] text-muted-foreground md:col-auto"><span><strong className="block text-xs text-foreground">{duration(value)}</strong>{t('executions.durationLabel')}</span><span><strong className="block text-xs text-foreground">{localizedValue(t, 'executions.triggerTypes', value.triggerType)}</strong>{t('executions.triggerLabel')}</span><span><strong className="block max-w-36 truncate text-xs text-foreground">{value.traceId}</strong>Trace</span></div>
         <div className="col-start-2 flex items-center justify-self-end gap-2 md:col-auto md:ml-auto">
           <Button aria-label={t('executions.refresh')} onClick={() => void refresh()} size="icon" variant="ghost"><RefreshCw className="size-4" /></Button>

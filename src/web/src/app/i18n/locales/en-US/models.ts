@@ -1,4 +1,12 @@
 const translations = {
+  "builderReset": "Set again",
+  "builderSet": "Set as canvas AI model",
+  "builderSelected": "Canvas AI model",
+  "builderClear": "Clear setting",
+  "builderSaved": "Canvas AI model setting saved",
+  "builderAuthorization": "Authorize this model and its credential for canvas creation by tenant workflow editors",
+  "builderPermission": "Requires model management, company management, and resource grant permissions",
+
   "create": "New model",
   "details": "Details",
   "connectionTest": "Test connection",

@@ -405,3 +405,9 @@ Node API 至少分为 Action Execute、动态 Provider 和 Lifecycle 三组版�
 Provider 原始响应、Agent Iteration 和 Tool Call 属于诊断数据，只能通过 Trace/Artifact 查询，不参与普通变量引用。节点成功结果在推进下游前按 IR 冻结的端口 Schema 校验，避免错误直到 End 才暴露。
 
 引用目录按 Manifest 输出树生成，并优先推荐 Model/Agent 的 `text`。对象、数组、数字、布尔值和 null 只有在目标 Schema 为 string 时才允许确定性文本化；该决策冻结到 IR，并在 Trace 中留下不含原值的转换元数据。
+
+## 设计来源与静态编辑
+
+执行快照的设计来源为严格联合 `draft_revision` 或 `version`。前者冻结 draftId/revisionId/revision，revision 0 是有效来源，workflowVersionId/Number 为空；后者冻结不可变 Version 身份。Debug 请求消费选定 Revision，不在入队后再读 Head。Pin/Mock 冻结到 Work Package，并在事件中记录 `node.debug_overlay_applied` 和 overlayKind。
+
+画布 AI 与人工共用本地编辑事务和保存门禁，不注册业务运行工具。动态插件契约解析使用独立 resolve-only Sandbox，设计租约不冒充业务 Execution/Attempt。

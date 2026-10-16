@@ -119,7 +119,7 @@
 | 集成 | sub_workflow | 已发布版本、打开子流程、输入mapper与输出契约 | 映射求值→校验→子执行，复用Composite生命周期 |
 | 输出 | exit | 共享字段与本出口值同行对应；紧凑成功/错误区；单列完成模式 | 定义顺序、数组类型传播、终态清理 |
 
-设计器目录仅暴露上述集合；Start与Exit沿用各自的边界/终止节点处理。`mcp_tool/skill/rag/memory` 不再作为独立画布节点入口，但其资源和执行能力继续服务于Agent附件。
+以上 13 类为 plan5 验收基线。plan8 追加公开 `knowledge_retrieval` Action，复用 RAG 检索能力；当前目录为 14 类，见 [追加设计](../plan8/08-resource-completion-and-knowledge.md)。Start 与 Exit 沿用边界/终止节点处理。内部 `mcp_tool/skill/rag/memory` 执行器不作为画布节点入口，Agent 附件继续保留。
 
 ## 5. 运行与数据契约
 

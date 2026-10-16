@@ -132,6 +132,11 @@ fn compile(mut value: serde_json::Value) -> CompiledWorkflow {
             "id":"__test_exit__","key":"__test_exit__","type":"exit","typeVersion":1,"name":"End",
             "parameters":{"outputs":{},"errorOutputs":{}}
         }));
+    for node in definition["nodes"].as_array_mut().unwrap() {
+        if node["type"] == "model" && node.get("resourceReferences").is_none() {
+            node["resourceReferences"] = json!([{"resourceType":"model","resourceId":"018f47a0-7e9c-7000-8000-000000000001","operation":"use"}]);
+        }
+    }
     let registry = NodeRegistry::m4_defaults();
     WorkflowCompiler::new(&registry)
         .compile(

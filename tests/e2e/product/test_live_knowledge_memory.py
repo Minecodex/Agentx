@@ -13,7 +13,7 @@ import pytest
 from tests.e2e.product.live_agent_support import record_missing_session_refusal
 from tests.e2e.product.live_text_support import post
 from tests.e2e.product.test_live_text_acceptance import message, session, terminal
-from tests.e2e.runtime.test_agent_attachments import _control_mysql, _runtime_mysql
+from tests.e2e.runtime.test_agent_attachments import _access_token, _control_mysql, _runtime_mysql
 from tools.scripts.release.evidence import write_report
 
 pytestmark = [pytest.mark.cluster, pytest.mark.product, pytest.mark.live_model]
@@ -22,6 +22,10 @@ pytestmark = [pytest.mark.cluster, pytest.mark.product, pytest.mark.live_model]
 @pytest.fixture(scope="module")
 def live_indexed_document(live_providers, installed_agentx, run_id, request):
     control = live_providers["control"]
+    # This module fixture can first be requested midway through a module,
+    # before function-scoped auth refresh runs on its requesting test.
+    token, _ = _access_token(control)
+    control.headers["Authorization"] = f"Bearer {token}"
     path = f"/api/v1/knowledge/resources/{live_providers['ragId']}"
     marker = f"sapphire-orbit-{run_id}-{request.node.name}"
     content = f"水星计划由蓝桥团队负责。水星计划唯一发布代号是 {marker}。正式上线日期为2026年11月5日。负责人是林晓。"
@@ -64,7 +68,7 @@ def live_indexed_document(live_providers, installed_agentx, run_id, request):
             "marker": marker,
             "documents": retrieval.json()["documents"],
             "realCpuEmbedding": True,
-            "realLlmExtraction": "kimi/k3",
+            "realLlmExtraction": live_providers["modelName"],
         },
     )
     return {"documentId": document["id"], "marker": marker}

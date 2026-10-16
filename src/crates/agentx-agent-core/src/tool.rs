@@ -8,6 +8,7 @@ use crate::{EffectContextV1, ToolCallV1};
 #[serde(rename_all = "snake_case")]
 pub enum ToolOriginV1 {
     Core,
+    Platform,
     Mcp,
     Skill,
     Knowledge,
@@ -51,6 +52,8 @@ pub struct ToolResultV1 {
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum ToolPortError {
+    #[error("tool effect is pending: {0}")]
+    Pending(String),
     #[error("tool is not authorized: {0}")]
     Unauthorized(String),
     #[error("tool effect failed: {0}")]
@@ -60,6 +63,10 @@ pub enum ToolPortError {
 }
 
 pub trait ToolPort {
+    fn observe(&mut self, _context: &EffectContextV1) -> crate::EffectObservationV1 {
+        crate::EffectObservationV1::Unknown
+    }
+
     fn execute(
         &mut self,
         call: &ToolCallV1,

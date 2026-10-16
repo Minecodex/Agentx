@@ -154,7 +154,7 @@ pub async fn sequence_one(
     // columns and falsely quarantine a valid event. This consistent read does
     // not participate in claiming the Execution row.
     let execution = match execution_id {
-        Some(execution_id) => sqlx::query("SELECT invocation_id,application_id,workflow_id,workflow_version_id,bundle_id,trace_id,status,state_version,admission_epoch,CAST(COALESCE((SELECT MAX(t.sequence_number) FROM execution_events t WHERE t.tenant_id=workflow_executions.tenant_id AND t.execution_id=workflow_executions.id),0) AS UNSIGNED) trace_watermark,terminal_result_hash,terminal_result_object_id,error_json FROM workflow_executions WHERE tenant_id=? AND id=?")
+        Some(execution_id) => sqlx::query("SELECT invocation_id,application_id,workflow_id,workflow_version_id,(SELECT JSON_EXTRACT(es.execution_context_json,'$.workflow.source') FROM execution_snapshots es WHERE es.tenant_id=workflow_executions.tenant_id AND es.execution_id=workflow_executions.id) workflow_source_json,bundle_id,trace_id,status,state_version,admission_epoch,CAST(COALESCE((SELECT MAX(t.sequence_number) FROM execution_events t WHERE t.tenant_id=workflow_executions.tenant_id AND t.execution_id=workflow_executions.id),0) AS UNSIGNED) trace_watermark,terminal_result_hash,terminal_result_object_id,error_json FROM workflow_executions WHERE tenant_id=? AND id=?")
             .bind(tenant_id)
             .bind(execution_id)
             .fetch_optional(&mut *tx)
@@ -303,12 +303,22 @@ fn typed_event_payload(
             "payload does not match RuntimeEventPayloadV1 and has no Execution context: {contract_error}"
         ))
     })?;
+    let source: agentx_runtime_contracts::WorkflowDesignSourceV1 =
+        serde_json::from_value(execution.try_get("workflow_source_json")?)
+            .map_err(|error| RuntimeError::Internal(error.into()))?;
+    let version_id = match &source {
+        agentx_runtime_contracts::WorkflowDesignSourceV1::Version { version_id, .. } => {
+            Some(*version_id)
+        }
+        _ => None,
+    };
     Ok(RuntimeEventPayloadV1::ExecutionChanged {
         execution_id: row.try_get("execution_id")?,
         invocation_id: execution.try_get("invocation_id")?,
         application_id: execution.try_get("application_id")?,
         workflow_id: execution.try_get("workflow_id")?,
-        workflow_version_id: execution.try_get("workflow_version_id")?,
+        workflow_version_id: version_id,
+        source,
         bundle_id: execution
             .try_get::<Option<Uuid>, _>("bundle_id")?
             .ok_or_else(|| {

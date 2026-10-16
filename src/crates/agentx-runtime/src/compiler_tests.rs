@@ -6,6 +6,45 @@ use agentx_node_protocol::{
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
+#[test]
+fn branch_id_errors_identify_the_actual_field_problem() {
+    for (node_type, field, reserved) in [
+        ("if", "cases", "else"),
+        ("approval", "buttons", "timed_out"),
+    ] {
+        let mut node: WorkflowNode = serde_json::from_value(json!({
+            "id":"branch", "key":"branch", "name":"Branch", "type":node_type,
+            "typeVersion":1, "parameters":{"id":"misplaced", field:[{}]}
+        }))
+        .unwrap();
+        let mut issues = Vec::new();
+        validate_dynamic_branch_ids(2, &node, &mut issues);
+        assert_eq!(issues[0].path, format!("nodes[2].parameters.{field}[0].id"));
+        assert!(issues[0].message.contains("inside each"));
+        assert!(!issues[0].message.contains("reserved"));
+
+        node.parameters[field] = json!([{"id":"case_1"}, {"id":"branch_true"}, {"id":"trueBranch"}, {"id":"cnd_glm_main"}]);
+        issues.clear();
+        validate_dynamic_branch_ids(2, &node, &mut issues);
+        assert!(
+            issues.is_empty(),
+            "The names attempted by the model are valid"
+        );
+
+        for (ids, message) in [
+            (json!([{"id":reserved}]), "is reserved"),
+            (json!([{"id":"case:bad"}]), "ASCII"),
+            (json!([{"id":"same"}, {"id":"same"}]), "Duplicate"),
+        ] {
+            node.parameters[field] = ids;
+            issues.clear();
+            validate_dynamic_branch_ids(2, &node, &mut issues);
+            assert_eq!(issues.len(), 1);
+            assert!(issues[0].message.contains(message));
+        }
+    }
+}
+
 fn reference(
     namespace: ValueNamespace,
     source_node_id: Option<&str>,
@@ -106,7 +145,7 @@ fn removed_expression_binding_is_rejected() {
 
 #[test]
 fn code_output_example_derives_dynamic_nested_schema_and_requires_an_object() {
-    let definition: WorkflowDefinition = serde_json::from_value(json!({
+    let mut definition: WorkflowDefinition = serde_json::from_value(json!({
         "schemaVersion":"8.0",
         "start":{"inputs":{"type":"object","properties":{}} ,"contexts":{}},
         "nodes":[
@@ -119,6 +158,7 @@ fn code_output_example_derives_dynamic_nested_schema_and_requires_an_object() {
         ],
         "end":{"outputs":{}}
     })).unwrap();
+    definition.nodes[0].resource_references = vec![serde_json::from_value(json!({"resourceType":"sandbox_profile","resourceId":"018f47a0-7e9c-7000-8000-000000000001","resourceVersionId":"018f47a0-7e9c-7000-8000-000000000002","operation":"use"})).unwrap()];
     let registry = NodeRegistry::m5_defaults();
     let compiler = WorkflowCompiler::new(&registry);
     let compiled = compiler
@@ -166,6 +206,7 @@ fn code_network_policy_allows_explicit_private_targets_but_rejects_protected_hos
         ],
         "end":{"outputs":{}}
     })).unwrap();
+    definition.nodes[0].resource_references = vec![serde_json::from_value(json!({"resourceType":"sandbox_profile","resourceId":"018f47a0-7e9c-7000-8000-000000000001","resourceVersionId":"018f47a0-7e9c-7000-8000-000000000002","operation":"use"})).unwrap()];
     let registry = NodeRegistry::m5_defaults();
     let compiler = WorkflowCompiler::new(&registry);
     compiler
@@ -600,7 +641,7 @@ fn rejects_undeclared_parameters_and_requires_the_new_loop_contract() {
         .compile(&definition, &CompileContext::default())
         .unwrap_err();
     assert!(error.issues.iter().any(|issue| {
-        issue.code == "INVALID_NODE_PARAMETERS"
+        issue.code == "NODE_PARAMETER_REQUIRED"
             && (issue.message.contains("input") || issue.message.contains("outputSelector"))
     }));
 }
@@ -620,7 +661,7 @@ fn resource_capabilities_cannot_be_compiled_as_standalone_nodes() {
 #[test]
 fn validates_nested_parameter_bindings_against_the_leaf_schema() {
     let registry = NodeRegistry::m5_defaults();
-    let definition: WorkflowDefinition = serde_json::from_value(serde_json::json!({
+    let mut definition: WorkflowDefinition = serde_json::from_value(serde_json::json!({
         "schemaVersion":"8.0",
         "start":{"inputs":{"type":"object","required":["question"],"properties":{"question":{"type":"string"}},"additionalProperties":false},"contexts":{}},
         "nodes":[{
@@ -636,6 +677,7 @@ fn validates_nested_parameter_bindings_against_the_leaf_schema() {
     }))
     .unwrap();
 
+    definition.nodes[0].resource_references = vec![serde_json::from_value(json!({"resourceType":"model","resourceId":"018f47a0-7e9c-7000-8000-000000000001","resourceVersionId":"018f47a0-7e9c-7000-8000-000000000002","operation":"use"})).unwrap()];
     WorkflowCompiler::new(&registry)
         .compile(&definition, &CompileContext::default())
         .unwrap();
@@ -1595,7 +1637,7 @@ fn reply_message_intent_satisfies_effective_output_contract() {
                 "start":{"inputs":{"type":"object","properties":{"message":{"type":"string"}}},"contexts":{}},
                 "nodes":[
                     {"id":"relay","key":"relay","type":"reply_message","typeVersion":1,"name":"Relay",
-                     "parameters":{"content":"hello"}},
+                     "parameters":{"content":{"kind":"literal","value":"hello"}}},
                     {"id":"exit","key":"exit","type":"exit","typeVersion":1,"name":"End",
                      "parameters":{"outputs":{},"errorOutputs":{}}}
                 ],
@@ -1623,4 +1665,72 @@ fn reply_message_intent_satisfies_effective_output_contract() {
             "status":"queued"
         }))
         .unwrap();
+}
+
+#[test]
+fn every_inspector_fixture_uses_valid_parameter_shapes_and_rejects_malformed_values() {
+    let registry = NodeRegistry::m5_defaults();
+    let fixtures: Value = serde_json::from_str(include_str!(
+        "../../../web/src/features/workflow-designer/testing/ai-node-parameters.fixture.json"
+    ))
+    .unwrap();
+    assert_eq!(fixtures.as_object().unwrap().len(), 14);
+    for (node_type, parameters) in fixtures.as_object().unwrap() {
+        let version = if node_type == "agent" { 2 } else { 1 };
+        let manifest = registry.get(node_type, version).unwrap();
+        let mut node: WorkflowNode = serde_json::from_value(json!({"id":"test", "key":"test", "name":"Test", "type":node_type, "typeVersion":version, "parameters":parameters})).unwrap();
+        let mut issues = Vec::new();
+        validate_parameters(0, &node, manifest, &mut issues);
+        assert!(issues.is_empty(), "{node_type}: {issues:?}");
+        // A partial draft can omit a top-level field, but supplied arrays/scalars/objects must be well formed.
+        node.parameters = json!({});
+        issues.clear();
+        validate_parameters(0, &node, manifest, &mut issues);
+        assert!(
+            issues.iter().all(|issue| !draft_save_issue(&issue.code)),
+            "{node_type}: {issues:?}"
+        );
+        node.parameters = json!({"unrecognizedParameter":true});
+        issues.clear();
+        validate_parameters(0, &node, manifest, &mut issues);
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.code == "INVALID_NODE_PARAMETERS"
+                    && draft_save_issue(&issue.code)),
+            "{node_type}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn draft_validation_rejects_malformed_bindings_and_nested_conditions_before_editor_commit() {
+    let registry = NodeRegistry::m5_defaults();
+    let compiler = WorkflowCompiler::new(&registry);
+    for parameters in [
+        json!({"cases":null}),
+        json!({"cases":[{"id":"yes","conditions":null}]}),
+        json!({"cases":[{"id":"yes","conditions":[{"condition":{"left":{"kind":"reference","selector":{"namespace":"inputs","run":{"kind":"bogus"}}},"operator":"eq","right":{"kind":"literal","value":true}}}]}]}),
+    ] {
+        let mut definition = WorkflowDefinition::empty();
+        definition.nodes.push(serde_json::from_value(json!({"id":"condition", "key":"condition", "name":"Condition", "type":"if", "typeVersion":1,"parameters":parameters})).unwrap());
+        definition.nodes[1].disabled = true;
+        let disabled = compiler.validate_draft(&definition, &CompileContext::default());
+        assert!(
+            disabled.iter().any(|issue| matches!(
+                issue.code.as_str(),
+                "INVALID_NODE_PARAMETERS" | "INPUT_BINDING_REQUIRED"
+            )),
+            "{disabled:?}"
+        );
+        definition.nodes[1].disabled = false;
+        let issues = compiler.validate_draft(&definition, &CompileContext::default());
+        assert!(
+            issues.iter().any(|issue| matches!(
+                issue.code.as_str(),
+                "INVALID_NODE_PARAMETERS" | "INPUT_BINDING_REQUIRED"
+            )),
+            "{issues:?}"
+        );
+    }
 }

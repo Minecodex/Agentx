@@ -162,7 +162,7 @@ def test_insights_aggregates_degradation_and_grant_gate(
             assert aggregates.status_code == 200, aggregates.text
             payload = aggregates.json()
             rows = payload.get("rows") or payload.get("items") or []
-        assert rows, payload
+        assert any(row["dimensions"].get("workflow") == workflow_id for row in rows), payload
         assert any(row["dimensions"].get("workflow") for row in rows), payload
         filtered = control.post(
             "/api/v1/insights/aggregates",

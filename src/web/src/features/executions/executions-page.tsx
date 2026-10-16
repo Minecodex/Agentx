@@ -23,7 +23,7 @@ import { Table, TableCell, TableContainer, TableHead } from '../../shared/ui/tab
 import { useToast } from '../../shared/ui/toast'
 import { useLocaleFormat } from '../../shared/lib/locale-format'
 import { localizedValue } from '../../shared/lib/localized-value'
-import { executionStatus, formatCost } from './execution-format'
+import { designSourceLabel, executionStatus, formatCost } from './execution-format'
 
 type ExecutionRow = {
   id: string
@@ -32,6 +32,7 @@ type ExecutionRow = {
   workflowId: string
   workflowName: string
   workflowVersionNumber?: number | null
+  source?: {kind: 'draft_revision';draftId:string;revision:number} | {kind:'version';versionNumber:number}
   triggerType: string
   triggerName?: string | null
   triggerSourceId?: string | null
@@ -124,7 +125,7 @@ export function ExecutionsPage() {
   const columns = useMemo<Array<ColumnDef<ExecutionRow>>>(() => [
     { accessorKey: 'id', header: t('executions.executionIdLabel'), cell: ({ row }) => <EntityCell detail={row.original.id} icon={Activity} name={row.original.workflowName} /> },
     { id: 'source', header: t('executions.source'), cell: ({ row }) => <div><p className="text-foreground">{row.original.applicationName ?? localizedValue(t, 'executions.triggerTypes', row.original.triggerType)}</p><p className="mt-0.5 text-[10px]">{row.original.applicationId ?? '—'}</p></div> },
-    { accessorKey: 'workflowVersionNumber', header: t('common.version'), cell: ({ row }) => row.original.workflowVersionNumber == null ? '—' : `v${row.original.workflowVersionNumber}` },
+    { accessorKey: 'workflowVersionNumber', header: t('common.version'), cell: ({ row }) => designSourceLabel(row.original.source, row.original.workflowVersionNumber, (revision, draft) => t('executions.draftRevision', {revision, draft})) },
     { accessorKey: 'triggerType', header: t('executions.trigger'), cell: ({ row }) => <div><p className="text-foreground">{localizedValue(t, 'executions.triggerTypes', row.original.triggerType)}</p>{row.original.triggerName && <p className="mt-0.5 text-[10px]">{row.original.triggerName}</p>}</div> },
     { id: 'initiator', header: t('executions.initiator'), cell: ({ row }) => row.original.initiatorUserName ? <div><p className="text-foreground">{row.original.initiatorUserName}</p><p className="mt-0.5 text-[10px]">{row.original.initiatorDepartmentName ?? '—'}</p></div> : '—' },
     { accessorKey: 'status', header: t('common.status'), cell: ({ row }) => <StatusBadge status={executionStatus(row.original.status)} /> },

@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 import pytest
 
+from tests.e2e.draft_fixtures import fixture_draft_id
 from tests.e2e.support import MYSQL_ROOT_CLIENT, run
 
 ADMIN_USERNAME = "admin"
@@ -68,7 +69,9 @@ def test_loop_checkpoint_recovers_after_workflow_runtime_restart(
         )
         created.raise_for_status()
         workflow_id = created.json()["id"]
-        draft = client.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
+        draft = client.get(
+            f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(client, workflow_id, headers)}", headers=headers
+        )
         draft.raise_for_status()
         draft_payload = draft.json()
 
@@ -216,7 +219,7 @@ def test_loop_checkpoint_recovers_after_workflow_runtime_restart(
             "settings": {"executionOrder": "deterministic", "activationBudget": 100},
         }
         saved = client.put(
-            f"/api/v1/workflows/{workflow_id}/draft",
+            f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(client, workflow_id, {**headers, 'Idempotency-Key': f'plan5-loop-draft-{run_id}'})}",
             headers={**headers, "Idempotency-Key": f"plan5-loop-draft-{run_id}"},
             json={
                 "expectedRevision": draft_payload["revision"],
@@ -235,7 +238,7 @@ def test_loop_checkpoint_recovers_after_workflow_runtime_restart(
         execution: dict[str, Any] = {"status": "not_started"}
         for dispatch_attempt in range(2):
             started = client.post(
-                f"/api/v1/workflows/{workflow_id}/debug-executions",
+                f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(client, workflow_id, headers)}/debug-executions",
                 headers=headers,
                 json={
                     "expectedRevision": revision,

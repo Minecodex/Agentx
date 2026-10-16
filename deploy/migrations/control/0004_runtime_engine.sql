@@ -39,7 +39,7 @@ CREATE TABLE workflow_debug_runs (
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
     workflow_id BINARY(16) NOT NULL,
-    draft_revision BIGINT UNSIGNED NOT NULL,
+    source_json JSON NOT NULL,
     work_package_id BINARY(16) NOT NULL,
     command_id BINARY(16) NULL,
     command_version BIGINT UNSIGNED NOT NULL DEFAULT 1,

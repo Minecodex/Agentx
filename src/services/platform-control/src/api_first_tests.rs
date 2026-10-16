@@ -35,11 +35,19 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
         .with_env_var("MYSQL_USER", "agentx")
         .with_env_var("MYSQL_PASSWORD", "agentx-test-password")
         .with_env_var("MYSQL_ROOT_PASSWORD", "agentx-root-password")
+        .with_env_var("MYSQL_ROOT_HOST", "%")
         .start()
         .await
         .expect("Control MySQL container should start");
     let port = container.get_host_port_ipv4(3306.tcp()).await.unwrap();
     let pool = connect_with_retry(port).await;
+    let lock_observer = MySqlPoolOptions::new()
+        .max_connections(1)
+        .connect(&format!(
+            "mysql://root:agentx-root-password@127.0.0.1:{port}/agentx_control"
+        ))
+        .await
+        .unwrap();
     agentx_control_infrastructure::migrate_control_mysql(&pool)
         .await
         .unwrap();
@@ -66,6 +74,14 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
             post(mock_plugin_design_operation),
         )
         .route(
+            "/internal/runtime/v1/plugin-resolve-sessions:close",
+            post(
+                |Json(session): Json<agentx_runtime_contracts::PluginResolveSessionV1>| async {
+                    Json(session)
+                },
+            ),
+        )
+        .route(
             "/internal/runtime/v1/objects:upload",
             post(mock_upload_object),
         );
@@ -73,12 +89,13 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
     let runtime_url = format!("http://{}", runtime_listener.local_addr().unwrap());
     let runtime_server =
         tokio::spawn(async move { axum::serve(runtime_listener, runtime).await.unwrap() });
-    let app = router(ControlApiState::for_test(
+    let state = ControlApiState::for_test(
         pool.clone(),
         Arc::new(InMemory::new()),
         runtime_url,
         vault_url,
-    ));
+    );
+    let app = router(state.clone());
 
     let (status, bootstrap) = request(
         &app,
@@ -284,6 +301,15 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
     .await;
     assert_eq!(status, 201, "workflow response: {workflow}");
     let workflow_id = workflow["id"].as_str().unwrap();
+    builder_journal_does_not_reverse_core_locks(
+        &state,
+        &lock_observer,
+        projection_tenant_id,
+        Uuid::parse_str(bootstrap["user"]["id"].as_str().unwrap()).unwrap(),
+        Uuid::parse_str(workflow_id).unwrap(),
+        Uuid::parse_str(workflow["createdDraftId"].as_str().unwrap()).unwrap(),
+    )
+    .await;
     let service_identity_id = workflow["serviceIdentityId"].as_str().unwrap();
     let identity_admission: Value = sqlx::query_scalar(
         "SELECT payload_json FROM outbox WHERE event_type='ServiceIdentityAdmissionChanged' AND aggregate_id=?",
@@ -322,7 +348,10 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
     let (status, draft) = request(
         &app,
         "GET",
-        &format!("/api/v1/workflows/{workflow_id}/draft"),
+        &format!(
+            "/api/v1/workflows/{workflow_id}/drafts/{}",
+            workflow["createdDraftId"].as_str().unwrap()
+        ),
         Some(&token),
         None,
     )
@@ -350,7 +379,10 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
     let (status, saved_draft) = request(
         &app,
         "PUT",
-        &format!("/api/v1/workflows/{workflow_id}/draft"),
+        &format!(
+            "/api/v1/workflows/{workflow_id}/drafts/{}",
+            workflow["createdDraftId"].as_str().unwrap()
+        ),
         Some(&token),
         Some(json!({
             "expectedRevision":draft["revision"],
@@ -365,7 +397,7 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
         "POST",
         &format!("/api/v1/workflows/{workflow_id}/versions"),
         Some(&token),
-        Some(json!({"draftRevision":saved_draft["revision"]})),
+        Some(json!({"draftId":draft["id"],"draftRevision":saved_draft["revision"]})),
     )
     .await;
     assert_eq!(status, 201, "workflow version response: {version}");
@@ -622,7 +654,7 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
         Some(&token),
         Some(json!({
             "resourceType":"model","resourceId":model["id"],"resourceVersionId":null,
-            "operation":"use","sourceNodeId":"model-node","sourceRevision":0,
+            "operation":"use","sourceNodeId":"model-node","sourceDraftId": resource_workflow["createdDraftId"], "sourceRevision":0,
             "message":"API-first resource closure"
         })),
     )
@@ -691,7 +723,10 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
     let (status, resource_draft) = request(
         &app,
         "GET",
-        &format!("/api/v1/workflows/{resource_workflow_id}/draft"),
+        &format!(
+            "/api/v1/workflows/{resource_workflow_id}/drafts/{}",
+            resource_workflow["createdDraftId"].as_str().unwrap()
+        ),
         Some(&token),
         None,
     )
@@ -720,7 +755,10 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
     let (status, resource_saved) = request(
         &app,
         "PUT",
-        &format!("/api/v1/workflows/{resource_workflow_id}/draft"),
+        &format!(
+            "/api/v1/workflows/{resource_workflow_id}/drafts/{}",
+            resource_workflow["createdDraftId"].as_str().unwrap()
+        ),
         Some(&token),
         Some(json!({
             "expectedRevision":resource_draft["revision"],"definition":resource_definition,
@@ -737,7 +775,7 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
         "POST",
         &format!("/api/v1/workflows/{resource_workflow_id}/versions"),
         Some(&token),
-        Some(json!({"draftRevision":resource_saved["revision"]})),
+        Some(json!({"draftId":resource_draft["id"],"draftRevision":resource_saved["revision"]})),
     )
     .await;
     assert_eq!(status, 201, "resource version response: {resource_version}");
@@ -1120,6 +1158,114 @@ async fn mock_upload_object(
         replayed: false,
         accepted_at: time::OffsetDateTime::now_utc(),
     })
+}
+
+async fn builder_journal_does_not_reverse_core_locks(
+    state: &ControlApiState,
+    observer: &sqlx::MySqlPool,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    workflow_id: Uuid,
+    draft_id: Uuid,
+) {
+    let target = agentx_runtime_contracts::StudioBuilderTargetV1 {
+        tenant_id,
+        user_id,
+        workflow_id,
+        draft_id,
+        session_id: Uuid::now_v7(),
+        run_id: Uuid::now_v7(),
+    };
+    sqlx::query("INSERT INTO studio_builder_sessions(id,tenant_id,workflow_id,draft_id,user_id,editor_instance_id,snapshot_json,state_json) VALUES(?,?,?,?,?,?,JSON_OBJECT(),JSON_OBJECT())")
+        .bind(target.session_id).bind(tenant_id).bind(workflow_id).bind(draft_id).bind(user_id).bind(Uuid::now_v7()).execute(&state.pool).await.unwrap();
+    sqlx::query("INSERT INTO studio_builder_runs(id,tenant_id,session_id,token_version,prompt,edit_scope_json,model_alias_id,model_alias_version,setting_version,model_binding_json,model_parameters_json,deadline_at,delta_cursors_json) VALUES(?,?,?,1,'lock regression',JSON_OBJECT(),?,1,1,JSON_OBJECT(),JSON_OBJECT(),UTC_TIMESTAMP(6)+INTERVAL 1 MINUTE,JSON_OBJECT())")
+        .bind(target.run_id).bind(tenant_id).bind(target.session_id).bind(Uuid::now_v7()).execute(&state.pool).await.unwrap();
+    let mut core = state.pool.begin().await.unwrap();
+    sqlx::query("SELECT id FROM studio_builder_runs WHERE id=? FOR UPDATE")
+        .bind(target.run_id)
+        .fetch_one(&mut *core)
+        .await
+        .unwrap();
+    let writer_state = state.clone();
+    let writer_target = target.clone();
+    let journal = tokio::spawn(async move {
+        crate::studio_builder_runtime::append_entry(
+            &writer_state,
+            &writer_target,
+            "ack:lock-regression",
+            json!({"type":"command_acknowledged"}),
+        )
+        .await
+    });
+    // Wait for the real blocked Run lock, rather than relying on a sleep race.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let waiting: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM performance_schema.data_lock_waits w JOIN performance_schema.data_locks l ON l.ENGINE_LOCK_ID=w.REQUESTING_ENGINE_LOCK_ID WHERE l.OBJECT_NAME='studio_builder_runs'")
+                .fetch_one(observer).await.unwrap();
+            if waiting > 0 { break; }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }).await.expect("journal must wait for the Core Run lock");
+    tokio::time::timeout(Duration::from_secs(5), sqlx::query("UPDATE studio_builder_sessions SET state_json=JSON_OBJECT('version',1,'compaction',JSON_OBJECT('snapshotId','assistant:lock-regression','summary','中文摘要')),state_version=1 WHERE id=?")
+        .bind(target.session_id).execute(&mut *core)).await
+        .expect("journal must not hold Session while waiting for Run").unwrap();
+    core.commit().await.unwrap();
+    journal.await.unwrap().unwrap();
+    crate::studio_builder_runtime::append_entry(
+        state,
+        &target,
+        "ack:lock-regression",
+        json!({"type":"command_acknowledged"}),
+    )
+    .await
+    .unwrap();
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM studio_builder_entries WHERE session_id=?")
+            .bind(target.session_id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        count, 1,
+        "repeated publication must retain one durable event"
+    );
+    assert_eq!(
+        crate::studio_builder_runtime::compaction_snapshot_id(state, &target)
+            .await
+            .unwrap(),
+        "assistant:lock-regression"
+    );
+    let deltas = (0..512)
+        .map(|index| {
+            (
+                format!("delta:regression:{index}"),
+                json!({"type":"model_delta","text":"中文"}),
+            )
+        })
+        .collect::<Vec<_>>();
+    crate::studio_builder_runtime::append_entries(state, &target, deltas.clone())
+        .await
+        .unwrap();
+    crate::studio_builder_runtime::append_entries(state, &target, deltas)
+        .await
+        .unwrap();
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM studio_builder_entries WHERE session_id=?")
+            .bind(target.session_id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap();
+    assert_eq!(count, 513, "stream batches must be durable and replay once");
+    sqlx::query("DELETE FROM studio_builder_runs WHERE id=?")
+        .bind(target.run_id)
+        .execute(&state.pool)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM studio_builder_sessions WHERE id=?")
+        .bind(target.session_id)
+        .execute(&state.pool)
+        .await
+        .unwrap();
 }
 
 async fn connect_with_retry(port: u16) -> sqlx::MySqlPool {

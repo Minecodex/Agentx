@@ -661,7 +661,14 @@ async fn delete_resource(
     id: Uuid,
 ) -> ApiResult<StatusCode> {
     require_resource(state, actor, table, id).await?;
-    let mut tx = state.pool.begin().await?;
+
+    let mut tx = crate::workflow_revision_resources::begin_delete(
+        &state.pool,
+        actor.tenant_id,
+        resource_type,
+        id,
+    )
+    .await?;
     let lock_sql = match table {
         "rag_resources" => "SELECT id FROM rag_resources WHERE tenant_id=? AND id=? FOR UPDATE",
         "memory_namespaces" => {

@@ -18,6 +18,7 @@ from typing import Any
 import httpx
 import pytest
 
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
 from tests.e2e.runtime.test_agent_attachments import (
     _access_token,
     _runtime_mysql,
@@ -87,7 +88,9 @@ def _stream_workflow(control: httpx.Client, headers: dict[str, str], name: str, 
     )
     assert created.status_code == 201, f"{created.status_code}: {created.text}"
     workflow_id = created.json()["id"]
-    draft = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
+    draft = control.get(
+        f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}", headers=headers
+    )
     draft.raise_for_status()
     definition = draft.json()["definition"]
     definition["start"]["inputs"] = {
@@ -176,9 +179,13 @@ def _stream_workflow(control: httpx.Client, headers: dict[str, str], name: str, 
         },
     ]
     saved = control.put(
-        f"/api/v1/workflows/{workflow_id}/draft",
+        f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}",
         headers=headers,
-        json={"expectedRevision": draft.json()["revision"], "definition": definition},
+        json={
+            "editorDocument": fixture_draft(control, workflow_id, headers)["editorDocument"],
+            "expectedRevision": draft.json()["revision"],
+            "definition": definition,
+        },
     )
     assert saved.status_code in (200, 204), saved.text
     return workflow_id
@@ -244,12 +251,17 @@ def streaming_application(
         model_resource_id = next(item for item in listing.json()["items"] if item["alias"] == "stream-slow")["id"]
         workflow_id = _stream_workflow(control, headers, f"Streaming E2E {run_id}", model_resource_id)
         _grant_model_to_workflow(control, headers, "stream-slow", workflow_id, credential_id)
-        latest_draft = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
+        latest_draft = control.get(
+            f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}", headers=headers
+        )
         latest_draft.raise_for_status()
         published = control.post(
             f"/api/v1/workflows/{workflow_id}/versions",
             headers=headers,
-            json={"draftRevision": latest_draft.json()["revision"]},
+            json={
+                "draftId": fixture_draft(control, workflow_id, headers)["id"],
+                "draftRevision": latest_draft.json()["revision"],
+            },
         )
         assert published.status_code in (200, 201), published.text
         version_id = published.json()["id"]
@@ -512,7 +524,10 @@ def test_vision_attachment_reaches_model_as_native_parts(
             )
             created.raise_for_status()
             workflow_id = created.json()["id"]
-            draft = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
+            draft = control.get(
+                f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}",
+                headers=headers,
+            )
             draft.raise_for_status()
             definition = draft.json()["definition"]
             definition["start"]["inputs"] = {
@@ -600,19 +615,29 @@ def test_vision_attachment_reaches_model_as_native_parts(
                 },
             ]
             saved = control.put(
-                f"/api/v1/workflows/{workflow_id}/draft",
+                f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}",
                 headers=headers,
-                json={"expectedRevision": draft.json()["revision"], "definition": definition},
+                json={
+                    "editorDocument": fixture_draft(control, workflow_id, headers)["editorDocument"],
+                    "expectedRevision": draft.json()["revision"],
+                    "definition": definition,
+                },
             )
             assert saved.status_code in (200, 204), saved.text
             # Grants must exist before the version publish validates them.
             _grant_model_to_workflow(control, headers, alias, workflow_id, credential_id)
-            latest = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
+            latest = control.get(
+                f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}",
+                headers=headers,
+            )
             latest.raise_for_status()
             published = control.post(
                 f"/api/v1/workflows/{workflow_id}/versions",
                 headers=headers,
-                json={"draftRevision": latest.json()["revision"]},
+                json={
+                    "draftId": fixture_draft(control, workflow_id, headers)["id"],
+                    "draftRevision": latest.json()["revision"],
+                },
             )
             assert published.status_code in (200, 201), published.text
             deploy = control.post(
@@ -803,10 +828,10 @@ def test_studio_debug_has_an_independent_durable_delta_cursor(installed_agentx, 
         application = control.get(f"/api/v1/applications/{streaming_application['applicationId']}")
         application.raise_for_status()
         workflow_id = application.json()["workflowId"]
-        draft = control.get(f"/api/v1/workflows/{workflow_id}/draft")
+        draft = control.get(f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, None)}")
         draft.raise_for_status()
         debug = control.post(
-            f"/api/v1/workflows/{workflow_id}/debug-executions",
+            f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, None)}/debug-executions",
             json={
                 "expectedRevision": draft.json()["revision"],
                 "mode": "full",

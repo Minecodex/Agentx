@@ -134,7 +134,10 @@ pub(super) async fn load_external_contexts(
             source_resource_id: descriptor.resource_id.to_string(),
             source_resource_version_id: descriptor.resource_version_id.to_string(),
             content_hash: descriptor.content_hash.to_string(),
-            content: program.instructions,
+            content: format!(
+                "Skill resource version: {}\nUse this skillVersionId when calling skill_resource.\n\n{}",
+                descriptor.resource_version_id, program.instructions
+            ),
         });
     }
     contexts.sort_by(|left, right| left.context_id.cmp(&right.context_id));

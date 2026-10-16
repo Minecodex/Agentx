@@ -69,10 +69,22 @@ mod runtime_grants;
 mod runtime_resource_binding;
 mod sandbox_profile_api;
 mod skill_api;
+mod studio_builder_api;
+mod studio_builder_catalog;
+mod studio_builder_configuration;
+mod studio_builder_host;
+mod studio_builder_layout;
+mod studio_builder_retention;
+mod studio_builder_runtime;
+mod studio_builder_scope;
+mod studio_builder_setting;
+mod studio_builder_tools;
 mod work_packages;
 mod workflow_api;
+mod workflow_drafts;
 mod workflow_operations;
 mod workflow_resources;
+mod workflow_revision_resources;
 
 use control_helpers::{
     control_roles as roles, payload_strings, payload_uuid, payload_uuids, required_env as required,
@@ -209,6 +221,13 @@ async fn main() -> Result<()> {
             knowledge_indexing::run_loop(indexing_state, indexing_lifecycle, indexing_progress)
                 .await
         });
+        let builder_state = api_state.clone();
+        let builder_lifecycle = lifecycle.clone();
+        let builder_progress =
+            role_health::watchdog("studio-builder", &health, &lifecycle, &metrics).await;
+        tasks.spawn(async move {
+            studio_builder_host::run_loop(builder_state, builder_lifecycle, builder_progress).await
+        });
         control_api::router(api_state)
     } else {
         Router::new()
@@ -316,6 +335,7 @@ impl Publisher {
         lifecycle: agentx_service_kit::ServiceLifecycle,
         progress: agentx_service_kit::RoleProgressWatchdog,
     ) -> Result<()> {
+        runtime_grants::reconcile_user_admissions(&self.pool).await?;
         loop {
             if lifecycle.is_draining() {
                 return Ok(());
@@ -827,15 +847,14 @@ impl Publisher {
         let dependencies = load_dependencies(&self.pool, a.tenant_id, &definition).await?;
         let plugin_manifests =
             canvas_plugin_api::plugin_manifests_for_pool(&self.pool, a.tenant_id, false).await?;
-        let resolved = canvas_plugin_resolution::resolve_for_publisher(
-            self.pool.clone(),
-            self.control_objects.clone(),
+        let resolved = canvas_plugin_resolution::frozen_for_version(
+            &self.pool,
             a.tenant_id,
-            &definition,
+            workflow_version_id,
             &dependencies,
-            &plugin_manifests,
         )
-        .await?;
+        .await
+        .map_err(|error| anyhow::anyhow!("Frozen version manifests are unavailable: {error:?}"))?;
         anyhow::ensure!(
             resolved.incomplete.is_empty() && resolved.invalid.is_empty(),
             "Workflow contains an incomplete or invalid plugin definition"
@@ -1043,7 +1062,7 @@ impl Publisher {
                     RuntimeResourceConfigurationV1::Composite {
                         workflow,
                         ..
-                    } if workflow.version_id == dependency_id
+                    } if workflow.version_id == Some(dependency_id)
                 )
             }) {
                 continue;

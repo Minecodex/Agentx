@@ -1,0 +1,322 @@
+{
+  "agent": {
+    "systemPrompt": {
+      "kind": "literal",
+      "value": "Answer the question"
+    },
+    "userQuestion": {
+      "kind": "reference",
+      "selector": {
+        "namespace": "inputs",
+        "path": [
+          "question"
+        ]
+      }
+    },
+    "sessionPolicy": {
+      "mode": "invocation"
+    }
+  },
+  "approval": {
+    "title": {
+      "kind": "reference",
+      "selector": {
+        "namespace": "inputs",
+        "path": [
+          "question"
+        ]
+      }
+    },
+    "description": {
+      "kind": "template",
+      "segments": [
+        {
+          "kind": "text",
+          "text": "Review "
+        },
+        {
+          "kind": "reference",
+          "selector": {
+            "namespace": "inputs",
+            "path": [
+              "question"
+            ]
+          }
+        }
+      ]
+    },
+    "candidateUserId": "00000000-0000-4000-8000-000000000001",
+    "buttons": [
+      {
+        "id": "approve",
+        "label": "Approve"
+      }
+    ]
+  },
+  "code": {
+    "inputs": {
+      "kind": "object",
+      "fields": {
+        "question": {
+          "kind": "reference",
+          "selector": {
+            "namespace": "inputs",
+            "path": [
+              "question"
+            ]
+          }
+        },
+        "nested": {
+          "kind": "array",
+          "items": [
+            {
+              "kind": "reference",
+              "selector": {
+                "namespace": "inputs",
+                "path": [
+                  "question"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "runner": "javascript",
+    "source": "export default async ({ inputs }) => inputs;",
+    "outputExample": {
+      "question": "ok",
+      "nested": [
+        "ok"
+      ]
+    },
+    "networkPolicy": {
+      "mode": "deny",
+      "destinations": []
+    }
+  },
+  "declarative_http": {
+    "method": "POST",
+    "url": {
+      "kind": "literal",
+      "value": "https://example.com"
+    },
+    "body": {
+      "kind": "object",
+      "fields": {
+        "question": {
+          "kind": "reference",
+          "selector": {
+            "namespace": "inputs",
+            "path": [
+              "question"
+            ]
+          }
+        },
+        "nested": {
+          "kind": "array",
+          "items": [
+            {
+              "kind": "reference",
+              "selector": {
+                "namespace": "inputs",
+                "path": [
+                  "question"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "headers": [],
+    "query": []
+  },
+  "if": {
+    "cases": [
+      {
+        "id": "match",
+        "name": "Match",
+        "logicalOp": "and",
+        "conditions": [
+          {
+            "condition": {
+              "left": {
+                "kind": "reference",
+                "selector": {
+                  "namespace": "inputs",
+                  "path": [
+                    "question"
+                  ]
+                }
+              },
+              "operator": "eq",
+              "right": {
+                "kind": "literal",
+                "value": "yes"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "list": {
+    "input": {
+      "kind": "reference",
+      "selector": {
+        "namespace": "inputs",
+        "path": [
+          "rows"
+        ]
+      }
+    },
+    "takeN": 2,
+    "sort": [],
+    "filter": {
+      "logicalOp": "and",
+      "conditions": []
+    }
+  },
+  "loop_over_items": {
+    "input": {
+      "kind": "reference",
+      "selector": {
+        "namespace": "inputs",
+        "path": [
+          "rows"
+        ]
+      }
+    },
+    "outputSelector": {
+      "kind": "reference",
+      "selector": {
+        "namespace": "outputs",
+        "sourceNodeId": "loop_body",
+        "path": [
+          "question"
+        ]
+      }
+    },
+    "parallelism": 1,
+    "errorMode": "terminate"
+  },
+  "merge": {
+    "mode": "append",
+    "conflictStrategy": "prefer_left"
+  },
+  "model": {
+    "prompt": {
+      "kind": "literal",
+      "value": "我叫 kakj。请以这个名字回答用户的问题。"
+    },
+    "userQuestion": {
+      "kind": "reference",
+      "selector": {
+        "namespace": "inputs",
+        "path": [
+          "question"
+        ]
+      }
+    },
+    "stream": "true",
+    "responseMode": "text"
+  },
+  "reply_message": {
+    "content": {
+      "kind": "reference",
+      "selector": {
+        "namespace": "inputs",
+        "path": [
+          "question"
+        ]
+      }
+    }
+  },
+  "send_message": {
+    "content": {
+      "kind": "reference",
+      "selector": {
+        "namespace": "inputs",
+        "path": [
+          "question"
+        ]
+      }
+    },
+    "channelId": "test-channel"
+  },
+  "set": {
+    "values": {
+      "kind": "object",
+      "fields": {
+        "question": {
+          "kind": "reference",
+          "selector": {
+            "namespace": "inputs",
+            "path": [
+              "question"
+            ]
+          }
+        },
+        "nested": {
+          "kind": "array",
+          "items": [
+            {
+              "kind": "reference",
+              "selector": {
+                "namespace": "inputs",
+                "path": [
+                  "question"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "keepOnlySet": true
+  },
+  "sub_workflow": {
+    "workflowVersionId": "00000000-0000-4000-8000-000000000002",
+    "inputs": {
+      "kind": "object",
+      "fields": {
+        "question": {
+          "kind": "reference",
+          "selector": {
+            "namespace": "inputs",
+            "path": [
+              "question"
+            ]
+          }
+        },
+        "nested": {
+          "kind": "array",
+          "items": [
+            {
+              "kind": "reference",
+              "selector": {
+                "namespace": "inputs",
+                "path": [
+                  "question"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "knowledge_retrieval": {
+    "query": {
+      "kind": "reference",
+      "selector": {
+        "namespace": "inputs",
+        "path": [
+          "question"
+        ]
+      }
+    },
+    "topK": 5
+  }
+}

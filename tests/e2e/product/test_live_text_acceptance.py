@@ -1,4 +1,4 @@
-"""Opt-in real Kimi streaming, cancellation, Judge, versions and Insights."""
+"""Opt-in real model streaming, cancellation, Judge, versions and Insights."""
 
 from __future__ import annotations
 
@@ -46,11 +46,11 @@ def terminal(gateway, invocation_id):
         time.sleep(0.5)
 
 
-def test_kimi_streams_real_text_persists_history_and_usage(installed_agentx, service_urls, live_application):
+def test_model_streams_real_text_persists_history_and_usage(installed_agentx, service_urls, live_application):
     app = live_application
     headers = {"Authorization": f"Bearer {app['token'].value}"}
     with httpx.Client(base_url=service_urls["runtime"], headers=headers, timeout=180) as gateway:
-        session_id = session(gateway, app, "真实 Kimi 流式验收")
+        session_id = session(gateway, app, "真实 model 流式验收")
         invocation_id = message(
             gateway, session_id, "请以水星蓝桥开头,分五段说明如何设计可靠的工作流系统,控制在300字以内。"
         )
@@ -73,7 +73,7 @@ def test_kimi_streams_real_text_persists_history_and_usage(installed_agentx, ser
         assert execution["inputTokens"] + execution["outputTokens"] > 0, execution
     write_report(
         installed_agentx,
-        "product/live-kimi-stream.json",
+        "product/live-model-stream.json",
         {
             "status": "passed",
             "sessionId": session_id,
@@ -85,17 +85,17 @@ def test_kimi_streams_real_text_persists_history_and_usage(installed_agentx, ser
             "persistedMatchesDeltas": True,
             "inputTokens": execution["inputTokens"],
             "outputTokens": execution["outputTokens"],
-            "realProvider": "kimi/k3",
+            "realProvider": "glm-5.3-flash",
         },
     )
 
 
-def test_kimi_generation_cancels_with_authoritative_terminal_state(installed_agentx, service_urls, live_application):
+def test_model_generation_cancels_with_authoritative_terminal_state(installed_agentx, service_urls, live_application):
     app = live_application
     headers = {"Authorization": f"Bearer {app['token'].value}"}
     with httpx.Client(base_url=service_urls["runtime"], headers=headers, timeout=180) as gateway:
-        session_id = session(gateway, app, "真实 Kimi 取消验收")
-        invocation_id = message(gateway, session_id, "请用中文写5000字关于工作流引擎设计的教程。")
+        session_id = session(gateway, app, "真实 model 取消验收")
+        invocation_id = message(gateway, session_id, "先输出开始,再分60条介绍工作流引擎设计,每条约30字,逐条输出。")
         event_type = ""
         delta_received = False
         with gateway.stream("GET", f"/gateway/v1/invocations/{invocation_id}/events", timeout=180) as stream:
@@ -123,16 +123,16 @@ def test_kimi_generation_cancels_with_authoritative_terminal_state(installed_age
         assert result["status"] == "cancelled", result
     write_report(
         installed_agentx,
-        "product/live-kimi-cancel.json",
+        "product/live-model-cancel.json",
         {"status": "passed", "invocationId": invocation_id, "terminalStatus": result["status"]},
     )
 
 
-def test_real_kimi_judge_two_versions_and_absent_case_alignment(live_comparison):
+def test_real_model_judge_two_versions_and_absent_case_alignment(live_comparison):
     assert live_comparison["baselineId"] != live_comparison["candidateId"]
 
 
-def test_insights_records_real_kimi_success_and_token_usage(
+def test_insights_records_real_model_success_and_token_usage(
     installed_agentx, service_urls, live_application, live_comparison
 ):
     app = live_application
@@ -168,4 +168,4 @@ def test_insights_records_real_kimi_success_and_token_usage(
             time.sleep(1)
         assert all(row["dimensions"]["workflow"] == app["workflowId"] for row in rows), rows
         assert all(row["metrics"]["succeededCount"] > 0 and row["metrics"]["durationP95"] > 0 for row in rows), rows
-        write_report(installed_agentx, "product/live-kimi-insights.json", {"status": "passed", "rows": rows})
+        write_report(installed_agentx, "product/live-model-insights.json", {"status": "passed", "rows": rows})

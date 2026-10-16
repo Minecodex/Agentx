@@ -20,8 +20,8 @@ use crate::{
     engine::ClaimedWorkerAttempt,
     vault::RuntimeVault,
     worker_support::{
-        openai_chat_completions_endpoint, provider_secret_header, runtime_call_fingerprint,
-        stable_id,
+        memory_secret_header, openai_chat_completions_endpoint, provider_secret_header,
+        runtime_call_fingerprint, stable_id,
     },
 };
 
@@ -39,6 +39,8 @@ mod agent_state;
 mod agent_trace;
 #[path = "worker_runtime_builtin.rs"]
 mod builtin;
+#[path = "worker_runtime_knowledge.rs"]
+mod knowledge;
 mod mcp;
 #[path = "worker_runtime_output.rs"]
 pub(crate) mod output;
@@ -47,7 +49,7 @@ pub(crate) mod plugin;
 #[path = "worker_runtime_provider.rs"]
 mod provider;
 #[path = "worker_runtime_stream.rs"]
-mod stream;
+pub(crate) mod stream;
 
 #[cfg(test)]
 use output::system_prompt;
@@ -355,6 +357,9 @@ impl RuntimeWorker {
             NodeCapability::PluginNodejs => plugin::execute(self, claim).await,
             NodeCapability::Agent => self.execute_agent_core(claim).await,
             NodeCapability::Model | NodeCapability::Sandbox => self.execute_resource(claim).await,
+            NodeCapability::Rag if claim.node_type == "knowledge_retrieval" => {
+                self.execute_knowledge_retrieval(claim).await
+            }
             NodeCapability::McpTool
             | NodeCapability::Rag
             | NodeCapability::Memory
@@ -637,7 +642,6 @@ impl RuntimeWorker {
             provider,
             endpoint,
             model,
-            price,
             credential,
             ..
         } = &binding.configuration
@@ -674,7 +678,7 @@ impl RuntimeWorker {
                 }
                 Err(failed) => return failed,
             };
-            let request = openai_chat_request_streaming(claim, model, price, &input, streaming);
+            let request = openai_chat_request_streaming(claim, model, &input, streaming);
             let execution = if streaming {
                 self.call_http_stream(
                     claim,
@@ -792,6 +796,17 @@ impl RuntimeWorker {
                 credential,
                 ..
             } => {
+                let secret_header =
+                    match memory_secret_header(&claim.resources, credential.as_ref()) {
+                        Ok(header) => header,
+                        Err(code) => {
+                            return WorkerExecution::failed(
+                                code,
+                                "Memory requires a frozen api_key or bearer Credential",
+                                false,
+                            );
+                        }
+                    };
                 let operation = claim
                     .node_parameters
                     .get("operation")
@@ -821,7 +836,7 @@ impl RuntimeWorker {
                     format!("{}/{}", endpoint.trim_end_matches('/'), path),
                     request,
                     credential.as_ref(),
-                    "authorization",
+                    secret_header,
                 )
             }
             RuntimeResourceConfigurationV1::SandboxProfile { .. } => {
@@ -887,7 +902,11 @@ impl RuntimeWorker {
                     RuntimeResourceConfigurationV1::Rag { provider, .. } => provider.clone(),
                     _ => "lightrag".into(),
                 };
-                rag_execution_output(finalize_rag_response(&provider, execution))
+                if claim.node_type == "knowledge_retrieval" {
+                    knowledge::finalize(&provider, execution)
+                } else {
+                    rag_execution_output(finalize_rag_response(&provider, execution))
+                }
             }
             RuntimeResourceKindV1::Memory => memory_execution_output(execution),
             _ => execution,
@@ -1326,18 +1345,9 @@ impl RuntimeWorker {
                     let status = stream.status;
                     let headers = stream.response.headers().clone();
                     if !status.is_success() {
-                        // A provider's HTTP rejection is a valid HTTP response,
-                        // not malformed SSE. Use the shared response ledger and
-                        // error classification before decoding successful streams.
-                        let body =
-                            stream.response.bytes().await.map_err(|error| {
-                                WorkerProviderError::Protocol(error.to_string())
-                            })?;
-                        return Ok(WorkerProviderResponse {
-                            status,
-                            headers,
-                            body,
-                        });
+                        // An HTTP rejection is not malformed SSE. Preserve the
+                        // response for the shared provider error/ledger path.
+                        return provider::reqwest_response(Ok(stream.response)).await;
                     }
                     let sink = delta_sink.clone();
                     let mut first_token_seen = false;

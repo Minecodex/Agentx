@@ -3,7 +3,8 @@ import { beforeEach, expect, it } from 'vitest'
 import { serializeStudio } from '../model/serializer'
 import type { StudioDocument } from '../model/types'
 import { createDefinitionSelector } from './definition-selector'
-import { useEditorStore } from './editor-store'
+import { createEditorStore } from './editor-store'
+const useEditorStore = createEditorStore()
 
 beforeEach(() => {
   const document: StudioDocument = {

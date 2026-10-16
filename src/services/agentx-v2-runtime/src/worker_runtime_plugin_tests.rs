@@ -221,7 +221,7 @@ async fn timeout_reclaims_the_plugin_process_tree() {
 }
 
 #[tokio::test]
-async fn runtime_executes_design_operations_without_control_spawning_node() {
+async fn business_plugin_worker_rejects_definition_resolution() {
     let pool = MySqlPoolOptions::new()
         .connect_lazy("mysql://user:password@127.0.0.1/unused")
         .unwrap();
@@ -232,7 +232,7 @@ async fn runtime_executes_design_operations_without_control_spawning_node() {
             format!("sha256:{}", "d".repeat(64)),
             "export function resolveDefinition(configuration){return {status:configuration.ready?'complete':'incomplete',outputSchema:{type:'object',properties:{value:{type:'string'}}}}}".into(),
         );
-    let result = invoke_design_operation(
+    let error = invoke_design_operation(
         &worker,
         Uuid::now_v7(),
         Uuid::now_v7(),
@@ -242,12 +242,8 @@ async fn runtime_executes_design_operations_without_control_spawning_node() {
         json!({"configuration":{"ready":true}}),
     )
     .await
-    .unwrap();
-    assert_eq!(result["status"], "complete");
-    assert_eq!(
-        result["outputSchema"]["properties"]["value"]["type"],
-        "string"
-    );
+    .unwrap_err();
+    assert!(error.contains("Unsupported plugin design method"));
 }
 
 #[tokio::test]

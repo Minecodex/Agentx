@@ -41,6 +41,13 @@ function ExitHarness({ end: initialEnd = end, exits: initialExits }: { end?: Wor
 }
 
 describe('Exit panel', () => {
+  it('opens AI output mappings whose selectors omit the wire defaults', () => {
+    const outputs = { reply: { schema: { type: 'string' }, required: true, sensitive: false } }
+    const source: ReferenceCatalog = { inputs: [], contexts: [], outputs: [{ id: 'text', label: 'Model text', path: 'outputs.model.text', children: [], selector: { namespace: 'outputs', sourceNodeId: 'model', port: 'main', run: { kind: 'current' }, item: { kind: 'current' }, path: ['text'] } }] }
+    render(<ExitPanel end={{ ...end, outputs }} exitId="exit-1" exits={[{ ...exitEntry('exit-1', 'exit'), data: { ...exitEntry('exit-1', 'exit').data, parameters: { outputs: { reply: { kind: 'reference', selector: { namespace: 'outputs', sourceNodeId: 'model', path: ['text'] } } }, errorOutputs: {} } } }]} referenceCatalog={source} onClose={() => undefined} onEndChange={() => undefined} onExitUpdate={() => undefined} />)
+    expect(screen.getByTestId('exit-mapping-reply')).toHaveTextContent('Model text')
+  })
+
   it('renders the shared contract and per-node binding sections in Chinese', async () => {
     await i18n.changeLanguage('zh-CN')
     render(<ExitHarness end={{ ...end, outputs: { answer: { schema: { type: 'string' }, required: false, sensitive: false } } }} />)

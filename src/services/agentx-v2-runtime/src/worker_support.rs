@@ -50,6 +50,37 @@ pub(crate) fn provider_secret_header(value: &[u8], header: &str) -> Vec<u8> {
     header_value
 }
 
+pub(crate) fn memory_secret_header(
+    resources: &[agentx_runtime_contracts::RuntimeResourceBindingV1],
+    credential: Option<&agentx_runtime_contracts::VaultSecretReferenceV1>,
+) -> Result<&'static str, &'static str> {
+    let Some(reference) = credential else {
+        return Ok("authorization");
+    };
+    let credential_type = resources.iter().find_map(|binding| {
+        if let agentx_runtime_contracts::RuntimeResourceConfigurationV1::Credential {
+            credential_type,
+            secret,
+            ..
+        } = &binding.configuration
+            && secret.mount == reference.mount
+            && secret.path == reference.path
+            && secret.key == reference.key
+            && secret.version == reference.version
+        {
+            Some(credential_type.as_str())
+        } else {
+            None
+        }
+    });
+    match credential_type {
+        Some("api_key") => Ok("x-api-key"),
+        Some("bearer") => Ok("authorization"),
+        Some(_) => Err("MEMORY_CREDENTIAL_TYPE_UNSUPPORTED"),
+        None => Err("MEMORY_CREDENTIAL_BINDING_MISSING"),
+    }
+}
+
 pub(crate) fn stable_id(namespace: Uuid, label: &[u8]) -> Uuid {
     let mut hasher = Sha256::new();
     hasher.update(namespace.as_bytes());

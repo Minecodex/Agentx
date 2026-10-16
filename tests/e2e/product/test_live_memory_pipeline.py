@@ -12,6 +12,7 @@ from itertools import pairwise
 import httpx
 import pytest
 
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
 from tests.e2e.product.live_text_support import post
 from tests.e2e.product.next_batch_support import get, publish_application
 from tests.e2e.product.test_live_knowledge_memory import (
@@ -54,15 +55,25 @@ def _authorize_definition(control, workflow, definition):
 
 
 def _save_version(control, workflow, definition):
-    draft = get(control, f"/workflows/{workflow}/draft")
+    draft = get(control, f"/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}")
     saved = control.put(
-        f"/api/v1/workflows/{workflow}/draft", json={"expectedRevision": draft["revision"], "definition": definition}
+        f"/api/v1/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}",
+        json={
+            "editorDocument": fixture_draft(control, workflow, None)["editorDocument"],
+            "expectedRevision": draft["revision"],
+            "definition": definition,
+        },
     )
     assert saved.status_code == 200, saved.text
     return post(
         control,
         f"/workflows/{workflow}/versions",
-        {"draftRevision": get(control, f"/workflows/{workflow}/draft")["revision"]},
+        {
+            "draftId": fixture_draft(control, workflow, None)["id"],
+            "draftRevision": get(control, f"/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}")[
+                "revision"
+            ],
+        },
     )
 
 
@@ -119,7 +130,11 @@ def test_real_memory_isolated_by_application_and_namespace(
 ):
     control = live_providers["control"]
     app_a = live_agent_application
-    definition = copy.deepcopy(get(control, f"/workflows/{app_a['workflowId']}/draft")["definition"])
+    definition = copy.deepcopy(
+        get(control, f"/workflows/{app_a['workflowId']}/drafts/{fixture_draft_id(control, app_a['workflowId'], None)}")[
+            "definition"
+        ]
+    )
     next(node for node in definition["nodes"] if node["type"] == "agent")["parameters"]["systemPrompt"] = {
         "kind": "template",
         "segments": [{"kind": "text", "text": TOOL_INSTRUCTION}],
@@ -269,7 +284,11 @@ def test_real_agent_knowledge_and_memory_feed_python_in_same_execution(
 ):
     control = live_providers["control"]
     source = live_agent_application
-    definition = copy.deepcopy(get(control, f"/workflows/{source['workflowId']}/draft")["definition"])
+    definition = copy.deepcopy(
+        get(
+            control, f"/workflows/{source['workflowId']}/drafts/{fixture_draft_id(control, source['workflowId'], None)}"
+        )["definition"]
+    )
     original_agent = next(node for node in definition["nodes"] if node["type"] == "agent")
     knowledge = copy.deepcopy(original_agent)
     knowledge["id"] = "knowledge_agent"

@@ -59,6 +59,7 @@ async function send<T>(basePath: string, path: string, init: RequestInit, retry:
 }
 
 export function apiRequest<T>(path: string, init: RequestInit = {}) { return send<T>('/api/v1', path, init, true) }
+export function apiRequestStream(path: string, init: RequestInit = {}) { return sendRaw('/api/v1', path, init, true) }
 export async function apiRequestCompleted<T>(path: string, init: RequestInit = {}) {
   const response = await sendRaw('/api/v1', path, init, true)
   if (response.status === 202) {

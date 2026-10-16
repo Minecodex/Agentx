@@ -1,3 +1,4 @@
+import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
@@ -67,8 +68,8 @@ test('imports and executes the independently developed template variant', async 
   const created = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}` }, data: { name: `Template Variant ${Date.now()}`, visibility: 'company' } })
   expect(created.ok(), await created.text()).toBeTruthy()
   const workflow = await created.json() as { id: string }
-  await page.goto(`/workflows/${workflow.id}/editor`)
-  const draft = await api<{ definition: { connections: Array<{ id: string }> } }>(page, token, `/workflows/${workflow.id}/draft`)
+  await page.goto(`/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}/editor`)
+  const draft = await api<{ definition: { connections: Array<{ id: string }> } }>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
   const edge = page.locator(`.react-flow__edge[data-testid="rf__edge-${draft.definition.connections[0].id}"]`)
   const toolbar = page.locator(`.studio-edge-toolbar[data-edge-id="${draft.definition.connections[0].id}"]`)
   await edge.click({ force: true })
@@ -78,17 +79,15 @@ test('imports and executes the independently developed template variant', async 
   await page.getByTestId(`palette-action-${nodeType}`).click()
   const inspector = page.getByTestId('node-details-view')
   await inspector.getByLabel('Label').fill('variant')
-  await inspector.getByLabel('Search provider').fill('tic')
-  await inspector.getByRole('button', { name: 'Search', exact: true }).click()
-  await expect(inspector.getByTestId('plugin-provider-results')).toHaveText('Ticket')
+  await expect(inspector.getByLabel('Search provider')).toHaveCount(0)
   await inspector.getByLabel('Metadata output').check()
-  const plugin = page.locator('.react-flow__node-manifest').filter({ hasText: 'variant' })
+  const plugin = page.locator('.react-flow__node-manifest').filter({ hasText: displayName })
   await expect(plugin.locator('.react-flow__handle.source[data-handleid="metadata"]')).toBeVisible()
   await inspector.getByRole('button', { name: '关闭', exact: true }).first().click()
   await page.getByRole('button', { name: '适应画布', exact: true }).click({ force: true })
   await connect(page, page.getByTestId('workflow-start'), 'main', plugin, 'main')
   await connect(page, plugin, 'main', page.getByTestId('exit-node-exit'), 'main')
-  const saved = page.waitForResponse((value) => value.url().endsWith(`/api/v1/workflows/${workflow.id}/draft`) && value.request().method() === 'PUT')
+  const saved = page.waitForResponse((value) => value.url().endsWith(`/api/v1/workflows/${workflow.id}/drafts/${fixtureDraftIdKnown(workflow.id)}`) && value.request().method() === 'PUT')
   await page.locator('header').getByRole('button', { name: '保存', exact: true }).click()
   expect((await saved).ok()).toBeTruthy()
   const execution = page.waitForResponse((value) => value.url().includes('/debug-executions') && value.request().method() === 'POST')

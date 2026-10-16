@@ -21,6 +21,9 @@ pytestmark = [pytest.mark.cluster, pytest.mark.product]
 
 @pytest.fixture(scope="session")
 def cpu_memory_service(cpu_embedding_service: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    image = os.environ.get("AGENTX_E2E_MEM0_IMAGE", "")
+    if "@sha256:" not in image:
+        raise RuntimeError("Set AGENTX_E2E_MEM0_IMAGE to the built Mem0 image digest")
     namespace = cpu_embedding_service["namespace"]
     directory = cpu_embedding_service["directory"] / "mem0"
     directory.mkdir(parents=True, exist_ok=True)
@@ -83,10 +86,10 @@ def cpu_memory_service(cpu_embedding_service: dict[str, Any]) -> Iterator[dict[s
     for document in documents:
         if document["kind"] == "Deployment":
             document["spec"]["template"]["metadata"].setdefault("labels", {})["agentx.io/runtime-provider"] = "allowed"
-            if document["metadata"]["name"] == "mem0" and os.environ.get("AGENTX_E2E_MEM0_IMAGE"):
+            if document["metadata"]["name"] == "mem0":
                 pod = document["spec"]["template"]["spec"]
                 for container in (*pod.get("initContainers", []), *pod["containers"]):
-                    container["image"] = os.environ["AGENTX_E2E_MEM0_IMAGE"]
+                    container["image"] = image
     run(("kubectl", "-n", namespace, "apply", "-f", "-"), input_text=yaml.safe_dump_all(documents))
     forward = None
     try:

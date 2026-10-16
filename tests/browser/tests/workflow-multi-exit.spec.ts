@@ -1,3 +1,4 @@
+import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 
 const password = 'agentx-e2e-admin-password'
@@ -49,8 +50,8 @@ async function createWorkflow(page: Page, name: string) {
   await dialog.getByRole('button', { name: '保存' }).click()
   await expect(page).toHaveURL(/\/workflows\/[0-9a-f-]+$/)
   const workflowId = page.url().split('/').at(-1) as string
-  await page.locator(`a[href="/workflows/${workflowId}/editor"]`).click()
-  await expect(page).toHaveURL(new RegExp(`/workflows/${workflowId}/editor$`))
+  await page.locator(`a[href="/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor"]`).click()
+  await expect(page).toHaveURL(new RegExp(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor$`))
   return workflowId
 }
 
@@ -96,12 +97,12 @@ async function chooseInputsReference(page: Page, mapping: Locator) {
 
 async function saveAndReadDraft(page: Page, token: string, workflowId: string) {
   const save = page.getByRole('button', { name: '保存', exact: true })
-  const responsePromise = page.waitForResponse((response) => response.url().endsWith(`/api/v1/workflows/${workflowId}/draft`) && response.request().method() === 'PUT')
+  const responsePromise = page.waitForResponse((response) => response.url().endsWith(`/api/v1/workflows/${workflowId}/drafts/${fixtureDraftIdKnown(workflowId)}`) && response.request().method() === 'PUT')
   await save.click()
   const response = await responsePromise
   if (!response.ok()) throw new Error(`save draft: ${response.status()} ${await response.text()}`)
   await expect(page.locator('header').getByText(/修订号 \d+ · 已保存/)).toBeVisible({ timeout: 30_000 })
-  return api<StudioDraft>(page, token, `/workflows/${workflowId}/draft`)
+  return api<StudioDraft>(page, token, `/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}`)
 }
 
 async function setStartQuestionInput(page: Page) {

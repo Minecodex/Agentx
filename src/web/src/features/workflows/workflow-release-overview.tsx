@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom"
 import { AppWindow, Check, ChevronRight, CircleDot, GitCommitHorizontal, History, Play, Plus, Rocket } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -20,9 +21,9 @@ type ReleaseOverviewProps = {
 export function WorkflowReleaseOverview({ workflow, versions, deployments, primaryEnvironment, primaryDeployment }: ReleaseOverviewProps) {
   const { t } = useTranslation()
   const latest = versions[0]
-  const dirty = !latest || latest.sourceRevision !== workflow.draftRevision
+  const dirty = !latest
   const steps = [
-    { icon: Check, label: t('workflows.deliveryPath.draft'), detail: t('workflows.deliveryPath.currentRevision', { revision: workflow.draftRevision }), state: 'done' },
+    { icon: Check, label: t('workflows.deliveryPath.draft'), detail: t('workflows.draftCount', { count: workflow.draftCount }), state: 'done' },
     { icon: GitCommitHorizontal, label: t('workflows.deliveryPath.version'), detail: latest ? t('workflows.deliveryPath.latestVersion', { version: latest.versionNumber }) : t('workflows.deliveryPath.noVersion'), state: dirty ? 'current' : 'done' },
     { icon: Rocket, label: t('workflows.deliveryPath.environment'), detail: primaryDeployment ? t('workflows.deliveryPath.environmentActive', { environment: primaryDeployment.environmentName, version: primaryDeployment.versionNumber }) : t('workflows.deliveryPath.notDeployed'), state: dirty ? 'pending' : primaryDeployment ? 'current' : 'current' },
     { icon: AppWindow, label: t('workflows.deliveryPath.application'), detail: t('workflows.deliveryPath.applicationContract'), state: 'pending' },
@@ -38,7 +39,7 @@ export function WorkflowReleaseOverview({ workflow, versions, deployments, prima
       </div>)}
     </Card>
     <div className="mt-4 grid gap-4 md:grid-cols-3">
-      <StateCard detail={dirty && latest ? t('workflows.releaseState.changesSinceVersion', { version: latest.versionNumber }) : latest ? t('workflows.releaseState.syncedWithVersion', { version: latest.versionNumber }) : t('workflows.releaseState.noVersion')} label={t('workflows.releaseState.currentDraft')} tone={dirty ? 'warning' : 'success'} value={`r${workflow.draftRevision}`} />
+      <StateCard detail={t('workflows.selectDraft')} label={t('workflows.releaseState.currentDraft')} tone={dirty ? 'warning' : 'success'} value={String(workflow.draftCount)} />
       <StateCard detail={latest ? t('workflows.releaseState.fromDraft', { revision: latest.sourceRevision }) : t('workflows.releaseState.candidateDescription')} label={t('workflows.releaseState.latestImmutableVersion')} tone={latest && deployments.some((item) => item.workflowVersionId === latest.id) ? 'success' : 'warning'} value={latest ? `v${latest.versionNumber}` : '—'} />
       <StateCard detail={primaryDeployment ? t('workflows.releaseState.activeDeployment', { sequence: primaryDeployment.sequenceNumber }) : t('workflows.releaseState.notDeployed')} label={primaryEnvironment ? t('workflows.releaseState.environmentCurrent', { environment: primaryEnvironment.name }) : t('workflows.releaseState.primaryEnvironment')} tone={primaryDeployment ? 'success' : 'neutral'} value={primaryDeployment ? `v${primaryDeployment.versionNumber}` : '—'} />
     </div>
@@ -72,7 +73,7 @@ export function WorkflowVersionsCard({ versions, deployments, canCreate, canRun,
       const activeDeployments = versionDeployments.filter((item) => item.status === 'active')
       return <div className="flex flex-wrap items-center gap-3 py-4" key={version.id}>
         <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="text-xs">v{version.versionNumber}</strong>{index === 0 && <Badge tone="primary">{t('workflows.versionBadges.latest')}</Badge>}{activeDeployments.map((item) => <Badge key={item.environmentId} tone="success">{t('workflows.versionBadges.environmentCurrent', { environment: item.environmentName })}</Badge>)}{versionDeployments.length === 0 && <Badge tone="warning">{t('workflows.versionBadges.unreleased')}</Badge>}{versionDeployments.length > 0 && activeDeployments.length === 0 && <Badge tone="neutral">{t('workflows.versionBadges.historical')}</Badge>}</div><p className="mt-1.5 truncate text-[10px] text-muted-foreground">{t('workflows.sourceRevision', { revision: version.sourceRevision })} · {version.contentHash.slice(0, 20)}… · {formatDateTime(version.createdAt)}</p></div>
-        <div className="flex items-center gap-1">{canRun && <Button disabled={running} onClick={() => onRun(version.id)} size="sm" variant="ghost"><Play className="size-3.5" />{t('workflows.testRun')}</Button>} {canCreate && <Button onClick={() => onPublish(version.id)} size="sm" variant="secondary"><Rocket className="size-3.5" />{t('workflows.publishTo')}</Button>}</div>
+        <div className="flex items-center gap-1"><Button asChild size="sm" variant="ghost"><Link to={`/workflows/${version.workflowId}/versions/${version.id}/editor`}>{t("workflows.viewCanvas")}</Link></Button>{canRun && <Button disabled={running} onClick={() => onRun(version.id)} size="sm" variant="ghost"><Play className="size-3.5" />{t('workflows.testRun')}</Button>} {canCreate && <Button onClick={() => onPublish(version.id)} size="sm" variant="secondary"><Rocket className="size-3.5" />{t('workflows.publishTo')}</Button>}</div>
       </div>
     })}{versions.length === 0 && <Empty />}</div>
   </Card>

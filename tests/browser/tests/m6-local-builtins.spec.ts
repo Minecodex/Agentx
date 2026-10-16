@@ -1,4 +1,6 @@
+import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
 import { expect, type APIResponse, type Page, test } from '@playwright/test'
+import { sandboxImageDigest } from './workflow-studio-editor-helpers'
 
 const password = 'agentx-e2e-admin-password'
 const echoBaseUrl = process.env.AGENTX_E2E_ECHO_BASE_URL ?? 'http://echo-mcp:8090'
@@ -59,8 +61,8 @@ async function createWorkflow(page: Page, token: string, name: string) {
 }
 
 async function saveDefinition(page: Page, token: string, workflowId: string, definition: Definition) {
-  const draft = await request<{ revision: number; editorDocument: Record<string, unknown> }>(page, token, `/workflows/${workflowId}/draft`)
-  await request<{ revision: number }>(page, token, `/workflows/${workflowId}/draft`, 'PUT', {
+  const draft = await request<{ revision: number; editorDocument: Record<string, unknown> }>(page, token, `/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}`)
+  await request<{ revision: number }>(page, token, `/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}`, 'PUT', {
     expectedRevision: draft.revision,
     definition,
     editorDocument: draft.editorDocument,
@@ -68,9 +70,9 @@ async function saveDefinition(page: Page, token: string, workflowId: string, def
 }
 
 async function runFromStudio(page: Page, token: string, workflowId: string, input: Record<string, unknown>, expectedStatus: 'succeeded' | 'failed') {
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
-  const accepted = page.waitForResponse((value) => value.url().endsWith(`/workflows/${workflowId}/debug-executions`) && value.request().method() === 'POST', { timeout: 60_000 })
+  const accepted = page.waitForResponse((value) => value.url().endsWith(`/workflows/${workflowId}/drafts/${fixtureDraftIdKnown(workflowId)}/debug-executions`) && value.request().method() === 'POST', { timeout: 60_000 })
   await page.locator('header').getByRole('button', { name: '运行', exact: true }).click()
   const dialog = page.getByRole('dialog').filter({ has: page.getByRole('button', { name: /开始运行|Run/ }) }).first()
   if (await dialog.waitFor({ state: 'visible', timeout: 1_000 }).then(() => true).catch(() => false)) {
@@ -240,7 +242,7 @@ test('M6 local built-ins execute branch, list and error-wiring workflows through
     description: 'Parse the Dify-style HTTP body string for the List/Loop E2E',
     ownerDepartmentId,
     runner: 'python',
-    imageDigest: 'opensandbox/code-interpreter@sha256:64cd01f03f54ba347d1a1310dcbc18ac5cb17d01714e23b4ea4b840fbb0d6623',
+    imageDigest: sandboxImageDigest(),
     cpuMillis: 500,
     memoryBytes: 536870912,
     pidsLimit: 256,

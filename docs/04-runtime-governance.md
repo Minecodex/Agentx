@@ -64,6 +64,8 @@ Trace Event 使用强类型 `contentKind` 区分内容语义：
 
 执行列表、详情、节点与调用详情使用同一查询范围。拥有公司数据范围的 `execution:view` 用户可查询本租户的全部执行；其他用户仍受 Application／Workflow Grant 与 Runtime User Admission 限制。委托 Token 不得在详情查询时丢失公司范围，也不能借助执行 ID 绕过 Runtime 的撤销校验。
 
+Control Admission Publisher 启动时按用户主键分页，将当前有效和禁用用户的身份快照重新写入持久 Outbox，使用新的命令 ID 重建 Runtime 用户投影；重试继续复用同一命令。Runtime 按 token_version 防止旧快照恢复已撤销身份，Workflow/Application Grant 与租户范围仍独立校验。执行的失败状态不影响有权限用户读取事件、节点、输入输出和 Trace；前端独立拉取状态和事件，保留已读取内容并显示查询异常。
+
 Studio Runtime Panel、独立执行详情和 Node Inspector 复用同一个 Trace Workspace。默认节点视图从 Runtime MySQL 读取权威 Workflow 输入、Node Execution 输入输出、错误和最终结果，按 `开始 → 节点执行 → 结束` 展示；解析参数、Provider、Agent、Tool、Sandbox 和 Wait 等内部过程再由 ClickHouse 补充。普通视图按 Port 和 Item 解包语义字段，Model/Agent 优先展示 `text/usage/finishReason`，原始 Item JSON、Provider 原始响应和 Event Envelope 只进入高级区域。Node Execution 首次离开 `ready` 时冻结 `startedAt`，终态写入 `endedAt`；节点标题左侧元信息统一展示总生命周期耗时，Model/Agent 还展示按该节点 Runtime Call 聚合的本次成本，右侧只保留状态和展开动作。
 
 高级瀑布使用 SkyWalking/Phoenix 风格的共享树形时间线：左侧展示可折叠 Span 层级、状态、耗时和时间轴，右侧按 Span 类型及 `contentKind` 动态生成内容页签，不为纯生命周期 Span伪造空输入/输出。页面能力：
@@ -290,6 +292,8 @@ SSE、取消和重试边界：
 - Credential 优先通过 OpenSandbox Credential Vault 或 Agentx 短期凭证代理注入，不得进入命令行、stdout、stderr、Trace 或持久镜像。
 - Sandbox 完成、超时、取消、Worker 失联或 Lease 过期时都必须幂等终止；回收失败进入 Reaper，不得把节点标记为虚假成功。
 
+长时间 Agent 推理或工具执行期间，成功的 Attempt 心跳计入 Worker Role 的健康进度，并联动续租同一 Worker、Attempt 和 fencing token 下的活动 Workspace Lease。续租必须校验父 Attempt 仍在运行且未失效，以及工作区 TTL 尚未到期；不能恢复已经丢失的租约或延长 Profile TTL。Sandbox Manager 继续负责工作区创建、工具执行和回收。
+
 运行环境边界：
 
 - 本地开发和 CI 可使用 OpenSandbox Docker Runtime + runc，用于功能、资源限制和网络策略 E2E。
@@ -332,3 +336,9 @@ Approval Node 是 waitAndResume 节点。
 4. 将 Execution 重新加入调度队列。
 
 待办中心只解决 Workflow 审批，不扩展成通用 OA。
+
+## 设计态模型治理
+
+Builder 模型调用通过 Runtime Gateway 的受限 `studio-model:submit/inspect/cancel` 执行。JWT 绑定 tenant/run 和完整请求摘要；模型、凭据及价格在 Run 创建时冻结。runtime_calls 使用 `source_kind=studio_builder`，业务 Execution/Node/Attempt/Agent ID 必须为空，配额使用 `studio_builder_model` 作用域。Sent 后进程丢失记录 unknown，不重新向 Provider 发送。
+
+设计历史及模型载荷使用现有 Trace 保存期限；已结算原文可回收，unknown 和 pending 保留。模型身份、价格版本及费用账本不随大载荷回收。

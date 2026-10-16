@@ -1,4 +1,41 @@
 const translations = {
+  "builder": {
+    "recoveryUnavailable": "本地恢复记录未能保存。请手动保存当前编辑后再继续创作。",
+    "scope": "编辑范围", "canvasScope": "当前画布", "nodesScope": "仅选中节点",
+    "staticPassed": "静态检查通过，尚未执行工作流。",
+    "staticStale": "画布已变更，此静态检查结果已过期。",
+    "staticIssues": "静态检查发现问题，点击定位。",
+    "modelReasons": {
+      "unconfigured": "管理员尚未设置画布 AI 模型。",
+      "model_disabled": "画布 AI 模型已禁用，请管理员检查模型列表。",
+      "deployment_disabled": "所选模型部署不可用。",
+      "credential_disabled": "模型凭据已禁用或不可用。",
+      "credential_changed": "模型已更换凭据，需要管理员重新设置画布 AI 模型。"
+    },
+    "ack": {"applied": "已应用一个编辑事务", "stale": "画布已变化，旧命令未应用", "read_only": "画布只读，命令未应用", "rejected": "编辑校验失败"},
+  "title": "AI 创作",
+  "model": "创作模型：{{model}}",
+  "unconfigured": "管理员尚未设置画布 AI 模型，请在模型列表配置。",
+  "unavailable": "画布 AI 模型不可用，请管理员检查模型、凭据和授权设置。",
+  "staticOnly": "AI 只编辑和静态校验；运行、测试、创建版本和发布请使用界面按钮。",
+  "pendingSave": "画布修改待保存",
+  "saved": "画布已保存",
+  "inspectSelected": "将当前执行结果交给 AI 分析",
+  "working": "正在处理…",
+  "prompt": "描述工作流需求",
+  "placeholder": "描述要创建的工作流或当前画布需要修改的内容…",
+  "stop": "停止",
+  "send": "发送",
+  "answer": "回答设计问题",
+  "editBatch": "已准备 {{count}} 个节点的批量变更",
+  "usage": "输入 {{input}} / 输出 {{output}} Token · {{currency}} {{cost}}",
+  "status": {
+    "completed": "创作完成，请检查静态结果并手动测试。",
+    "failed": "创作停止，请检查错误。",
+    "cancelled": "已停止，已应用的修改保留在画布中。",
+    "outcome_unknown": "模型调用结果未知，请检查后开启新一轮创作。"
+  }
+},
   "details": {
     "parameters": "参数",
     "input": "输入",
@@ -129,6 +166,7 @@ const translations = {
     ,"confirmRequest": "提交申请"
   },
   "panels": {
+    "knowledge": {"resource": "知识库", "retrieval": "检索设置", "outputHint": "输出文本片段、文档来源和已有附件引用。来源引用不是平台文件，不会下载原文件；没有命中时输出空结果。"},
     "model": {
       "model": "模型",
       "modelDescription": "选择已授权的模型资源，模型能力决定输出与用量。",
@@ -422,6 +460,7 @@ const translations = {
       "REQUIRED_PARAMETER_MISSING": "字段“{{field}}”为必填项。",
       "RESOURCE_REQUIRED": "请选择 {{resourceType}} 资源。",
       "AI_BINDING_REQUIRED": "请在节点面板中选择必需的 {{slot}} 附件。",
+      "AGENT_RESOURCE_SLOT_INVALID": "请检查智能体附件槽位和版本。模型、工作区沙箱、长期记忆各只能配置一个资源。",
       "ERROR_POLICY_MISMATCH": "错误连线要求使用“发送到错误输出”策略。",
       "CROSS_WORKFLOW_PASTE_REJECTED": "无法粘贴这组节点，请修正其中的配置问题。",
       "INVALID_WORKFLOW_DEFINITION": "工作流定义无效。",
@@ -466,6 +505,7 @@ const translations = {
     }
   },
   "toasts": {
+    "savedSnapshot": "提交的修订已保存；画布仍有后续修改。",
     "saved": "草稿已保存",
     "overlaySaved": "调试覆盖已保存",
     "overlayRemoved": "调试覆盖已移除",

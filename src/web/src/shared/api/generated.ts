@@ -1,1961 +1,493 @@
 /** Generated schema components from contracts/openapi/platform-api.json. Do not edit. */
-export interface components {
-    schemas: {
-        AgentIterationDetail: {
-            agentRunId: string;
-            endedAt?: string | null;
-            id: string;
-            iterationIndex: number;
-            startedAt: string;
-            stateAfterHash?: string | null;
-            stateArtifactId?: string | null;
-            stateBeforeHash: string;
-            status: string;
-            stopReason?: string | null;
-        };
-        AgentRunDetail: {
-            budget: unknown;
-            costMicros: number;
-            endedAt?: string | null;
-            id: string;
-            inputTokens: number;
-            iterationCount: number;
-            modelCallCount: number;
-            nodeExecutionId: string;
-            outputTokens: number;
-            startedAt: string;
-            stateArtifactId?: string | null;
-            stateHash?: string | null;
-            status: string;
-            stopReason?: string | null;
-            toolCallCount: number;
-        };
-        ApiErrorResponse: {
-            code: string;
-            details?: unknown;
-            fieldErrors?: components["schemas"]["FieldError"][];
-            message: string;
-            requestId: string;
-        };
-        ApiKeyResponse: {
-            createdAt: string;
-            familyId: string;
-            id: string;
-            lastUsedAt?: string | null;
-            name: string;
-            prefix: string;
-            secret?: string | null;
-            status: string;
-        };
-        ApplicationDeploymentResponse: {
-            applicationId: string;
-            createdAt: string;
-            environmentId: string;
-            environmentName: string;
-            id: string;
-            inputSchema: unknown;
-            outputSchema: unknown;
-            publishAttemptId?: string | null;
-            publishErrorCode?: string | null;
-            publishErrorMessage?: string | null;
-            sequenceNumber: number;
-            sessionVersionPolicy: string;
-            status: string;
-            workflowVersionId: string;
-            workflowVersionNumber: number;
-        };
-        ApplicationResponse: {
-            activeDeploymentId?: string | null;
-            activeVersionNumber?: number | null;
-            description?: string | null;
-            id: string;
-            name: string;
-            ownerDepartmentId: string;
-            publishedRuntimeConfigRevision: number;
-            runtimeConfigRevision: number;
-            slug: string;
-            status: string;
-            updatedAt: string;
-            version: number;
-            visibility: string;
-            workflowId: string;
-            workflowName: string;
-        };
-        ApprovalActionResponse: {
-            actionType: string;
-            actorName: string;
-            actorUserId: string;
-            createdAt: string;
-            fromStatus: string;
-            id: string;
-            input?: unknown;
-            toStatus: string;
-        };
-        ApprovalCandidateResponse: {
-            displayName: string;
-            userId: string;
-        };
-        ApprovalResponse: {
-            buttons: {
-                id: string;
-                label: string;
-            }[];
-            claimedBy?: string | null;
-            claimedByName?: string | null;
-            createdAt: string;
-            deadlineAt?: string | null;
-            decision?: Record<string, never> | null;
-            description?: string | null;
-            executionId: string;
-            id: string;
-            nodeId: string;
-            requestPayload?: unknown;
-            resumeStatus: string;
-            status: string;
-            title: string;
-            version: number;
-            workflowId: string;
-            workflowName: string;
-        };
-        ArtifactUploadResponse: {
-            entry: components["schemas"]["SkillWorkspaceEntry"];
-            revision: number;
-        };
-        AuthResponse: {
-            accessToken?: string | null;
-            changePasswordToken?: string | null;
-            expiresIn?: number | null;
-            passwordChangeRequired: boolean;
-            user?: null | components["schemas"]["MeResponse"];
-        };
-        BootstrapRequest: {
-            adminDisplayName: string;
-            adminUsername: string;
-            companyName: string;
-            locale: string;
-            password: string;
-            timezone: string;
-        };
-        BootstrapStatus: {
-            required: boolean;
-        };
-        CancelResourceGrantRequest: {
-            expectedVersion: number;
-        };
-        CanvasPlugin: {
-            defaultVersionId: string | null;
-            description: string;
-            displayName: string;
-            id: string;
-            nodeCount: number;
-            packageId: string;
-            /** @enum {string} */
-            sourceType: "builtin" | "imported";
-            updatedAt: string;
-            version: number;
-            versions: components["schemas"]["CanvasPluginVersion"][];
-        };
-        CanvasPluginAuditItem: {
-            action: string;
-            actorUserId: string;
-            createdAt: string;
-            detail: unknown;
-            id: string;
-        };
-        CanvasPluginImport: {
-            bundleDigest: string;
-            description: string;
-            displayName: string;
-            expiresAt: string;
-            id: string;
-            installedVersionId: string | null;
-            issues: {
-                [key: string]: unknown;
-            }[];
-            nodeTypes: string[];
-            packageId: string;
-            packageVersion: string;
-            /** @enum {string} */
-            status: "ready" | "installed" | "failed" | "cancelled";
-        };
-        CanvasPluginInstallRequest: {
-            bundleDigest: string;
-            enable: boolean;
-            setDefault: boolean;
-        };
-        CanvasPluginPage: {
-            items: components["schemas"]["CanvasPlugin"][];
-            page: number;
-            pageSize: number;
-            total: number;
-        };
-        CanvasPluginReferences: {
-            deployments: number;
-            drafts: number;
-            executions: number;
-            total: number;
-            workflowVersions: number;
-        };
-        CanvasPluginUpdateRequest: {
-            defaultVersionId: string;
-            expectedRevision: number;
-        };
-        CanvasPluginVersion: {
-            bundleDigest: string;
-            createdAt: string;
-            id: string;
-            nodeTypes: string[];
-            packageVersion: string;
-            sdkApiVersion: number;
-            /** @enum {string} */
-            status: "enabled" | "disabled";
-        };
-        CanvasPluginVersionUpdateRequest: {
-            enabled: boolean;
-            expectedRevision: number;
-        };
-        CaseInput: {
-            caseKey: string;
-            context?: unknown;
-            evaluatorOverride?: unknown;
-            expectedOutput?: unknown;
-            input: unknown;
-            name: string;
-            tags?: string[];
-        };
-        ChangePasswordRequest: {
-            password: string;
-            token: string;
-        };
-        ChatMappingV1: {
-            answerFilesOutput: string | null;
-            answerOutput: string;
-            fileInput: string | null;
-            questionInput: string;
-        };
-        CheckpointListResponse: {
-            items: components["schemas"]["CheckpointResponse"][];
-        };
-        CheckpointResponse: {
-            activationCount: number;
-            checkpointType: string;
-            createdAt: string;
-            deliveryCount: number;
-            executionId: string;
-            id: string;
-            nodeExecutionId?: string | null;
-            sequenceNumber: number;
-            stateHash: string;
-        };
-        ConnectionResponse: {
-            configuration: unknown;
-            credentialId?: string | null;
-            endpoint: string;
-            healthPath: string;
-            id: string;
-            name: string;
-            ownerDepartmentId: string;
-            provider?: string | null;
-            status: string;
-            version: number;
-        };
-        CreateApiKeyRequest: {
-            name: string;
-        };
-        CreateApplicationDeploymentRequest: {
-            environmentId: string;
-            sessionVersionPolicy: string;
-            workflowVersionId: string;
-        };
-        CreateApplicationRequest: {
-            description?: string | null;
-            name: string;
-            slug: string;
-            visibility: string;
-            workflowId: string;
-        };
-        CreateCaseRequest: components["schemas"]["CaseInput"] & {
-            expectedRevision: number;
-        };
-        CreateConnectionRequest: {
-            configuration: unknown;
-            credentialId?: string | null;
-            endpoint: string;
-            healthPath?: string | null;
-            name: string;
-            ownerDepartmentId: string;
-            /** @enum {string} */
-            provider?: "lightrag" | "ragflow";
-        };
-        CreateCredentialRequest: {
-            credentialType: string;
-            name: string;
-            ownerDepartmentId: string;
-            secret: unknown;
-        };
-        CreateDatasetRequest: {
-            description?: string | null;
-            name: string;
-            visibility: string;
-        };
-        CreateDepartmentRequest: {
-            name: string;
-            parentId: string;
-        };
-        CreateEntryRequest: {
-            entryType: string;
-            expectedRevision: number;
-            name: string;
-            parentId?: string | null;
-        };
-        CreateEnvironmentRequest: {
-            code: string;
-            name: string;
-        };
-        CreateEvaluationProfileRequest: {
-            aggregation?: string;
-            description?: string | null;
-            name: string;
-            passThreshold?: string;
-            rules: components["schemas"]["EvaluationRuleInput"][];
-            visibility?: string;
-        };
-        CreateEvaluationRunRequest: {
-            datasetVersionId: string;
-            evaluationProfileVersionId: string;
-            name: string;
-            parameters: unknown;
-            visibility?: string;
-            workflowVersionId: string;
-        };
-        CreateGrantRequest: {
-            operation: string;
-            resourceVersionId?: string | null;
-            subjectId: string;
-            subjectType: string;
-        };
-        CreateKnowledgeRequest: {
-            connectionId: string;
-            externalResourceId: string;
-            name: string;
-            ownerDepartmentId: string;
-        };
-        CreateMcpServerRequest: {
-            configuration?: unknown;
-            description?: string | null;
-            name: string;
-            ownerDepartmentId: string;
-            transport: components["schemas"]["McpTransportInput"];
-        };
-        CreateMemoryRequest: {
-            accessMode: string;
-            connectionId: string;
-            externalNamespace: string;
-            name: string;
-            ownerDepartmentId: string;
-        };
-        CreateModelPriceRequest: {
-            currency: string;
-            inputPerMillion: string;
-            outputPerMillion: string;
-        };
-        CreateModelRequest: {
-            alias?: string;
-            /** @description Input modality capabilities */
-            capabilities?: ("vision" | "audio")[];
-            connectionName: string;
-            credentialId?: string | null;
-            defaultParameters?: unknown;
-            endpoint: string;
-            maxInputTokens?: number;
-            maxOutputTokens?: number;
-            modelName?: string;
-            ownerDepartmentId: string;
-            price: components["schemas"]["CreateModelPriceRequest"];
-            providerType: string;
-        };
-        CreateResourceGrantRequest: {
-            message?: string | null;
-            operation: string;
-            resourceId: string;
-            resourceType: string;
-            resourceVersionId?: string | null;
-            sourceNodeId?: string | null;
-            sourceRevision?: number | null;
-        };
-        CreateRetentionRunRequest: {
-            artifactRetentionDays?: number;
-            dryRun?: boolean;
-            evaluationRetentionDays?: number;
-            messageRetentionDays?: number;
-            traceRetentionDays?: number;
-        };
-        CreateRoleRequest: {
-            code: string;
-            dataScope: string;
-            description?: string | null;
-            name: string;
-            permissions: string[];
-        };
-        CreateSandboxProfileRequest: components["schemas"]["SandboxProfileVersionInput"] & {
-            description?: string | null;
-            name: string;
-            ownerDepartmentId: string;
-        };
-        CreateScheduleRequest: {
-            cronExpression: string;
-            input: unknown;
-            misfirePolicy?: string;
-            name: string;
-            timezone: string;
-        };
-        CreateSkillRequest: {
-            alias: string;
-            description: string;
-            name: string;
-            ownerDepartmentId: string;
-        };
-        CreateUserRequest: {
-            departmentId: string;
-            displayName: string;
-            roleId: string;
-            username: string;
-        };
-        CreateVersionRequest: {
-            draftRevision: number;
-        };
-        CreateWebhookRequest: {
-            channelConfig?: {
-                [key: string]: unknown;
-            } | null;
-            channelMode?: string;
-            fixedInputs?: {
-                [key: string]: unknown;
-            };
-            inputMappings?: {
-                missingPolicy?: string;
-                source: string;
-                target: string;
-            }[];
-            name: string;
-            /** @enum {string} */
-            providerType: "dingtalk" | "wecom" | "feishu" | "agentx";
-            reply?: components["schemas"]["WebhookReplyConfig"];
-        };
-        CreateWorkflowRequest: {
-            description?: string | null;
-            name: string;
-            visibility: string;
-        };
-        CredentialResponse: {
-            credentialType: string;
-            currentSecretVersion: number;
-            id: string;
-            maskedHint: string;
-            name: string;
-            ownerDepartmentId: string;
-            status: string;
-            storageMode: string;
-            updatedAt: string;
-            version: number;
-        };
-        DashboardSummaryResponse: {
-            costMicrosToday: number;
-            executionsToday: number;
-            failedToday: number;
-            pendingApprovals: number;
-            runningExecutions: number;
-            succeededToday: number;
-            workflowCount: number;
-        };
-        DatasetResponse: {
-            caseCount: number;
-            description?: string | null;
-            id: string;
-            latestVersion?: number | null;
-            name: string;
-            ownerDepartmentId: string;
-            revision: number;
-            status: string;
-            updatedAt: string;
-            version: number;
-            visibility: string;
-        };
-        DatasetVersionResponse: {
-            caseCount: number;
-            contentHash: string;
-            createdAt: string;
-            datasetId: string;
-            id: string;
-            sourceRevision: number;
-            versionNumber: number;
-        };
-        DebugExecutionRequest: {
-            context?: unknown;
-            expectedRevision: number;
-            idempotencyKey?: string | null;
-            input?: unknown;
-            inputSource?: unknown;
-            mode: string;
-            overlayIds?: string[];
-            sideEffectDecisions?: unknown;
-            targetNodeId?: string | null;
-        };
-        DebugMcpToolRequest: {
-            arguments: unknown;
-            confirmationText?: string | null;
-            confirmed: boolean;
-            expectedToolVersionId: string;
-        };
-        DebugMcpToolResponse: {
-            durationMs: number;
-            result: unknown;
-            toolVersionId: string;
-        };
-        DebugOverlayResponse: {
-            artifactId?: string | null;
-            id: string;
-            kind: string;
-            nodeId: string;
-            payload: unknown;
-            schemaHash?: string | null;
-            stale: boolean;
-            updatedAt: string;
-            updatedBy: string;
-            workflowId: string;
-        };
-        DecideApprovalRequest: {
-            decisionId: string;
-            idempotencyKey: string;
-            reason?: string | null;
-            version: number;
-        };
-        DeleteCaseRequest: {
-            expectedRevision: number;
-        };
-        DeletionImpactResponse: {
-            deletable: boolean;
-            page: number;
-            pageSize: number;
-            references: components["schemas"]["DeletionReference"][];
-            targetVersion: number;
-            total: number;
-        };
-        DeletionReference: {
-            immutable: boolean;
-            nodeId?: string | null;
-            nodeName?: string | null;
-            parentId?: string | null;
-            relation: string;
-            sourceId: string;
-            sourceModule: string;
-            sourceName: string;
-            sourceType: string;
-        };
-        DeliveryDetail: {
-            applicationId?: string | null;
-            attemptCount: number;
-            channelBindingId: string;
-            createdAt: string;
-            executionId: string;
-            hasCredentialSnapshot?: boolean;
-            id: string;
-            invocationId?: string | null;
-            lastErrorCode?: string | null;
-            lastErrorMessage?: string | null;
-            origin: string;
-            payload: Record<string, never>;
-            provider: string;
-            providerMessageId?: string | null;
-            /** @enum {string} */
-            status: "pending" | "delivering" | "delivered" | "failed" | "dead";
-            target: Record<string, never>;
-            updatedAt: string;
-        };
-        DeliveryPage: {
-            apiVersion: number;
-            items: components["schemas"]["DeliverySummary"][];
-        };
-        DeliverySummary: {
-            applicationId?: string | null;
-            attemptCount: number;
-            channelBindingId: string;
-            createdAt: string;
-            executionId: string;
-            id: string;
-            invocationId?: string | null;
-            lastErrorCode?: string | null;
-            lastErrorMessage?: string | null;
-            origin: string;
-            payload: Record<string, never>;
-            provider: string;
-            providerMessageId?: string | null;
-            /** @enum {string} */
-            status: "pending" | "delivering" | "delivered" | "failed" | "dead";
-            updatedAt: string;
-        };
-        DepartmentResponse: {
-            id: string;
-            isRoot: boolean;
-            name: string;
-            parentId?: string | null;
-            status: string;
-            version: number;
-        };
-        DependencyHealth: {
-            name: string;
-            required: boolean;
-            status: string;
-        };
-        DeploymentResponse: {
-            createdAt: string;
-            environmentId: string;
-            environmentName: string;
-            id: string;
-            sequenceNumber: number;
-            source: string;
-            status: string;
-            versionNumber: number;
-            workflowId: string;
-            workflowVersionId: string;
-        };
-        DraftResponse: {
-            definition: unknown;
-            definitionHash: string;
-            editorDocument: unknown;
-            editorHash: string;
-            id: string;
-            revision: number;
-            schemaVersion: string;
-            updatedAt: string;
-            workflowId: string;
-        };
-        EnvironmentResponse: {
-            code: string;
-            id: string;
-            isBuiltin: boolean;
-            name: string;
-            status: string;
-            version: number;
-        };
-        EvaluationCaseResultResponse: {
-            caseId: string;
-            caseKey: string;
-            costMicros: number;
-            detail?: unknown;
-            durationMs?: number | null;
-            errorCode?: string | null;
-            errorMessage?: string | null;
-            ruleResults: components["schemas"]["EvaluationRuleResultResponse"][];
-            score?: number | null;
-            sourceCaseId: string;
-            status: string;
-            targetExecutionId?: string | null;
-        };
-        EvaluationProfileResponse: {
-            aggregation: string;
-            description?: string | null;
-            id: string;
-            name: string;
-            ownerDepartmentId: string;
-            passThreshold: string;
-            rules: components["schemas"]["EvaluationRuleResponse"][];
-            status: string;
-            version: number;
-            versionId: string;
-            versionNumber: number;
-            visibility: string;
-        };
-        EvaluationReportResponse: {
-            metrics: unknown[];
-            reportStatus: string;
-            results: components["schemas"]["EvaluationCaseResultResponse"][];
-            run: components["schemas"]["EvaluationRunResponse"];
-        };
-        EvaluationRuleInput: {
-            configuration: unknown;
-            evaluatorType: string;
-            key: string;
-            name: string;
-            required?: boolean;
-            weight?: string;
-        };
-        EvaluationRuleResponse: {
-            configuration: unknown;
-            evaluatorType: string;
-            id: string;
-            key: string;
-            name: string;
-            required: boolean;
-            sortOrder: number;
-            weight: string;
-        };
-        EvaluationRuleResultResponse: {
-            costMicros: number;
-            detail: unknown;
-            durationMs?: number | null;
-            evaluatorExecutionId?: string | null;
-            evaluatorType: string;
-            id: string;
-            key: string;
-            name: string;
-            passed?: boolean | null;
-            score?: number | null;
-            status: string;
-        };
-        EvaluationRunResponse: {
-            createdAt: string;
-            datasetName: string;
-            datasetVersionId: string;
-            evaluationProfileVersionId: string;
-            id: string;
-            name: string;
-            ownerDepartmentId: string;
-            parameters: unknown;
-            resultCount: number;
-            status: string;
-            visibility: string;
-            workflowName: string;
-            workflowVersionId: string;
-        };
-        ExecutionCommandResponse: {
-            executionId: string;
-            replayed: boolean;
-            status: string;
-        };
-        ExecutionEventListResponse: {
-            items: components["schemas"]["ExecutionEventResponse"][];
-            nextCursor?: number | null;
-        };
-        ExecutionEventQuery: {
-            after?: number | null;
-            limit?: number | null;
-        };
-        ExecutionEventResponse: {
-            eventType: string;
-            occurredAt: string;
-            sequence: number;
-            status: string;
-            summary: unknown;
-        };
-        ExecutionListResponse: {
-            items: components["schemas"]["ExecutionResponse"][];
-            limit: number;
-            nextCursor?: string | null;
-            snapshotId: string;
-            total: number;
-        };
-        ExecutionResponse: {
-            admissionEpoch?: number;
-            applicationId?: string | null;
-            applicationName?: string | null;
-            callerExecutionId?: string | null;
-            costCurrency?: string | null;
-            costMicros: number;
-            durationMs?: number | null;
-            endedAt?: string | null;
-            error?: unknown;
-            errorCode?: string | null;
-            errorMessage?: string | null;
-            executionType: string;
-            forkCheckpointId?: string | null;
-            id: string;
-            initiatorDepartmentId?: string | null;
-            initiatorDepartmentName?: string | null;
-            initiatorUserId?: string | null;
-            initiatorUserName?: string | null;
-            input?: unknown;
-            inputTokens: number;
-            invocationId?: string | null;
-            output?: unknown;
-            outputTokens: number;
-            parentExecutionId?: string | null;
-            sessionId?: string | null;
-            startedAt: string;
-            stateVersion?: number;
-            status: string;
-            traceEventCount?: number;
-            traceId: string;
-            traceWatermark?: number;
-            triggerName?: string | null;
-            triggerSourceId?: string | null;
-            triggerType: string;
-            workflowId: string;
-            workflowName: string;
-            workflowVersionId?: string | null;
-            workflowVersionNumber?: number | null;
-        };
-        FieldError: {
-            code: string;
-            field: string;
-            message: string;
-        };
-        ForkRequest: {
-            checkpointId: string;
-            idempotencyKey?: string | null;
-            inputOverrides?: unknown;
-            mode: string;
-            nodeId?: string | null;
-            sideEffectDecisions?: unknown;
-        };
-        GrantResponse: {
-            createdAt: string;
-            id: string;
-            operation: string;
-            resourceId: string;
-            resourceType: string;
-            resourceVersionId?: string | null;
-            subjectId: string;
-            subjectType: string;
-        };
-        GrantableResourceResponse: {
-            detail: string;
-            grantCount: number;
-            id: string;
-            name: string;
-            ownerDepartmentId: string;
-            resourceType: string;
-            status: string;
-            updatedAt: string;
-        };
-        HealthCheckResponse: {
-            checkedAt: string;
-            errorCode?: string | null;
-            errorMessage?: string | null;
-            latencyMs?: number | null;
-            status: string;
-        };
-        HealthResponse: {
-            dependencies?: components["schemas"]["DependencyHealth"][];
-            service: string;
-            status: string;
-            version: string;
-        };
-        IdempotentCommandResponse: {
-            accepted: boolean;
-            replayed: boolean;
-        };
-        ImportCasesRequest: {
-            content: string;
-            expectedRevision: number;
-            format: string;
-        };
-        ImportWorkflowPackageRequest: {
-            description?: string | null;
-            name: string;
-            package: components["schemas"]["WorkflowPackage"];
-            visibility: string;
-        };
-        ImportedWorkflowResponse: {
-            definitionHash: string;
-            draftId: string;
-            workflowId: string;
-        };
-        KnowledgeDocument: {
-            contentType: string;
-            createdAt: string;
-            errorCode?: string | null;
-            errorMessage?: string | null;
-            externalDocumentId?: string | null;
-            id: string;
-            indexedAt?: string | null;
-            name: string;
-            ragResourceId: string;
-            sizeBytes: number;
-            /** @enum {string} */
-            status: "uploading" | "indexing" | "indexed" | "failed";
-            version: number;
-        };
-        KnowledgeResponse: {
-            connectionId: string;
-            connectionName: string;
-            externalResourceId: string;
-            grantCount: number;
-            id: string;
-            name: string;
-            ownerDepartmentId: string;
-            status: string;
-            syncStatus: string;
-            updatedAt: string;
-            version: number;
-        };
-        LineageResponse: {
-            deliveryId: string;
-            sourceItemIndex: number;
-            sourceNodeExecutionId: string;
-            sourceOutputIndex: number;
-            sourceRunIndex: number;
-            targetItemIndex: number;
-        };
-        LoginRequest: {
-            password: string;
-            username: string;
-        };
-        McpDiscoveryResponse: {
-            discoveredCount: number;
-            runId: string;
-            tools: components["schemas"]["McpToolResponse"][];
-        };
-        McpEnvironmentCredentialInput: {
-            credentialId: string;
-            name: string;
-        };
-        McpRuntimeSandboxInput: {
-            resourceId: string;
-            resourceVersionId: string;
-        };
-        McpServerResponse: {
-            currentVersionNumber: number;
-            description?: string | null;
-            id: string;
-            lastDiscoveredAt?: string | null;
-            name: string;
-            ownerDepartmentId: string;
-            status: string;
-            toolCount: number;
-            transport: components["schemas"]["McpTransportInput"];
-            updatedAt: string;
-            version: number;
-        };
-        McpToolResponse: {
-            annotations: unknown;
-            availability: string;
-            currentVersionId: string;
-            currentVersionNumber: number;
-            debugEnabled: boolean;
-            description?: string | null;
-            enabled: boolean;
-            id: string;
-            inputSchema: unknown;
-            name: string;
-            outputSchema?: unknown;
-            schemaHash: string;
-            serverId: string;
-            sideEffect: string;
-            timeoutSeconds: number;
-            title?: string | null;
-            version: number;
-        };
-        McpTransportInput: {
-            bearerCredentialId?: string | null;
-            endpoint: string;
-            /** @constant */
-            kind: "streamable_http";
-        } | {
-            bearerCredentialId?: string | null;
-            endpoint: string;
-            /** @constant */
-            kind: "sse";
-        } | {
-            args: string[];
-            command: string;
-            environmentCredentialRefs: components["schemas"]["McpEnvironmentCredentialInput"][];
-            /** @constant */
-            kind: "stdio";
-            runtimeSandbox: components["schemas"]["McpRuntimeSandboxInput"];
-        };
-        MeResponse: {
-            companyId: string;
-            companyName: string;
-            departmentId: string;
-            departmentName: string;
-            displayName: string;
-            id: string;
-            locale: string;
-            permissions: string[];
-            roles: string[];
-            timezone: string;
-            username: string;
-        };
-        MemoryResponse: {
-            accessMode: string;
-            connectionId: string;
-            connectionName: string;
-            externalNamespace: string;
-            grantCount: number;
-            id: string;
-            name: string;
-            ownerDepartmentId: string;
-            status: string;
-            updatedAt: string;
-            version: number;
-        };
-        MissingGrantResponse: {
-            nodeId: string;
-            operation: string;
-            reason: string;
-            requiredByResourceId?: string | null;
-            resourceId: string;
-            resourceType: string;
-        };
-        ModelDeploymentHistoryResponse: {
-            changedAt: string;
-            changedBy: string;
-            connectionName: string;
-            deploymentId: string;
-            id: string;
-            modelName: string;
-            previousDeploymentId?: string | null;
-            revisionNumber: number;
-        };
-        ModelPriceResponse: {
-            createdAt: string;
-            currency: string;
-            deploymentId: string;
-            id: string;
-            inputPerMillion: string;
-            outputPerMillion: string;
-            versionNumber: number;
-        };
-        ModelResponse: {
-            alias: string;
-            aliasVersion: number;
-            /** @description Input modality capabilities */
-            capabilities?: ("vision" | "audio")[];
-            connectionCheckedAt?: string | null;
-            connectionName: string;
-            connectionStatus: string;
-            credentialId?: string | null;
-            defaultParameters: unknown;
-            deploymentId: string;
-            endpoint: string;
-            id: string;
-            maxInputTokens: number;
-            maxOutputTokens: number;
-            modelName: string;
-            ownerDepartmentId: string;
-            providerType: string;
-            revisionNumber: number;
-            status: string;
-            updatedAt: string;
-        };
-        MoveEntryRequest: {
-            expectedRevision: number;
-            name: string;
-            parentId?: string | null;
-        };
-        NodeAttemptResponse: {
-            attemptNumber: number;
-            deadlineAt?: string | null;
-            endedAt?: string | null;
-            errorCode?: string | null;
-            errorMessage?: string | null;
-            id: string;
-            startedAt?: string | null;
-            status: string;
-            workerInstanceId?: string | null;
-        };
-        NodeDefinitionDetail: {
-            manifest: unknown;
-            manifestHash: string;
-            nodeType: string;
-            version: number;
-        };
-        NodeDefinitionQuery: {
-            category?: string | null;
-            page?: number | null;
-            pageSize?: number | null;
-            search?: string | null;
-        };
-        NodeDefinitionSummary: {
-            capability: string;
-            category: string;
-            description: string;
-            displayName: string;
-            executionStyle: string;
-            iconKey: string;
-            keywords: string[];
-            manifestHash: string;
-            nodeType: string;
-            version: number;
-        };
-        NodeExecutionListResponse: {
-            items: components["schemas"]["NodeExecutionResponse"][];
-        };
-        NodeExecutionResponse: {
-            activationSlot: number;
-            attempts: components["schemas"]["NodeAttemptResponse"][];
-            capability: string;
-            costCurrency?: string | null;
-            costMicros: number;
-            endedAt?: string | null;
-            errorCode?: string | null;
-            errorMessage?: string | null;
-            executionId: string;
-            generation: number;
-            id: string;
-            input?: unknown;
-            iterationIndex: number;
-            lineage: components["schemas"]["LineageResponse"][];
-            nodeId: string;
-            nodeName: string;
-            nodeType: string;
-            nodeVersion: number;
-            output?: unknown;
-            runIndex: number;
-            sideEffectLevel: string;
-            startedAt?: string | null;
-            status: string;
-        };
-        NodeLock: {
-            manifestHash: string;
-            nodeType: string;
-            version: number;
-        };
-        NodeProviderOption: {
-            description?: string | null;
-            label: string;
-            manifest?: unknown;
-            value: string;
-        };
-        NodeProviderOptionsPage: {
-            items: ({
-                description?: string | null;
-                label: string;
-                manifest?: unknown;
-                value: string;
-            } & {
-                [key: string]: unknown;
-            })[];
-            nextCursor?: string | null;
-        };
-        NodeProviderOptionsResponse: {
-            items: components["schemas"]["NodeProviderOption"][];
-        };
-        NodeProviderQuery: {
-            limit?: number | null;
-            search?: string | null;
-        };
-        NotificationInboxResponse: {
-            items: components["schemas"]["NotificationResponse"][];
-            unreadCount: number;
-        };
-        NotificationResponse: {
-            arguments: unknown;
-            bodyKey: string;
-            createdAt: string;
-            id: string;
-            notificationType: string;
-            read: boolean;
-            targetId: string;
-            targetPath: string;
-            targetType: string;
-            titleKey: string;
-            tone: string;
-        };
-        PermissionResponse: {
-            description?: string | null;
-            key: string;
-            name: string;
-        };
-        PlaygroundConfigResponse: {
-            applicationId: string;
-            deploymentId: string;
-            deploymentVersion: number;
-            errorCode: string | null;
-            errorMessage: string | null;
-            mapping: components["schemas"]["ChatMappingV1"] | null;
-            /** @enum {string} */
-            publishStatus: "active" | "publishing" | "failed";
-            publishedVersion: number | null;
-            version: number;
-        };
-        PluginResolveDefinitionRequest: {
-            configuration: {
-                [key: string]: unknown;
-            };
-            upstreamContracts: {
-                [key: string]: unknown;
-            };
-        };
-        PluginResolvedDefinition: {
-            inputPorts?: {
-                /** @enum {string} */
-                kind: "main" | "error";
-                name: string;
-                required?: boolean;
-                variadic?: boolean;
-            }[];
-            issues?: {
-                code: string;
-                message: string;
-                path: string;
-            }[];
-            outputPortSchemas?: {
-                [key: string]: unknown;
-            };
-            outputPorts?: {
-                /** @enum {string} */
-                kind: "main" | "error";
-                name: string;
-                required?: boolean;
-                variadic?: boolean;
-            }[];
-            outputSchema?: unknown;
-            /** @enum {string} */
-            status: "complete" | "incomplete" | "invalid";
-        };
-        PublishAttemptResponse: {
-            activationSequence: number;
-            bundleId?: string | null;
-            deploymentId: string;
-            errorCode?: string | null;
-            errorMessage?: string | null;
-            id: string;
-            nextAction: string;
-            previousAttemptId?: string | null;
-            state: string;
-            updatedAt: string;
-        };
-        PublishSkillVersionRequest: {
-            dependencies?: components["schemas"]["SkillDependencyInput"][];
-            expectedRevision: number;
-        };
-        PublishWorkflowRequest: {
-            environmentId: string;
-            workflowVersionId: string;
-        };
-        PutPlaygroundConfigRequest: {
-            expectedVersion: number;
-            mapping: components["schemas"]["ChatMappingV1"] | null;
-        };
-        QueuedWorkflowRunResponse: {
-            commandId: string;
-            status: string;
-        };
-        QuotaPolicyInput: {
-            dimension: string;
-            hardLimit: string;
-            periodSeconds?: number | null;
-        };
-        QuotaPolicyResponse: {
-            activeReserved: string;
-            dimension: string;
-            hardLimit: string;
-            periodSeconds?: number | null;
-            periodUsage: string;
-            version: number;
-        };
-        ReassignApprovalRequest: {
-            targetUserId: string;
-            version: number;
-        };
-        ResourceAuthorizationInput: {
-            operation: string;
-            resourceId: string;
-            resourceType: string;
-            resourceVersionId?: string | null;
-        };
-        ResourceAuthorizationResponse: {
-            alreadyGrantedCount: number;
-            grantedCount: number;
-            resourceId: string;
-            resourceType: string;
-            workflowId: string;
-        };
-        ResourceGrantRequestAuditResponse: {
-            action: string;
-            actorName?: string | null;
-            id: string;
-            occurredAt: string;
-        };
-        ResourceGrantRequestResponse: {
-            createdAt: string;
-            history: components["schemas"]["ResourceGrantRequestAuditResponse"][];
-            id: string;
-            items: components["schemas"]["ResourceRequirementResponse"][];
-            message?: string | null;
-            operation: string;
-            primaryResourceId: string;
-            primaryResourceName?: string | null;
-            primaryResourceType: string;
-            requestedBy: string;
-            requestedByName: string;
-            reviews: components["schemas"]["ResourceGrantRequestReviewResponse"][];
-            sourceNodeId?: string | null;
-            sourceRevision?: number | null;
-            status: string;
-            subjectDepartmentName?: string | null;
-            subjectId: string;
-            /** @enum {string} */
-            subjectType: "department" | "workflow_service_identity";
-            updatedAt: string;
-            version: number;
-            workflowId?: string | null;
-            workflowName?: string | null;
-            workflowServiceIdentityId?: string | null;
-        };
-        ResourceGrantRequestReviewResponse: {
-            canAct: boolean;
-            id: string;
-            ownerDepartmentId: string;
-            ownerDepartmentName: string;
-            reviewComment?: string | null;
-            reviewedAt?: string | null;
-            reviewedBy?: string | null;
-            reviewedByName?: string | null;
-            status: string;
-            version: number;
-        };
-        ResourceOptionQuery: {
-            operation?: string | null;
-            page?: number | null;
-            pageSize?: number | null;
-            resourceType: string;
-            search?: string | null;
-        };
-        ResourceRequirementResponse: {
-            active: boolean;
-            authorized: boolean;
-            name?: string | null;
-            operation: string;
-            ownerDepartmentId?: string | null;
-            requiredByResourceId?: string | null;
-            resourceId: string;
-            resourceType: string;
-            resourceVersionId?: string | null;
-        };
-        ResourceValidationResponse: {
-            missingGrants: components["schemas"]["MissingGrantResponse"][];
-            valid: boolean;
-        };
-        RetentionItemResponse: {
-            attemptCount: number;
-            dataType: string;
-            id: string;
-            reason?: string | null;
-            status: string;
-            targetId: string;
-            updatedAt: string;
-        };
-        RetentionRunResponse: {
-            candidateCount: number;
-            completedAt?: string | null;
-            createdAt: string;
-            deletedCount: number;
-            dryRun: boolean;
-            errorMessage?: string | null;
-            id: string;
-            status: string;
-        };
-        RetrievalTestResult: {
-            citations?: unknown[];
-            documents?: Record<string, never>[];
-            recordIds?: unknown[];
-            text?: string;
-        };
-        ReviewResourceGrantRequest: {
-            comment?: string | null;
-            expectedVersion: number;
-        };
-        RevisionResponse: {
-            createdAt: string;
-            createdBy: string;
-            definitionHash: string;
-            editorHash: string;
-            id: string;
-            revision: number;
-            schemaVersion: string;
-        };
-        RoleResponse: {
-            code: string;
-            dataScope: string;
-            description?: string | null;
-            id: string;
-            isBuiltin: boolean;
-            memberCount: number;
-            name: string;
-            permissions: string[];
-            status: string;
-            version: number;
-        };
-        RollbackWorkflowRequest: {
-            targetWorkflowVersionId: string;
-        };
-        RotateCredentialRequest: {
-            secret: unknown;
-            version: number;
-        };
-        RunWorkflowRequest: {
-            idempotencyKey?: string | null;
-            input?: unknown;
-        };
-        RuntimeCallDetail: {
-            agentRunId?: string | null;
-            attemptId: string;
-            callIndex: number;
-            callKind: string;
-            costCurrency?: string | null;
-            costMicros: number;
-            endedAt?: string | null;
-            errorCode?: string | null;
-            errorMessage?: string | null;
-            id: string;
-            inputTokens: number;
-            iterationIndex: number;
-            outputTokens: number;
-            requestFingerprint: string;
-            resourceId?: string | null;
-            resourceType?: string | null;
-            resourceVersionId?: string | null;
-            responseArtifactId?: string | null;
-            sideEffect: string;
-            startedAt: string;
-            status: string;
-            usageEstimated: boolean;
-        };
-        RuntimeComponentStatus: {
-            component: string;
-            instances?: number | null;
-            lastHeartbeat?: string | null;
-            queueDepth?: number | null;
-            status: string;
-        };
-        RuntimeDetailsResponse: {
-            agentRuns: components["schemas"]["AgentRunDetail"][];
-            calls: components["schemas"]["RuntimeCallDetail"][];
-            costCurrency?: string | null;
-            costMicros: number;
-            executionId: string;
-            inputTokens: number;
-            iterations: components["schemas"]["AgentIterationDetail"][];
-            outputTokens: number;
-            sandboxes: components["schemas"]["SandboxLeaseDetail"][];
-        };
-        RuntimeStatusResponse: {
-            activeSandboxes: number;
-            components: components["schemas"]["RuntimeComponentStatus"][];
-            failedToday: number;
-            running: number;
-            sandboxCompatibility?: unknown;
-            waiting: number;
-        };
-        SandboxLeaseDetail: {
-            attemptId: string;
-            createdAt: string;
-            expiresAt: string;
-            heartbeatAt: string;
-            id: string;
-            lastError?: string | null;
-            nodeExecutionId: string;
-            profileVersionId: string;
-            sandboxId?: string | null;
-            status: string;
-            terminatedAt?: string | null;
-            terminationAttempts: number;
-        };
-        SandboxProfileResponse: {
-            current: components["schemas"]["SandboxProfileVersionResponse"];
-            currentVersionNumber: number;
-            description?: string | null;
-            id: string;
-            name: string;
-            ownerDepartmentId: string;
-            status: string;
-            updatedAt: string;
-            version: number;
-            versions: components["schemas"]["SandboxProfileVersionResponse"][];
-        };
-        SandboxProfileVersionInput: {
-            cpuMillis: number;
-            diskBytes: number;
-            imageDigest: string;
-            memoryBytes: number;
-            networkPolicy: unknown;
-            outputLimitBytes: number;
-            pidsLimit: number;
-            runner: string;
-            timeoutSeconds: number;
-        };
-        SandboxProfileVersionResponse: {
-            configurationHash: string;
-            cpuMillis: number;
-            createdAt: string;
-            diskBytes: number;
-            id: string;
-            imageDigest: string;
-            memoryBytes: number;
-            networkPolicy: unknown;
-            outputLimitBytes: number;
-            pidsLimit: number;
-            runner: string;
-            timeoutSeconds: number;
-            versionNumber: number;
-        };
-        SaveDebugOverlayRequest: {
-            artifactId?: string | null;
-            kind: string;
-            payload: unknown;
-            schemaHash?: string | null;
-        };
-        SaveDraftRequest: {
-            definition: unknown;
-            editorDocument?: unknown;
-            expectedRevision: number;
-        };
-        ScheduleResponse: {
-            cronExpression: string;
-            id: string;
-            input: unknown;
-            misfirePolicy: string;
-            name: string;
-            status: string;
-            timezone: string;
-            version: number;
-        };
-        SessionResponse: {
-            applicationDeploymentId: string;
-            applicationId: string;
-            externalUserId?: string | null;
-            id: string;
-            status: string;
-            title?: string | null;
-            updatedAt: string;
-            version: number;
-            versionPolicy: string;
-            workflowVersionId?: string | null;
-        };
-        SideEffectConfirmationRequest: {
-            checkpointId?: string | null;
-            decision: string;
-            idempotencyKey: string;
-            nodeExecutionId: string;
-        };
-        SkillDependencyInput: {
-            operation: string;
-            resourceId: string;
-            resourceType: string;
-            resourceVersionId?: string | null;
-        };
-        SkillResponse: {
-            alias: string;
-            description?: string | null;
-            draftRevision: number;
-            grantCount: number;
-            id: string;
-            latestVersion?: number | null;
-            name: string;
-            ownerDepartmentId: string;
-            status: string;
-            updatedAt: string;
-            version: number;
-        };
-        SkillVersionResponse: {
-            contentHash: string;
-            createdAt: string;
-            dependencies: components["schemas"]["SkillDependencyInput"][];
-            fileCount: number;
-            id: string;
-            manifest: unknown;
-            skillId: string;
-            sourceRevision: number;
-            versionNumber: number;
-        };
-        SkillWorkspaceEntry: {
-            artifactId?: string | null;
-            contentHash?: string | null;
-            editable: boolean;
-            entryType: string;
-            id: string;
-            mimeType?: string | null;
-            name: string;
-            parentId?: string | null;
-            path: string;
-            sizeBytes: number;
-            updatedAt: string;
-        };
-        SkillWorkspaceResponse: {
-            entries: components["schemas"]["SkillWorkspaceEntry"][];
-            revision: number;
-        };
-        StartExecutionRequest: {
-            idempotencyKey?: string | null;
-            input?: unknown;
-        };
-        TestCaseResponse: {
-            caseKey: string;
-            context?: unknown;
-            evaluatorOverride?: unknown;
-            expectedOutput?: unknown;
-            id: string;
-            input: unknown;
-            name: string;
-            sortOrder: number;
-            tags: string[];
-            version: number;
-        };
-        TraceContent: {
-            contentRef: string | null;
-            eventId: string;
-            /** @enum {string} */
-            kind: "workflow_input" | "workflow_output" | "node_input" | "node_output" | "attempt_input" | "attempt_output" | "resolved_parameters" | "runtime_request" | "runtime_response" | "agent_input" | "agent_output" | "iteration_input" | "iteration_output" | "sandbox_request" | "sandbox_response" | "wait_request" | "wait_response" | "conversion_record" | "plugin_content";
-            occurredAt: string;
-            preview: unknown;
-        };
-        TraceEventResponse: {
-            attributes: unknown;
-            /** @enum {unknown} */
-            contentKind: "workflow_input" | "workflow_output" | "node_input" | "node_output" | "attempt_input" | "attempt_output" | "resolved_parameters" | "runtime_request" | "runtime_response" | "agent_input" | "agent_output" | "iteration_input" | "iteration_output" | "sandbox_request" | "sandbox_response" | "wait_request" | "wait_response" | "conversion_record" | "plugin_content" | null;
-            contentPreview: unknown;
-            contentRef: string | null;
-            costMicros?: number;
-            durationMs?: number | null;
-            errorCode?: string | null;
-            errorMessage?: string | null;
-            eventId: string;
-            /** @enum {string} */
-            eventKind: "started" | "updated" | "finished";
-            eventType: string;
-            occurredAt: string;
-            status: string;
-        };
-        TraceResponse: {
-            complete: boolean;
-            degraded: boolean;
-            executionId: string;
-            expectedEventCount: number;
-            expectedWatermark: number;
-            ingestedEventCount: number;
-            ingestedWatermark: number;
-            nextCursor?: string | null;
-            spans: components["schemas"]["TraceSpanSummary"][];
-            totalSpans: number;
-            traceId: string;
-            warningCode?: string | null;
-        };
-        TraceSpanDetailResponse: {
-            contents: components["schemas"]["TraceContent"][];
-            events: components["schemas"]["TraceEventResponse"][];
-            executionId: string;
-            span: components["schemas"]["TraceSpanSummary"];
-            traceId: string;
-        };
-        TraceSpanSummary: {
-            agentIterationId?: string | null;
-            agentRunId?: string | null;
-            attemptId?: string | null;
-            costMicros: number;
-            durationMs: number | null;
-            endedAt: string | null;
-            errorCode?: string | null;
-            errorMessage?: string | null;
-            hasDetails: boolean;
-            inputTokens?: number | null;
-            nodeExecutionId?: string | null;
-            outputTokens?: number | null;
-            parentSpanId: string | null;
-            resourceId?: string | null;
-            resourceType?: string | null;
-            resourceVersion?: string | null;
-            runtimeCallId?: string | null;
-            sandboxLeaseId?: string | null;
-            spanId: string;
-            /** @enum {string} */
-            spanKind: "execution" | "boundary" | "node" | "attempt" | "agent_run" | "agent_iteration" | "runtime_call" | "sandbox" | "wait" | "plugin_operation";
-            spanName: string;
-            startedAt: string;
-            status: string;
-            waitId?: string | null;
-        };
-        UpdateApplicationRequest: {
-            description?: string | null;
-            name: string;
-            status: string;
-            version: number;
-            visibility: string;
-        };
-        UpdateCaseRequest: components["schemas"]["CaseInput"] & {
-            expectedRevision: number;
-            version: number;
-        };
-        UpdateCredentialRequest: {
-            name: string;
-            status: string;
-            version: number;
-        };
-        UpdateDatasetRequest: {
-            description?: string | null;
-            name: string;
-            status: string;
-            version: number;
-            visibility: string;
-        };
-        UpdateDepartmentRequest: {
-            name: string;
-            parentId?: string | null;
-            version: number;
-        };
-        UpdateEnvironmentRequest: {
-            name: string;
-            status: string;
-            version: number;
-        };
-        UpdateExternalResourceRequest: {
-            name: string;
-            status: string;
-            version: number;
-        };
-        UpdateMarkdownRequest: {
-            content: string;
-            description?: string | null;
-            expectedRevision: number;
-        };
-        UpdateMcpServerRequest: {
-            configuration?: unknown;
-            description?: string | null;
-            name: string;
-            status: string;
-            transport: components["schemas"]["McpTransportInput"];
-            version: number;
-        };
-        UpdateMcpToolPolicyRequest: {
-            debugEnabled: boolean;
-            enabled: boolean;
-            sideEffect: string;
-            timeoutSeconds: number;
-            version: number;
-        };
-        UpdateModelRequest: {
-            alias: string;
-            /** @description Input modality capabilities */
-            capabilities?: ("vision" | "audio")[];
-            connectionName: string;
-            credentialId?: string | null;
-            defaultParameters: unknown;
-            endpoint: string;
-            expectedAliasVersion: number;
-            maxInputTokens: number;
-            maxOutputTokens: number;
-            modelName: string;
-            ownerDepartmentId: string;
-            price: components["schemas"]["CreateModelPriceRequest"];
-            providerType: string;
-            status: string;
-        };
-        UpdateQuotaPoliciesRequest: {
-            policies: components["schemas"]["QuotaPolicyInput"][];
-        };
-        UpdateRoleRequest: {
-            dataScope: string;
-            description?: string | null;
-            name: string;
-            permissions: string[];
-            version: number;
-        };
-        UpdateSandboxProfileRequest: {
-            description?: string | null;
-            name: string;
-            status: string;
-            version: number;
-        };
-        UpdateScheduleRequest: {
-            cronExpression: string;
-            input: unknown;
-            misfirePolicy?: string;
-            name: string;
-            status: string;
-            timezone: string;
-            version: number;
-        };
-        UpdateSkillRequest: {
-            alias: string;
-            description?: string | null;
-            name: string;
-            status: string;
-            version: number;
-        };
-        UpdateUserRequest: {
-            departmentId: string;
-            displayName: string;
-            roleId: string;
-            version: number;
-        };
-        UpdateWebhookRequest: {
-            channelConfig?: {
-                [key: string]: unknown;
-            } | null;
-            channelMode?: string;
-            fixedInputs?: {
-                [key: string]: unknown;
-            };
-            inputMappings?: {
-                missingPolicy?: string;
-                source: string;
-                target: string;
-            }[];
-            name: string;
-            /** @enum {string} */
-            providerType: "dingtalk" | "wecom" | "feishu" | "agentx";
-            reply?: components["schemas"]["WebhookReplyConfig"];
-            status: string;
-            version: number;
-        };
-        UpdateWorkflowRequest: {
-            description?: string | null;
-            name: string;
-            version: number;
-            visibility: string;
-        };
-        UpgradeSessionRequest: {
-            version: number;
-            workflowVersionId: string;
-        };
-        UpsertWorkflowMemberRequest: {
-            memberRole: string;
-            userId: string;
-        };
-        UserResponse: {
-            departmentId: string;
-            departmentName: string;
-            displayName: string;
-            id: string;
-            passwordChangeRequired: boolean;
-            roles: string[];
-            status: string;
-            username: string;
-            version: number;
-        };
-        ValidateDraftRequest: {
-            definition: unknown;
-            editorDocument?: unknown;
-        };
-        ValidateDraftResponse: {
-            compilerVersion?: string | null;
-            definitionHash?: string | null;
-            editorHash?: string | null;
-            issues: components["schemas"]["ValidationIssue"][];
-        };
-        ValidationIssue: {
-            code: string;
-            fieldPath?: string | null;
-            message: string;
-            nodeId?: string | null;
-            severity: string;
-        };
-        VersionActionRequest: {
-            version: number;
-        };
-        WebhookProviderTemplate: {
-            fields: {
-                key: string;
-                required: boolean;
-                sensitive: boolean;
-            }[];
-            /** @description Raw payload paths (raw.<dotted.path>) this provider's messages carry beyond the standardized Trigger Context fields, offered as mapping source suggestions. */
-            mappingSources?: string[];
-            mode: string;
-            provider: string;
-        };
-        WebhookReplyConfig: {
-            enabled: boolean;
-            outputField: string;
-            template?: string;
-        };
-        WebhookResponse: {
-            channelMode?: string;
-            configFields?: {
-                [key: string]: unknown;
-            };
-            configurationRevision: number;
-            connectionError?: string | null;
-            connectionStatus?: string | null;
-            fixedInputs: {
-                [key: string]: unknown;
-            };
-            id: string;
-            inputMappings: {
-                missingPolicy?: string;
-                source: string;
-                target: string;
-            }[];
-            lastConnectedAt?: string | null;
-            mappingCount: number;
-            name: string;
-            path: string;
-            providerType: string;
-            publicId: string;
-            reply?: components["schemas"]["WebhookReplyConfig"];
-            secret?: string | null;
-            status: string;
-            version: number;
-        };
-        WorkerCapabilityResponse: {
-            capability: string;
-            compilerVersionMax: string;
-            compilerVersionMin: string;
-            heartbeatAt: string;
-            instanceId: string;
-            irSchemaVersions: unknown;
-            manifestHashes: unknown;
-            nodeProtocolVersion: string;
-            status: string;
-        };
-        WorkflowMemberResponse: {
-            displayName: string;
-            memberRole: string;
-            userId: string;
-            username: string;
-        };
-        WorkflowPackage: {
-            apiBinding: unknown;
-            editorDocument: unknown;
-            manifest: components["schemas"]["WorkflowPackageManifest"];
-            nodeLock: components["schemas"]["NodeLock"][];
-            subWorkflowReferences: string[];
-            workflowDefinition: unknown;
-        };
-        WorkflowPackageManifest: {
-            contentHash: string;
-            name: string;
-            packageSchemaVersion: string;
-            signature: string;
-            signatureAlgorithm: string;
-            signingKeyId: string;
-            workflowSchemaVersion: string;
-        };
-        WorkflowResourceOptionResponse: {
-            accessState: string;
-            detail: string;
-            id: string;
-            name: string;
-            pendingRequestId?: string | null;
-            requirements: components["schemas"]["ResourceRequirementResponse"][];
-            resourceType: string;
-            resourceVersionId?: string | null;
-            status: string;
-        };
-        WorkflowResponse: {
-            canEdit: boolean;
-            description?: string | null;
-            draftRevision: number;
-            id: string;
-            latestVersion?: number | null;
-            name: string;
-            ownerDepartmentId: string;
-            ownerName: string;
-            ownerUserId: string;
-            serviceIdentityId: string;
-            status: string;
-            updatedAt: string;
-            version: number;
-            visibility: string;
-        };
-        WorkflowVersionResponse: {
-            contentHash: string;
-            createdAt: string;
-            createdBy: string;
-            definition: unknown;
-            editorDocument: unknown;
-            id: string;
-            schemaVersion: string;
-            sourceRevision: number;
-            versionNumber: number;
-            workflowId: string;
-        };
-    };
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
+export interface components { schemas : { AgentIterationDetail : { agentRunId : string ; endedAt ? : string | null ; id : string ; iterationIndex : number ; startedAt : string ; stateAfterHash ? : string | null ; stateArtifactId ? : string | null ; stateBeforeHash : string ; status : string ; stopReason ? : string | null ; } ;
+AgentRunDetail : { budget : unknown ; costMicros : number ; endedAt ? : string | null ; id : string ; inputTokens : number ; iterationCount : number ; modelCallCount : number ; nodeExecutionId : string ; outputTokens : number ; startedAt : string ; stateArtifactId ? : string | null ; stateHash ? : string | null ; status : string ; stopReason ? : string | null ; toolCallCount : number ; } ;
+ApiErrorResponse : { code : string ; details ? : unknown ; fieldErrors ? : components [ "schemas" ] [ "FieldError" ] [ ] ; message : string ; requestId : string ; } ;
+ApiKeyResponse : { createdAt : string ; familyId : string ; id : string ; lastUsedAt ? : string | null ; name : string ; prefix : string ; secret ? : string | null ; status : string ; } ;
+ApplicationDeploymentResponse : { applicationId : string ; createdAt : string ; environmentId : string ; environmentName : string ; id : string ; inputSchema : unknown ; outputSchema : unknown ; publishAttemptId ? : string | null ; publishErrorCode ? : string | null ; publishErrorMessage ? : string | null ; sequenceNumber : number ; sessionVersionPolicy : string ; status : string ; workflowVersionId : string ; workflowVersionNumber : number ; } ;
+ApplicationResponse : { activeDeploymentId ? : string | null ; activeVersionNumber ? : number | null ; description ? : string | null ; id : string ; name : string ; ownerDepartmentId : string ; publishedRuntimeConfigRevision : number ; runtimeConfigRevision : number ; slug : string ; status : string ; updatedAt : string ; version : number ; visibility : string ; workflowId : string ; workflowName : string ; } ;
+ApprovalActionResponse : { actionType : string ; actorName : string ; actorUserId : string ; createdAt : string ; fromStatus : string ; id : string ; input ? : unknown ; toStatus : string ; } ;
+ApprovalCandidateResponse : { displayName : string ; userId : string ; } ;
+ApprovalResponse : { buttons : { id : string ; label : string ; } [ ] ; claimedBy ? : string | null ; claimedByName ? : string | null ; createdAt : string ; deadlineAt ? : string | null ; decision ? : Record < string , never > | null ; description ? : string | null ; executionId : string ; id : string ; nodeId : string ; requestPayload ? : unknown ; resumeStatus : string ; status : string ; title : string ; version : number ; workflowId : string ; workflowName : string ; } ;
+ArtifactUploadResponse : { entry : components [ "schemas" ] [ "SkillWorkspaceEntry" ] ; revision : number ; } ;
+AuthResponse : { accessToken ? : string | null ; changePasswordToken ? : string | null ; expiresIn ? : number | null ; passwordChangeRequired : boolean ; user ? : null | components [ "schemas" ] [ "MeResponse" ] ; } ;
+BootstrapRequest : { adminDisplayName : string ; adminUsername : string ; companyName : string ; locale : string ; password : string ; timezone : string ; } ;
+BootstrapStatus : { required : boolean ; } ;
+BuilderCommandReceipt : { status : components [ "schemas" ] [ "BuilderCommandReceipt_CommandReceiptStatus" ] ; } ;
+BuilderCommandReceipt_CommandReceiptStatus : "pending" | "settled" | "cancelled" ;
+BuilderModelSetting : { canManage : boolean ; modelAlias ? : string | null ; modelAliasId ? : string | null ; reason ? : string | null ; status : string ; version : number ; } ;
+CancelResourceGrantRequest : { expectedVersion : number ; } ;
+CanvasPlugin : { defaultVersionId : string | null ; description : string ; displayName : string ; id : string ; nodeCount : number ; packageId : string ; sourceType : "builtin" | "imported" ; updatedAt : string ; version : number ; versions : components [ "schemas" ] [ "CanvasPluginVersion" ] [ ] ; } ;
+CanvasPluginAuditItem : { action : string ; actorUserId : string ; createdAt : string ; detail : unknown ; id : string ; } ;
+CanvasPluginImport : { bundleDigest : string ; description : string ; displayName : string ; expiresAt : string ; id : string ; installedVersionId : string | null ; issues : { [ key : string ] : unknown ; } [ ] ; nodeTypes : string [ ] ; packageId : string ; packageVersion : string ; status : "ready" | "installed" | "failed" | "cancelled" ; } ;
+CanvasPluginInstallRequest : { bundleDigest : string ; enable : boolean ; setDefault : boolean ; } ;
+CanvasPluginPage : { items : components [ "schemas" ] [ "CanvasPlugin" ] [ ] ; page : number ; pageSize : number ; total : number ; } ;
+CanvasPluginReferences : { deployments : number ; drafts : number ; executions : number ; total : number ; workflowVersions : number ; } ;
+CanvasPluginUpdateRequest : { defaultVersionId : string ; expectedRevision : number ; } ;
+CanvasPluginVersion : { bundleDigest : string ; createdAt : string ; id : string ; nodeTypes : string [ ] ; packageVersion : string ; sdkApiVersion : number ; status : "enabled" | "disabled" ; } ;
+CanvasPluginVersionUpdateRequest : { enabled : boolean ; expectedRevision : number ; } ;
+CaseInput : { caseKey : string ; context ? : unknown ; evaluatorOverride ? : unknown ; expectedOutput ? : unknown ; input : unknown ; name : string ; tags ? : string [ ] ; } ;
+ChangePasswordRequest : { password : string ; token : string ; } ;
+ChatMappingV1 : { answerFilesOutput : string | null ; answerOutput : string ; fileInput : string | null ; questionInput : string ; } ;
+CheckpointListResponse : { items : components [ "schemas" ] [ "CheckpointResponse" ] [ ] ; } ;
+CheckpointResponse : { activationCount : number ; checkpointType : string ; createdAt : string ; deliveryCount : number ; executionId : string ; id : string ; nodeExecutionId ? : string | null ; sequenceNumber : number ; stateHash : string ; } ;
+ConnectionResponse : { configuration : unknown ; credentialId ? : string | null ; endpoint : string ; healthPath : string ; id : string ; name : string ; ownerDepartmentId : string ; provider ? : string | null ; status : string ; version : number ; } ;
+CreateApiKeyRequest : { name : string ; } ;
+CreateApplicationDeploymentRequest : { environmentId : string ; sessionVersionPolicy : string ; workflowVersionId : string ; } ;
+CreateApplicationRequest : { description ? : string | null ; name : string ; slug : string ; visibility : string ; workflowId : string ; } ;
+CreateBuilderRun : { editScope : components [ "schemas" ] [ "CreateBuilderRun_StudioEditScopeV1" ] ; prompt : string ; runId : string ; snapshot : components [ "schemas" ] [ "CreateBuilderRun_StudioEditorSnapshotV1" ] ; } ;
+CreateBuilderRun_BoundaryLayout : { boundary : components [ "schemas" ] [ "CreateBuilderRun_WorkflowBoundary" ] ; x : number ; y : number ; } ;
+CreateBuilderRun_ContextDefinition : { clientWritable : boolean ; default : unknown ; description : string | null ; maxSize : number | null ; mergePolicy : components [ "schemas" ] [ "CreateBuilderRun_ContextMergePolicy" ] ; mutable : boolean ; schema : unknown ; scope : components [ "schemas" ] [ "CreateBuilderRun_ContextScope" ] ; sensitive : boolean ; title : string | null ; } ;
+CreateBuilderRun_ContextMergePolicy : "replace" | "append" | "merge_object" | "increment" | "reject_conflict" ;
+CreateBuilderRun_ContextScope : "execution_tree" | "session" ;
+CreateBuilderRun_ContextWrite : { operation : components [ "schemas" ] [ "CreateBuilderRun_ContextWriteOperation" ] ; path : string ; value : components [ "schemas" ] [ "CreateBuilderRun_InputBinding" ] ; } ;
+CreateBuilderRun_ContextWriteOperation : "set" | "set_if_absent" | "delete" | "append" | "merge_object" | "increment" | "min" | "max" | "compare_and_set" ;
+CreateBuilderRun_EditorAnnotation : { color ? : string | null ; height : number ; id : string ; text : string ; width : number ; x : number ; y : number ; } ;
+CreateBuilderRun_EditorDocument : { annotations : components [ "schemas" ] [ "CreateBuilderRun_EditorAnnotation" ] [ ] ; boundaryLayouts : components [ "schemas" ] [ "CreateBuilderRun_BoundaryLayout" ] [ ] ; edges : components [ "schemas" ] [ "CreateBuilderRun_EditorEdge" ] [ ] ; groups : components [ "schemas" ] [ "CreateBuilderRun_EditorGroup" ] [ ] ; nodeLayouts : components [ "schemas" ] [ "CreateBuilderRun_NodeLayout" ] [ ] ; viewport : components [ "schemas" ] [ "CreateBuilderRun_EditorViewport" ] ; } ;
+CreateBuilderRun_EditorEdge : { edgeId : string ; labelPosition ? : number | null ; } ;
+CreateBuilderRun_EditorGroup : { collapsed : boolean ; color ? : string | null ; id : string ; label : string ; nodeIds : string [ ] ; } ;
+CreateBuilderRun_EditorViewport : { x : number ; y : number ; zoom : number ; } ;
+CreateBuilderRun_ExecutionOrder : "deterministic" | "parallel" ;
+CreateBuilderRun_InputBinding : { kind : "literal" ; value : unknown ; } | { kind : "reference" ; missingPolicy : components [ "schemas" ] [ "CreateBuilderRun_MissingValuePolicy" ] ; selector : components [ "schemas" ] [ "CreateBuilderRun_ValueSelector" ] ; } | { kind : "template" ; segments : components [ "schemas" ] [ "CreateBuilderRun_InputTemplateSegment" ] [ ] ; } | { items : components [ "schemas" ] [ "CreateBuilderRun_InputBinding" ] [ ] ; kind : "array" ; } | { fields : { [ key : string ] : components [ "schemas" ] [ "CreateBuilderRun_InputBinding" ] ; } ; kind : "object" ; } ;
+CreateBuilderRun_InputTemplateSegment : { kind : "text" ; text : string ; } | { kind : "reference" ; missingPolicy : components [ "schemas" ] [ "CreateBuilderRun_MissingValuePolicy" ] ; selector : components [ "schemas" ] [ "CreateBuilderRun_ValueSelector" ] ; } ;
+CreateBuilderRun_MissingValuePolicy : { kind : "error" ; } | { kind : "null" ; } | { kind : "omit" ; } ;
+CreateBuilderRun_NodeLayout : { collapsed : boolean ; height ? : number | null ; nodeId : string ; width ? : number | null ; x : number ; y : number ; } ;
+CreateBuilderRun_NodeSettings : { alwaysOutputData : boolean ; executeOnce : boolean ; maxTries : number ; retryOnFail : boolean ; timeoutMs : number | null ; waitBetweenTriesMs : number ; } ;
+CreateBuilderRun_ResourceOperation : "view" | "use" | "read" | "write" | "manage" ;
+CreateBuilderRun_ResourceReference : { bindingRole ? : string | null ; operation : components [ "schemas" ] [ "CreateBuilderRun_ResourceOperation" ] ; resourceId : string ; resourceType : components [ "schemas" ] [ "CreateBuilderRun_ResourceType" ] ; resourceVersionId ? : string | null ; } ;
+CreateBuilderRun_ResourceType : "credential" | "model" | "mcp_server" | "mcp_tool" | "skill" | "rag" | "memory" | "sandbox_profile" ;
+CreateBuilderRun_StudioDocumentV1 : { definition : components [ "schemas" ] [ "CreateBuilderRun_WorkflowDefinition" ] ; editorDocument : components [ "schemas" ] [ "CreateBuilderRun_EditorDocument" ] ; } ;
+CreateBuilderRun_StudioEditScopeV1 : { kind : "canvas" ; } | { kind : "nodes" ; nodeIds : string [ ] ; } ;
+CreateBuilderRun_StudioEditorSnapshotV1 : { document : components [ "schemas" ] [ "CreateBuilderRun_StudioDocumentV1" ] ; documentHash : string ; editorInstanceId : string ; localDocumentRevision : number ; saveStatus : components [ "schemas" ] [ "CreateBuilderRun_StudioSaveStatusV1" ] ; selectedExecutionId ? : string | null ; selectedNodeIds : string [ ] ; serverRevision : number ; } ;
+CreateBuilderRun_StudioSaveStatusV1 : "saved" | "unsaved" ;
+CreateBuilderRun_ValueNamespace : "inputs" | "outputs" | "contexts" | "execution" | "item" | "loop" ;
+CreateBuilderRun_ValuePathSegment : string | number ;
+CreateBuilderRun_ValueSelection : { kind : "current" ; } | { kind : "first" ; } | { kind : "last" ; } | { kind : "all" ; } | { index : number ; kind : "index" ; } ;
+CreateBuilderRun_ValueSelector : { item : components [ "schemas" ] [ "CreateBuilderRun_ValueSelection" ] ; namespace : components [ "schemas" ] [ "CreateBuilderRun_ValueNamespace" ] ; path : components [ "schemas" ] [ "CreateBuilderRun_ValuePathSegment" ] [ ] ; port ? : string | null ; run : components [ "schemas" ] [ "CreateBuilderRun_ValueSelection" ] ; sourceNodeId ? : string | null ; } ;
+CreateBuilderRun_WorkflowBoundary : "start" ;
+CreateBuilderRun_WorkflowCompletion : "first_return" | "all_complete" ;
+CreateBuilderRun_WorkflowConnection : { id : string ; order : number ; sourceHandle : string ; sourceNodeId : string ; targetHandle : string ; targetNodeId : string ; } ;
+CreateBuilderRun_WorkflowDefinition : { connections : components [ "schemas" ] [ "CreateBuilderRun_WorkflowConnection" ] [ ] ; end : components [ "schemas" ] [ "CreateBuilderRun_WorkflowEnd" ] ; nodes : components [ "schemas" ] [ "CreateBuilderRun_WorkflowNode" ] [ ] ; schemaVersion : components [ "schemas" ] [ "CreateBuilderRun_WorkflowSchemaVersion" ] ; settings : components [ "schemas" ] [ "CreateBuilderRun_WorkflowSettings" ] ; start : components [ "schemas" ] [ "CreateBuilderRun_WorkflowStart" ] ; } ;
+CreateBuilderRun_WorkflowEnd : { completion : components [ "schemas" ] [ "CreateBuilderRun_WorkflowCompletion" ] ; error : components [ "schemas" ] [ "CreateBuilderRun_WorkflowErrorEnd" ] ; outputs : { [ key : string ] : components [ "schemas" ] [ "CreateBuilderRun_WorkflowOutput" ] ; } ; } ;
+CreateBuilderRun_WorkflowErrorEnd : { outputs : { [ key : string ] : components [ "schemas" ] [ "CreateBuilderRun_WorkflowOutput" ] ; } ; } ;
+CreateBuilderRun_WorkflowNode : { contextWrites : components [ "schemas" ] [ "CreateBuilderRun_ContextWrite" ] [ ] ; disabled : boolean ; id : string ; key : string ; name : string ; parameters : unknown ; parentId ? : string | null ; protected : boolean ; resourceReferences : components [ "schemas" ] [ "CreateBuilderRun_ResourceReference" ] [ ] ; settings : components [ "schemas" ] [ "CreateBuilderRun_NodeSettings" ] ; type : string ; typeVersion : number ; } ;
+CreateBuilderRun_WorkflowOutput : { required : boolean ; schema : unknown ; sensitive : boolean ; } ;
+CreateBuilderRun_WorkflowSchemaVersion : "8.0" ;
+CreateBuilderRun_WorkflowSettings : { activationBudget : number ; executionOrder : components [ "schemas" ] [ "CreateBuilderRun_ExecutionOrder" ] ; timeoutMs : number | null ; } ;
+CreateBuilderRun_WorkflowStart : { contexts : { [ key : string ] : components [ "schemas" ] [ "CreateBuilderRun_ContextDefinition" ] ; } ; inputs : unknown ; } ;
+CreateBuilderSession : { snapshot : components [ "schemas" ] [ "CreateBuilderSession_StudioEditorSnapshotV1" ] ; } ;
+CreateBuilderSession_BoundaryLayout : { boundary : components [ "schemas" ] [ "CreateBuilderSession_WorkflowBoundary" ] ; x : number ; y : number ; } ;
+CreateBuilderSession_ContextDefinition : { clientWritable : boolean ; default : unknown ; description : string | null ; maxSize : number | null ; mergePolicy : components [ "schemas" ] [ "CreateBuilderSession_ContextMergePolicy" ] ; mutable : boolean ; schema : unknown ; scope : components [ "schemas" ] [ "CreateBuilderSession_ContextScope" ] ; sensitive : boolean ; title : string | null ; } ;
+CreateBuilderSession_ContextMergePolicy : "replace" | "append" | "merge_object" | "increment" | "reject_conflict" ;
+CreateBuilderSession_ContextScope : "execution_tree" | "session" ;
+CreateBuilderSession_ContextWrite : { operation : components [ "schemas" ] [ "CreateBuilderSession_ContextWriteOperation" ] ; path : string ; value : components [ "schemas" ] [ "CreateBuilderSession_InputBinding" ] ; } ;
+CreateBuilderSession_ContextWriteOperation : "set" | "set_if_absent" | "delete" | "append" | "merge_object" | "increment" | "min" | "max" | "compare_and_set" ;
+CreateBuilderSession_EditorAnnotation : { color ? : string | null ; height : number ; id : string ; text : string ; width : number ; x : number ; y : number ; } ;
+CreateBuilderSession_EditorDocument : { annotations : components [ "schemas" ] [ "CreateBuilderSession_EditorAnnotation" ] [ ] ; boundaryLayouts : components [ "schemas" ] [ "CreateBuilderSession_BoundaryLayout" ] [ ] ; edges : components [ "schemas" ] [ "CreateBuilderSession_EditorEdge" ] [ ] ; groups : components [ "schemas" ] [ "CreateBuilderSession_EditorGroup" ] [ ] ; nodeLayouts : components [ "schemas" ] [ "CreateBuilderSession_NodeLayout" ] [ ] ; viewport : components [ "schemas" ] [ "CreateBuilderSession_EditorViewport" ] ; } ;
+CreateBuilderSession_EditorEdge : { edgeId : string ; labelPosition ? : number | null ; } ;
+CreateBuilderSession_EditorGroup : { collapsed : boolean ; color ? : string | null ; id : string ; label : string ; nodeIds : string [ ] ; } ;
+CreateBuilderSession_EditorViewport : { x : number ; y : number ; zoom : number ; } ;
+CreateBuilderSession_ExecutionOrder : "deterministic" | "parallel" ;
+CreateBuilderSession_InputBinding : { kind : "literal" ; value : unknown ; } | { kind : "reference" ; missingPolicy : components [ "schemas" ] [ "CreateBuilderSession_MissingValuePolicy" ] ; selector : components [ "schemas" ] [ "CreateBuilderSession_ValueSelector" ] ; } | { kind : "template" ; segments : components [ "schemas" ] [ "CreateBuilderSession_InputTemplateSegment" ] [ ] ; } | { items : components [ "schemas" ] [ "CreateBuilderSession_InputBinding" ] [ ] ; kind : "array" ; } | { fields : { [ key : string ] : components [ "schemas" ] [ "CreateBuilderSession_InputBinding" ] ; } ; kind : "object" ; } ;
+CreateBuilderSession_InputTemplateSegment : { kind : "text" ; text : string ; } | { kind : "reference" ; missingPolicy : components [ "schemas" ] [ "CreateBuilderSession_MissingValuePolicy" ] ; selector : components [ "schemas" ] [ "CreateBuilderSession_ValueSelector" ] ; } ;
+CreateBuilderSession_MissingValuePolicy : { kind : "error" ; } | { kind : "null" ; } | { kind : "omit" ; } ;
+CreateBuilderSession_NodeLayout : { collapsed : boolean ; height ? : number | null ; nodeId : string ; width ? : number | null ; x : number ; y : number ; } ;
+CreateBuilderSession_NodeSettings : { alwaysOutputData : boolean ; executeOnce : boolean ; maxTries : number ; retryOnFail : boolean ; timeoutMs : number | null ; waitBetweenTriesMs : number ; } ;
+CreateBuilderSession_ResourceOperation : "view" | "use" | "read" | "write" | "manage" ;
+CreateBuilderSession_ResourceReference : { bindingRole ? : string | null ; operation : components [ "schemas" ] [ "CreateBuilderSession_ResourceOperation" ] ; resourceId : string ; resourceType : components [ "schemas" ] [ "CreateBuilderSession_ResourceType" ] ; resourceVersionId ? : string | null ; } ;
+CreateBuilderSession_ResourceType : "credential" | "model" | "mcp_server" | "mcp_tool" | "skill" | "rag" | "memory" | "sandbox_profile" ;
+CreateBuilderSession_StudioDocumentV1 : { definition : components [ "schemas" ] [ "CreateBuilderSession_WorkflowDefinition" ] ; editorDocument : components [ "schemas" ] [ "CreateBuilderSession_EditorDocument" ] ; } ;
+CreateBuilderSession_StudioEditorSnapshotV1 : { document : components [ "schemas" ] [ "CreateBuilderSession_StudioDocumentV1" ] ; documentHash : string ; editorInstanceId : string ; localDocumentRevision : number ; saveStatus : components [ "schemas" ] [ "CreateBuilderSession_StudioSaveStatusV1" ] ; selectedExecutionId ? : string | null ; selectedNodeIds : string [ ] ; serverRevision : number ; } ;
+CreateBuilderSession_StudioSaveStatusV1 : "saved" | "unsaved" ;
+CreateBuilderSession_ValueNamespace : "inputs" | "outputs" | "contexts" | "execution" | "item" | "loop" ;
+CreateBuilderSession_ValuePathSegment : string | number ;
+CreateBuilderSession_ValueSelection : { kind : "current" ; } | { kind : "first" ; } | { kind : "last" ; } | { kind : "all" ; } | { index : number ; kind : "index" ; } ;
+CreateBuilderSession_ValueSelector : { item : components [ "schemas" ] [ "CreateBuilderSession_ValueSelection" ] ; namespace : components [ "schemas" ] [ "CreateBuilderSession_ValueNamespace" ] ; path : components [ "schemas" ] [ "CreateBuilderSession_ValuePathSegment" ] [ ] ; port ? : string | null ; run : components [ "schemas" ] [ "CreateBuilderSession_ValueSelection" ] ; sourceNodeId ? : string | null ; } ;
+CreateBuilderSession_WorkflowBoundary : "start" ;
+CreateBuilderSession_WorkflowCompletion : "first_return" | "all_complete" ;
+CreateBuilderSession_WorkflowConnection : { id : string ; order : number ; sourceHandle : string ; sourceNodeId : string ; targetHandle : string ; targetNodeId : string ; } ;
+CreateBuilderSession_WorkflowDefinition : { connections : components [ "schemas" ] [ "CreateBuilderSession_WorkflowConnection" ] [ ] ; end : components [ "schemas" ] [ "CreateBuilderSession_WorkflowEnd" ] ; nodes : components [ "schemas" ] [ "CreateBuilderSession_WorkflowNode" ] [ ] ; schemaVersion : components [ "schemas" ] [ "CreateBuilderSession_WorkflowSchemaVersion" ] ; settings : components [ "schemas" ] [ "CreateBuilderSession_WorkflowSettings" ] ; start : components [ "schemas" ] [ "CreateBuilderSession_WorkflowStart" ] ; } ;
+CreateBuilderSession_WorkflowEnd : { completion : components [ "schemas" ] [ "CreateBuilderSession_WorkflowCompletion" ] ; error : components [ "schemas" ] [ "CreateBuilderSession_WorkflowErrorEnd" ] ; outputs : { [ key : string ] : components [ "schemas" ] [ "CreateBuilderSession_WorkflowOutput" ] ; } ; } ;
+CreateBuilderSession_WorkflowErrorEnd : { outputs : { [ key : string ] : components [ "schemas" ] [ "CreateBuilderSession_WorkflowOutput" ] ; } ; } ;
+CreateBuilderSession_WorkflowNode : { contextWrites : components [ "schemas" ] [ "CreateBuilderSession_ContextWrite" ] [ ] ; disabled : boolean ; id : string ; key : string ; name : string ; parameters : unknown ; parentId ? : string | null ; protected : boolean ; resourceReferences : components [ "schemas" ] [ "CreateBuilderSession_ResourceReference" ] [ ] ; settings : components [ "schemas" ] [ "CreateBuilderSession_NodeSettings" ] ; type : string ; typeVersion : number ; } ;
+CreateBuilderSession_WorkflowOutput : { required : boolean ; schema : unknown ; sensitive : boolean ; } ;
+CreateBuilderSession_WorkflowSchemaVersion : "8.0" ;
+CreateBuilderSession_WorkflowSettings : { activationBudget : number ; executionOrder : components [ "schemas" ] [ "CreateBuilderSession_ExecutionOrder" ] ; timeoutMs : number | null ; } ;
+CreateBuilderSession_WorkflowStart : { contexts : { [ key : string ] : components [ "schemas" ] [ "CreateBuilderSession_ContextDefinition" ] ; } ; inputs : unknown ; } ;
+CreateCaseRequest : components [ "schemas" ] [ "CaseInput" ] & { expectedRevision : number ; } ;
+CreateConnectionRequest : { configuration : unknown ; credentialId ? : string | null ; endpoint : string ; healthPath ? : string | null ; name : string ; ownerDepartmentId : string ; provider ? : "lightrag" | "ragflow" ; } ;
+CreateCredentialRequest : { credentialType : string ; name : string ; ownerDepartmentId : string ; secret : unknown ; } ;
+CreateDatasetRequest : { description ? : string | null ; name : string ; visibility : string ; } ;
+CreateDepartmentRequest : { name : string ; parentId : string ; } ;
+CreateDraftRequest : { baseVersionId ? : string | null ; name : string ; } ;
+CreateEntryRequest : { entryType : string ; expectedRevision : number ; name : string ; parentId ? : string | null ; } ;
+CreateEnvironmentRequest : { code : string ; name : string ; } ;
+CreateEvaluationProfileRequest : { aggregation ? : string ; description ? : string | null ; name : string ; passThreshold ? : string ; rules : components [ "schemas" ] [ "EvaluationRuleInput" ] [ ] ; visibility ? : string ; } ;
+CreateEvaluationRunRequest : { datasetVersionId : string ; evaluationProfileVersionId : string ; name : string ; parameters : unknown ; visibility ? : string ; workflowVersionId : string ; } ;
+CreateGrantRequest : { operation : string ; resourceVersionId ? : string | null ; subjectId : string ; subjectType : string ; } ;
+CreateKnowledgeRequest : { connectionId : string ; externalResourceId : string ; name : string ; ownerDepartmentId : string ; } ;
+CreateMcpServerRequest : { configuration ? : unknown ; description ? : string | null ; name : string ; ownerDepartmentId : string ; transport : components [ "schemas" ] [ "McpTransportInput" ] ; } ;
+CreateMemoryRequest : { accessMode : string ; connectionId : string ; externalNamespace : string ; name : string ; ownerDepartmentId : string ; } ;
+CreateModelPriceRequest : { currency : string ; inputPerMillion : string ; outputPerMillion : string ; } ;
+CreateModelRequest : { alias ? : string ; capabilities ? : ( "vision" | "audio" ) [ ] ; connectionName : string ; credentialId ? : string | null ; defaultParameters ? : unknown ; endpoint : string ; maxInputTokens ? : number ; maxOutputTokens ? : number ; modelName ? : string ; ownerDepartmentId : string ; price : components [ "schemas" ] [ "CreateModelPriceRequest" ] ; providerType : string ; } ;
+CreateResourceGrantRequest : { message ? : string | null ; operation : string ; resourceId : string ; resourceType : string ; resourceVersionId ? : string | null ; sourceDraftId ? : string | null ; sourceNodeId ? : string | null ; sourceRevision ? : number | null ; } ;
+CreateRetentionRunRequest : { artifactRetentionDays ? : number ; dryRun ? : boolean ; evaluationRetentionDays ? : number ; messageRetentionDays ? : number ; traceRetentionDays ? : number ; } ;
+CreateRoleRequest : { code : string ; dataScope : string ; description ? : string | null ; name : string ; permissions : string [ ] ; } ;
+CreateSandboxProfileRequest : components [ "schemas" ] [ "SandboxProfileVersionInput" ] & { description ? : string | null ; name : string ; ownerDepartmentId : string ; } ;
+CreateScheduleRequest : { cronExpression : string ; input : unknown ; misfirePolicy ? : string ; name : string ; timezone : string ; } ;
+CreateSkillRequest : { alias : string ; description : string ; name : string ; ownerDepartmentId : string ; } ;
+CreateUserRequest : { departmentId : string ; displayName : string ; roleId : string ; username : string ; } ;
+CreateVersionRequest : { draftId : string ; draftRevision : number ; } ;
+CreateWebhookRequest : { channelConfig ? : { [ key : string ] : unknown ; } | null ; channelMode ? : string ; fixedInputs ? : { [ key : string ] : unknown ; } ; inputMappings ? : { missingPolicy ? : string ; source : string ; target : string ; } [ ] ; name : string ; providerType : "dingtalk" | "wecom" | "feishu" | "agentx" ; reply ? : components [ "schemas" ] [ "WebhookReplyConfig" ] ; } ;
+CreateWorkflowRequest : { description ? : string | null ; name : string ; visibility : string ; } ;
+CredentialResponse : { credentialType : string ; currentSecretVersion : number ; id : string ; maskedHint : string ; name : string ; ownerDepartmentId : string ; status : string ; storageMode : string ; updatedAt : string ; version : number ; } ;
+DashboardSummaryResponse : { costMicrosToday : number ; executionsToday : number ; failedToday : number ; pendingApprovals : number ; runningExecutions : number ; succeededToday : number ; workflowCount : number ; } ;
+DatasetResponse : { caseCount : number ; description ? : string | null ; id : string ; latestVersion ? : number | null ; name : string ; ownerDepartmentId : string ; revision : number ; status : string ; updatedAt : string ; version : number ; visibility : string ; } ;
+DatasetVersionResponse : { caseCount : number ; contentHash : string ; createdAt : string ; datasetId : string ; id : string ; sourceRevision : number ; versionNumber : number ; } ;
+DebugExecutionRequest : { context ? : unknown ; expectedRevision : number ; idempotencyKey ? : string | null ; input ? : unknown ; inputSource ? : unknown ; mode : string ; overlayIds ? : string [ ] ; sideEffectDecisions ? : unknown ; targetNodeId ? : string | null ; } ;
+DebugMcpToolRequest : { arguments : unknown ; confirmationText ? : string | null ; confirmed : boolean ; expectedToolVersionId : string ; } ;
+DebugMcpToolResponse : { durationMs : number ; result : unknown ; toolVersionId : string ; } ;
+DebugOverlayResponse : { artifactId ? : string | null ; id : string ; kind : string ; nodeId : string ; payload : unknown ; schemaHash ? : string | null ; stale : boolean ; updatedAt : string ; updatedBy : string ; workflowId : string ; } ;
+DecideApprovalRequest : { decisionId : string ; idempotencyKey : string ; reason ? : string | null ; version : number ; } ;
+DeleteCaseRequest : { expectedRevision : number ; } ;
+DeletionImpactResponse : { deletable : boolean ; page : number ; pageSize : number ; references : components [ "schemas" ] [ "DeletionReference" ] [ ] ; targetVersion : number ; total : number ; } ;
+DeletionReference : { immutable : boolean ; nodeId ? : string | null ; nodeName ? : string | null ; parentId ? : string | null ; relation : string ; sourceId : string ; sourceModule : string ; sourceName : string ; sourceType : string ; } ;
+DeliveryDetail : { applicationId ? : string | null ; attemptCount : number ; channelBindingId : string ; createdAt : string ; executionId : string ; hasCredentialSnapshot ? : boolean ; id : string ; invocationId ? : string | null ; lastErrorCode ? : string | null ; lastErrorMessage ? : string | null ; origin : string ; payload : Record < string , never > ; provider : string ; providerMessageId ? : string | null ; status : "pending" | "delivering" | "delivered" | "failed" | "dead" ; target : Record < string , never > ; updatedAt : string ; } ;
+DeliveryPage : { apiVersion : number ; items : components [ "schemas" ] [ "DeliverySummary" ] [ ] ; } ;
+DeliverySummary : { applicationId ? : string | null ; attemptCount : number ; channelBindingId : string ; createdAt : string ; executionId : string ; id : string ; invocationId ? : string | null ; lastErrorCode ? : string | null ; lastErrorMessage ? : string | null ; origin : string ; payload : Record < string , never > ; provider : string ; providerMessageId ? : string | null ; status : "pending" | "delivering" | "delivered" | "failed" | "dead" ; updatedAt : string ; } ;
+DepartmentResponse : { id : string ; isRoot : boolean ; name : string ; parentId ? : string | null ; status : string ; version : number ; } ;
+DependencyHealth : { name : string ; required : boolean ; status : string ; } ;
+DeploymentResponse : { createdAt : string ; environmentId : string ; environmentName : string ; id : string ; sequenceNumber : number ; source : string ; status : string ; versionNumber : number ; workflowId : string ; workflowVersionId : string ; } ;
+DraftResponse : { baseVersionId : string | null ; definition : unknown ; definitionHash : string ; editorDocument : unknown ; editorHash : string ; id : string ; name : string ; revision : number ; schemaVersion : string ; status : "active" | "archived" ; updatedAt : string ; workflowId : string ; } ;
+EnvironmentResponse : { code : string ; id : string ; isBuiltin : boolean ; name : string ; status : string ; version : number ; } ;
+EvaluationCaseResultResponse : { caseId : string ; caseKey : string ; costMicros : number ; detail ? : unknown ; durationMs ? : number | null ; errorCode ? : string | null ; errorMessage ? : string | null ; ruleResults : components [ "schemas" ] [ "EvaluationRuleResultResponse" ] [ ] ; score ? : number | null ; sourceCaseId : string ; status : string ; targetExecutionId ? : string | null ; } ;
+EvaluationProfileResponse : { aggregation : string ; description ? : string | null ; id : string ; name : string ; ownerDepartmentId : string ; passThreshold : string ; rules : components [ "schemas" ] [ "EvaluationRuleResponse" ] [ ] ; status : string ; version : number ; versionId : string ; versionNumber : number ; visibility : string ; } ;
+EvaluationReportResponse : { metrics : unknown [ ] ; reportStatus : string ; results : components [ "schemas" ] [ "EvaluationCaseResultResponse" ] [ ] ; run : components [ "schemas" ] [ "EvaluationRunResponse" ] ; } ;
+EvaluationRuleInput : { configuration : unknown ; evaluatorType : string ; key : string ; name : string ; required ? : boolean ; weight ? : string ; } ;
+EvaluationRuleResponse : { configuration : unknown ; evaluatorType : string ; id : string ; key : string ; name : string ; required : boolean ; sortOrder : number ; weight : string ; } ;
+EvaluationRuleResultResponse : { costMicros : number ; detail : unknown ; durationMs ? : number | null ; evaluatorExecutionId ? : string | null ; evaluatorType : string ; id : string ; key : string ; name : string ; passed ? : boolean | null ; score ? : number | null ; status : string ; } ;
+EvaluationRunResponse : { createdAt : string ; datasetName : string ; datasetVersionId : string ; evaluationProfileVersionId : string ; id : string ; name : string ; ownerDepartmentId : string ; parameters : unknown ; resultCount : number ; status : string ; visibility : string ; workflowName : string ; workflowVersionId : string ; } ;
+ExecutionCommandResponse : { executionId : string ; replayed : boolean ; status : string ; } ;
+ExecutionEventListResponse : { items : components [ "schemas" ] [ "ExecutionEventResponse" ] [ ] ; nextCursor ? : number | null ; } ;
+ExecutionEventQuery : { after ? : number | null ; limit ? : number | null ; } ;
+ExecutionEventResponse : { eventType : string ; occurredAt : string ; sequence : number ; status : string ; summary : unknown ; } ;
+ExecutionListResponse : { items : components [ "schemas" ] [ "ExecutionResponse" ] [ ] ; limit : number ; nextCursor ? : string | null ; snapshotId : string ; total : number ; } ;
+ExecutionResponse : { admissionEpoch ? : number ; applicationId ? : string | null ; applicationName ? : string | null ; callerExecutionId ? : string | null ; costCurrency ? : string | null ; costMicros : number ; durationMs ? : number | null ; endedAt ? : string | null ; error ? : unknown ; errorCode ? : string | null ; errorMessage ? : string | null ; executionType : string ; forkCheckpointId ? : string | null ; id : string ; initiatorDepartmentId ? : string | null ; initiatorDepartmentName ? : string | null ; initiatorUserId ? : string | null ; initiatorUserName ? : string | null ; input ? : unknown ; inputTokens : number ; invocationId ? : string | null ; output ? : unknown ; outputTokens : number ; parentExecutionId ? : string | null ; sessionId ? : string | null ; source : components [ "schemas" ] [ "WorkflowDesignSourceV1" ] ; startedAt : string ; stateVersion ? : number ; status : string ; traceEventCount ? : number ; traceId : string ; traceWatermark ? : number ; triggerName ? : string | null ; triggerSourceId ? : string | null ; triggerType : string ; workflowId : string ; workflowName : string ; workflowVersionId ? : string | null ; workflowVersionNumber ? : number | null ; } ;
+FieldError : { code : string ; field : string ; message : string ; } ;
+ForkRequest : { checkpointId : string ; idempotencyKey ? : string | null ; inputOverrides ? : unknown ; mode : string ; nodeId ? : string | null ; sideEffectDecisions ? : unknown ; } ;
+GrantResponse : { createdAt : string ; id : string ; operation : string ; resourceId : string ; resourceType : string ; resourceVersionId ? : string | null ; subjectId : string ; subjectType : string ; } ;
+GrantableResourceResponse : { detail : string ; grantCount : number ; id : string ; name : string ; ownerDepartmentId : string ; resourceType : string ; status : string ; updatedAt : string ; } ;
+HealthCheckResponse : { checkedAt : string ; errorCode ? : string | null ; errorMessage ? : string | null ; latencyMs ? : number | null ; status : string ; } ;
+HealthResponse : { dependencies ? : components [ "schemas" ] [ "DependencyHealth" ] [ ] ; service : string ; status : string ; version : string ; } ;
+IdempotentCommandResponse : { accepted : boolean ; replayed : boolean ; } ;
+ImportCasesRequest : { content : string ; expectedRevision : number ; format : string ; } ;
+ImportWorkflowPackageRequest : { description ? : string | null ; name : string ; package : components [ "schemas" ] [ "WorkflowPackage" ] ; visibility : string ; } ;
+ImportedWorkflowResponse : { definitionHash : string ; draftId : string ; workflowId : string ; } ;
+KnowledgeDocument : { contentType : string ; createdAt : string ; errorCode ? : string | null ; errorMessage ? : string | null ; externalDocumentId ? : string | null ; id : string ; indexedAt ? : string | null ; name : string ; ragResourceId : string ; sizeBytes : number ; status : "uploading" | "indexing" | "indexed" | "failed" ; version : number ; } ;
+KnowledgeResponse : { connectionId : string ; connectionName : string ; externalResourceId : string ; grantCount : number ; id : string ; name : string ; ownerDepartmentId : string ; status : string ; syncStatus : string ; updatedAt : string ; version : number ; } ;
+LineageResponse : { deliveryId : string ; sourceItemIndex : number ; sourceNodeExecutionId : string ; sourceOutputIndex : number ; sourceRunIndex : number ; targetItemIndex : number ; } ;
+LoginRequest : { password : string ; username : string ; } ;
+McpDiscoveryResponse : { discoveredCount : number ; runId : string ; tools : components [ "schemas" ] [ "McpToolResponse" ] [ ] ; } ;
+McpEnvironmentCredentialInput : { credentialId : string ; name : string ; } ;
+McpRuntimeSandboxInput : { resourceId : string ; resourceVersionId : string ; } ;
+McpServerResponse : { currentVersionNumber : number ; description ? : string | null ; id : string ; lastDiscoveredAt ? : string | null ; name : string ; ownerDepartmentId : string ; status : string ; toolCount : number ; transport : components [ "schemas" ] [ "McpTransportInput" ] ; updatedAt : string ; version : number ; } ;
+McpToolResponse : { annotations : unknown ; availability : string ; currentVersionId : string ; currentVersionNumber : number ; debugEnabled : boolean ; description ? : string | null ; enabled : boolean ; id : string ; inputSchema : unknown ; name : string ; outputSchema ? : unknown ; schemaHash : string ; serverId : string ; sideEffect : string ; timeoutSeconds : number ; title ? : string | null ; version : number ; } ;
+McpTransportInput : { bearerCredentialId ? : string | null ; endpoint : string ; kind : "streamable_http" ; } | { bearerCredentialId ? : string | null ; endpoint : string ; kind : "sse" ; } | { args : string [ ] ; command : string ; environmentCredentialRefs : components [ "schemas" ] [ "McpEnvironmentCredentialInput" ] [ ] ; kind : "stdio" ; runtimeSandbox : components [ "schemas" ] [ "McpRuntimeSandboxInput" ] ; } ;
+MeResponse : { companyId : string ; companyName : string ; departmentId : string ; departmentName : string ; displayName : string ; id : string ; locale : string ; permissions : string [ ] ; roles : string [ ] ; timezone : string ; username : string ; } ;
+MemoryResponse : { accessMode : string ; connectionId : string ; connectionName : string ; externalNamespace : string ; grantCount : number ; id : string ; name : string ; ownerDepartmentId : string ; status : string ; updatedAt : string ; version : number ; } ;
+MissingGrantResponse : { nodeId : string ; operation : string ; reason : string ; requiredByResourceId ? : string | null ; resourceId : string ; resourceType : string ; } ;
+ModelDeploymentHistoryResponse : { changedAt : string ; changedBy : string ; connectionName : string ; deploymentId : string ; id : string ; modelName : string ; previousDeploymentId ? : string | null ; revisionNumber : number ; } ;
+ModelPriceResponse : { createdAt : string ; currency : string ; deploymentId : string ; id : string ; inputPerMillion : string ; outputPerMillion : string ; versionNumber : number ; } ;
+ModelResponse : { alias : string ; aliasVersion : number ; capabilities ? : ( "vision" | "audio" ) [ ] ; connectionCheckedAt ? : string | null ; connectionName : string ; connectionStatus : string ; credentialId ? : string | null ; defaultParameters : unknown ; deploymentId : string ; endpoint : string ; id : string ; maxInputTokens : number ; maxOutputTokens : number ; modelName : string ; ownerDepartmentId : string ; providerType : string ; revisionNumber : number ; status : string ; updatedAt : string ; } ;
+MoveEntryRequest : { expectedRevision : number ; name : string ; parentId ? : string | null ; } ;
+NodeAttemptResponse : { attemptNumber : number ; deadlineAt ? : string | null ; endedAt ? : string | null ; errorCode ? : string | null ; errorMessage ? : string | null ; id : string ; startedAt ? : string | null ; status : string ; workerInstanceId ? : string | null ; } ;
+NodeDefinitionDetail : { manifest : unknown ; manifestHash : string ; nodeType : string ; version : number ; } ;
+NodeDefinitionQuery : { category ? : string | null ; page ? : number | null ; pageSize ? : number | null ; search ? : string | null ; } ;
+NodeDefinitionSummary : { capability : string ; category : string ; description : string ; displayName : string ; executionStyle : string ; iconKey : string ; keywords : string [ ] ; manifestHash : string ; nodeType : string ; version : number ; } ;
+NodeExecutionListResponse : { items : components [ "schemas" ] [ "NodeExecutionResponse" ] [ ] ; } ;
+NodeExecutionResponse : { activationSlot : number ; attempts : components [ "schemas" ] [ "NodeAttemptResponse" ] [ ] ; capability : string ; costCurrency ? : string | null ; costMicros : number ; endedAt ? : string | null ; errorCode ? : string | null ; errorMessage ? : string | null ; executionId : string ; generation : number ; id : string ; input ? : unknown ; iterationIndex : number ; lineage : components [ "schemas" ] [ "LineageResponse" ] [ ] ; nodeId : string ; nodeName : string ; nodeType : string ; nodeVersion : number ; output ? : unknown ; runIndex : number ; sideEffectLevel : string ; startedAt ? : string | null ; status : string ; } ;
+NodeLock : { manifestHash : string ; nodeType : string ; version : number ; } ;
+NodeProviderOption : { description ? : string | null ; label : string ; manifest ? : unknown ; value : string ; } ;
+NodeProviderOptionsPage : { items : ( { description ? : string | null ; label : string ; manifest ? : unknown ; value : string ; } & { [ key : string ] : unknown ; } ) [ ] ; nextCursor ? : string | null ; } ;
+NodeProviderOptionsResponse : { items : components [ "schemas" ] [ "NodeProviderOption" ] [ ] ; } ;
+NodeProviderQuery : { limit ? : number | null ; search ? : string | null ; } ;
+NotificationInboxResponse : { items : components [ "schemas" ] [ "NotificationResponse" ] [ ] ; unreadCount : number ; } ;
+NotificationResponse : { arguments : unknown ; bodyKey : string ; createdAt : string ; id : string ; notificationType : string ; read : boolean ; targetId : string ; targetPath : string ; targetType : string ; titleKey : string ; tone : string ; } ;
+PermissionResponse : { description ? : string | null ; key : string ; name : string ; } ;
+PlaygroundConfigResponse : { applicationId : string ; deploymentId : string ; deploymentVersion : number ; errorCode : string | null ; errorMessage : string | null ; mapping : components [ "schemas" ] [ "ChatMappingV1" ] | null ; publishStatus : "active" | "publishing" | "failed" ; publishedVersion : number | null ; version : number ; } ;
+PluginResolveDefinitionRequest : { configuration : { [ key : string ] : unknown ; } ; upstreamContracts : { [ key : string ] : unknown ; } ; } ;
+PluginResolvedDefinition : { inputPorts ? : { kind : "main" | "error" ; name : string ; required ? : boolean ; variadic ? : boolean ; } [ ] ; issues ? : { code : string ; message : string ; path : string ; } [ ] ; outputPortSchemas ? : { [ key : string ] : unknown ; } ; outputPorts ? : { kind : "main" | "error" ; name : string ; required ? : boolean ; variadic ? : boolean ; } [ ] ; outputSchema ? : unknown ; status : "complete" | "incomplete" | "invalid" ; } ;
+PublishAttemptResponse : { activationSequence : number ; bundleId ? : string | null ; deploymentId : string ; errorCode ? : string | null ; errorMessage ? : string | null ; id : string ; nextAction : string ; previousAttemptId ? : string | null ; state : string ; updatedAt : string ; } ;
+PublishSkillVersionRequest : { dependencies ? : components [ "schemas" ] [ "SkillDependencyInput" ] [ ] ; expectedRevision : number ; } ;
+PublishWorkflowRequest : { environmentId : string ; workflowVersionId : string ; } ;
+PutPlaygroundConfigRequest : { expectedVersion : number ; mapping : components [ "schemas" ] [ "ChatMappingV1" ] | null ; } ;
+QueuedWorkflowRunResponse : { commandId : string ; status : string ; } ;
+QuotaPolicyInput : { dimension : string ; hardLimit : string ; periodSeconds ? : number | null ; } ;
+QuotaPolicyResponse : { activeReserved : string ; dimension : string ; hardLimit : string ; periodSeconds ? : number | null ; periodUsage : string ; version : number ; } ;
+ReassignApprovalRequest : { targetUserId : string ; version : number ; } ;
+ResourceAuthorizationInput : { operation : string ; resourceId : string ; resourceType : string ; resourceVersionId ? : string | null ; } ;
+ResourceAuthorizationResponse : { alreadyGrantedCount : number ; grantedCount : number ; resourceId : string ; resourceType : string ; workflowId : string ; } ;
+ResourceGrantRequestAuditResponse : { action : string ; actorName ? : string | null ; id : string ; occurredAt : string ; } ;
+ResourceGrantRequestResponse : { createdAt : string ; history : components [ "schemas" ] [ "ResourceGrantRequestAuditResponse" ] [ ] ; id : string ; items : components [ "schemas" ] [ "ResourceRequirementResponse" ] [ ] ; message ? : string | null ; operation : string ; primaryResourceId : string ; primaryResourceName ? : string | null ; primaryResourceType : string ; requestedBy : string ; requestedByName : string ; reviews : components [ "schemas" ] [ "ResourceGrantRequestReviewResponse" ] [ ] ; sourceDraftId ? : string | null ; sourceNodeId ? : string | null ; sourceRevision ? : number | null ; status : string ; subjectDepartmentName ? : string | null ; subjectId : string ; subjectType : "department" | "workflow_service_identity" ; updatedAt : string ; version : number ; workflowId ? : string | null ; workflowName ? : string | null ; workflowServiceIdentityId ? : string | null ; } ;
+ResourceGrantRequestReviewResponse : { canAct : boolean ; id : string ; ownerDepartmentId : string ; ownerDepartmentName : string ; reviewComment ? : string | null ; reviewedAt ? : string | null ; reviewedBy ? : string | null ; reviewedByName ? : string | null ; status : string ; version : number ; } ;
+ResourceOptionQuery : { operation ? : string | null ; page ? : number | null ; pageSize ? : number | null ; resourceType : string ; search ? : string | null ; } ;
+ResourceRequirementResponse : { active : boolean ; authorized : boolean ; name ? : string | null ; operation : string ; ownerDepartmentId ? : string | null ; requiredByResourceId ? : string | null ; resourceId : string ; resourceType : string ; resourceVersionId ? : string | null ; } ;
+ResourceValidationResponse : { missingGrants : components [ "schemas" ] [ "MissingGrantResponse" ] [ ] ; valid : boolean ; } ;
+RetentionItemResponse : { attemptCount : number ; dataType : string ; id : string ; reason ? : string | null ; status : string ; targetId : string ; updatedAt : string ; } ;
+RetentionRunResponse : { candidateCount : number ; completedAt ? : string | null ; createdAt : string ; deletedCount : number ; dryRun : boolean ; errorMessage ? : string | null ; id : string ; status : string ; } ;
+RetrievalTestResult : { citations ? : unknown [ ] ; documents ? : Record < string , never > [ ] ; recordIds ? : unknown [ ] ; text ? : string ; } ;
+ReviewResourceGrantRequest : { comment ? : string | null ; expectedVersion : number ; } ;
+RevisionResponse : { createdAt : string ; createdBy : string ; definitionHash : string ; editorHash : string ; id : string ; revision : number ; schemaVersion : string ; } ;
+RoleResponse : { code : string ; dataScope : string ; description ? : string | null ; id : string ; isBuiltin : boolean ; memberCount : number ; name : string ; permissions : string [ ] ; status : string ; version : number ; } ;
+RollbackWorkflowRequest : { targetWorkflowVersionId : string ; } ;
+RotateCredentialRequest : { secret : unknown ; version : number ; } ;
+RunWorkflowRequest : { idempotencyKey ? : string | null ; input ? : unknown ; } ;
+RuntimeCallDetail : { agentRunId ? : string | null ; attemptId : string ; callIndex : number ; callKind : string ; costCurrency ? : string | null ; costMicros : number ; endedAt ? : string | null ; errorCode ? : string | null ; errorMessage ? : string | null ; id : string ; inputTokens : number ; iterationIndex : number ; outputTokens : number ; requestFingerprint : string ; resourceId ? : string | null ; resourceType ? : string | null ; resourceVersionId ? : string | null ; responseArtifactId ? : string | null ; sideEffect : string ; startedAt : string ; status : string ; usageEstimated : boolean ; } ;
+RuntimeComponentStatus : { component : string ; instances ? : number | null ; lastHeartbeat ? : string | null ; queueDepth ? : number | null ; status : string ; } ;
+RuntimeDetailsResponse : { agentRuns : components [ "schemas" ] [ "AgentRunDetail" ] [ ] ; calls : components [ "schemas" ] [ "RuntimeCallDetail" ] [ ] ; costCurrency ? : string | null ; costMicros : number ; executionId : string ; inputTokens : number ; iterations : components [ "schemas" ] [ "AgentIterationDetail" ] [ ] ; outputTokens : number ; sandboxes : components [ "schemas" ] [ "SandboxLeaseDetail" ] [ ] ; } ;
+RuntimeStatusResponse : { activeSandboxes : number ; components : components [ "schemas" ] [ "RuntimeComponentStatus" ] [ ] ; failedToday : number ; running : number ; sandboxCompatibility ? : unknown ; waiting : number ; } ;
+SandboxLeaseDetail : { attemptId : string ; createdAt : string ; expiresAt : string ; heartbeatAt : string ; id : string ; lastError ? : string | null ; nodeExecutionId : string ; profileVersionId : string ; sandboxId ? : string | null ; status : string ; terminatedAt ? : string | null ; terminationAttempts : number ; } ;
+SandboxProfileResponse : { current : components [ "schemas" ] [ "SandboxProfileVersionResponse" ] ; currentVersionNumber : number ; description ? : string | null ; id : string ; name : string ; ownerDepartmentId : string ; status : string ; updatedAt : string ; version : number ; versions : components [ "schemas" ] [ "SandboxProfileVersionResponse" ] [ ] ; } ;
+SandboxProfileVersionInput : { cpuMillis : number ; diskBytes : number ; imageDigest : string ; memoryBytes : number ; networkPolicy : unknown ; outputLimitBytes : number ; pidsLimit : number ; runner : string ; timeoutSeconds : number ; } ;
+SandboxProfileVersionResponse : { configurationHash : string ; cpuMillis : number ; createdAt : string ; diskBytes : number ; id : string ; imageDigest : string ; memoryBytes : number ; networkPolicy : unknown ; outputLimitBytes : number ; pidsLimit : number ; runner : string ; timeoutSeconds : number ; versionNumber : number ; } ;
+SaveDebugOverlayRequest : { artifactId ? : string | null ; kind : string ; payload : unknown ; schemaHash ? : string | null ; } ;
+SaveDraftRequest : { definition : unknown ; editorDocument ? : unknown ; expectedRevision : number ; } ;
+ScheduleResponse : { cronExpression : string ; id : string ; input : unknown ; misfirePolicy : string ; name : string ; status : string ; timezone : string ; version : number ; } ;
+SessionResponse : { applicationDeploymentId : string ; applicationId : string ; externalUserId ? : string | null ; id : string ; status : string ; title ? : string | null ; updatedAt : string ; version : number ; versionPolicy : string ; workflowVersionId ? : string | null ; } ;
+SetBuilderModel : { expectedVersion : number ; modelAliasId : string ; } ;
+SideEffectConfirmationRequest : { checkpointId ? : string | null ; decision : string ; idempotencyKey : string ; nodeExecutionId : string ; } ;
+SkillDependencyInput : { operation : string ; resourceId : string ; resourceType : string ; resourceVersionId ? : string | null ; } ;
+SkillResponse : { alias : string ; description ? : string | null ; draftRevision : number ; grantCount : number ; id : string ; latestVersion ? : number | null ; name : string ; ownerDepartmentId : string ; status : string ; updatedAt : string ; version : number ; } ;
+SkillVersionResponse : { contentHash : string ; createdAt : string ; dependencies : components [ "schemas" ] [ "SkillDependencyInput" ] [ ] ; fileCount : number ; id : string ; manifest : unknown ; skillId : string ; sourceRevision : number ; versionNumber : number ; } ;
+SkillWorkspaceEntry : { artifactId ? : string | null ; contentHash ? : string | null ; editable : boolean ; entryType : string ; id : string ; mimeType ? : string | null ; name : string ; parentId ? : string | null ; path : string ; sizeBytes : number ; updatedAt : string ; } ;
+SkillWorkspaceResponse : { entries : components [ "schemas" ] [ "SkillWorkspaceEntry" ] [ ] ; revision : number ; } ;
+StartExecutionRequest : { idempotencyKey ? : string | null ; input ? : unknown ; } ;
+StudioBuilderAnswer : { answer : string ; editorInstanceId : string ; questionId : string ; } ;
+StudioBuilderSessionV1 : { canEdit : boolean ; draftId : string ; id : string ; runs : components [ "schemas" ] [ "StudioBuilderSessionV1_StudioBuilderRunSummaryV1" ] [ ] ; snapshot : components [ "schemas" ] [ "StudioBuilderSessionV1_StudioEditorSnapshotV1" ] ; } ;
+StudioBuilderSessionV1_BoundaryLayout : { boundary : components [ "schemas" ] [ "StudioBuilderSessionV1_WorkflowBoundary" ] ; x : number ; y : number ; } ;
+StudioBuilderSessionV1_ContextDefinition : { clientWritable : boolean ; default : unknown ; description : string | null ; maxSize : number | null ; mergePolicy : components [ "schemas" ] [ "StudioBuilderSessionV1_ContextMergePolicy" ] ; mutable : boolean ; schema : unknown ; scope : components [ "schemas" ] [ "StudioBuilderSessionV1_ContextScope" ] ; sensitive : boolean ; title : string | null ; } ;
+StudioBuilderSessionV1_ContextMergePolicy : "replace" | "append" | "merge_object" | "increment" | "reject_conflict" ;
+StudioBuilderSessionV1_ContextScope : "execution_tree" | "session" ;
+StudioBuilderSessionV1_ContextWrite : { operation : components [ "schemas" ] [ "StudioBuilderSessionV1_ContextWriteOperation" ] ; path : string ; value : components [ "schemas" ] [ "StudioBuilderSessionV1_InputBinding" ] ; } ;
+StudioBuilderSessionV1_ContextWriteOperation : "set" | "set_if_absent" | "delete" | "append" | "merge_object" | "increment" | "min" | "max" | "compare_and_set" ;
+StudioBuilderSessionV1_EditorAnnotation : { color ? : string | null ; height : number ; id : string ; text : string ; width : number ; x : number ; y : number ; } ;
+StudioBuilderSessionV1_EditorDocument : { annotations : components [ "schemas" ] [ "StudioBuilderSessionV1_EditorAnnotation" ] [ ] ; boundaryLayouts : components [ "schemas" ] [ "StudioBuilderSessionV1_BoundaryLayout" ] [ ] ; edges : components [ "schemas" ] [ "StudioBuilderSessionV1_EditorEdge" ] [ ] ; groups : components [ "schemas" ] [ "StudioBuilderSessionV1_EditorGroup" ] [ ] ; nodeLayouts : components [ "schemas" ] [ "StudioBuilderSessionV1_NodeLayout" ] [ ] ; viewport : components [ "schemas" ] [ "StudioBuilderSessionV1_EditorViewport" ] ; } ;
+StudioBuilderSessionV1_EditorEdge : { edgeId : string ; labelPosition ? : number | null ; } ;
+StudioBuilderSessionV1_EditorGroup : { collapsed : boolean ; color ? : string | null ; id : string ; label : string ; nodeIds : string [ ] ; } ;
+StudioBuilderSessionV1_EditorViewport : { x : number ; y : number ; zoom : number ; } ;
+StudioBuilderSessionV1_ExecutionOrder : "deterministic" | "parallel" ;
+StudioBuilderSessionV1_InputBinding : { kind : "literal" ; value : unknown ; } | { kind : "reference" ; missingPolicy : components [ "schemas" ] [ "StudioBuilderSessionV1_MissingValuePolicy" ] ; selector : components [ "schemas" ] [ "StudioBuilderSessionV1_ValueSelector" ] ; } | { kind : "template" ; segments : components [ "schemas" ] [ "StudioBuilderSessionV1_InputTemplateSegment" ] [ ] ; } | { items : components [ "schemas" ] [ "StudioBuilderSessionV1_InputBinding" ] [ ] ; kind : "array" ; } | { fields : { [ key : string ] : components [ "schemas" ] [ "StudioBuilderSessionV1_InputBinding" ] ; } ; kind : "object" ; } ;
+StudioBuilderSessionV1_InputTemplateSegment : { kind : "text" ; text : string ; } | { kind : "reference" ; missingPolicy : components [ "schemas" ] [ "StudioBuilderSessionV1_MissingValuePolicy" ] ; selector : components [ "schemas" ] [ "StudioBuilderSessionV1_ValueSelector" ] ; } ;
+StudioBuilderSessionV1_MissingValuePolicy : { kind : "error" ; } | { kind : "null" ; } | { kind : "omit" ; } ;
+StudioBuilderSessionV1_NodeLayout : { collapsed : boolean ; height ? : number | null ; nodeId : string ; width ? : number | null ; x : number ; y : number ; } ;
+StudioBuilderSessionV1_NodeSettings : { alwaysOutputData : boolean ; executeOnce : boolean ; maxTries : number ; retryOnFail : boolean ; timeoutMs : number | null ; waitBetweenTriesMs : number ; } ;
+StudioBuilderSessionV1_ResourceOperation : "view" | "use" | "read" | "write" | "manage" ;
+StudioBuilderSessionV1_ResourceReference : { bindingRole ? : string | null ; operation : components [ "schemas" ] [ "StudioBuilderSessionV1_ResourceOperation" ] ; resourceId : string ; resourceType : components [ "schemas" ] [ "StudioBuilderSessionV1_ResourceType" ] ; resourceVersionId ? : string | null ; } ;
+StudioBuilderSessionV1_ResourceType : "credential" | "model" | "mcp_server" | "mcp_tool" | "skill" | "rag" | "memory" | "sandbox_profile" ;
+StudioBuilderSessionV1_StudioBuilderRunSummaryV1 : { id : string ; modelAliasId : string ; settingVersion : number ; status : string ; } ;
+StudioBuilderSessionV1_StudioDocumentV1 : { definition : components [ "schemas" ] [ "StudioBuilderSessionV1_WorkflowDefinition" ] ; editorDocument : components [ "schemas" ] [ "StudioBuilderSessionV1_EditorDocument" ] ; } ;
+StudioBuilderSessionV1_StudioEditorSnapshotV1 : { document : components [ "schemas" ] [ "StudioBuilderSessionV1_StudioDocumentV1" ] ; documentHash : string ; editorInstanceId : string ; localDocumentRevision : number ; saveStatus : components [ "schemas" ] [ "StudioBuilderSessionV1_StudioSaveStatusV1" ] ; selectedExecutionId ? : string | null ; selectedNodeIds : string [ ] ; serverRevision : number ; } ;
+StudioBuilderSessionV1_StudioSaveStatusV1 : "saved" | "unsaved" ;
+StudioBuilderSessionV1_ValueNamespace : "inputs" | "outputs" | "contexts" | "execution" | "item" | "loop" ;
+StudioBuilderSessionV1_ValuePathSegment : string | number ;
+StudioBuilderSessionV1_ValueSelection : { kind : "current" ; } | { kind : "first" ; } | { kind : "last" ; } | { kind : "all" ; } | { index : number ; kind : "index" ; } ;
+StudioBuilderSessionV1_ValueSelector : { item : components [ "schemas" ] [ "StudioBuilderSessionV1_ValueSelection" ] ; namespace : components [ "schemas" ] [ "StudioBuilderSessionV1_ValueNamespace" ] ; path : components [ "schemas" ] [ "StudioBuilderSessionV1_ValuePathSegment" ] [ ] ; port ? : string | null ; run : components [ "schemas" ] [ "StudioBuilderSessionV1_ValueSelection" ] ; sourceNodeId ? : string | null ; } ;
+StudioBuilderSessionV1_WorkflowBoundary : "start" ;
+StudioBuilderSessionV1_WorkflowCompletion : "first_return" | "all_complete" ;
+StudioBuilderSessionV1_WorkflowConnection : { id : string ; order : number ; sourceHandle : string ; sourceNodeId : string ; targetHandle : string ; targetNodeId : string ; } ;
+StudioBuilderSessionV1_WorkflowDefinition : { connections : components [ "schemas" ] [ "StudioBuilderSessionV1_WorkflowConnection" ] [ ] ; end : components [ "schemas" ] [ "StudioBuilderSessionV1_WorkflowEnd" ] ; nodes : components [ "schemas" ] [ "StudioBuilderSessionV1_WorkflowNode" ] [ ] ; schemaVersion : components [ "schemas" ] [ "StudioBuilderSessionV1_WorkflowSchemaVersion" ] ; settings : components [ "schemas" ] [ "StudioBuilderSessionV1_WorkflowSettings" ] ; start : components [ "schemas" ] [ "StudioBuilderSessionV1_WorkflowStart" ] ; } ;
+StudioBuilderSessionV1_WorkflowEnd : { completion : components [ "schemas" ] [ "StudioBuilderSessionV1_WorkflowCompletion" ] ; error : components [ "schemas" ] [ "StudioBuilderSessionV1_WorkflowErrorEnd" ] ; outputs : { [ key : string ] : components [ "schemas" ] [ "StudioBuilderSessionV1_WorkflowOutput" ] ; } ; } ;
+StudioBuilderSessionV1_WorkflowErrorEnd : { outputs : { [ key : string ] : components [ "schemas" ] [ "StudioBuilderSessionV1_WorkflowOutput" ] ; } ; } ;
+StudioBuilderSessionV1_WorkflowNode : { contextWrites : components [ "schemas" ] [ "StudioBuilderSessionV1_ContextWrite" ] [ ] ; disabled : boolean ; id : string ; key : string ; name : string ; parameters : unknown ; parentId ? : string | null ; protected : boolean ; resourceReferences : components [ "schemas" ] [ "StudioBuilderSessionV1_ResourceReference" ] [ ] ; settings : components [ "schemas" ] [ "StudioBuilderSessionV1_NodeSettings" ] ; type : string ; typeVersion : number ; } ;
+StudioBuilderSessionV1_WorkflowOutput : { required : boolean ; schema : unknown ; sensitive : boolean ; } ;
+StudioBuilderSessionV1_WorkflowSchemaVersion : "8.0" ;
+StudioBuilderSessionV1_WorkflowSettings : { activationBudget : number ; executionOrder : components [ "schemas" ] [ "StudioBuilderSessionV1_ExecutionOrder" ] ; timeoutMs : number | null ; } ;
+StudioBuilderSessionV1_WorkflowStart : { contexts : { [ key : string ] : components [ "schemas" ] [ "StudioBuilderSessionV1_ContextDefinition" ] ; } ; inputs : unknown ; } ;
+StudioEditorAcknowledgementV1 : { commandId : string ; issues : string [ ] ; snapshot : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_StudioEditorSnapshotV1" ] ; status : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_StudioAcknowledgementStatusV1" ] ; } ;
+StudioEditorAcknowledgementV1_BoundaryLayout : { boundary : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_WorkflowBoundary" ] ; x : number ; y : number ; } ;
+StudioEditorAcknowledgementV1_ContextDefinition : { clientWritable : boolean ; default : unknown ; description : string | null ; maxSize : number | null ; mergePolicy : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_ContextMergePolicy" ] ; mutable : boolean ; schema : unknown ; scope : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_ContextScope" ] ; sensitive : boolean ; title : string | null ; } ;
+StudioEditorAcknowledgementV1_ContextMergePolicy : "replace" | "append" | "merge_object" | "increment" | "reject_conflict" ;
+StudioEditorAcknowledgementV1_ContextScope : "execution_tree" | "session" ;
+StudioEditorAcknowledgementV1_ContextWrite : { operation : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_ContextWriteOperation" ] ; path : string ; value : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_InputBinding" ] ; } ;
+StudioEditorAcknowledgementV1_ContextWriteOperation : "set" | "set_if_absent" | "delete" | "append" | "merge_object" | "increment" | "min" | "max" | "compare_and_set" ;
+StudioEditorAcknowledgementV1_EditorAnnotation : { color ? : string | null ; height : number ; id : string ; text : string ; width : number ; x : number ; y : number ; } ;
+StudioEditorAcknowledgementV1_EditorDocument : { annotations : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_EditorAnnotation" ] [ ] ; boundaryLayouts : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_BoundaryLayout" ] [ ] ; edges : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_EditorEdge" ] [ ] ; groups : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_EditorGroup" ] [ ] ; nodeLayouts : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_NodeLayout" ] [ ] ; viewport : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_EditorViewport" ] ; } ;
+StudioEditorAcknowledgementV1_EditorEdge : { edgeId : string ; labelPosition ? : number | null ; } ;
+StudioEditorAcknowledgementV1_EditorGroup : { collapsed : boolean ; color ? : string | null ; id : string ; label : string ; nodeIds : string [ ] ; } ;
+StudioEditorAcknowledgementV1_EditorViewport : { x : number ; y : number ; zoom : number ; } ;
+StudioEditorAcknowledgementV1_ExecutionOrder : "deterministic" | "parallel" ;
+StudioEditorAcknowledgementV1_InputBinding : { kind : "literal" ; value : unknown ; } | { kind : "reference" ; missingPolicy : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_MissingValuePolicy" ] ; selector : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_ValueSelector" ] ; } | { kind : "template" ; segments : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_InputTemplateSegment" ] [ ] ; } | { items : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_InputBinding" ] [ ] ; kind : "array" ; } | { fields : { [ key : string ] : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_InputBinding" ] ; } ; kind : "object" ; } ;
+StudioEditorAcknowledgementV1_InputTemplateSegment : { kind : "text" ; text : string ; } | { kind : "reference" ; missingPolicy : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_MissingValuePolicy" ] ; selector : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_ValueSelector" ] ; } ;
+StudioEditorAcknowledgementV1_MissingValuePolicy : { kind : "error" ; } | { kind : "null" ; } | { kind : "omit" ; } ;
+StudioEditorAcknowledgementV1_NodeLayout : { collapsed : boolean ; height ? : number | null ; nodeId : string ; width ? : number | null ; x : number ; y : number ; } ;
+StudioEditorAcknowledgementV1_NodeSettings : { alwaysOutputData : boolean ; executeOnce : boolean ; maxTries : number ; retryOnFail : boolean ; timeoutMs : number | null ; waitBetweenTriesMs : number ; } ;
+StudioEditorAcknowledgementV1_ResourceOperation : "view" | "use" | "read" | "write" | "manage" ;
+StudioEditorAcknowledgementV1_ResourceReference : { bindingRole ? : string | null ; operation : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_ResourceOperation" ] ; resourceId : string ; resourceType : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_ResourceType" ] ; resourceVersionId ? : string | null ; } ;
+StudioEditorAcknowledgementV1_ResourceType : "credential" | "model" | "mcp_server" | "mcp_tool" | "skill" | "rag" | "memory" | "sandbox_profile" ;
+StudioEditorAcknowledgementV1_StudioAcknowledgementStatusV1 : "applied" | "stale" | "read_only" | "rejected" ;
+StudioEditorAcknowledgementV1_StudioDocumentV1 : { definition : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_WorkflowDefinition" ] ; editorDocument : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_EditorDocument" ] ; } ;
+StudioEditorAcknowledgementV1_StudioEditorSnapshotV1 : { document : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_StudioDocumentV1" ] ; documentHash : string ; editorInstanceId : string ; localDocumentRevision : number ; saveStatus : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_StudioSaveStatusV1" ] ; selectedExecutionId ? : string | null ; selectedNodeIds : string [ ] ; serverRevision : number ; } ;
+StudioEditorAcknowledgementV1_StudioSaveStatusV1 : "saved" | "unsaved" ;
+StudioEditorAcknowledgementV1_ValueNamespace : "inputs" | "outputs" | "contexts" | "execution" | "item" | "loop" ;
+StudioEditorAcknowledgementV1_ValuePathSegment : string | number ;
+StudioEditorAcknowledgementV1_ValueSelection : { kind : "current" ; } | { kind : "first" ; } | { kind : "last" ; } | { kind : "all" ; } | { index : number ; kind : "index" ; } ;
+StudioEditorAcknowledgementV1_ValueSelector : { item : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_ValueSelection" ] ; namespace : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_ValueNamespace" ] ; path : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_ValuePathSegment" ] [ ] ; port ? : string | null ; run : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_ValueSelection" ] ; sourceNodeId ? : string | null ; } ;
+StudioEditorAcknowledgementV1_WorkflowBoundary : "start" ;
+StudioEditorAcknowledgementV1_WorkflowCompletion : "first_return" | "all_complete" ;
+StudioEditorAcknowledgementV1_WorkflowConnection : { id : string ; order : number ; sourceHandle : string ; sourceNodeId : string ; targetHandle : string ; targetNodeId : string ; } ;
+StudioEditorAcknowledgementV1_WorkflowDefinition : { connections : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_WorkflowConnection" ] [ ] ; end : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_WorkflowEnd" ] ; nodes : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_WorkflowNode" ] [ ] ; schemaVersion : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_WorkflowSchemaVersion" ] ; settings : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_WorkflowSettings" ] ; start : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_WorkflowStart" ] ; } ;
+StudioEditorAcknowledgementV1_WorkflowEnd : { completion : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_WorkflowCompletion" ] ; error : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_WorkflowErrorEnd" ] ; outputs : { [ key : string ] : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_WorkflowOutput" ] ; } ; } ;
+StudioEditorAcknowledgementV1_WorkflowErrorEnd : { outputs : { [ key : string ] : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_WorkflowOutput" ] ; } ; } ;
+StudioEditorAcknowledgementV1_WorkflowNode : { contextWrites : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_ContextWrite" ] [ ] ; disabled : boolean ; id : string ; key : string ; name : string ; parameters : unknown ; parentId ? : string | null ; protected : boolean ; resourceReferences : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_ResourceReference" ] [ ] ; settings : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_NodeSettings" ] ; type : string ; typeVersion : number ; } ;
+StudioEditorAcknowledgementV1_WorkflowOutput : { required : boolean ; schema : unknown ; sensitive : boolean ; } ;
+StudioEditorAcknowledgementV1_WorkflowSchemaVersion : "8.0" ;
+StudioEditorAcknowledgementV1_WorkflowSettings : { activationBudget : number ; executionOrder : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_ExecutionOrder" ] ; timeoutMs : number | null ; } ;
+StudioEditorAcknowledgementV1_WorkflowStart : { contexts : { [ key : string ] : components [ "schemas" ] [ "StudioEditorAcknowledgementV1_ContextDefinition" ] ; } ; inputs : unknown ; } ;
+StudioEditorCommandV1 : { autoLayout : boolean ; changedNodeIds : string [ ] ; commandId : string ; document : components [ "schemas" ] [ "StudioEditorCommandV1_StudioDocumentV1" ] ; draftId : string ; editorInstanceId : string ; expectedDocumentHash : string ; expectedLocalDocumentRevision : number ; resultDocumentHash : string ; runId : string ; } ;
+StudioEditorCommandV1_BoundaryLayout : { boundary : components [ "schemas" ] [ "StudioEditorCommandV1_WorkflowBoundary" ] ; x : number ; y : number ; } ;
+StudioEditorCommandV1_ContextDefinition : { clientWritable : boolean ; default : unknown ; description : string | null ; maxSize : number | null ; mergePolicy : components [ "schemas" ] [ "StudioEditorCommandV1_ContextMergePolicy" ] ; mutable : boolean ; schema : unknown ; scope : components [ "schemas" ] [ "StudioEditorCommandV1_ContextScope" ] ; sensitive : boolean ; title : string | null ; } ;
+StudioEditorCommandV1_ContextMergePolicy : "replace" | "append" | "merge_object" | "increment" | "reject_conflict" ;
+StudioEditorCommandV1_ContextScope : "execution_tree" | "session" ;
+StudioEditorCommandV1_ContextWrite : { operation : components [ "schemas" ] [ "StudioEditorCommandV1_ContextWriteOperation" ] ; path : string ; value : components [ "schemas" ] [ "StudioEditorCommandV1_InputBinding" ] ; } ;
+StudioEditorCommandV1_ContextWriteOperation : "set" | "set_if_absent" | "delete" | "append" | "merge_object" | "increment" | "min" | "max" | "compare_and_set" ;
+StudioEditorCommandV1_EditorAnnotation : { color ? : string | null ; height : number ; id : string ; text : string ; width : number ; x : number ; y : number ; } ;
+StudioEditorCommandV1_EditorDocument : { annotations : components [ "schemas" ] [ "StudioEditorCommandV1_EditorAnnotation" ] [ ] ; boundaryLayouts : components [ "schemas" ] [ "StudioEditorCommandV1_BoundaryLayout" ] [ ] ; edges : components [ "schemas" ] [ "StudioEditorCommandV1_EditorEdge" ] [ ] ; groups : components [ "schemas" ] [ "StudioEditorCommandV1_EditorGroup" ] [ ] ; nodeLayouts : components [ "schemas" ] [ "StudioEditorCommandV1_NodeLayout" ] [ ] ; viewport : components [ "schemas" ] [ "StudioEditorCommandV1_EditorViewport" ] ; } ;
+StudioEditorCommandV1_EditorEdge : { edgeId : string ; labelPosition ? : number | null ; } ;
+StudioEditorCommandV1_EditorGroup : { collapsed : boolean ; color ? : string | null ; id : string ; label : string ; nodeIds : string [ ] ; } ;
+StudioEditorCommandV1_EditorViewport : { x : number ; y : number ; zoom : number ; } ;
+StudioEditorCommandV1_ExecutionOrder : "deterministic" | "parallel" ;
+StudioEditorCommandV1_InputBinding : { kind : "literal" ; value : unknown ; } | { kind : "reference" ; missingPolicy : components [ "schemas" ] [ "StudioEditorCommandV1_MissingValuePolicy" ] ; selector : components [ "schemas" ] [ "StudioEditorCommandV1_ValueSelector" ] ; } | { kind : "template" ; segments : components [ "schemas" ] [ "StudioEditorCommandV1_InputTemplateSegment" ] [ ] ; } | { items : components [ "schemas" ] [ "StudioEditorCommandV1_InputBinding" ] [ ] ; kind : "array" ; } | { fields : { [ key : string ] : components [ "schemas" ] [ "StudioEditorCommandV1_InputBinding" ] ; } ; kind : "object" ; } ;
+StudioEditorCommandV1_InputTemplateSegment : { kind : "text" ; text : string ; } | { kind : "reference" ; missingPolicy : components [ "schemas" ] [ "StudioEditorCommandV1_MissingValuePolicy" ] ; selector : components [ "schemas" ] [ "StudioEditorCommandV1_ValueSelector" ] ; } ;
+StudioEditorCommandV1_MissingValuePolicy : { kind : "error" ; } | { kind : "null" ; } | { kind : "omit" ; } ;
+StudioEditorCommandV1_NodeLayout : { collapsed : boolean ; height ? : number | null ; nodeId : string ; width ? : number | null ; x : number ; y : number ; } ;
+StudioEditorCommandV1_NodeSettings : { alwaysOutputData : boolean ; executeOnce : boolean ; maxTries : number ; retryOnFail : boolean ; timeoutMs : number | null ; waitBetweenTriesMs : number ; } ;
+StudioEditorCommandV1_ResourceOperation : "view" | "use" | "read" | "write" | "manage" ;
+StudioEditorCommandV1_ResourceReference : { bindingRole ? : string | null ; operation : components [ "schemas" ] [ "StudioEditorCommandV1_ResourceOperation" ] ; resourceId : string ; resourceType : components [ "schemas" ] [ "StudioEditorCommandV1_ResourceType" ] ; resourceVersionId ? : string | null ; } ;
+StudioEditorCommandV1_ResourceType : "credential" | "model" | "mcp_server" | "mcp_tool" | "skill" | "rag" | "memory" | "sandbox_profile" ;
+StudioEditorCommandV1_StudioDocumentV1 : { definition : components [ "schemas" ] [ "StudioEditorCommandV1_WorkflowDefinition" ] ; editorDocument : components [ "schemas" ] [ "StudioEditorCommandV1_EditorDocument" ] ; } ;
+StudioEditorCommandV1_ValueNamespace : "inputs" | "outputs" | "contexts" | "execution" | "item" | "loop" ;
+StudioEditorCommandV1_ValuePathSegment : string | number ;
+StudioEditorCommandV1_ValueSelection : { kind : "current" ; } | { kind : "first" ; } | { kind : "last" ; } | { kind : "all" ; } | { index : number ; kind : "index" ; } ;
+StudioEditorCommandV1_ValueSelector : { item : components [ "schemas" ] [ "StudioEditorCommandV1_ValueSelection" ] ; namespace : components [ "schemas" ] [ "StudioEditorCommandV1_ValueNamespace" ] ; path : components [ "schemas" ] [ "StudioEditorCommandV1_ValuePathSegment" ] [ ] ; port ? : string | null ; run : components [ "schemas" ] [ "StudioEditorCommandV1_ValueSelection" ] ; sourceNodeId ? : string | null ; } ;
+StudioEditorCommandV1_WorkflowBoundary : "start" ;
+StudioEditorCommandV1_WorkflowCompletion : "first_return" | "all_complete" ;
+StudioEditorCommandV1_WorkflowConnection : { id : string ; order : number ; sourceHandle : string ; sourceNodeId : string ; targetHandle : string ; targetNodeId : string ; } ;
+StudioEditorCommandV1_WorkflowDefinition : { connections : components [ "schemas" ] [ "StudioEditorCommandV1_WorkflowConnection" ] [ ] ; end : components [ "schemas" ] [ "StudioEditorCommandV1_WorkflowEnd" ] ; nodes : components [ "schemas" ] [ "StudioEditorCommandV1_WorkflowNode" ] [ ] ; schemaVersion : components [ "schemas" ] [ "StudioEditorCommandV1_WorkflowSchemaVersion" ] ; settings : components [ "schemas" ] [ "StudioEditorCommandV1_WorkflowSettings" ] ; start : components [ "schemas" ] [ "StudioEditorCommandV1_WorkflowStart" ] ; } ;
+StudioEditorCommandV1_WorkflowEnd : { completion : components [ "schemas" ] [ "StudioEditorCommandV1_WorkflowCompletion" ] ; error : components [ "schemas" ] [ "StudioEditorCommandV1_WorkflowErrorEnd" ] ; outputs : { [ key : string ] : components [ "schemas" ] [ "StudioEditorCommandV1_WorkflowOutput" ] ; } ; } ;
+StudioEditorCommandV1_WorkflowErrorEnd : { outputs : { [ key : string ] : components [ "schemas" ] [ "StudioEditorCommandV1_WorkflowOutput" ] ; } ; } ;
+StudioEditorCommandV1_WorkflowNode : { contextWrites : components [ "schemas" ] [ "StudioEditorCommandV1_ContextWrite" ] [ ] ; disabled : boolean ; id : string ; key : string ; name : string ; parameters : unknown ; parentId ? : string | null ; protected : boolean ; resourceReferences : components [ "schemas" ] [ "StudioEditorCommandV1_ResourceReference" ] [ ] ; settings : components [ "schemas" ] [ "StudioEditorCommandV1_NodeSettings" ] ; type : string ; typeVersion : number ; } ;
+StudioEditorCommandV1_WorkflowOutput : { required : boolean ; schema : unknown ; sensitive : boolean ; } ;
+StudioEditorCommandV1_WorkflowSchemaVersion : "8.0" ;
+StudioEditorCommandV1_WorkflowSettings : { activationBudget : number ; executionOrder : components [ "schemas" ] [ "StudioEditorCommandV1_ExecutionOrder" ] ; timeoutMs : number | null ; } ;
+StudioEditorCommandV1_WorkflowStart : { contexts : { [ key : string ] : components [ "schemas" ] [ "StudioEditorCommandV1_ContextDefinition" ] ; } ; inputs : unknown ; } ;
+StudioEditorSnapshotV1 : { document : components [ "schemas" ] [ "StudioEditorSnapshotV1_StudioDocumentV1" ] ; documentHash : string ; editorInstanceId : string ; localDocumentRevision : number ; saveStatus : components [ "schemas" ] [ "StudioEditorSnapshotV1_StudioSaveStatusV1" ] ; selectedExecutionId ? : string | null ; selectedNodeIds : string [ ] ; serverRevision : number ; } ;
+StudioEditorSnapshotV1_BoundaryLayout : { boundary : components [ "schemas" ] [ "StudioEditorSnapshotV1_WorkflowBoundary" ] ; x : number ; y : number ; } ;
+StudioEditorSnapshotV1_ContextDefinition : { clientWritable : boolean ; default : unknown ; description : string | null ; maxSize : number | null ; mergePolicy : components [ "schemas" ] [ "StudioEditorSnapshotV1_ContextMergePolicy" ] ; mutable : boolean ; schema : unknown ; scope : components [ "schemas" ] [ "StudioEditorSnapshotV1_ContextScope" ] ; sensitive : boolean ; title : string | null ; } ;
+StudioEditorSnapshotV1_ContextMergePolicy : "replace" | "append" | "merge_object" | "increment" | "reject_conflict" ;
+StudioEditorSnapshotV1_ContextScope : "execution_tree" | "session" ;
+StudioEditorSnapshotV1_ContextWrite : { operation : components [ "schemas" ] [ "StudioEditorSnapshotV1_ContextWriteOperation" ] ; path : string ; value : components [ "schemas" ] [ "StudioEditorSnapshotV1_InputBinding" ] ; } ;
+StudioEditorSnapshotV1_ContextWriteOperation : "set" | "set_if_absent" | "delete" | "append" | "merge_object" | "increment" | "min" | "max" | "compare_and_set" ;
+StudioEditorSnapshotV1_EditorAnnotation : { color ? : string | null ; height : number ; id : string ; text : string ; width : number ; x : number ; y : number ; } ;
+StudioEditorSnapshotV1_EditorDocument : { annotations : components [ "schemas" ] [ "StudioEditorSnapshotV1_EditorAnnotation" ] [ ] ; boundaryLayouts : components [ "schemas" ] [ "StudioEditorSnapshotV1_BoundaryLayout" ] [ ] ; edges : components [ "schemas" ] [ "StudioEditorSnapshotV1_EditorEdge" ] [ ] ; groups : components [ "schemas" ] [ "StudioEditorSnapshotV1_EditorGroup" ] [ ] ; nodeLayouts : components [ "schemas" ] [ "StudioEditorSnapshotV1_NodeLayout" ] [ ] ; viewport : components [ "schemas" ] [ "StudioEditorSnapshotV1_EditorViewport" ] ; } ;
+StudioEditorSnapshotV1_EditorEdge : { edgeId : string ; labelPosition ? : number | null ; } ;
+StudioEditorSnapshotV1_EditorGroup : { collapsed : boolean ; color ? : string | null ; id : string ; label : string ; nodeIds : string [ ] ; } ;
+StudioEditorSnapshotV1_EditorViewport : { x : number ; y : number ; zoom : number ; } ;
+StudioEditorSnapshotV1_ExecutionOrder : "deterministic" | "parallel" ;
+StudioEditorSnapshotV1_InputBinding : { kind : "literal" ; value : unknown ; } | { kind : "reference" ; missingPolicy : components [ "schemas" ] [ "StudioEditorSnapshotV1_MissingValuePolicy" ] ; selector : components [ "schemas" ] [ "StudioEditorSnapshotV1_ValueSelector" ] ; } | { kind : "template" ; segments : components [ "schemas" ] [ "StudioEditorSnapshotV1_InputTemplateSegment" ] [ ] ; } | { items : components [ "schemas" ] [ "StudioEditorSnapshotV1_InputBinding" ] [ ] ; kind : "array" ; } | { fields : { [ key : string ] : components [ "schemas" ] [ "StudioEditorSnapshotV1_InputBinding" ] ; } ; kind : "object" ; } ;
+StudioEditorSnapshotV1_InputTemplateSegment : { kind : "text" ; text : string ; } | { kind : "reference" ; missingPolicy : components [ "schemas" ] [ "StudioEditorSnapshotV1_MissingValuePolicy" ] ; selector : components [ "schemas" ] [ "StudioEditorSnapshotV1_ValueSelector" ] ; } ;
+StudioEditorSnapshotV1_MissingValuePolicy : { kind : "error" ; } | { kind : "null" ; } | { kind : "omit" ; } ;
+StudioEditorSnapshotV1_NodeLayout : { collapsed : boolean ; height ? : number | null ; nodeId : string ; width ? : number | null ; x : number ; y : number ; } ;
+StudioEditorSnapshotV1_NodeSettings : { alwaysOutputData : boolean ; executeOnce : boolean ; maxTries : number ; retryOnFail : boolean ; timeoutMs : number | null ; waitBetweenTriesMs : number ; } ;
+StudioEditorSnapshotV1_ResourceOperation : "view" | "use" | "read" | "write" | "manage" ;
+StudioEditorSnapshotV1_ResourceReference : { bindingRole ? : string | null ; operation : components [ "schemas" ] [ "StudioEditorSnapshotV1_ResourceOperation" ] ; resourceId : string ; resourceType : components [ "schemas" ] [ "StudioEditorSnapshotV1_ResourceType" ] ; resourceVersionId ? : string | null ; } ;
+StudioEditorSnapshotV1_ResourceType : "credential" | "model" | "mcp_server" | "mcp_tool" | "skill" | "rag" | "memory" | "sandbox_profile" ;
+StudioEditorSnapshotV1_StudioDocumentV1 : { definition : components [ "schemas" ] [ "StudioEditorSnapshotV1_WorkflowDefinition" ] ; editorDocument : components [ "schemas" ] [ "StudioEditorSnapshotV1_EditorDocument" ] ; } ;
+StudioEditorSnapshotV1_StudioSaveStatusV1 : "saved" | "unsaved" ;
+StudioEditorSnapshotV1_ValueNamespace : "inputs" | "outputs" | "contexts" | "execution" | "item" | "loop" ;
+StudioEditorSnapshotV1_ValuePathSegment : string | number ;
+StudioEditorSnapshotV1_ValueSelection : { kind : "current" ; } | { kind : "first" ; } | { kind : "last" ; } | { kind : "all" ; } | { index : number ; kind : "index" ; } ;
+StudioEditorSnapshotV1_ValueSelector : { item : components [ "schemas" ] [ "StudioEditorSnapshotV1_ValueSelection" ] ; namespace : components [ "schemas" ] [ "StudioEditorSnapshotV1_ValueNamespace" ] ; path : components [ "schemas" ] [ "StudioEditorSnapshotV1_ValuePathSegment" ] [ ] ; port ? : string | null ; run : components [ "schemas" ] [ "StudioEditorSnapshotV1_ValueSelection" ] ; sourceNodeId ? : string | null ; } ;
+StudioEditorSnapshotV1_WorkflowBoundary : "start" ;
+StudioEditorSnapshotV1_WorkflowCompletion : "first_return" | "all_complete" ;
+StudioEditorSnapshotV1_WorkflowConnection : { id : string ; order : number ; sourceHandle : string ; sourceNodeId : string ; targetHandle : string ; targetNodeId : string ; } ;
+StudioEditorSnapshotV1_WorkflowDefinition : { connections : components [ "schemas" ] [ "StudioEditorSnapshotV1_WorkflowConnection" ] [ ] ; end : components [ "schemas" ] [ "StudioEditorSnapshotV1_WorkflowEnd" ] ; nodes : components [ "schemas" ] [ "StudioEditorSnapshotV1_WorkflowNode" ] [ ] ; schemaVersion : components [ "schemas" ] [ "StudioEditorSnapshotV1_WorkflowSchemaVersion" ] ; settings : components [ "schemas" ] [ "StudioEditorSnapshotV1_WorkflowSettings" ] ; start : components [ "schemas" ] [ "StudioEditorSnapshotV1_WorkflowStart" ] ; } ;
+StudioEditorSnapshotV1_WorkflowEnd : { completion : components [ "schemas" ] [ "StudioEditorSnapshotV1_WorkflowCompletion" ] ; error : components [ "schemas" ] [ "StudioEditorSnapshotV1_WorkflowErrorEnd" ] ; outputs : { [ key : string ] : components [ "schemas" ] [ "StudioEditorSnapshotV1_WorkflowOutput" ] ; } ; } ;
+StudioEditorSnapshotV1_WorkflowErrorEnd : { outputs : { [ key : string ] : components [ "schemas" ] [ "StudioEditorSnapshotV1_WorkflowOutput" ] ; } ; } ;
+StudioEditorSnapshotV1_WorkflowNode : { contextWrites : components [ "schemas" ] [ "StudioEditorSnapshotV1_ContextWrite" ] [ ] ; disabled : boolean ; id : string ; key : string ; name : string ; parameters : unknown ; parentId ? : string | null ; protected : boolean ; resourceReferences : components [ "schemas" ] [ "StudioEditorSnapshotV1_ResourceReference" ] [ ] ; settings : components [ "schemas" ] [ "StudioEditorSnapshotV1_NodeSettings" ] ; type : string ; typeVersion : number ; } ;
+StudioEditorSnapshotV1_WorkflowOutput : { required : boolean ; schema : unknown ; sensitive : boolean ; } ;
+StudioEditorSnapshotV1_WorkflowSchemaVersion : "8.0" ;
+StudioEditorSnapshotV1_WorkflowSettings : { activationBudget : number ; executionOrder : components [ "schemas" ] [ "StudioEditorSnapshotV1_ExecutionOrder" ] ; timeoutMs : number | null ; } ;
+StudioEditorSnapshotV1_WorkflowStart : { contexts : { [ key : string ] : components [ "schemas" ] [ "StudioEditorSnapshotV1_ContextDefinition" ] ; } ; inputs : unknown ; } ;
+TestCaseResponse : { caseKey : string ; context ? : unknown ; evaluatorOverride ? : unknown ; expectedOutput ? : unknown ; id : string ; input : unknown ; name : string ; sortOrder : number ; tags : string [ ] ; version : number ; } ;
+TraceContent : { contentRef : string | null ; eventId : string ; kind : "workflow_input" | "workflow_output" | "node_input" | "node_output" | "attempt_input" | "attempt_output" | "resolved_parameters" | "runtime_request" | "runtime_response" | "agent_input" | "agent_output" | "iteration_input" | "iteration_output" | "sandbox_request" | "sandbox_response" | "wait_request" | "wait_response" | "conversion_record" | "plugin_content" ; occurredAt : string ; preview : unknown ; } ;
+TraceEventResponse : { attributes : unknown ; contentKind : "workflow_input" | "workflow_output" | "node_input" | "node_output" | "attempt_input" | "attempt_output" | "resolved_parameters" | "runtime_request" | "runtime_response" | "agent_input" | "agent_output" | "iteration_input" | "iteration_output" | "sandbox_request" | "sandbox_response" | "wait_request" | "wait_response" | "conversion_record" | "plugin_content" | null ; contentPreview : unknown ; contentRef : string | null ; costMicros ? : number ; durationMs ? : number | null ; errorCode ? : string | null ; errorMessage ? : string | null ; eventId : string ; eventKind : "started" | "updated" | "finished" ; eventType : string ; occurredAt : string ; status : string ; } ;
+TraceResponse : { complete : boolean ; degraded : boolean ; executionId : string ; expectedEventCount : number ; expectedWatermark : number ; ingestedEventCount : number ; ingestedWatermark : number ; nextCursor ? : string | null ; spans : components [ "schemas" ] [ "TraceSpanSummary" ] [ ] ; totalSpans : number ; traceId : string ; warningCode ? : string | null ; } ;
+TraceSpanDetailResponse : { contents : components [ "schemas" ] [ "TraceContent" ] [ ] ; events : components [ "schemas" ] [ "TraceEventResponse" ] [ ] ; executionId : string ; span : components [ "schemas" ] [ "TraceSpanSummary" ] ; traceId : string ; } ;
+TraceSpanSummary : { agentIterationId ? : string | null ; agentRunId ? : string | null ; attemptId ? : string | null ; costMicros : number ; durationMs : number | null ; endedAt : string | null ; errorCode ? : string | null ; errorMessage ? : string | null ; hasDetails : boolean ; inputTokens ? : number | null ; nodeExecutionId ? : string | null ; outputTokens ? : number | null ; parentSpanId : string | null ; resourceId ? : string | null ; resourceType ? : string | null ; resourceVersion ? : string | null ; runtimeCallId ? : string | null ; sandboxLeaseId ? : string | null ; spanId : string ; spanKind : "execution" | "boundary" | "node" | "attempt" | "agent_run" | "agent_iteration" | "runtime_call" | "sandbox" | "wait" | "plugin_operation" ; spanName : string ; startedAt : string ; status : string ; waitId ? : string | null ; } ;
+UpdateApplicationRequest : { description ? : string | null ; name : string ; status : string ; version : number ; visibility : string ; } ;
+UpdateCaseRequest : components [ "schemas" ] [ "CaseInput" ] & { expectedRevision : number ; version : number ; } ;
+UpdateCredentialRequest : { name : string ; status : string ; version : number ; } ;
+UpdateDatasetRequest : { description ? : string | null ; name : string ; status : string ; version : number ; visibility : string ; } ;
+UpdateDepartmentRequest : { name : string ; parentId ? : string | null ; version : number ; } ;
+UpdateDraftRequest : { expectedRevision : number ; name : string ; status : "active" | "archived" ; } ;
+UpdateEnvironmentRequest : { name : string ; status : string ; version : number ; } ;
+UpdateExternalResourceRequest : { name : string ; status : string ; version : number ; } ;
+UpdateMarkdownRequest : { content : string ; description ? : string | null ; expectedRevision : number ; } ;
+UpdateMcpServerRequest : { configuration ? : unknown ; description ? : string | null ; name : string ; status : string ; transport : components [ "schemas" ] [ "McpTransportInput" ] ; version : number ; } ;
+UpdateMcpToolPolicyRequest : { debugEnabled : boolean ; enabled : boolean ; sideEffect : string ; timeoutSeconds : number ; version : number ; } ;
+UpdateModelRequest : { alias : string ; capabilities ? : ( "vision" | "audio" ) [ ] ; connectionName : string ; credentialId ? : string | null ; defaultParameters : unknown ; endpoint : string ; expectedAliasVersion : number ; maxInputTokens : number ; maxOutputTokens : number ; modelName : string ; ownerDepartmentId : string ; price : components [ "schemas" ] [ "CreateModelPriceRequest" ] ; providerType : string ; status : string ; } ;
+UpdateQuotaPoliciesRequest : { policies : components [ "schemas" ] [ "QuotaPolicyInput" ] [ ] ; } ;
+UpdateRoleRequest : { dataScope : string ; description ? : string | null ; name : string ; permissions : string [ ] ; version : number ; } ;
+UpdateSandboxProfileRequest : { description ? : string | null ; name : string ; status : string ; version : number ; } ;
+UpdateScheduleRequest : { cronExpression : string ; input : unknown ; misfirePolicy ? : string ; name : string ; status : string ; timezone : string ; version : number ; } ;
+UpdateSkillRequest : { alias : string ; description ? : string | null ; name : string ; status : string ; version : number ; } ;
+UpdateUserRequest : { departmentId : string ; displayName : string ; roleId : string ; version : number ; } ;
+UpdateWebhookRequest : { channelConfig ? : { [ key : string ] : unknown ; } | null ; channelMode ? : string ; fixedInputs ? : { [ key : string ] : unknown ; } ; inputMappings ? : { missingPolicy ? : string ; source : string ; target : string ; } [ ] ; name : string ; providerType : "dingtalk" | "wecom" | "feishu" | "agentx" ; reply ? : components [ "schemas" ] [ "WebhookReplyConfig" ] ; status : string ; version : number ; } ;
+UpdateWorkflowRequest : { description ? : string | null ; name : string ; version : number ; visibility : string ; } ;
+UpgradeSessionRequest : { version : number ; workflowVersionId : string ; } ;
+UpsertWorkflowMemberRequest : { memberRole : string ; userId : string ; } ;
+UserResponse : { departmentId : string ; departmentName : string ; displayName : string ; id : string ; passwordChangeRequired : boolean ; roles : string [ ] ; status : string ; username : string ; version : number ; } ;
+ValidateDraftRequest : { definition : unknown ; editorDocument ? : unknown ; } ;
+ValidateDraftResponse : { compilerVersion ? : string | null ; definitionHash ? : string | null ; editorHash ? : string | null ; issues : components [ "schemas" ] [ "ValidationIssue" ] [ ] ; } ;
+ValidationIssue : { code : string ; fieldPath ? : string | null ; message : string ; nodeId ? : string | null ; severity : string ; } ;
+VersionActionRequest : { version : number ; } ;
+WebhookProviderTemplate : { fields : { key : string ; required : boolean ; sensitive : boolean ; } [ ] ; mappingSources ? : string [ ] ; mode : string ; provider : string ; } ;
+WebhookReplyConfig : { enabled : boolean ; outputField : string ; template ? : string ; } ;
+WebhookResponse : { channelMode ? : string ; configFields ? : { [ key : string ] : unknown ; } ; configurationRevision : number ; connectionError ? : string | null ; connectionStatus ? : string | null ; fixedInputs : { [ key : string ] : unknown ; } ; id : string ; inputMappings : { missingPolicy ? : string ; source : string ; target : string ; } [ ] ; lastConnectedAt ? : string | null ; mappingCount : number ; name : string ; path : string ; providerType : string ; publicId : string ; reply ? : components [ "schemas" ] [ "WebhookReplyConfig" ] ; secret ? : string | null ; status : string ; version : number ; } ;
+WorkerCapabilityResponse : { capability : string ; compilerVersionMax : string ; compilerVersionMin : string ; heartbeatAt : string ; instanceId : string ; irSchemaVersions : unknown ; manifestHashes : unknown ; nodeProtocolVersion : string ; status : string ; } ;
+WorkflowCreatedResponse : components [ "schemas" ] [ "WorkflowResponse" ] & { createdDraftId : string ; } ;
+WorkflowDesignSourceV1 : { draftId : string ; kind : "draft_revision" ; revision : number ; revisionId : string ; } | { kind : "version" ; versionId : string ; versionNumber : number ; } ;
+WorkflowMemberResponse : { displayName : string ; memberRole : string ; userId : string ; username : string ; } ;
+WorkflowPackage : { apiBinding : unknown ; editorDocument : unknown ; manifest : components [ "schemas" ] [ "WorkflowPackageManifest" ] ; nodeLock : components [ "schemas" ] [ "NodeLock" ] [ ] ; subWorkflowReferences : string [ ] ; workflowDefinition : unknown ; } ;
+WorkflowPackageManifest : { contentHash : string ; name : string ; packageSchemaVersion : string ; signature : string ; signatureAlgorithm : string ; signingKeyId : string ; workflowSchemaVersion : string ; } ;
+WorkflowResourceOptionResponse : { accessState : string ; detail : string ; id : string ; name : string ; pendingRequestId ? : string | null ; requirements : components [ "schemas" ] [ "ResourceRequirementResponse" ] [ ] ; resourceType : string ; resourceVersionId ? : string | null ; status : string ; } ;
+WorkflowResponse : { canEdit : boolean ; description ? : string | null ; draftCount : number ; id : string ; latestVersion ? : number | null ; name : string ; ownerDepartmentId : string ; ownerName : string ; ownerUserId : string ; serviceIdentityId : string ; status : string ; updatedAt : string ; version : number ; visibility : string ; } ;
+WorkflowVersionResponse : { baseVersionId ? : string | null ; contentHash : string ; createdAt : string ; createdBy : string ; definition : unknown ; editorDocument : unknown ; id : string ; nodeManifests : { [ key : string ] : components [ "schemas" ] [ "WorkflowVersionResponse_NodeManifestVersion" ] ; } ; schemaVersion : string ; sourceDraftId : string ; sourceRevision : number ; sourceRevisionId : string ; versionNumber : number ; workflowId : string ; } ;
+WorkflowVersionResponse_BindingSlot : { multiple : boolean ; name : string ; placement : components [ "schemas" ] [ "WorkflowVersionResponse_BindingSlotPlacement" ] ; required : boolean ; resourceType : components [ "schemas" ] [ "WorkflowVersionResponse_ResourceType" ] ; } ;
+WorkflowVersionResponse_BindingSlotPlacement : "inspector" | "canvas" ;
+WorkflowVersionResponse_CanvasAppearance : { role : components [ "schemas" ] [ "WorkflowVersionResponse_CanvasNodeRole" ] ; } ;
+WorkflowVersionResponse_CanvasNodeRole : "default" | "trigger" | "branch" | "flow" | "merge" | "loop" | "suspend" | "approval" | "sub_workflow" | "agent" | "code" | "error_handler" ;
+WorkflowVersionResponse_CredentialRequirement : { credentialType : string ; required : boolean ; } ;
+WorkflowVersionResponse_ExecutionStyle : "action" | "trigger" | "suspend" | "sub_workflow" ;
+WorkflowVersionResponse_NodeCapability : "builtin" | "plugin_nodejs" | "agent" | "model" | "mcp_tool" | "skill" | "rag" | "memory" | "sandbox" ;
+WorkflowVersionResponse_NodeManifestLocalization : { bindingSlotLabels ? : { [ key : string ] : string ; } ; description ? : string ; displayName ? : string ; inputPortLabels ? : { [ key : string ] : string ; } ; keywords ? : string [ ] ; outputPortLabels ? : { [ key : string ] : string ; } ; parameterDescriptions ? : { [ key : string ] : string ; } ; parameterEnumOptions ? : { [ key : string ] : { [ key : string ] : string ; } ; } ; parameterLabels ? : { [ key : string ] : string ; } ; parameterPlaceholders ? : { [ key : string ] : string ; } ; } ;
+WorkflowVersionResponse_NodeManifestVersion : { artifactOutputSchema : unknown ; bindingSlots : components [ "schemas" ] [ "WorkflowVersionResponse_BindingSlot" ] [ ] ; capability : components [ "schemas" ] [ "WorkflowVersionResponse_NodeCapability" ] ; category : string ; contextReadCapability : boolean ; contextWriteCapability : boolean ; credentials : components [ "schemas" ] [ "WorkflowVersionResponse_CredentialRequirement" ] [ ] ; defaultTimeoutMs ? : number | null ; description : string ; displayName : string ; executionStyle : components [ "schemas" ] [ "WorkflowVersionResponse_ExecutionStyle" ] ; iconKey : string ; inputPorts : components [ "schemas" ] [ "WorkflowVersionResponse_NodePort" ] [ ] ; keywords : string [ ] ; localizations ? : { [ key : string ] : components [ "schemas" ] [ "WorkflowVersionResponse_NodeManifestLocalization" ] ; } ; nodeType : string ; outputCardinality : { [ key : string ] : components [ "schemas" ] [ "WorkflowVersionResponse_OutputCardinality" ] ; } ; outputPortSchemas ? : { [ key : string ] : unknown ; } ; outputPorts : components [ "schemas" ] [ "WorkflowVersionResponse_NodePort" ] [ ] ; outputSchema : unknown ; parameterSchema : unknown ; plugin ? : components [ "schemas" ] [ "WorkflowVersionResponse_PluginNodeBinding" ] | null ; protocolVersion : components [ "schemas" ] [ "WorkflowVersionResponse_NodeProtocolVersion" ] ; providers : string [ ] ; readiness : components [ "schemas" ] [ "WorkflowVersionResponse_ReadinessPolicy" ] ; retryPolicy : components [ "schemas" ] [ "WorkflowVersionResponse_NodeRetryPolicy" ] ; sandboxRequired : boolean ; selectorCapabilities : components [ "schemas" ] [ "WorkflowVersionResponse_SelectorCapabilities" ] ; sideEffectLevel : components [ "schemas" ] [ "WorkflowVersionResponse_SideEffectLevel" ] ; supportsMock : boolean ; uiSchema : components [ "schemas" ] [ "WorkflowVersionResponse_NodeUiSchema" ] ; version : number ; } ;
+WorkflowVersionResponse_NodePort : { kind : components [ "schemas" ] [ "WorkflowVersionResponse_PortKind" ] ; name : string ; required : boolean ; variadic : boolean ; } ;
+WorkflowVersionResponse_NodeProtocolVersion : "3.0" ;
+WorkflowVersionResponse_NodeRetryPolicy : { initialBackoffMs : number ; maxAttempts : number ; maxBackoffMs : number ; retryable : boolean ; } ;
+WorkflowVersionResponse_NodeUiSchema : { canvas ? : components [ "schemas" ] [ "WorkflowVersionResponse_CanvasAppearance" ] | null ; fields ? : { [ key : string ] : unknown ; } ; order ? : string [ ] ; resourceSelectors ? : unknown [ ] ; } ;
+WorkflowVersionResponse_OutputCardinality : "zero_or_one" | "exactly_one" | "zero_or_many" | "many" ;
+WorkflowVersionResponse_PluginNodeBinding : { bundleDigest : string ; packageId : string ; packageVersion : string ; runtimeArtifact ? : components [ "schemas" ] [ "WorkflowVersionResponse_PluginRuntimeArtifact" ] | null ; runtimeEntry : string ; runtimeSource : string ; traceRenderers ? : components [ "schemas" ] [ "WorkflowVersionResponse_PluginTraceRenderer" ] [ ] ; uiAssets ? : { [ key : string ] : string ; } ; uiEntry ? : string | null ; uiSource ? : string | null ; uiStyles ? : string | null ; } ;
+WorkflowVersionResponse_PluginRuntimeArtifact : { contentHash : string ; mediaType : string ; objectId : string ; sizeBytes : number ; } ;
+WorkflowVersionResponse_PluginTraceRenderer : { contentType : string ; contentVersion : number ; exportName : string ; schema : unknown ; } ;
+WorkflowVersionResponse_PortKind : "main" | "error" ;
+WorkflowVersionResponse_ReadinessPolicy : "any" | "all" | "required" ;
+WorkflowVersionResponse_ResourceType : "credential" | "model" | "mcp_server" | "mcp_tool" | "skill" | "rag" | "memory" | "sandbox_profile" ;
+WorkflowVersionResponse_SelectorCapabilities : { namespaces : string [ ] ; supportsAll : boolean ; supportsCurrent : boolean ; supportsFirstLast : boolean ; supportsRunSelection : boolean ; } ;
+WorkflowVersionResponse_SideEffectLevel : "none" | "idempotent" | "reversible" | "irreversible" ;
+} ;
+responses : never ;
+parameters : never ;
+requestBodies : never ;
+headers : never ;
+pathItems : never ;
 }

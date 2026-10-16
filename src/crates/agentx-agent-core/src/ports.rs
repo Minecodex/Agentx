@@ -84,6 +84,8 @@ pub struct ModelResponseV1 {
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum ModelPortError {
+    #[error("model effect is pending: {0}")]
+    Pending(String),
     #[error("model context overflow")]
     ContextOverflow,
     #[error("model request was cancelled")]
@@ -104,6 +106,10 @@ pub struct ModelDeltaChunk {
 }
 
 pub trait ModelPort {
+    fn observe(&mut self, _context: &EffectContextV1) -> crate::EffectObservationV1 {
+        crate::EffectObservationV1::Unknown
+    }
+
     fn invoke(
         &mut self,
         request: &ModelRequestV1,

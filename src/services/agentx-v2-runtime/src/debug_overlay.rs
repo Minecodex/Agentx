@@ -113,6 +113,14 @@ pub(crate) async fn apply_completion(
             .bind(request.attempt_id)
             .execute(&mut **tx)
             .await?;
+            // The node query and subsequent Pin read the execution row. Mock
+            // and replay results must expose the same validated port map there.
+            sqlx::query("UPDATE node_executions SET output_json=? WHERE tenant_id=? AND id=?")
+                .bind(serde_json::to_value(&outputs).map_err(RuntimeError::from)?)
+                .bind(request.tenant_id)
+                .bind(request.node_execution_id.as_uuid())
+                .execute(&mut **tx)
+                .await?;
             let mut trace = crate::trace_delivery::TraceDraft::execution(
                 request.tenant_id,
                 request.execution_id,

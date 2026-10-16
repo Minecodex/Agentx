@@ -67,6 +67,18 @@ pub(crate) async fn build_version_snapshots(
     tenant_id: Uuid,
     workflow_id: Uuid,
     definition: &WorkflowDefinition,
+    frozen: &[ResourceVersionSnapshot],
+) -> ApiResult<Vec<ResourceVersionSnapshot>> {
+    resolve_snapshots(state, tenant_id, workflow_id, definition, frozen, true).await
+}
+
+pub(crate) async fn resolve_snapshots(
+    state: &ControlApiState,
+    tenant_id: Uuid,
+    workflow_id: Uuid,
+    definition: &WorkflowDefinition,
+    frozen: &[ResourceVersionSnapshot],
+    authorize: bool,
 ) -> ApiResult<Vec<ResourceVersionSnapshot>> {
     let identity_id: Uuid = sqlx::query_scalar(
         "SELECT id FROM workflow_service_identities WHERE tenant_id=? AND workflow_id=? AND status='active'",
@@ -85,7 +97,23 @@ pub(crate) async fn build_version_snapshots(
     let mut seen = HashMap::new();
     let mut snapshots = Vec::new();
     while let Some((node_id, mut reference, ancestry)) = queue.pop_front() {
-        let snapshot = resource_snapshot(state, tenant_id, &mut reference).await?;
+        let inherited = frozen.iter().find(|saved| {
+            saved.node_id == node_id
+                && saved.reference.resource_type == reference.resource_type
+                && saved.reference.resource_id == reference.resource_id
+                && saved.reference.operation == reference.operation
+                && (reference.resource_version_id.is_none()
+                    || reference.resource_version_id == saved.reference.resource_version_id)
+        });
+        let snapshot = if let Some(saved) = inherited {
+            // Check current availability without replacing the immutable deployment, price or secret version.
+            let mut availability = saved.reference.clone();
+            resource_snapshot(state, tenant_id, &mut availability).await?;
+            reference.resource_version_id = saved.reference.resource_version_id;
+            saved.snapshot.clone()
+        } else {
+            resource_snapshot(state, tenant_id, &mut reference).await?
+        };
         if reference.resource_type == ResourceType::Skill
             && reference
                 .resource_version_id
@@ -115,7 +143,9 @@ pub(crate) async fn build_version_snapshots(
             continue;
         }
         seen.insert(identity, reference.resource_version_id);
-        require_grant(state, tenant_id, identity_id, &reference).await?;
+        if authorize {
+            require_grant(state, tenant_id, identity_id, &reference).await?;
+        }
         if reference.resource_type == ResourceType::Skill {
             let version_id = reference.resource_version_id.ok_or_else(|| {
                 ApiError::unprocessable("RESOURCE_VERSION_MISSING", "Skill version is required")
@@ -207,7 +237,18 @@ pub(crate) async fn build_version_snapshots(
                 }
             }
         }
-        for credential_id in credential_dependencies(state, tenant_id, &reference).await? {
+        let credentials = if let Some(saved) = inherited {
+            saved
+                .snapshot
+                .get("credentialId")
+                .and_then(Value::as_str)
+                .and_then(|id| Uuid::parse_str(id).ok())
+                .into_iter()
+                .collect()
+        } else {
+            credential_dependencies(state, tenant_id, &reference).await?
+        };
+        for credential_id in credentials {
             queue.push_back((
                 node_id.clone(),
                 generated_reference(ResourceType::Credential, credential_id),

@@ -176,12 +176,20 @@ async fn update_credential(
             "Credential status is invalid",
         ));
     }
-    let changed=sqlx::query("UPDATE credentials SET name=?,status=?,version=version+1 WHERE tenant_id=? AND id=? AND version=?").bind(required_name(&input.name)?).bind(input.status).bind(actor.tenant_id).bind(id).bind(input.version).execute(&state.pool).await?;
+    let changed=sqlx::query("UPDATE credentials SET name=?,status=?,version=version+1 WHERE tenant_id=? AND id=? AND version=?").bind(required_name(&input.name)?).bind(&input.status).bind(actor.tenant_id).bind(id).bind(input.version).execute(&state.pool).await?;
     if changed.rows_affected() != 1 {
         return Err(ApiError::conflict(
             "CREDENTIAL_VERSION_CONFLICT",
             "Credential changed",
         ));
+    }
+    if input.status == "disabled" {
+        crate::studio_builder_api::revoke_runs(
+            &state,
+            actor.tenant_id,
+            crate::studio_builder_api::DesignRevocation::Credential(id, input.version),
+        )
+        .await?;
     }
     Ok(Json(load(&state, actor.tenant_id, id).await?))
 }
@@ -229,6 +237,20 @@ async fn delete_credential(
 ) -> ApiResult<StatusCode> {
     actor.require("credential:manage")?;
     require_visible(&state, &actor, id).await?;
+    let mut tx = crate::workflow_revision_resources::begin_delete(
+        &state.pool,
+        actor.tenant_id,
+        "credential",
+        id,
+    )
+    .await?;
+    let builder_reference: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenant_settings WHERE tenant_id=? AND studio_builder_credential_id=?) OR EXISTS(SELECT 1 FROM studio_builder_runs WHERE tenant_id=? AND credential_id=? AND status IN ('queued','running','waiting','outcome_unknown'))").bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
+    if builder_reference {
+        return Err(ApiError::conflict(
+            "RESOURCE_REFERENCED",
+            "Clear the canvas AI model setting before deleting this resource",
+        ));
+    }
     let references:i64=sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM model_deployments WHERE tenant_id=? AND credential_id=?)+(SELECT COUNT(*) FROM workflow_draft_resources WHERE tenant_id=? AND resource_type='credential' AND resource_id=?)+(SELECT COUNT(*) FROM workflow_version_resources WHERE tenant_id=? AND resource_type='credential' AND resource_id=?)").bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
     if references != 0 {
         return Err(ApiError::conflict(
@@ -237,7 +259,7 @@ async fn delete_credential(
         ));
     }
     let versions=sqlx::query("SELECT secret_ref,provider_version FROM credential_secret_versions WHERE tenant_id=? AND credential_id=?").bind(actor.tenant_id).bind(id).fetch_all(&state.pool).await?;
-    let mut tx = state.pool.begin().await?;
+
     sqlx::query("DELETE FROM credential_secret_versions WHERE tenant_id=? AND credential_id=?")
         .bind(actor.tenant_id)
         .bind(id)

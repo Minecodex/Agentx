@@ -155,6 +155,7 @@ version = "0.0.5-beta"
 dependencies = [
  "schemars 1.2.2",
  "serde",
+ "serde_jcs",
  "serde_json",
  "sha2",
  "time",
@@ -269,6 +270,7 @@ dependencies = [
 name = "agentx-runtime-contracts"
 version = "0.0.5-beta"
 dependencies = [
+ "agentx-agent-core",
  "agentx-domain",
  "agentx-node-protocol",
  "anyhow",
@@ -2930,6 +2932,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 name = "platform-control"
 version = "0.0.5-beta"
 dependencies = [
+ "agentx-agent-core",
  "agentx-api-types",
  "agentx-application",
  "agentx-bundle-builder",
@@ -2942,6 +2945,7 @@ dependencies = [
  "agentx-service-kit",
  "anyhow",
  "argon2",
+ "async-stream",
  "axum",
  "axum-extra",
  "base64",
@@ -2950,6 +2954,7 @@ dependencies = [
  "cron",
  "csv",
  "ed25519-dalek",
+ "futures",
  "http-body-util",
  "jsonschema",
  "jsonwebtoken",
@@ -2958,6 +2963,7 @@ dependencies = [
  "regex",
  "reqwest",
  "rust_decimal",
+ "schemars 1.2.2",
  "secrecy",
  "serde",
  "serde_json",

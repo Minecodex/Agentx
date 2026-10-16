@@ -1,4 +1,5 @@
 const translations = {
+  "draftRevision": "草稿 {{draft}} · r{{revision}}",
   "trace": "查看 Trace",
   "mainViews": { "trace": "Trace", "recovery": "恢复" },
   "cost": "成本",
@@ -57,7 +58,6 @@ const translations = {
   ,"sideEffectSubmitted": "副作用决策已提交"
   ,"backToList": "返回执行列表"
   ,"executionId": "执行 {{id}}"
-  ,"workflowVersion": "版本 {{version}}"
   ,"durationLabel": "耗时"
   ,"triggerLabel": "触发方式"
   ,"refresh": "刷新执行"

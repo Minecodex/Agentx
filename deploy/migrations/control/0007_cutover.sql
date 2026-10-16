@@ -1,17 +1,17 @@
 -- V2-08A stores the immutable Workflow Definition and the mutable Studio
--- editor document independently. Earlier migrations remain immutable.
+-- editor document independently. Baseline DDL is rebuilt during development.
 
 ALTER TABLE workflow_drafts
-    ADD COLUMN editor_json JSON NULL AFTER definition_json,
-    ADD COLUMN editor_hash VARCHAR(80) NULL AFTER content_hash;
+    ADD COLUMN editor_json LONGTEXT NOT NULL CHECK (JSON_VALID(editor_json)) AFTER definition_json,
+    ADD COLUMN editor_hash VARCHAR(80) NOT NULL AFTER content_hash;
 
 ALTER TABLE workflow_draft_revisions
-    ADD COLUMN editor_json JSON NULL AFTER definition_json,
-    ADD COLUMN editor_hash VARCHAR(80) NULL AFTER content_hash;
+    ADD COLUMN editor_json LONGTEXT NOT NULL CHECK (JSON_VALID(editor_json)) AFTER definition_json,
+    ADD COLUMN editor_hash VARCHAR(80) NOT NULL AFTER content_hash;
 
 ALTER TABLE workflow_versions
-    ADD COLUMN editor_json JSON NULL AFTER definition_json,
-    ADD COLUMN editor_hash VARCHAR(80) NULL AFTER content_hash;
+    ADD COLUMN editor_json LONGTEXT NOT NULL CHECK (JSON_VALID(editor_json)) AFTER definition_json,
+    ADD COLUMN editor_hash VARCHAR(80) NOT NULL AFTER content_hash;
 
 -- V2 never stores credential plaintext or local ciphertext in Control MySQL.
 -- The row records only an immutable Vault KV v2 reference.

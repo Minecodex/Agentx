@@ -570,3 +570,24 @@ button:disabled {
   width: 140px !important;
   z-index: 4 !important;
 }
+
+/* The same theme tokens as the Markdown editor, with compact message spacing. */
+.agentx-markdown-prose > :first-child { margin-top: 0; }
+.agentx-markdown-prose > :last-child { margin-bottom: 0; }
+.agentx-markdown-prose p, .agentx-markdown-prose ul, .agentx-markdown-prose ol,
+.agentx-markdown-prose pre, .agentx-markdown-prose blockquote, .agentx-markdown-prose table { margin-block: .65em; }
+.agentx-markdown-prose h1, .agentx-markdown-prose h2, .agentx-markdown-prose h3,
+.agentx-markdown-prose h4, .agentx-markdown-prose h5, .agentx-markdown-prose h6 { margin-block: 1em .5em; font-weight: 600; line-height: 1.4; }
+.agentx-markdown-prose h1 { font-size: 1.3em; }
+.agentx-markdown-prose h2 { font-size: 1.2em; }
+.agentx-markdown-prose h3 { font-size: 1.1em; }
+.agentx-markdown-prose ul { list-style: disc; padding-left: 1.5em; }
+.agentx-markdown-prose ol { list-style: decimal; padding-left: 1.5em; }
+.agentx-markdown-prose li > p { margin-block: .25em; }
+.agentx-markdown-prose blockquote { border-left: 3px solid var(--ui-border); padding-left: .75em; color: var(--ui-muted-foreground); }
+.agentx-markdown-prose code { border-radius: .25rem; background: var(--ui-muted); padding: .1em .3em; font-size: .95em; }
+.agentx-markdown-prose pre { max-width: 100%; overflow-x: auto; border: 1px solid var(--ui-border); border-radius: .375rem; background: var(--ui-muted); padding: .75em; }
+.agentx-markdown-prose pre code { padding: 0; background: transparent; }
+.agentx-markdown-prose table { width: 100%; border-collapse: collapse; }
+.agentx-markdown-prose th, .agentx-markdown-prose td { border: 1px solid var(--ui-border); padding: .4em .6em; text-align: left; }
+.agentx-markdown-prose a { color: var(--ui-primary); text-decoration: underline; text-underline-offset: 2px; }

@@ -8,6 +8,7 @@ import time
 
 import pytest
 
+from tests.e2e.draft_fixtures import fixture_draft_id
 from tests.e2e.product.live_text_support import post
 from tests.e2e.product.remaining_support import authorize, get, invoke, reference, report, save_version, start_execution
 from tests.e2e.product.test_provider_integration import _sandbox_image_digest
@@ -41,7 +42,7 @@ def code_workflow(state, suffix, source, *, ttl=120, output_example=None):
         control, "/workflows", {"name": f"Boundary Python {suffix} {state['runId']}", "visibility": "company"}
     )["id"]
     authorize(control, workflow, reference("sandbox_profile", profile["id"]))
-    draft = get(control, f"/workflows/{workflow}/draft")
+    draft = get(control, f"/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}")
     definition = draft["definition"]
     definition["start"]["inputs"] = {
         "type": "object",

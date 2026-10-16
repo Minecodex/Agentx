@@ -357,6 +357,9 @@ async fn delete_skill(
     Query(query): Query<DeleteQuery>,
 ) -> ApiResult<StatusCode> {
     actor.require("skill:manage")?;
+    let mut tx =
+        crate::workflow_revision_resources::begin_delete(&state.pool, actor.tenant_id, "skill", id)
+            .await?;
     let referenced: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM resource_grants WHERE tenant_id=? AND resource_type='skill' AND resource_id=? UNION ALL SELECT 1 FROM skill_dependencies WHERE tenant_id=? AND resource_type='skill' AND resource_id=?)")
         .bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
     if referenced {
@@ -367,7 +370,7 @@ async fn delete_skill(
     }
     let artifacts = sqlx::query_scalar::<_, Uuid>("SELECT DISTINCT artifact_id FROM skill_workspace_entries WHERE tenant_id=? AND skill_id=? AND artifact_id IS NOT NULL")
         .bind(actor.tenant_id).bind(id).fetch_all(&state.pool).await?;
-    let mut tx = state.pool.begin().await?;
+
     let deleted = sqlx::query("DELETE FROM skills WHERE tenant_id=? AND id=? AND version=?")
         .bind(actor.tenant_id)
         .bind(id)

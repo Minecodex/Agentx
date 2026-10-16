@@ -50,10 +50,16 @@ pub async fn ping_control_mysql(pool: &MySqlPool) -> Result<()> {
 pub async fn migrate_control_mysql(pool: &MySqlPool) -> Result<()> {
     reject_populated_v2_03_control(pool).await?;
     reject_populated_v2_04_control(pool).await?;
-    sqlx::migrate!("../../../deploy/migrations/control")
-        .run(pool)
-        .await
-        .context("failed to run Control MySQL migrations")
+    let mut connection = pool.acquire().await?;
+    let result = sqlx::migrate!("../../../deploy/migrations/control")
+        .run(&mut *connection)
+        .await;
+    if result.is_err() {
+        // A failed MySQL migration can retain its session advisory lock. Do not
+        // return that connection to the pool and block a concurrent initializer.
+        connection.close().await?;
+    }
+    result.context("failed to run Control MySQL migrations")
 }
 
 async fn reject_populated_v2_04_control(pool: &MySqlPool) -> Result<()> {
@@ -243,6 +249,110 @@ mod tests {
         .await
         .unwrap();
         assert!(index_exists);
+        assert_authoring_json_round_trip(&pool).await;
+    }
+
+    async fn assert_authoring_json_round_trip(pool: &MySqlPool) {
+        use agentx_domain::workflow::canonical_content_hash;
+        use serde_json::{Value, json};
+
+        let document = json!({"y":209.66666666666666,"zoom":0.3333333333333333});
+        // Each projection retains the actual baseline column type; SQL remains
+        // statically attributable under the same boundary rules as production.
+        for (table, column, projection) in [
+            (
+                "workflow_drafts",
+                "definition_json",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT definition_json AS value FROM workflow_drafts LIMIT 0",
+            ),
+            (
+                "workflow_drafts",
+                "editor_json",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT editor_json AS value FROM workflow_drafts LIMIT 0",
+            ),
+            (
+                "workflow_draft_revisions",
+                "definition_json",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT definition_json AS value FROM workflow_draft_revisions LIMIT 0",
+            ),
+            (
+                "workflow_draft_revisions",
+                "editor_json",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT editor_json AS value FROM workflow_draft_revisions LIMIT 0",
+            ),
+            (
+                "workflow_versions",
+                "definition_json",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT definition_json AS value FROM workflow_versions LIMIT 0",
+            ),
+            (
+                "workflow_versions",
+                "editor_json",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT editor_json AS value FROM workflow_versions LIMIT 0",
+            ),
+            (
+                "studio_builder_sessions",
+                "snapshot_json",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT snapshot_json AS value FROM studio_builder_sessions LIMIT 0",
+            ),
+            (
+                "studio_builder_sessions",
+                "state_json",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT state_json AS value FROM studio_builder_sessions LIMIT 0",
+            ),
+            (
+                "studio_builder_entries",
+                "payload_json",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT payload_json AS value FROM studio_builder_entries LIMIT 0",
+            ),
+            (
+                "studio_builder_effects",
+                "input_json",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT input_json AS value FROM studio_builder_effects LIMIT 0",
+            ),
+            (
+                "studio_builder_effects",
+                "command_json",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT command_json AS value FROM studio_builder_effects LIMIT 0",
+            ),
+            (
+                "studio_builder_effects",
+                "acknowledgement_json",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT acknowledgement_json AS value FROM studio_builder_effects LIMIT 0",
+            ),
+            (
+                "studio_builder_effects",
+                "result_json",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT result_json AS value FROM studio_builder_effects LIMIT 0",
+            ),
+        ] {
+            let data_type: String = sqlx::query_scalar("SELECT CAST(data_type AS CHAR CHARACTER SET utf8mb4) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?")
+                .bind(table).bind(column).fetch_one(pool).await.unwrap();
+            assert_eq!(data_type, "longtext", "{table}.{column} must be lossless");
+            let mut connection = pool.acquire().await.unwrap();
+            sqlx::raw_sql(projection)
+                .execute(&mut *connection)
+                .await
+                .unwrap();
+            sqlx::query("INSERT INTO authoring_value(value) VALUES(?)")
+                .bind(&document)
+                .execute(&mut *connection)
+                .await
+                .unwrap();
+            let stored: Value = sqlx::query_scalar("SELECT value FROM authoring_value")
+                .fetch_one(&mut *connection)
+                .await
+                .unwrap();
+            assert_eq!(stored, document, "{table}.{column}");
+            assert_eq!(
+                canonical_content_hash(&stored).unwrap(),
+                canonical_content_hash(&document).unwrap()
+            );
+            sqlx::raw_sql("DROP TEMPORARY TABLE authoring_value")
+                .execute(&mut *connection)
+                .await
+                .unwrap();
+        }
     }
 
     async fn mysql_container(database: &str) -> testcontainers::ContainerAsync<GenericImage> {

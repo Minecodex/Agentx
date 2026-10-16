@@ -1,0 +1,135 @@
+{
+  "$defs": {
+    "DesignModelDeltaV1": {
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sequence",
+        "text"
+      ],
+      "type": "object"
+    },
+    "ModelResponseV1": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "messageId": {
+          "type": "string"
+        },
+        "toolCalls": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ToolCallV1"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "messageId",
+        "content"
+      ],
+      "type": "object"
+    },
+    "ToolCallV1": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": true,
+        "callId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "callId",
+        "name",
+        "arguments"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "costMicros": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "currency": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "deltas": {
+      "items": {
+        "$ref": "#/$defs/DesignModelDeltaV1"
+      },
+      "type": "array"
+    },
+    "effectId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "errorCode": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "inputTokens": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "outputTokens": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "response": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ModelResponseV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "status": {
+      "type": "string"
+    },
+    "usageEstimated": {
+      "type": "boolean"
+    },
+    "usageKnown": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "effectId",
+    "status",
+    "usageKnown",
+    "usageEstimated",
+    "inputTokens",
+    "outputTokens",
+    "costMicros",
+    "deltas"
+  ],
+  "title": "DesignModelReceiptV1",
+  "type": "object"
+}

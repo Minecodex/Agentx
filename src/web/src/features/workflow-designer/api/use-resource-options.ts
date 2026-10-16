@@ -8,12 +8,12 @@ export type ResourceOptionRequest = { resourceType: ResourceType; operation: Res
 
 type ResourceOptionPage = { items: Array<{ id: string; name: string; detail: string; status: string; resourceVersionId?: string | null; accessState: ResourceOption['accessState']; pendingRequestId?: string | null; requirements?: ResourceOption['requirements']; metadata?: ResourceOption['metadata'] }>; page: number; pageSize: number; total: number }
 
-export function useResourceOptions(workflowId: string, requests: ResourceOptionRequest[]) {
+export function useResourceOptions(workflowId: string, draftId: string, requests: ResourceOptionRequest[]) {
   const normalized = deduplicateRequests(requests)
   const queries = useQueries({ queries: normalized.map(({ resourceType, operation }) => ({
-    queryKey: ['studio-resource-options', workflowId, resourceType, operation],
-    queryFn: () => loadResourceOptions(workflowId, { resourceType, operation }),
-    enabled: Boolean(workflowId),
+    queryKey: ['studio-resource-options', workflowId, draftId, resourceType, operation],
+    queryFn: () => loadResourceOptions(workflowId, draftId, { resourceType, operation }),
+    enabled: Boolean(workflowId && draftId),
     staleTime: 10_000,
     refetchInterval: (query: { state: { data?: ResourceOption[] } }) => query.state.data?.some((item: ResourceOption) => item.accessState === 'pending') ? 5_000 : false,
     refetchOnWindowFocus: 'always' as const,
@@ -26,12 +26,12 @@ export function useResourceOptions(workflowId: string, requests: ResourceOptionR
   return { options, loading: queries.some((query) => query.isLoading), errors: queries.filter((query) => query.error).map((query) => query.error) }
 }
 
-export async function loadResourceOptions(workflowId: string, { resourceType, operation }: ResourceOptionRequest) {
+export async function loadResourceOptions(workflowId: string, draftId: string, { resourceType, operation }: ResourceOptionRequest) {
   const items: ResourceOption[] = []
   let page = 1
   let hasMore = true
   while (hasMore) {
-    const response = await apiRequest<ResourceOptionPage>(`/workflows/${workflowId}/resource-options?resourceType=${resourceType}&operation=${operation}&page=${page}&pageSize=100`)
+    const response = await apiRequest<ResourceOptionPage>(`/workflows/${workflowId}/resource-options?draftId=${draftId}&resourceType=${resourceType}&operation=${operation}&page=${page}&pageSize=100`)
     items.push(...response.items.map((item) => ({ resourceType, operation, value: item.id, label: item.name, detail: item.detail, status: item.status, versionId: item.resourceVersionId, accessState: item.accessState, pendingRequestId: item.pendingRequestId, requirements: item.requirements, metadata: item.metadata })))
     hasMore = items.length < response.total && response.items.length > 0
     if (hasMore) page += 1

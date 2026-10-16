@@ -28,9 +28,9 @@ export function TraceWorkspace({ executionId, className, active = true, executio
   const { t } = useTranslation()
   const [view, setView] = useState<'nodes' | 'waterfall'>('nodes')
   const [showRaw, setShowRaw] = useState(false)
-  const executionQuery = useQuery({ queryKey: ['execution', executionId], queryFn: () => apiRequest<Execution>(`/executions/${executionId}`), enabled: active && !suppliedExecution, retry: false })
-  const nodesQuery = useQuery({ queryKey: ['execution-nodes', executionId], queryFn: () => apiRequest<{ items: NodeExecution[] }>(`/executions/${executionId}/nodes`), enabled: active && !suppliedNodes, retry: false })
+  const executionQuery = useQuery({ queryKey: ['execution', executionId], queryFn: () => apiRequest<Execution>(`/executions/${executionId}`), enabled: active && !suppliedExecution, retry: false, refetchInterval: (query) => !query.state.data || !['succeeded', 'failed', 'timed_out', 'cancelled'].includes(query.state.data.status) ? 1500 : false })
   const execution = suppliedExecution ?? executionQuery.data
+  const nodesQuery = useQuery({ queryKey: ['execution-nodes', executionId], queryFn: () => apiRequest<{ items: NodeExecution[] }>(`/executions/${executionId}/nodes`), enabled: active && !suppliedNodes, retry: false, refetchInterval: (query) => !execution || !['succeeded', 'failed', 'timed_out', 'cancelled'].includes(execution.status) || !query.state.data || query.state.data.items.some((node) => !['succeeded', 'failed', 'timed_out', 'cancelled', 'skipped'].includes(node.status)) ? 1500 : false })
   const nodes = suppliedNodes ?? nodesQuery.data?.items
   if (!execution || !nodes) {
     const error = executionQuery.error ?? nodesQuery.error

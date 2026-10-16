@@ -569,6 +569,7 @@ async fn finish(
             }
             agentx_agent_core::TerminalReasonV1::ToolError => "AGENT_TOOL_ERROR",
             agentx_agent_core::TerminalReasonV1::Completed => "AGENT_CORE_TERMINAL",
+            agentx_agent_core::TerminalReasonV1::Suspended => "AGENT_EFFECT_PENDING",
         };
         if matches!(
             &result.terminal_reason,
@@ -1653,6 +1654,11 @@ impl<'a> AgentToolRouter<'a> {
                 if let Some(secret) = credential {
                     self.authorize_secret_dependency(secret)?;
                 }
+                let secret_header = crate::worker_support::memory_secret_header(
+                    &self.claim.resources,
+                    credential.as_ref(),
+                )
+                .map_err(|code| ToolPortError::Unauthorized(code.into()))?;
                 let write = descriptor.name == "memory_write";
                 let scope = if !subject_scope {
                     let run_scope = crate::worker_support::raw_hash(&json!({
@@ -1752,7 +1758,7 @@ impl<'a> AgentToolRouter<'a> {
                         index,
                         &context.idempotency_key,
                         credential.as_ref(),
-                        "authorization",
+                        secret_header,
                         Some(&binding),
                     ))
                 });

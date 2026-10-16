@@ -77,7 +77,7 @@ pub(super) async fn acquire_workspace(
             return Err(RuntimeError::Unavailable);
         }
     } else {
-        let (image, cpu, memory, disk, pids, egress) = profile_limits(&request.profile)?;
+        let (image, cpu, memory, disk, _, egress) = profile_limits(&request.profile)?;
         let metadata = BTreeMap::from([
             ("agentxWorkspaceId".into(), workspace_id.to_string()),
             (
@@ -96,7 +96,6 @@ pub(super) async fn acquire_workspace(
             cpu,
             memory,
             disk,
-            pids,
             egress,
             metadata,
             &request.idempotency_key,
@@ -264,15 +263,11 @@ pub(super) async fn workspace_tool(
             RuntimeError::ProviderRejected
         }
     })?;
-    let stdout = output
-        .get("stdout")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let structured = serde_json::from_str(stdout).unwrap_or_else(|_| json!({"stdout":stdout,"stderr":output.get("stderr").and_then(Value::as_str).unwrap_or_default(),"exitCode":output.get("exitCode").and_then(Value::as_i64).unwrap_or(0)}));
+    let structured = workspace_structured_result(&output)?;
     let response_stdout = structured
         .get("stdout")
         .and_then(Value::as_str)
-        .unwrap_or(stdout)
+        .unwrap_or_default()
         .to_owned();
     let response_stderr = structured
         .get("stderr")
@@ -440,6 +435,19 @@ fn profile_ttl(profile: &Value) -> u32 {
         .unwrap_or(300) as u32
 }
 
+fn workspace_structured_result(output: &Value) -> RuntimeResult<Value> {
+    output
+        .get("structuredOutput")
+        .filter(|value| value.get("ok").and_then(Value::as_bool).is_some())
+        .cloned()
+        .ok_or_else(|| {
+            RuntimeError::InvalidRequest(
+                "SANDBOX_PROTOCOL_UNSUPPORTED",
+                "Workspace command did not return a structured tool result".into(),
+            )
+        })
+}
+
 fn profile_limits(
     profile: &Value,
 ) -> RuntimeResult<(String, u32, u64, u64, u32, SandboxEgressModeV1)> {
@@ -559,5 +567,29 @@ mod tests {
     #[test]
     fn workspace_tool_script_rejects_unknown_tools() {
         assert!(workspace_tool_script("host_exec", &json!({}), 300).is_err());
+    }
+
+    #[test]
+    fn workspace_results_use_the_code_output_file_and_preserve_tool_failures() {
+        let bash_result = json!({"ok":true,"stdout":"558.00\n","stderr":"","exitCode":0});
+        assert_eq!(
+            workspace_structured_result(&json!({"stdout":"","structuredOutput":bash_result}))
+                .unwrap(),
+            bash_result
+        );
+        let read_result = json!({"ok":true,"content":"cHJpY2U=","encoding":"base64"});
+        assert_eq!(
+            workspace_structured_result(&json!({"stdout":"","structuredOutput":read_result}))
+                .unwrap(),
+            read_result
+        );
+        let failure = json!({"ok":false,"errorCode":"AGENT_WORKSPACE_PATH_INVALID","errorMessage":"file does not exist"});
+        assert_eq!(
+            workspace_structured_result(&json!({"stdout":"","structuredOutput":failure})).unwrap(),
+            failure
+        );
+        assert!(
+            workspace_structured_result(&json!({"stdout":"{}","structuredOutput":null})).is_err()
+        );
     }
 }

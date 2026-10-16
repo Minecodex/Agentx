@@ -20,6 +20,33 @@ pub(super) fn validate_binding_slots(
     // Manifest 3.0 placement slots are an Agent-only contract. Standalone
     // resource nodes keep their existing resource-reference semantics.
     if node.node_type != "agent" {
+        for selector in &manifest.ui_schema.resource_selectors {
+            let resource_type = selector["resourceType"].as_str().unwrap_or_default();
+            let count = node
+                .resource_references
+                .iter()
+                .filter(|reference| {
+                    reference.resource_type.as_str() == resource_type
+                        && selector["bindingRole"]
+                            .as_str()
+                            .is_none_or(|role| reference.binding_role.as_deref() == Some(role))
+                })
+                .count();
+            if selector["required"] == true && count == 0 {
+                issues.push(CompileIssue {
+                    code: "BINDING_REQUIRED".into(),
+                    path: format!("nodes[{definition_index}].resourceReferences"),
+                    message: format!("Select the required {resource_type} resource"),
+                });
+            }
+            if count > 1 {
+                issues.push(CompileIssue {
+                    code: "BINDING_MULTIPLE_NOT_ALLOWED".into(),
+                    path: format!("nodes[{definition_index}].resourceReferences"),
+                    message: format!("The {resource_type} selector accepts one resource"),
+                });
+            }
+        }
         return;
     }
     for slot in &manifest.binding_slots {

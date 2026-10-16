@@ -283,7 +283,7 @@ def test_real_mem0_outage_auth_failure_and_same_application_recovery(
 
 
 @pytest.mark.live_model
-def test_real_kimi_stream_resumes_after_gateway_restart_without_duplicate_deltas(boundary_state, live_application):
+def test_real_model_stream_resumes_after_gateway_restart_without_duplicate_deltas(boundary_state, live_application):
     state = boundary_state
     app = live_application
     headers = {"Authorization": f"Bearer {app['token'].value}"}

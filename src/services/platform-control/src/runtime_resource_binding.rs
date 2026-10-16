@@ -279,7 +279,7 @@ fn from_parts(
                     .context("Composite Runtime binding requires workflow snapshot metadata")?,
             )?;
             anyhow::ensure!(
-                workflow.version_id == workflow_version_id,
+                workflow.version_id == Some(workflow_version_id),
                 "Composite Runtime binding Workflow snapshot has a mismatched version"
             );
             (
@@ -323,8 +323,12 @@ pub(crate) async fn workflow_snapshot(
     Ok(ExecutionWorkflowSnapshotV1 {
         id: row.try_get("workflow_id")?,
         name: row.try_get("name")?,
-        version_id,
-        version_number: row.try_get("version_number")?,
+        version_id: Some(version_id),
+        source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version {
+            version_id,
+            version_number: row.try_get("version_number")?,
+        },
+        version_number: Some(row.try_get("version_number")?),
         owner_department: owner_department_id.map(|id| ExecutionDepartmentSnapshotV1 {
             id,
             name: row.try_get("owner_department_name").unwrap_or_default(),

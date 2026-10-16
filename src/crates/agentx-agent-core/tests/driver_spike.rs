@@ -3,6 +3,127 @@ use std::collections::VecDeque;
 use agentx_agent_core::*;
 use serde_json::json;
 
+#[test]
+fn pending_platform_tool_resumes_same_call_without_replaying_the_model() {
+    let mut input = input(false);
+    input.attachment_tools = vec![ToolDefinitionV1 {
+        name: "workflow_edit".into(),
+        description: "Editor command".into(),
+        input_schema: json!({"type":"object"}),
+        origin: ToolOriginV1::Platform,
+        replay_policy: ReplayPolicyV1::IdempotencyRequired,
+    }];
+    let call = ToolCallV1 {
+        call_id: "edit-1".into(),
+        name: "workflow_edit".into(),
+        arguments: json!({}),
+    };
+    let mut model = FakeModel {
+        responses: VecDeque::from([
+            response("assistant-1", "", vec![call]),
+            response("assistant-2", "Applied and statically validated", vec![]),
+        ]),
+        requests: vec![],
+    };
+    let mut tools = FakeTools {
+        calls: vec![],
+        result: Some(Err(ToolPortError::Pending("command-1".into()))),
+    };
+    let mut state = MemoryState::default();
+    let mut events = Events::default();
+    let mut budget = budget(BudgetDecision::Continue);
+    let first = AgentCore::run(
+        &input,
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut events,
+        &FixedClock,
+        &mut budget,
+    )
+    .unwrap();
+    assert_eq!(first.terminal_reason, TerminalReasonV1::Suspended);
+    assert!(first.state.terminal.is_none());
+    assert!(matches!(
+        first.state.operation.as_ref().unwrap().phase,
+        OperationPhaseV1::Pending { .. }
+    ));
+    assert_eq!(model.requests.len(), 1);
+    let effect = first.state.operation.unwrap().effect_id;
+    input.fencing_token += 1;
+    let resumed = AgentCore::run(
+        &input,
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut events,
+        &FixedClock,
+        &mut budget,
+    )
+    .unwrap();
+    assert_eq!(resumed.terminal_reason, TerminalReasonV1::Completed);
+    assert_eq!(model.requests.len(), 2);
+    assert_eq!(tools.calls.len(), 2);
+    assert_eq!(tools.calls[0].call_id, tools.calls[1].call_id);
+    assert_eq!(effect, "run-1:tool:edit-1:effect");
+    assert_eq!(
+        resumed
+            .state
+            .messages
+            .iter()
+            .filter(|m| m.tool_call_id.as_deref() == Some("edit-1"))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn pending_model_keeps_original_request_when_external_facts_change() {
+    let mut input = input(false);
+    let mut model = FakeModel {
+        responses: VecDeque::from([
+            Err(ModelPortError::Pending("receipt-1".into())),
+            response("assistant-1", "done", vec![]),
+        ]),
+        requests: vec![],
+    };
+    let mut tools = FakeTools::default();
+    let mut state = MemoryState::default();
+    let mut events = Events::default();
+    let mut budget = budget(BudgetDecision::Continue);
+    let first = AgentCore::run(
+        &input,
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut events,
+        &FixedClock,
+        &mut budget,
+    )
+    .unwrap();
+    assert_eq!(first.terminal_reason, TerminalReasonV1::Suspended);
+    input.external_contexts = vec![ExternalContextV1 {
+        context_id: "new-canvas".into(),
+        origin: ExternalContextOriginV1::StudioDocument,
+        source_resource_id: "draft-1".into(),
+        source_resource_version_id: "2".into(),
+        content_hash: "changed".into(),
+        content: "Manual edit occurred".into(),
+    }];
+    let resumed = AgentCore::run(
+        &input,
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut events,
+        &FixedClock,
+        &mut budget,
+    )
+    .unwrap();
+    assert_eq!(resumed.terminal_reason, TerminalReasonV1::Completed);
+    assert_eq!(model.requests[0], model.requests[1]);
+}
+
 struct FakeModel {
     responses: VecDeque<Result<ModelResponseV1, ModelPortError>>,
     requests: Vec<ModelRequestV1>,
@@ -429,6 +550,99 @@ fn threshold_compaction_projects_summary_tail_and_recent_messages() {
             .messages
             .iter()
             .any(|message| message.content.as_text() == Some("stable summary"))
+    );
+}
+
+#[test]
+fn pending_compaction_resumes_its_frozen_request_and_commits_one_summary() {
+    let mut run_input = input(false);
+    run_input.model_context_window = 100;
+    run_input.system_prompt = Some(
+        "Design only; preserve target Draft, ACK identities and actual manual evidence.".into(),
+    );
+    let existing = AgentSessionStateV1 {
+        session_id: run_input.session_id.clone(),
+        version: 7,
+        messages: vec![
+            AgentMessageV1::user(
+                "old-1",
+                "preserve draft-one command-one confirmed; never execute ".repeat(20),
+            ),
+            AgentMessageV1::assistant("old-2", "design facts ".repeat(25), vec![]),
+        ],
+        ..Default::default()
+    };
+    let mut model = FakeModel {
+        responses: VecDeque::from([
+            Err(ModelPortError::Pending("compact-receipt".into())),
+            response(
+                "summary-1",
+                "Draft one; command one acknowledged; static only; manual evidence remains selected.",
+                vec![],
+            ),
+            response("assistant-1", "done", vec![]),
+        ]),
+        requests: vec![],
+    };
+    let mut state = MemoryState {
+        state: Some(existing),
+        fencing_token: 3,
+        commits: 0,
+    };
+    let mut events = Events::default();
+    let mut tools = FakeTools::default();
+    let first = AgentCore::run(
+        &run_input,
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut events,
+        &FixedClock,
+        &mut budget(BudgetDecision::Continue),
+    )
+    .unwrap();
+    assert_eq!(first.terminal_reason, TerminalReasonV1::Suspended);
+    assert_eq!(
+        first.state.operation.unwrap().operation_kind,
+        OperationKindV1::Compaction
+    );
+    let original = model.requests[0].clone();
+    run_input.fencing_token += 1;
+    run_input.external_contexts = vec![ExternalContextV1 {
+        context_id: "canvas-current".into(),
+        origin: ExternalContextOriginV1::StudioDocument,
+        source_resource_id: "draft-current".into(),
+        source_resource_version_id: "0".into(),
+        content_hash: "sha256:v1:current".into(),
+        content: "New authoritative canvas facts arrived while compaction was pending.".into(),
+    }];
+    let resumed = AgentCore::run(
+        &run_input,
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut events,
+        &FixedClock,
+        &mut budget(BudgetDecision::Continue),
+    )
+    .unwrap();
+    assert_eq!(resumed.terminal_reason, TerminalReasonV1::Completed);
+    assert_eq!(model.requests[1], original);
+    assert_eq!(model.requests[0].purpose, ModelPurposeV1::Compaction);
+    assert!(original.tools.is_empty());
+    assert!(original.messages.iter().any(|message| {
+        message
+            .content
+            .as_text()
+            .is_some_and(|text| text.contains("ACK"))
+    }));
+    assert_eq!(
+        events
+            .0
+            .iter()
+            .filter(|event| matches!(event, CoreEventV1::CompactionCompleted { .. }))
+            .count(),
+        1
     );
 }
 

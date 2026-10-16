@@ -80,8 +80,12 @@ async fn workflow_snapshot(
     Ok(ExecutionWorkflowSnapshotV1 {
         id: workflow_id,
         name: row.try_get("name")?,
-        version_id,
-        version_number,
+        version_id: Some(version_id),
+        source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version {
+            version_id,
+            version_number,
+        },
+        version_number: Some(version_number),
         owner_department: row
             .try_get::<Option<Uuid>, _>("owner_department_id")?
             .map(|id| ExecutionDepartmentSnapshotV1 {
@@ -260,6 +264,8 @@ impl WorkPackageClient {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct StartDebugRunRequest {
+    pub(crate) draft_id: Uuid,
+    pub(crate) revision: u64,
     pub(crate) idempotency_key: String,
     #[serde(default)]
     pub(crate) input: Value,
@@ -299,6 +305,14 @@ pub(crate) async fn start_version_execution(
     idempotency_key: String,
 ) -> ApiResult<StartDebugRunResponse> {
     validate_idempotency_key(&idempotency_key)?;
+    let workflow_id: Uuid =
+        sqlx::query_scalar("SELECT workflow_id FROM workflow_versions WHERE tenant_id=? AND id=?")
+            .bind(actor.tenant_id)
+            .bind(version_id)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or_else(|| ApiError::not_found("Workflow version"))?;
+    crate::workflow_api::require_workflow_access(state, actor, workflow_id, false).await?;
     let version = sqlx::query("SELECT v.workflow_id,v.version_number,v.source_revision,v.content_hash,v.definition_json,i.id service_identity_id,i.version identity_version FROM workflow_versions v JOIN workflows w ON w.tenant_id=v.tenant_id AND w.id=v.workflow_id JOIN workflow_service_identities i ON i.tenant_id=v.tenant_id AND i.workflow_id=v.workflow_id WHERE v.tenant_id=? AND v.id=? AND w.status='active' AND i.status='active'")
         .bind(actor.tenant_id)
         .bind(version_id)
@@ -341,14 +355,11 @@ pub(crate) async fn start_version_execution(
     .await?;
     let plugin_manifests =
         crate::canvas_plugin_api::plugin_manifests_for_tenant(state, actor.tenant_id).await?;
-    let plugin_registry =
-        node_registry_with_plugins(&dependencies, &plugin_manifests).map_err(ApiError::internal)?;
-    let resolved = crate::canvas_plugin_api::resolve_workflow_plugin_closure(
-        state,
+    let resolved = crate::canvas_plugin_resolution::frozen_for_version(
+        &state.pool,
         actor.tenant_id,
-        &definition,
+        version_id,
         &dependencies,
-        &plugin_registry,
     )
     .await?;
     require_complete_plugin_definitions(&resolved)?;
@@ -406,7 +417,10 @@ pub(crate) async fn start_version_execution(
             purpose: WorkPackagePurpose::Debug,
             call_purpose: RuntimeCallPurposeV1::Debug,
             spec: RuntimeWorkPackageSpecV1::Debug {
-                draft_revision: version_number,
+                source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version {
+                    version_id,
+                    version_number,
+                },
                 debug_plan,
             },
             source_revision: format!("version:{version_id}:{version_number}"),
@@ -496,15 +510,20 @@ pub(crate) async fn start_debug_run(
 ) -> ApiResult<(StatusCode, Json<StartDebugRunResponse>)> {
     actor.require("workflow:edit")?;
     validate_idempotency_key(&request.idempotency_key)?;
-    let draft = sqlx::query("SELECT d.revision,d.definition_json,i.id service_identity_id,i.version identity_version FROM workflow_drafts d JOIN workflows w ON w.id=d.workflow_id AND w.tenant_id=d.tenant_id JOIN workflow_service_identities i ON i.workflow_id=d.workflow_id AND i.tenant_id=d.tenant_id WHERE d.tenant_id=? AND d.workflow_id=? AND w.status='active' AND i.status='active'")
+    crate::workflow_api::require_workflow_access(&state, &actor, workflow_id, true).await?;
+    let draft = sqlx::query("SELECT r.id revision_id,r.revision,r.definition_json,r.resource_snapshot_json,i.id service_identity_id,i.version identity_version FROM workflow_draft_revisions r JOIN workflow_drafts d ON d.tenant_id=r.tenant_id AND d.id=r.draft_id JOIN workflows w ON w.id=r.workflow_id AND w.tenant_id=r.tenant_id JOIN workflow_service_identities i ON i.workflow_id=w.id AND i.tenant_id=w.tenant_id WHERE r.tenant_id=? AND r.workflow_id=? AND r.draft_id=? AND r.revision=? AND d.status='active' AND w.status='active' AND i.status='active'")
         .bind(actor.tenant_id)
         .bind(workflow_id)
+        .bind(request.draft_id)
+        .bind(request.revision)
         .fetch_optional(&state.pool)
         .await?
         .ok_or_else(|| ApiError::not_found("Workflow draft"))?;
     let revision: u64 = draft.try_get("revision")?;
     let request_hash = agentx_runtime_contracts::content_hash(&json!({
         "workflowId": workflow_id,
+        "draftId": request.draft_id,
+        "revisionId": draft.try_get::<Uuid,_>("revision_id")?,
         "revision": revision,
         "input": request.input,
         "context": request.context,
@@ -546,6 +565,10 @@ pub(crate) async fn start_debug_run(
         actor.tenant_id,
         workflow_id,
         &definition,
+        &serde_json::from_value::<Vec<agentx_domain::ResourceVersionSnapshot>>(
+            draft.try_get("resource_snapshot_json")?,
+        )
+        .map_err(ApiError::internal)?,
     )
     .await?;
     let mut resources = Vec::new();
@@ -650,10 +673,18 @@ pub(crate) async fn start_debug_run(
             purpose: WorkPackagePurpose::Debug,
             call_purpose: RuntimeCallPurposeV1::Debug,
             spec: agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Debug {
-                draft_revision: revision,
+                source: agentx_runtime_contracts::WorkflowDesignSourceV1::DraftRevision {
+                    draft_id: request.draft_id,
+                    revision_id: draft.try_get("revision_id")?,
+                    revision,
+                },
                 debug_plan,
             },
-            source_revision: format!("draft:{revision}"),
+            source_revision: format!(
+                "draft:{}:{}:{revision}",
+                request.draft_id,
+                draft.try_get::<Uuid, _>("revision_id")?
+            ),
             definition,
             dependency_versions: dependencies,
             plugin_manifests,
@@ -705,6 +736,8 @@ pub(crate) async fn start_debug_run(
         &state.pool,
         &actor,
         workflow_id,
+        request.draft_id,
+        draft.try_get("revision_id")?,
         revision,
         debug_run_id,
         &request.idempotency_key,
@@ -1099,7 +1132,7 @@ async fn add_composite_closure(
                 RuntimeResourceConfigurationV1::Composite {
                     workflow,
                     ..
-                } if workflow.version_id == *version_id
+                } if workflow.version_id == Some(*version_id)
             )
         }) {
             continue;
@@ -1281,6 +1314,8 @@ async fn persist_building(
     pool: &MySqlPool,
     actor: &Actor,
     workflow_id: Uuid,
+    draft_id: Uuid,
+    revision_id: Uuid,
     revision: u64,
     debug_run_id: Uuid,
     idempotency_key: &str,
@@ -1292,7 +1327,7 @@ async fn persist_building(
         .bind(Uuid::now_v7())
         .bind(actor.tenant_id)
         .bind(package.payload.package_id)
-        .bind(workflow_id)
+        .bind(draft_id)
         .bind(&package.payload.source_revision)
         .bind(package.content_hash.as_str())
         .bind(&package.signature.key_id)
@@ -1304,11 +1339,11 @@ async fn persist_building(
         .bind(actor.user_id)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("INSERT INTO workflow_debug_runs(id,tenant_id,workflow_id,draft_revision,work_package_id,status,expires_at,created_by) VALUES(?,?,?,?,?,'building',?,?)")
+    sqlx::query("INSERT INTO workflow_debug_runs(id,tenant_id,workflow_id,source_json,work_package_id,status,expires_at,created_by) VALUES(?,?,?,?,?,'building',?,?)")
         .bind(debug_run_id)
         .bind(actor.tenant_id)
         .bind(workflow_id)
-        .bind(revision)
+        .bind(json!({"kind":"draft_revision","draftId":draft_id,"revisionId":revision_id,"revision":revision}))
         .bind(package.payload.package_id)
         .bind(package.payload.expires_at)
         .bind(actor.user_id)
@@ -1324,7 +1359,7 @@ async fn persist_version_building(
     actor: &Actor,
     workflow_id: Uuid,
     version_id: Uuid,
-    source_revision: u64,
+    _source_revision: u64,
     debug_run_id: Uuid,
     idempotency_key: &str,
     request_hash: &str,
@@ -1347,11 +1382,11 @@ async fn persist_version_building(
         .bind(actor.user_id)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("INSERT INTO workflow_debug_runs(id,tenant_id,workflow_id,draft_revision,work_package_id,status,expires_at,created_by) VALUES(?,?,?,?,?,'building',?,?)")
+    sqlx::query("INSERT INTO workflow_debug_runs(id,tenant_id,workflow_id,source_json,work_package_id,status,expires_at,created_by) VALUES(?,?,?,?,?,'building',?,?)")
         .bind(debug_run_id)
         .bind(actor.tenant_id)
         .bind(workflow_id)
-        .bind(source_revision)
+        .bind(serde_json::to_value(match &package.payload.spec { RuntimeWorkPackageSpecV1::Debug {source,..} => source, _ => return Err(ApiError::internal("Version run requires a debug source")) }).map_err(ApiError::internal)?)
         .bind(package.payload.package_id)
         .bind(package.payload.expires_at)
         .bind(actor.user_id)

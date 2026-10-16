@@ -290,6 +290,18 @@ mod tests {
     }
 
     #[test]
+    fn if_with_no_items_succeeds_without_outputs() {
+        let parameters = json!({"cases":[]});
+        let result = super::route_if_items(|_| &parameters, vec![]);
+        assert_eq!(
+            result.status,
+            agentx_runtime_contracts::WorkerResultStatusV1::Succeeded
+        );
+        assert!(result.outputs.is_empty());
+        assert!(result.error_code.is_none());
+    }
+
+    #[test]
     fn if_items_route_to_first_matching_case_then_else() {
         let per_item = [
             json!({

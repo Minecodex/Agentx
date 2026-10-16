@@ -8,8 +8,8 @@ use agentx_domain::WorkflowDefinition;
 use agentx_node_protocol::{NodeCapability, NodeManifestVersion, NodePort, PluginNodeBinding};
 use agentx_runtime::{CompileIssue, NodeRegistry};
 use agentx_runtime_contracts::{
-    ControlRole, PluginDesignOperationRequestV1, PluginDesignOperationResponseV1, ServiceClaimsV1,
-    issue_service_token, now_unix,
+    ControlRole, PluginDesignOperationRequestV1, PluginDesignOperationResponseV1,
+    PluginResolveSessionV1, ServiceClaimsV1, issue_service_token, now_unix,
 };
 use secrecy::ExposeSecret;
 use serde::Deserialize;
@@ -25,20 +25,9 @@ use crate::{
 static DESIGN_CACHE: LazyLock<Mutex<HashMap<String, (Instant, Value)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-pub(crate) async fn resolve_for_publisher(
-    pool: MySqlPool,
-    objects: std::sync::Arc<dyn object_store::ObjectStore>,
-    tenant: Uuid,
-    definition: &WorkflowDefinition,
-    dependencies: &BTreeMap<Uuid, WorkflowDefinition>,
-    plugin_manifests: &[NodeManifestVersion],
-) -> anyhow::Result<ResolvedWorkflowPlugins> {
-    let registry =
-        agentx_bundle_builder::node_registry_with_plugins(dependencies, plugin_manifests)?;
-    let state = ControlApiState::from_env(pool, objects)?;
-    resolve_workflow_plugin_closure(&state, tenant, definition, dependencies, &registry)
-        .await
-        .map_err(|error| anyhow::anyhow!("plugin definition resolution failed: {error:?}"))
+struct ResolveSession {
+    id: Uuid,
+    started: bool,
 }
 
 #[derive(Debug, Default)]
@@ -48,6 +37,39 @@ pub(crate) struct ResolvedWorkflowPlugins {
     pub dependency_manifests: agentx_bundle_builder::ResolvedPluginManifestDependencies,
     pub incomplete: Vec<CompileIssue>,
     pub invalid: Vec<CompileIssue>,
+}
+
+pub(crate) async fn frozen_for_version(
+    pool: &MySqlPool,
+    tenant: Uuid,
+    version: Uuid,
+    dependencies: &BTreeMap<Uuid, WorkflowDefinition>,
+) -> ApiResult<ResolvedWorkflowPlugins> {
+    let root: Value = sqlx::query_scalar(
+        "SELECT node_manifests_json FROM workflow_versions WHERE tenant_id=? AND id=?",
+    )
+    .bind(tenant)
+    .bind(version)
+    .fetch_one(pool)
+    .await?;
+    let mut frozen = ResolvedWorkflowPlugins {
+        manifests: serde_json::from_value(root).map_err(ApiError::internal)?,
+        ..Default::default()
+    };
+    for id in dependencies.keys() {
+        let value: Value = sqlx::query_scalar(
+            "SELECT node_manifests_json FROM workflow_versions WHERE tenant_id=? AND id=?",
+        )
+        .bind(tenant)
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+        frozen.dependency_manifests.insert(
+            *id,
+            serde_json::from_value(value).map_err(ApiError::internal)?,
+        );
+    }
+    Ok(frozen)
 }
 
 pub(crate) fn resolved_runtime_plugin_bindings(
@@ -127,6 +149,31 @@ pub(crate) async fn resolve_workflow_plugins(
     definition: &WorkflowDefinition,
     registry: &NodeRegistry,
 ) -> ApiResult<ResolvedWorkflowPlugins> {
+    let mut session = ResolveSession {
+        id: Uuid::now_v7(),
+        started: false,
+    };
+    let result =
+        resolve_workflow_plugins_in_session(state, tenant, definition, registry, &mut session)
+            .await;
+    let closed = if session.started {
+        close_resolve_session(state, tenant, session.id).await
+    } else {
+        Ok(())
+    };
+    match result {
+        Err(error) => Err(error),
+        Ok(result) => closed.map(|()| result),
+    }
+}
+
+async fn resolve_workflow_plugins_in_session(
+    state: &ControlApiState,
+    tenant: Uuid,
+    definition: &WorkflowDefinition,
+    registry: &NodeRegistry,
+    session: &mut ResolveSession,
+) -> ApiResult<ResolvedWorkflowPlugins> {
     let mut result = ResolvedWorkflowPlugins::default();
     for index in workflow_resolution_order(definition) {
         let node = &definition.nodes[index];
@@ -148,7 +195,7 @@ pub(crate) async fn resolve_workflow_plugins(
         }
         let upstream_contracts =
             workflow_upstream_contracts(definition, node, registry, &result.manifests);
-        let raw = invoke_plugin_method(
+        let raw = invoke_plugin_method_in_session(
             state,
             tenant,
             binding,
@@ -163,6 +210,7 @@ pub(crate) async fn resolve_workflow_plugins(
                 "outputPortSchemas":base.output_port_schemas,
                 "hostResourceReferences":node.resource_references,
             }),
+            Some(session),
         )
         .await?;
         result.definitions.insert(node.id.clone(), raw.clone());
@@ -251,14 +299,15 @@ pub(crate) struct ResolveDraftPluginsRequest {
 pub(crate) async fn resolve_draft_plugins(
     axum::extract::State(state): axum::extract::State<ControlApiState>,
     actor: crate::control_api::Actor,
-    axum::extract::Path(id): axum::extract::Path<Uuid>,
+    axum::extract::Path((id, draft_id)): axum::extract::Path<(Uuid, Uuid)>,
     axum::Json(input): axum::Json<ResolveDraftPluginsRequest>,
 ) -> ApiResult<axum::Json<Value>> {
     actor.require("workflow:view")?;
     crate::workflow_api::require_workflow_access(&state, &actor, id, false).await?;
-    let dependencies = crate::workflow_api::load_composite_definitions(
+    crate::workflow_api::load_draft(&state, actor.tenant_id, id, draft_id).await?;
+    let dependencies = crate::workflow_api::load_composite_definitions_for_actor(
         &state,
-        actor.tenant_id,
+        &actor,
         id,
         &input.definition,
     )
@@ -456,7 +505,18 @@ pub(crate) async fn invoke_plugin_method(
     tenant_id: Uuid,
     binding: &PluginNodeBinding,
     method: &str,
+    params: Value,
+) -> ApiResult<Value> {
+    invoke_plugin_method_in_session(state, tenant_id, binding, method, params, None).await
+}
+
+async fn invoke_plugin_method_in_session(
+    state: &ControlApiState,
+    tenant_id: Uuid,
+    binding: &PluginNodeBinding,
+    method: &str,
     mut params: Value,
+    session: Option<&mut ResolveSession>,
 ) -> ApiResult<Value> {
     let cache_key = if method == "node.resolveDefinition" {
         let hash = agentx_domain::canonical_content_hash(&params).map_err(ApiError::internal)?;
@@ -474,6 +534,10 @@ pub(crate) async fn invoke_plugin_method(
             return Ok(value.clone());
         }
     }
+    let resolve_session_id = session.map(|session| {
+        session.started = true;
+        session.id
+    });
     let host_resource_references = params
         .as_object_mut()
         .and_then(|params| params.remove("hostResourceReferences"))
@@ -483,7 +547,11 @@ pub(crate) async fn invoke_plugin_method(
             ApiError::unprocessable("PLUGIN_DESIGN_RESOURCE_INVALID", error.to_string())
         })?;
     let mut resources = Vec::with_capacity(references.len());
-    for mut reference in references {
+    for mut reference in if method == "node.resolveDefinition" {
+        Vec::new()
+    } else {
+        references
+    } {
         let snapshot =
             crate::workflow_resources::resource_snapshot(state, tenant_id, &mut reference).await?;
         let snapshot_hash = runtime_snapshot_hash(&snapshot)?;
@@ -519,6 +587,7 @@ pub(crate) async fn invoke_plugin_method(
         protocol_version: 1,
         operation_id: Uuid::now_v7(),
         tenant_id,
+        resolve_session_id,
         method: method.into(),
         plugin: binding.clone(),
         resources,
@@ -531,7 +600,13 @@ pub(crate) async fn invoke_plugin_method(
             state.runtime_query_url
         ))
         .bearer_auth(token)
-        .timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(
+            if method == "node.resolveDefinition" {
+                55
+            } else {
+                15
+            },
+        ))
         .json(&request)
         .send()
         .await
@@ -572,6 +647,64 @@ pub(crate) async fn invoke_plugin_method(
         cache.insert(key, (Instant::now(), response.result.clone()));
     }
     Ok(response.result)
+}
+
+async fn close_resolve_session(
+    state: &ControlApiState,
+    tenant_id: Uuid,
+    session_id: Uuid,
+) -> ApiResult<()> {
+    let now = now_unix();
+    let token = issue_service_token(
+        &state.runtime_command_kid,
+        state.runtime_command_key.expose_secret().as_bytes(),
+        &ServiceClaimsV1 {
+            iss: "agentx-control".into(),
+            aud: "agentx-runtime-internal".into(),
+            sub: "platform-control-plugin-design".into(),
+            role: ControlRole::Publisher,
+            scope: BTreeSet::from(["runtime.plugins.design".into()]),
+            iat: now,
+            exp: now + 30,
+            jti: Uuid::now_v7(),
+        },
+    )
+    .map_err(ApiError::internal)?;
+    let response = state
+        .http
+        .post(format!(
+            "{}/internal/runtime/v1/plugin-resolve-sessions:close",
+            state.runtime_query_url
+        ))
+        .bearer_auth(token)
+        .timeout(std::time::Duration::from_secs(15))
+        .json(&PluginResolveSessionV1 {
+            protocol_version: 1,
+            tenant_id,
+            session_id,
+        })
+        .send()
+        .await
+        .map_err(|_| {
+            ApiError::unavailable(
+                "RUNTIME_UNAVAILABLE",
+                "Resolve-only session cleanup is unavailable",
+            )
+        })?;
+    if !response.status().is_success() {
+        return Err(ApiError::unavailable(
+            "RUNTIME_UNAVAILABLE",
+            "Resolve-only session cleanup is unavailable",
+        ));
+    }
+    let closed: PluginResolveSessionV1 = response.json().await.map_err(ApiError::internal)?;
+    if closed.tenant_id != tenant_id || closed.session_id != session_id {
+        return Err(ApiError::unavailable(
+            "PLUGIN_PROTOCOL_ERROR",
+            "Resolve-only session cleanup identity mismatch",
+        ));
+    }
+    Ok(())
 }
 
 fn runtime_snapshot_hash(snapshot: &Value) -> ApiResult<String> {

@@ -158,6 +158,7 @@ def test_redis_real_watermark_rejects_new_api_and_chat_preserves_replay(boundary
             )
             redis_command(context, "XACK", STREAM, GROUP, *inserted)
             redis_command(context, "XDEL", STREAM, *inserted)
+            scale(context, "deployment/workflow-worker", 1)
             # These gauges record the latest intake snapshot. Trigger a real
             # request after removing our messages before inspecting recovery;
             # other suites can still have genuine work in the shared streams.

@@ -1,3 +1,4 @@
+import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
 import { expect, type Browser, type BrowserContext, type Locator, type Page, test } from '@playwright/test'
 
 const adminPassword = 'agentx-e2e-admin-password'
@@ -128,7 +129,7 @@ async function createWorkflow(page: Page, name: string) {
 }
 
 async function addModelAndRequest(page: Page, workflowId: string, note: string) {
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   const initialEdge = page.locator('.react-flow__edge').first()
   await initialEdge.click({ force: true })
@@ -152,7 +153,7 @@ async function addModelAndRequest(page: Page, workflowId: string, note: string) 
 }
 
 async function authorizeModelWithoutSelecting(page: Page, workflowId: string) {
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   const initialEdge = page.locator('.react-flow__edge').first()
   await initialEdge.click({ force: true })
@@ -210,10 +211,12 @@ async function selectSaveVersionAndRun(page: Page, workflowId: string, modelNode
   await connect(page, page.getByTestId('workflow-start').locator('.react-flow__handle.source[data-handleid="main"]'), modelNode.locator('.react-flow__handle.target[data-handleid="main"]'))
   await connect(page, modelNode.locator('.react-flow__handle.source[data-handleid="main"]'), page.getByTestId('exit-node-exit').locator('.react-flow__handle.target[data-handleid="main"]'))
   await expect(page.locator('.react-flow__edge')).toHaveCount(2)
-  const saved = page.waitForResponse((response) => response.request().method() === 'PUT' && response.url().endsWith(`/workflows/${workflowId}/draft`))
+  const saved = page.waitForResponse((response) => response.request().method() === 'PUT' && response.url().endsWith(`/workflows/${workflowId}/drafts/${fixtureDraftIdKnown(workflowId)}`))
   await page.getByRole('button', { name: '保存', exact: true }).click()
   expect((await saved).status()).toBe(200)
   await page.getByRole('link', { name: '返回', exact: true }).click()
+  await page.getByRole('combobox', { name: '选择当前草稿', exact: true }).click()
+  await page.locator(`[data-option-value="${fixtureDraftIdKnown(workflowId)}"]`).click()
   await expect(page.getByText('资源与授权校验通过')).toBeVisible()
   const version = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith(`/workflows/${workflowId}/versions`))
   await page.getByRole('button', { name: '保存为版本' }).click()

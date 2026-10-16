@@ -1,4 +1,4 @@
-"""Browser acceptance against the real Kimi application and Judge reports."""
+"""Browser acceptance against the real model application and Judge reports."""
 
 import os
 from pathlib import Path

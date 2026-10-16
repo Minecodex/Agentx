@@ -54,10 +54,45 @@ impl ExecutionRolesSnapshotV1 {
 pub struct ExecutionWorkflowSnapshotV1 {
     pub id: Uuid,
     pub name: String,
-    pub version_id: Uuid,
-    pub version_number: u64,
+    pub version_id: Option<Uuid>,
+    pub version_number: Option<u64>,
+    pub source: crate::WorkflowDesignSourceV1,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner_department: Option<ExecutionDepartmentSnapshotV1>,
+}
+
+impl ExecutionWorkflowSnapshotV1 {
+    pub fn bind_source(&mut self, source: crate::WorkflowDesignSourceV1) {
+        match &source {
+            crate::WorkflowDesignSourceV1::Version {
+                version_id,
+                version_number,
+            } => {
+                self.version_id = Some(*version_id);
+                self.version_number = Some(*version_number);
+            }
+            crate::WorkflowDesignSourceV1::DraftRevision { .. } => {
+                self.version_id = None;
+                self.version_number = None;
+            }
+        }
+        self.source = source;
+    }
+    pub fn source_is_valid(&self) -> bool {
+        self.source.is_valid()
+            && match &self.source {
+                crate::WorkflowDesignSourceV1::Version {
+                    version_id,
+                    version_number,
+                } => {
+                    self.version_id == Some(*version_id)
+                        && self.version_number == Some(*version_number)
+                }
+                crate::WorkflowDesignSourceV1::DraftRevision { .. } => {
+                    self.version_id.is_none() && self.version_number.is_none()
+                }
+            }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]

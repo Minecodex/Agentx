@@ -1,6 +1,7 @@
 import json
 import zipfile
 from types import SimpleNamespace
+from xml.etree import ElementTree
 
 import pytest
 import yaml
@@ -20,10 +21,17 @@ def test_evidence_redacts_vault_and_provider_credentials() -> None:
         ('{"authorization":"Basic fixture-basic"}', "fixture-basic"),
         ("fixture = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmaXh0dXJlIn0.fixture-signature'", "eyJhbGciOiJIUzI1NiJ9"),
         ("fixture = 'axk_" + "a" * 43 + "'", "axk_" + "a" * 43),
+        ("custom+scheme://user:pass:with:colons@host.invalid/path", "pass:with:colons"),
     ):
         sanitized = redact(text)
         assert value not in sanitized
         assert "<redacted>" in sanitized
+
+
+@pytest.mark.timeout(2)
+def test_large_scheme_like_tool_results_do_not_trigger_quadratic_redaction() -> None:
+    content = "tool output: " + "alpha-beta.v1" * 30_000
+    assert redact(content) == content
 
 
 def test_redaction_preserves_kubernetes_secret_references_and_yaml_structure() -> None:
@@ -71,6 +79,20 @@ def test_failed_junit_and_diagnostics_are_redacted_without_hiding_failure(tmp_pa
     assert diagnostic == "assert <redacted>"
 
 
+def test_truncated_fixture_dumps_cannot_expose_credential_suffixes() -> None:
+    diagnostic = (
+        "streaming_application = {'apiKey': 'already-truncated',...opaque-credential-suffix'}\n"
+        "callers = ['first-key',...opaque-key-suffix']\n"
+        "    saved = control.put(path)\n"
+        "E   httpx.ReadTimeout: timed out"
+    )
+    sanitized = redact(diagnostic)
+    assert "opaque-credential-suffix" not in sanitized
+    assert "opaque-key-suffix" not in sanitized
+    assert "saved = control.put(path)" in sanitized
+    assert "httpx.ReadTimeout: timed out" in sanitized
+
+
 def test_browser_trace_tokens_are_redacted_and_binary_resources_are_preserved(tmp_path) -> None:
     credential = "axk_" + "a" * 43
     image = b"\x89PNG\xff\x00\x01"
@@ -78,9 +100,16 @@ def test_browser_trace_tokens_are_redacted_and_binary_resources_are_preserved(tm
     with zipfile.ZipFile(path, "w") as trace:
         trace.writestr("0-trace.network", '{"headers":[{"name":"Authorization","value":"Bearer ' + credential + '"}]}')
         trace.writestr("resources/image.png", image)
-    (tmp_path / "junit.xml").write_text(credential)
+    (tmp_path / "junit.xml").write_text(
+        f'<testsuite tests="1"><testcase name="case"><failure message="{credential}">'
+        f"Authorization: Bearer {credential}</failure></testcase></testsuite>"
+    )
     redact_browser_artifacts(tmp_path)
     with zipfile.ZipFile(path) as trace:
         assert credential.encode() not in trace.read("0-trace.network")
         assert trace.read("resources/image.png") == image
-    assert (tmp_path / "junit.xml").read_text() == "<redacted>"
+    report = ElementTree.parse(tmp_path / "junit.xml").getroot()  # noqa: S314 -- controlled local fixture
+    assert report.attrib["tests"] == "1"
+    failure = report.find("testcase/failure")
+    assert failure is not None and failure.attrib["message"] == "<redacted>"
+    assert failure.text == "Authorization: <redacted>"

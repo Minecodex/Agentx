@@ -15,7 +15,7 @@ plan6不改变Definition版本，但改变节点契约来源：Node Manifest当�
 输出模型分为两层：
 
 - **全局契约**（单一真源）：字段名、JSON Schema、required 与 sensitive 存于 `end.outputs` 与 `end.error.outputs`，对所有 exit 生效；Studio 在任一 exit 上编辑字段即修改全局契约，重命名字段会同步重命名所有 exit 的映射 key。
-- **per-exit 映射**：每个 exit 节点的 `parameters.outputs` / `parameters.errorOutputs` 为每个契约字段提供一个 `InputBinding`；引用校验以该 exit 自身的可达前驱为准（扩展图上 exit 作为虚拟汇点计算），错误映射引用还必须是该 exit 全部错误来源的公共前驱。每个 exit 必须覆盖所有 `required` 契约字段（编译期 `EXIT_REQUIRED_MAPPING_MISSING`）。
+- **per-exit 映射**：每个 exit 节点的 `parameters.outputs` / `parameters.errorOutputs` 为每个契约字段提供一个 `InputBinding`；引用校验以该 exit 自身的可达前驱为准（扩展图上 exit 作为虚拟汇点计算），错误映射引用还必须是该 exit 全部错误来源的公共前驱。每个 exit 只对实际连接的 main/error 输入要求对应 `required` 契约字段映射（编译期 `EXIT_REQUIRED_MAPPING_MISSING`）；错误专用 Exit 不要求成功映射。已填写映射仍执行完整字段与引用校验。
 
 执行语义：连到exit的边被编译为携带`targetExit`的terminal connection。`first_return`由首个main交付决定成功输出并取消其余激活；任一error交付到exit都按对应错误映射立即失败。`all_complete`等待全部可完成分支，只聚合实际到达的成功Exit并按IR中显式保存的Definition顺序排列；每个字段数组为每个到达Exit保留槽位，可选缺失写null，必填缺失/null失败。同一`(source, sourcePort)`扇出到多个exit被编译期拒绝（`DUPLICATE_TERMINAL_FANOUT`），保证结果确定。对外API和子流程输出Schema从同一全局契约与完成模式生成。
 
@@ -64,3 +64,7 @@ Redis Stream 和 Consumer Group 丢失后由 Worker 按 capability 原地重建�
 所有可绑定字段使用SmartInput：用户可以输入固定文字、插入变量胶囊并继续拼接；输入`{{`、`/`或点击`{}`打开Picker。数组/对象使用JSON5编辑语法，变量可以作为数组元素或对象值，保存时转换为递归InputBinding。ConditionSpec使用左右一致的SmartInput和按左值Schema决定的操作符。复制粘贴使用Agentx自定义MIME保留Selector，界面不展示协议字符串或可编辑类型选择。
 
 Picker只展示目标节点经execution边可达的上游输出；没有明确目标时输出目录为空，binding/resource边不建立数据依赖。Exit main/error映射分别使用自己的虚拟目标。断线后的已有引用保留并显示字段级错误；后端Draft保存执行同源轻量引用校验，拒绝非法引用且不增加revision。发布/创建版本仍执行完整Compiler校验。
+
+## 独立知识检索与草稿资源缺项
+
+`knowledge_retrieval` 是公开 Action，复用已授权 RAG 资源与 Runtime 检索协议，输入 query/Top K，输出 text/documents/files。files 为现有外部附件来源引用，不是 Artifact，不下载原件。Agent 的 knowledge 附件继续保留。草稿允许缺少资源；完整编译要求必需资源槽/选择器已绑定，错误类型和重复单选绑定仍拒绝。设计与验收见 [plan8 资源补全](plan8/08-resource-completion-and-knowledge.md)。

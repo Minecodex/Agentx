@@ -20,7 +20,8 @@
     "nodes/rag.json",
     "nodes/memory.json",
     "nodes/reply_message.json",
-    "nodes/send_message.json"
+    "nodes/send_message.json",
+    "nodes/knowledge_retrieval.json"
   ],
   "traceRenderers": []
 }

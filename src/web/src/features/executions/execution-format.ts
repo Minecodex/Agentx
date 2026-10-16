@@ -9,3 +9,7 @@ export function executionStatus(status: string): 'success' | 'running' | 'waitin
 
 export const formatCost = formatCurrencyCost
 import { formatCost as formatCurrencyCost } from '../../shared/lib/cost-format'
+
+export function designSourceLabel(source: {kind: 'draft_revision'; draftId: string; revision: number} | {kind: 'version'; versionNumber: number} | undefined, version: number | null | undefined, draftLabel: (revision: number, draft: string) => string) {
+  return source?.kind === 'draft_revision' ? draftLabel(source.revision, source.draftId.slice(-8)) : `v${source?.kind === 'version' ? source.versionNumber : version ?? '—'}`
+}

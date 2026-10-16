@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
 from tests.e2e.product.live_text_support import post
 from tests.e2e.product.next_batch_support import (
     approval_resources as approval_resources,
@@ -115,10 +116,11 @@ def test_cross_department_approval_rejection_cancellation_and_runtime_revocation
             "review_approved",
             "approved",
         ], final["history"]
-        draft = get(editor, f"/workflows/{workflow}/draft")
+        draft = get(editor, f"/workflows/{workflow}/drafts/{fixture_draft_id(editor, workflow, None)}")
         saved = editor.put(
-            f"/api/v1/workflows/{workflow}/draft",
+            f"/api/v1/workflows/{workflow}/drafts/{fixture_draft_id(editor, workflow, None)}",
             json={
+                "editorDocument": fixture_draft(editor, workflow, None)["editorDocument"],
                 "expectedRevision": draft["revision"],
                 "definition": model_definition(control, resource["app"]["workflowId"], resource["model"]),
             },
@@ -127,7 +129,12 @@ def test_cross_department_approval_rejection_cancellation_and_runtime_revocation
         version = post(
             editor,
             f"/workflows/{workflow}/versions",
-            {"draftRevision": get(editor, f"/workflows/{workflow}/draft")["revision"]},
+            {
+                "draftId": fixture_draft(editor, workflow, None)["id"],
+                "draftRevision": get(
+                    editor, f"/workflows/{workflow}/drafts/{fixture_draft_id(editor, workflow, None)}"
+                )["revision"],
+            },
         )
         app = publish_application(control, workflow, version["id"], f"p7-approved-{run_id}")
         with httpx.Client(
@@ -156,7 +163,7 @@ def test_cross_department_approval_rejection_cancellation_and_runtime_revocation
         assert result["status"] == "rejected" and not _grants(control, resource, rejected_workflow)
         options = get(
             editor,
-            f"/workflows/{rejected_workflow}/resource-options?resourceType=model&operation=use&search={resource['model']['alias']}",
+            f"/workflows/{rejected_workflow}/resource-options?draftId={fixture_draft_id(editor, rejected_workflow)}&resourceType=model&operation=use&search={resource['model']['alias']}",
         )["items"]
         assert next(item for item in options if item["id"] == resource["model"]["id"])["accessState"] == "rejected"
         renewed = request_resource(editor, rejected_workflow, resource["model"])
@@ -321,7 +328,7 @@ def test_already_issued_token_is_refused_after_role_revocation(
 
 @pytest.mark.parametrize("change", ["credential_rotation", "requester_role_revocation"])
 def test_changed_dependency_or_requester_invalidates_pending_approval(
-    installed_agentx, service_urls, approval_resources, live_kimi_secret, run_id, change
+    installed_agentx, service_urls, approval_resources, existing_model_secret, run_id, change
 ):
     resource = approval_resources
     control = resource["control"]
@@ -343,7 +350,7 @@ def test_changed_dependency_or_requester_invalidates_pending_approval(
         credential = get(control, f"/credentials/{resource['credential']['id']}")
         response = control.post(
             f"/api/v1/credentials/{credential['id']}/rotate",
-            json={"version": credential["version"], "secret": live_kimi_secret.value},
+            json={"version": credential["version"], "secret": existing_model_secret.value},
         )
     else:
         response = control.patch(

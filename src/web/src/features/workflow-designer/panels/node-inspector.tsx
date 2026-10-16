@@ -63,6 +63,7 @@ export function NodeInspector({
   pluginVersionContext,
   resources,
   workflowId,
+  draftId,
   executionId,
   referenceCatalog,
   parameterCatalogs,
@@ -85,6 +86,7 @@ export function NodeInspector({
   pluginVersionContext?: { affectedNodes: number; connectedInputs: string[]; connectedOutputs: string[]; dependentReferences: number };
   resources: Partial<Record<ResourceType, ResourceOption[]>>;
   workflowId?: string;
+  draftId?: string;
   executionId?: string;
   referenceCatalog?: ReferenceCatalog;
   parameterCatalogs?: Record<string, ReferenceCatalog | undefined>;
@@ -151,11 +153,11 @@ export function NodeInspector({
   const [overlayText, setOverlayText] = useState("{}");
   const overlay = useMutation({
     mutationFn: (kind: string) =>
-      saveOverlay(workflowId!, nodeId!, kind, JSON.parse(overlayText)),
+      saveOverlay(workflowId!, draftId!, nodeId!, kind, JSON.parse(overlayText)),
     onSuccess: (value) => nodeId && onOverlayChange?.(nodeId, value.id),
   });
   const removeOverlay = useMutation({
-    mutationFn: () => deleteOverlay(workflowId!, nodeId!),
+    mutationFn: () => deleteOverlay(workflowId!, draftId!, nodeId!),
     onSuccess: () => nodeId && onOverlayChange?.(nodeId),
   });
 
@@ -167,7 +169,7 @@ export function NodeInspector({
     setOverlayText("{}");
   }, [nodeId]);
   useEffect(() => {
-    if (selectedRun?.output !== undefined)
+    if (selectedRun?.output != null)
       setOverlayText(JSON.stringify(selectedRun.output, null, 2));
   }, [selectedRun?.output]);
   useEffect(() => {
@@ -304,7 +306,7 @@ export function NodeInspector({
           {resolvedManifest?.plugin?.uiSource && selectedRun?.output !== undefined && <PluginResult manifest={resolvedManifest} value={selectedRun.output} />}
           <div className="mb-3 flex items-center gap-1">
             <Button
-              disabled={overlay.isPending || data.editorKind !== "action" || selectedRun?.output === undefined}
+              disabled={readOnly || overlay.isPending || data.editorKind !== "action" || selectedRun?.output == null}
               onClick={() => overlay.mutate("pin_data")}
               size="sm"
               variant="secondary"
@@ -312,7 +314,7 @@ export function NodeInspector({
               {t("studio.runtime.pin")}
             </Button>
             <Button
-              disabled={overlay.isPending || data.editorKind !== "action"}
+              disabled={readOnly || overlay.isPending || data.editorKind !== "action"}
               onClick={() => overlay.mutate("mock_output")}
               size="sm"
               variant="ghost"
@@ -321,7 +323,7 @@ export function NodeInspector({
             </Button>
             <Button
               aria-label={t("studio.runtime.removeOverlay")}
-              disabled={removeOverlay.isPending || data.editorKind !== "action"}
+              disabled={readOnly || removeOverlay.isPending || data.editorKind !== "action"}
               onClick={() => removeOverlay.mutate()}
               size="icon"
               variant="ghost"
@@ -334,6 +336,7 @@ export function NodeInspector({
             className="min-h-[260px] w-full resize-y rounded-md border border-border bg-canvas p-3 font-mono text-[11px] leading-5"
             onChange={(event) => setOverlayText(event.target.value)}
             value={overlayText}
+            readOnly={readOnly}
           />
         </TabsContent>
         <TabsContent className="min-h-0 flex-1 overflow-auto" value="trace">
@@ -358,6 +361,7 @@ function Parameters({
   localized,
   resources,
   workflowId,
+  draftId,
   providerOptions,
   referenceCatalog,
   parameterCatalogs,
@@ -378,6 +382,7 @@ function Parameters({
   localized?: ReturnType<typeof localizeManifest>;
   resources: Partial<Record<ResourceType, ResourceOption[]>>;
   workflowId?: string;
+  draftId?: string;
   providerOptions: Record<string, ResourceOption[]>;
   referenceCatalog?: ReferenceCatalog;
   parameterCatalogs?: Record<string, ReferenceCatalog | undefined>;
@@ -415,6 +420,7 @@ function Parameters({
         currentNodeCatalog,
         resources,
         workflowId,
+  draftId,
         sourceNodeId,
         readOnly,
         onChange,
@@ -591,7 +597,7 @@ function referenceFields(
   return Object.entries(schema.properties ?? {}).map(([name, child]) => {
     const path = `${parent}.${name}`;
     const selector = parentSelector
-      ? { ...parentSelector, path: [...parentSelector.path, name] }
+      ? { ...parentSelector, path: [...(parentSelector.path ?? []), name] }
       : undefined;
     const children = referenceFields(child, path, selector);
     return {

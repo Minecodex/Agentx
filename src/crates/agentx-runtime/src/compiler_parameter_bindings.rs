@@ -1,6 +1,30 @@
 use agentx_domain::{InputBinding, ValueNamespace};
 use serde_json::Value;
 
+pub(super) fn validate_disabled_parameter_shapes(
+    definition: &agentx_domain::WorkflowDefinition,
+    registry: &crate::NodeRegistry,
+    resolved: Option<
+        &std::collections::BTreeMap<String, agentx_node_protocol::NodeManifestVersion>,
+    >,
+    issues: &mut Vec<super::CompileIssue>,
+) {
+    for (index, node) in definition
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| node.disabled)
+    {
+        if let Some(manifest) = resolved
+            .and_then(|values| values.get(&node.id))
+            .or_else(|| registry.get(&node.node_type, node.type_version))
+        {
+            super::validate_parameters(index, node, manifest, issues);
+            super::validate_parameter_binding_contracts(index, node, manifest, issues);
+        }
+    }
+}
+
 use super::{
     CompileIssue, ParameterBindingContract, collect_binding_selectors, parameter_items_schema,
     parameter_property_schema,

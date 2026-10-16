@@ -94,6 +94,8 @@ Workflow 推荐引用 Model Alias，而不是将真实 Endpoint 和 Credential �
 
 API 格式描述供应商接受的模型调用协议，不等同于内部 Provider Adapter 类型。当前 Runtime 只支持 OpenAI Chat Completions，因此控制面只允许选择该格式；连接测试使用当前上游模型 ID 发送最小 `POST /chat/completions` 请求，与 Workflow 运行路径一致。实现 Responses Runtime 后再增加 OpenAI Responses 选项。
 
+模型推理请求显式指定 `stream`。价格版本和 Agent 调用用途属于 Agentx 内部运行数据，保留在 Runtime Call Ledger 与 Trace 中，不附加到上游 `metadata`；这样使用严格校验请求字段的 OpenAI-compatible 服务时，也能沿用相同的模型与 Agent 调用路径。
+
 新建 Model Alias 的连接状态固定为 `untested`。只有用户手动发起 Alias 级连接测试后，状态才更新为 `healthy` 或 `unhealthy`；Alias 或当前 Deployment Revision 的有效配置发生变化后，旧健康结果立即失效并重新显示 `untested`。
 
 模型调用记录：
@@ -128,6 +130,8 @@ Skill Definition 描述业务身份和生命周期；Alias 是租户内唯一的
 Markdown 使用开源 MDXEditor/Lexical 富文本界面编辑，用户通过标题、加粗、列表、链接和表格等可视化控件生成标准 Markdown，不需要掌握 Markdown 语法。编辑器可从当前 Skill 文件树选择目标并插入标准相对链接。移动或重命名文件时服务端同步重写内部相对链接；删除被引用文件会被拒绝。发布前通过 Markdown AST 校验引用，Skill Version 固化每个文件的路径、Artifact、Content Hash、引用目标 Hash，以及 Model、MCP Tool、Credential、Skill、RAG 和 Memory 依赖。ZIP 只用于当前工作区导入导出，不是 Skill 的持久化模型。
 
 Workflow Draft 可以选择 Skill Definition 和目标版本；发布时必须固化 Skill Version，并检查所有直接和递归依赖对 Workflow Service Identity 均已授权。Skill Grant 不能隐式授予其 MCP Tool、Model 或 Credential 权限，任一依赖授权被撤销后，新执行不得继续加载该 Skill。
+
+Agent 加载 Skill 指令时同时向模型提供被冻结的 `skillVersionId`，用于 `skill_resource` 读取附件。版本标识来自已签名的资源绑定，不能依靠模型猜测；附件读取仍逐项校验版本、Hash、授权和依赖闭包。
 
 发布 Skill Version 时，其所属部门必须能使用完整依赖包，其他部门或工作流的 Grant 不构成发布权限。逐项按依赖声明的操作校验；Memory 的 `read` Grant 不能授权 `write`，`manage` 可以覆盖所需操作。
 
@@ -170,6 +174,8 @@ RAG 节点的 Trace 包含查询、召回结果引用、Score、耗时和错误�
 ## 7. Memory
 
 首期提供 Mem0 Adapter，统一接口：
+
+认证根据冻结的 Credential 类型选择 Mem0 原生协议：`api_key` 使用 `X-API-Key`，`bearer` 使用 `Authorization: Bearer` 登录令牌。持续部署使用可撤销的服务 API Key；登录令牌按 Mem0 的有效期管理。运行时必须匹配完整 Secret Reference 和 Secret Version，缺失绑定或其他凭证类型明确拒绝，不猜测认证方式。
 
 - get
 - search
@@ -336,3 +342,7 @@ Workflow、Environment、Application、Credential、Model Alias、MCP Server、S
 用户输入型唯一字段采用统一写入协议：按领域规则规范化，按唯一索引真实作用域前置查询，并保留数据库约束处理并发竞态。前置检查和数据库兜底返回相同的稳定领域错误码、HTTP 409 与 `fieldErrors`，客户端不得展示 SQL 错误。幂等键、版本号、内容 Hash 和执行序号等内部约束仍由业务流程显式处理；未登记的唯一冲突返回 `INTERNAL_ERROR`，日志只记录索引、数据库错误码和 requestId，不记录冲突值。
 
 Dataset 导入先检查文件内重复，再在事务中检查现有 Case，并用 `details.caseKey/line` 定位。Artifact 写入必须位于可执行的业务前检之后；后续事务失败立即补偿对象和配额，补偿失败由 Retention 兜底。
+
+## 租户画布 AI 模型
+
+模型列表支持设置、清除及当前模型标记。`tenant_settings` 保存 Alias ID、授权 Credential ID，复用修订号并发控制。配置同时要求 model:manage、company:manage、resource:grant；该授权仅用于设计态调用，不向 Workflow Service Identity 自动写资源 Grant。编辑者可使用租户配置，画布没有模型选择器。配置变化影响新 Run；禁用或撤销阻断后续效果，Alias 改用其他凭据需重新设置。

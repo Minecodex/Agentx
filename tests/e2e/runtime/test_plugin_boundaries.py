@@ -11,6 +11,7 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 import httpx
 import pytest
 
+from tests.e2e.draft_fixtures import fixture_draft_id
 from tests.e2e.product.test_playwright import (
     _build_canvas_plugin_v2,
     _run_playwright,
@@ -125,7 +126,9 @@ def _workflow(client: httpx.Client, headers: dict[str, str], labels: list[str]) 
     )
     response.raise_for_status()
     workflow_id = response.json()["id"]
-    response = client.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers)
+    response = client.get(
+        f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(client, workflow_id, headers)}", headers=headers
+    )
     response.raise_for_status()
     draft = response.json()
     definition = draft["definition"]
@@ -163,17 +166,17 @@ def _workflow(client: httpx.Client, headers: dict[str, str], labels: list[str]) 
     ] + editor["nodeLayouts"]
     editor["edges"] = [{"edgeId": edge["id"]} for edge in definition["connections"]]
     response = client.put(
-        f"/api/v1/workflows/{workflow_id}/draft",
+        f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(client, workflow_id, headers)}",
         headers=headers,
         json={"expectedRevision": draft["revision"], "definition": definition, "editorDocument": editor},
     )
-    response.raise_for_status()
+    assert response.status_code == 200, response.text
     return workflow_id, response.json()["revision"]
 
 
 def _start(client: httpx.Client, headers: dict[str, str], workflow: tuple[str, int]) -> str:
     response = client.post(
-        f"/api/v1/workflows/{workflow[0]}/debug-executions",
+        f"/api/v1/workflows/{workflow[0]}/drafts/{fixture_draft_id(client, workflow[0], headers)}/debug-executions",
         headers=headers,
         json={
             "expectedRevision": workflow[1],
@@ -317,5 +320,5 @@ def test_plugin_publish_versions_and_historical_trace(
         "AGENTX_E2E_RUN_ID": installed_agentx["run_id"],
         "AGENTX_PLUGIN_EXECUTION_OUTPUT": str(evidence),
     }
-    _run_playwright("canvas-plugins", ("tests/canvas-plugins.spec.ts",), environment, root)
+    _run_playwright("canvas-plugin-history", ("tests/canvas-plugins.spec.ts",), environment, root)
     _verify_plugin_trace_degradation(environment, root, installed_agentx["runtime_namespace"], evidence)

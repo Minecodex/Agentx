@@ -1,8 +1,10 @@
+import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
+
 import { connectStudioPorts as connect } from './studio-connections'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { publishCompatibleChatMapping, useRuntimePortForward } from './playground-helpers'
-import { fillMonaco, resizeLoop, showEdgeToolbar } from './workflow-studio-editor-helpers'
+import { fillMonaco, resizeLoop, sandboxImageDigest, showEdgeToolbar } from './workflow-studio-editor-helpers'
 const password = 'agentx-e2e-admin-password'
 const gatewayBase = process.env.AGENTX_E2E_RUNTIME_URL ?? ''
 const echoBaseUrl = process.env.AGENTX_E2E_ECHO_BASE_URL ?? 'http://echo-mcp:8090'
@@ -254,7 +256,7 @@ async function ensureStudioResources(page: Page, token: string) {
       description: `M6 API-first OpenSandbox ${egressMode} fixture`,
       ownerDepartmentId: department.id,
       runner: 'python',
-      imageDigest: 'opensandbox/code-interpreter@sha256:64cd01f03f54ba347d1a1310dcbc18ac5cb17d01714e23b4ea4b840fbb0d6623',
+      imageDigest: sandboxImageDigest(),
       cpuMillis: 500,
       memoryBytes: 536870912,
       pidsLimit: 256,
@@ -465,13 +467,13 @@ async function setEndErrorOutput(page: Page) {
 async function saveAndReadDraft(page: Page, token: string, workflowId: string) {
   const save = page.getByRole('button', { name: '保存', exact: true })
   if (await save.isEnabled()) {
-    const responsePromise = page.waitForResponse((response) => response.url().endsWith(`/api/v1/workflows/${workflowId}/draft`) && response.request().method() === 'PUT')
+    const responsePromise = page.waitForResponse((response) => response.url().endsWith(`/api/v1/workflows/${workflowId}/drafts/${fixtureDraftIdKnown(workflowId)}`) && response.request().method() === 'PUT')
     await save.click()
     const response = await responsePromise
     if (!response.ok()) throw new Error(`save workflow draft: ${response.status()} ${await response.text()}`)
   }
   await expect(page.locator('header').getByText(/修订号 \d+ · 已保存/)).toBeVisible({ timeout: 30_000 })
-  return api<StudioDraft>(page, token, `/workflows/${workflowId}/draft`)
+  return api<StudioDraft>(page, token, `/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}`)
 }
 
 async function startDebug(page: Page, action: () => Promise<void>, confirm = true) {
@@ -572,7 +574,7 @@ test('M6 Studio builds and reopens Start to IF to Set to Merge to Exit entirely 
   const workflowName = `M6 UI Branch Merge ${Date.now()}`
   const workflowId = await createWorkflow(page, workflowName)
 
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   await addFromCreator(page, 'palette-action-if')
   const ifNode = page.locator('.react-flow__node-manifest').filter({ hasText: /条件分支|IF/ }).first()
@@ -643,7 +645,7 @@ test('M6 Studio creates, debugs, versions and publishes a manifest-driven Workfl
 
   for (const [resourceType, resourceName, detail] of resourceNames) await grantResource(page, resourceType, resourceName, detail, workflowName)
 
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   await setStartInputs(page)
   await expect(page.getByTestId('node-creator')).toBeVisible()
@@ -782,7 +784,7 @@ test('M6 Studio creates, debugs, versions and publishes a manifest-driven Workfl
   const retryDefinition = structuredClone(draft.definition)
   const retryCode = retryDefinition.nodes.find((node) => node.type === 'code')!
   retryCode.settings = { ...retryCode.settings, retryOnFail: true, maxTries: 2, waitBetweenTriesMs: 500 }
-  const retrySave = await page.request.put(`/api/v1/workflows/${workflowId}/draft`, {
+  const retrySave = await page.request.put(`/api/v1/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}`, {
     headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': `m6-code-retry-${Date.now()}` },
     data: { expectedRevision: draft.revision, definition: retryDefinition, editorDocument: draft.editorDocument },
   })
@@ -902,7 +904,7 @@ test('M6 Studio creates, debugs, versions and publishes a manifest-driven Workfl
   const runtimeModelCall = runtimeDetails!.calls.find((call) => call.resourceType === 'model')
   expect(runtimeModelCall).toMatchObject({ costCurrency: 'USD' })
   expect(runtimeModelCall?.costMicros).toBe(modelCall?.costMicros)
-  expect(mcpCall).toMatchObject({ status: 'succeeded', resourceType: 'mcp' })
+  expect(mcpCall).toMatchObject({ status: 'succeeded', resourceType: 'mcp', spanName: 'echo' })
   expect(traceSnapshot?.spans.some((span) => span.spanKind === 'sandbox' && span.status === 'succeeded')).toBe(true)
   expect(traceSnapshot?.spans.find((span) => span.spanKind === 'wait')).toMatchObject({ status: 'decided' })
   const codeTraceRow = runtimeRail.getByRole('row').filter({ hasText: 'M6 Python Code' }).first()
@@ -1096,7 +1098,7 @@ test('M6 Studio creates, debugs, versions and publishes a manifest-driven Workfl
   }
 
   const concurrent = await context.newPage()
-  await concurrent.goto(`/workflows/${workflowId}/editor`)
+  await concurrent.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await expect(concurrent.getByTestId('workflow-canvas')).toBeVisible()
   const concurrentDetails = await openNodeDetails(concurrent, flowNode(concurrent, 'code'))
   await concurrentDetails.getByRole('tab', { name: 'Parameters' }).click()
@@ -1139,7 +1141,7 @@ test('M6 Code executes JavaScript and Shell named-input contracts in OpenSandbox
     const workflowName = `M6 Code ${codeCase.runner} ${Date.now()}`
     const workflowId = await createWorkflow(page, workflowName)
     await grantResource(page, 'sandbox_profile', studioSandboxName, undefined, workflowName)
-    await page.goto(`/workflows/${workflowId}/editor`)
+    await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
     await expect(page.getByTestId('workflow-canvas')).toBeVisible()
     await addFromCreator(page, 'palette-action-code')
     const code = flowNode(page, 'code')
@@ -1205,7 +1207,7 @@ from urllib.parse import urlparse
 def tunnel_once(host, port):
     proxy = urlparse(os.environ["AGENTX_TCP_PROXY_URL"])
     context = ssl.create_default_context(cafile=os.environ["SSL_CERT_FILE"])
-    raw = socket.create_connection((proxy.hostname, proxy.port), timeout=20)
+    raw = socket.create_connection((proxy.hostname, proxy.port), timeout=20, all_errors=True)
     connection = context.wrap_socket(raw, server_hostname=proxy.hostname)
     auth = base64.b64encode(f"{proxy.username}:{proxy.password}".encode()).decode()
     request = f"CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\nProxy-Authorization: Basic {auth}\r\n\r\n"
@@ -1221,7 +1223,7 @@ def tunnel(host, port):
     for attempt in range(3):
         try:
             return tunnel_once(host, port)
-        except (OSError, TimeoutError):
+        except (OSError, TimeoutError, ExceptionGroup):
             if attempt == 2:
                 raise
             time.sleep(1)
@@ -1305,10 +1307,10 @@ host, port = sys.argv[1], int(sys.argv[2])
 proxy = urlparse(os.environ["AGENTX_TCP_PROXY_URL"])
 for attempt in range(3):
     try:
-        raw = socket.create_connection((proxy.hostname, proxy.port), timeout=20)
+        raw = socket.create_connection((proxy.hostname, proxy.port), timeout=20, all_errors=True)
         stream = ssl.create_default_context(cafile=os.environ["SSL_CERT_FILE"]).wrap_socket(raw, server_hostname=proxy.hostname)
         break
-    except (OSError, TimeoutError):
+    except (OSError, TimeoutError, ExceptionGroup):
         if attempt == 2:
             raise
         time.sleep(1)
@@ -1327,7 +1329,7 @@ printf '{"http":"ok","tcp":"%s"}' "$tcp_value" > "$AGENTX_OUTPUT_PATH"`
   const workflowName = `M6 Gateway runners ${Date.now()}`
   const workflowId = await createWorkflow(page, workflowName)
   await grantResource(page, 'sandbox_profile', studioNetworkSandboxName, undefined, workflowName)
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   await addFromCreator(page, 'palette-action-code')
   const code = flowNode(page, 'code')
@@ -1365,7 +1367,7 @@ printf '{"http":"ok","tcp":"%s"}' "$tcp_value" > "$AGENTX_OUTPUT_PATH"`
     const definition = structuredClone(activeDraft.definition)
     const codeDefinition = definition.nodes.find((node) => node.id === codeNodeId)!
     codeDefinition.parameters = { ...codeDefinition.parameters, runner, source, networkPolicy }
-    const response = await page.request.put(`/api/v1/workflows/${workflowId}/draft`, {
+    const response = await page.request.put(`/api/v1/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}`, {
       headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': `m6-egress-runner-${runner}-${Date.now()}` },
       data: { expectedRevision: activeDraft.revision, definition, editorDocument: activeDraft.editorDocument },
     })
@@ -1400,7 +1402,7 @@ printf '{"http":"ok","tcp":"%s"}' "$tcp_value" > "$AGENTX_OUTPUT_PATH"`
     definition.nodes.find((node) => node.type === 'code')!.parameters.networkPolicy = {
       mode: 'allowlist', destinations: [{ target, ports: [{ from: 443, to: 443 }] }],
     }
-    const response = await page.request.put(`/api/v1/workflows/${workflowId}/draft`, {
+    const response = await page.request.put(`/api/v1/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}`, {
       headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': `m6-protected-egress-${target}-${Date.now()}` },
       data: { expectedRevision: activeDraft.revision, definition, editorDocument: activeDraft.editorDocument },
     })
@@ -1418,7 +1420,7 @@ test('M6 standalone Model sends prompt and question as ordered messages and expo
   await grantResource(page, 'credential', studioCredentialName, undefined, workflowName)
   await grantResource(page, 'model', studioModelName, undefined, workflowName)
 
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   await setStartInputs(page)
   await addFromCreator(page, 'palette-action-model')
@@ -1546,7 +1548,7 @@ test('M6 Model validates native JSON Schema output without text parsing fallback
   await grantResource(page, 'credential', studioCredentialName, undefined, workflowName)
   await grantResource(page, 'model', studioModelName, undefined, workflowName)
 
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await setStartInputs(page)
   await addFromCreator(page, 'palette-action-model')
   await page.getByRole('button', { name: /^(适应画布|Fit view)$/i }).click({ force: true })
@@ -1579,7 +1581,7 @@ test('M6 standalone Approval resumes with the frozen decision output contract', 
   const { token, userName } = await login(page)
   const workflowName = `M6 Approval Contract ${Date.now()}`
   const workflowId = await createWorkflow(page, workflowName)
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   await setStartInputs(page)
   await addFromCreator(page, 'palette-action-approval')
@@ -1596,7 +1598,7 @@ test('M6 standalone Approval resumes with the frozen decision output contract', 
   await details.getByRole('button', { name: /^(关闭|Close)$/ }).first().click()
 
   await saveAndReadDraft(page, token, workflowId)
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await page.getByRole('button', { name: /^(适应画布|Fit view)$/i }).click({ force: true })
   const configuredApproval = page.locator('.react-flow__node-manifest').filter({ hasText: /审批|Approval/ }).first()
   await connect(page, page.getByTestId('workflow-start'), 'main', configuredApproval, 'main')
@@ -1641,7 +1643,7 @@ test('M6 Studio renders all thirteen dedicated node panels in the focused editor
   // the Workflow and Version themselves are still created through visible UI.
   const childName = 'M6 Panel Child Golden'
   const childId = await createWorkflow(page, childName)
-  await page.goto(`/workflows/${childId}/editor`)
+  await page.goto(`/workflows/${childId}/drafts/${await fixtureDraftId(page, childId)}/editor`)
   await saveAndReadDraft(page, token, childId)
   await page.getByRole('button', { name: '版本', exact: true }).click()
   const childVersions = page.getByRole('dialog', { name: '工作流版本' })
@@ -1654,7 +1656,7 @@ test('M6 Studio renders all thirteen dedicated node panels in the focused editor
   await grantResource(page, 'credential', studioCredentialName, undefined, workflowName)
   await grantResource(page, 'model', studioModelName, undefined, workflowName)
   await grantResource(page, 'sandbox_profile', studioSandboxName, undefined, workflowName)
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
 
   await setStartArrayInput(page)
@@ -1832,7 +1834,7 @@ test('M6 Studio renders all thirteen dedicated node panels in the focused editor
   await expect(validation).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('all-node-panels-error-state.png'), fullPage: true })
   await validation.getByRole('button', { name: '关闭' }).click()
-  const persistedAfterError = await api<StudioDraft>(page, token, `/workflows/${workflowId}/draft`)
+  const persistedAfterError = await api<StudioDraft>(page, token, `/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}`)
   expect(persistedAfterError.revision).toBe(configuredDraft.revision)
   const modelErrorDetails = await openNodeDetails(page, invalidModel)
   await openNodeBasics(modelErrorDetails)
@@ -1849,7 +1851,7 @@ test('M6 Studio makes dual-Agent output selection explicit across serial, parall
   await grantResource(page, 'credential', studioCredentialName, undefined, workflowName)
   await grantResource(page, 'model', studioModelName, undefined, workflowName)
 
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await setStartInputs(page)
   await addFromCreator(page, 'palette-action-agent')
   await addFromCreator(page, 'palette-action-agent')
@@ -1922,7 +1924,7 @@ test('M6 Studio makes dual-Agent output selection explicit across serial, parall
   expect(mergedDraft.definition.nodes.some((node) => node.type === 'merge')).toBeTruthy()
   const mergedExitParameters = mergedDraft.definition.nodes.find((node) => node.type === 'exit')?.parameters as { outputs: Record<string, unknown> }
   expect(mergedExitParameters.outputs.answer).toMatchObject({ kind: 'reference', selector: { namespace: 'outputs', port: 'main', path: ['text'] } })
-  const mergedVersion = await mutate<WorkflowVersion>(page, token, `/workflows/${workflowId}/versions`, 'POST', { draftRevision: mergedDraft.revision })
+  const mergedVersion = await mutate<WorkflowVersion>(page, token, `/workflows/${workflowId}/versions`, 'POST', { draftId: await fixtureDraftId(page, workflowId),  draftRevision: mergedDraft.revision })
   const application = await mutate<Application>(page, token, '/applications', 'POST', { workflowId, name: workflowName, slug: `m6-multi-agent-${Date.now()}`, description: 'Dual Agent output contract E2E', visibility: 'company' })
   const environments = await api<Array<{ id: string; code: string }>>(page, token, '/environments')
   const environment = environments.find((item) => item.code === 'development')

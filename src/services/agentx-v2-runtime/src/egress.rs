@@ -532,6 +532,8 @@ pub fn validate_sandbox_manager_execute_url(endpoint: &str) -> Result<Url> {
     if !matches!(
         path,
         "/internal/runtime/v1/sandboxes:execute"
+            | "/internal/runtime/v1/sandboxes:resolve"
+            | "/internal/runtime/v1/sandboxes:close-resolve-session"
             | "/internal/runtime/v1/sandboxes:acquire"
             | "/internal/runtime/v1/sandboxes:tool"
             | "/internal/runtime/v1/sandboxes:release"

@@ -114,6 +114,18 @@ async fn main() -> Result<()> {
     let public_gateway = agentx_v2_runtime::gateway::router().layer(runtime_cors()?);
     let router = Router::new()
         .route(
+            "/internal/runtime/v1/studio-model:submit",
+            post(agentx_v2_runtime::builder_model::submit),
+        )
+        .route(
+            "/internal/runtime/v1/studio-model:inspect",
+            post(agentx_v2_runtime::builder_model::inspect),
+        )
+        .route(
+            "/internal/runtime/v1/studio-model:cancel",
+            post(agentx_v2_runtime::builder_model::cancel),
+        )
+        .route(
             "/internal/runtime/v1/events:export",
             get(agentx_v2_runtime::event_export::export_events),
         )
@@ -272,6 +284,10 @@ async fn main() -> Result<()> {
         .route(
             "/internal/runtime/v1/plugin-design-operations:execute",
             post(agentx_v2_runtime::plugin_design::execute),
+        )
+        .route(
+            "/internal/runtime/v1/plugin-resolve-sessions:close",
+            post(agentx_v2_runtime::plugin_design::close_session),
         )
         .nest("/gateway/v1", public_gateway)
         .with_state(state);

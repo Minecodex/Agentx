@@ -1,3 +1,4 @@
+import { fixtureDraftId } from '../draft-fixtures'
 import { createHmac } from 'node:crypto'
 
 import { expect, type APIResponse, type Page, test } from '@playwright/test'
@@ -152,8 +153,8 @@ async function verifyMissingDefaultMappingIsRejected(page: Page, token: string, 
     description: 'Playground mapping validation fixture',
     visibility: 'company',
   })
-  const draft = await request<{ revision: number; editorDocument: Record<string, unknown> }>(page, token, `/workflows/${workflow.id}/draft`)
-  const saved = await request<{ revision: number }>(page, token, `/workflows/${workflow.id}/draft`, 'PUT', {
+  const draft = await request<{ revision: number; editorDocument: Record<string, unknown> }>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
+  const saved = await request<{ revision: number }>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`, 'PUT', {
     expectedRevision: draft.revision,
     definition: {
       schemaVersion: '8.0',
@@ -190,7 +191,7 @@ async function verifyMissingDefaultMappingIsRejected(page: Page, token: string, 
     },
     editorDocument: { ...draft.editorDocument, nodeLayouts: [{ nodeId: 'echo-input', x: 220, y: 160 }], edges: [{ edgeId: 'start-echo' }, { edgeId: 'echo-end' }] },
   })
-  const version = await request<WorkflowVersion>(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftRevision: saved.revision })
+  const version = await request<WorkflowVersion>(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftId: await fixtureDraftId(page, workflow.id),  draftRevision: saved.revision })
   await request(page, token, `/workflows/${workflow.id}/deployments`, 'POST', { workflowVersionId: version.id, environmentId: environment.id })
   const application = await request<Application>(page, token, '/applications', 'POST', {
     workflowId: workflow.id,
@@ -220,8 +221,8 @@ async function createFileEchoPlaygroundFixture(page: Page, token: string, enviro
     description: 'Playground Assistant file output fixture',
     visibility: 'company',
   })
-  const draft = await request<{ revision: number; editorDocument: Record<string, unknown> }>(page, token, `/workflows/${workflow.id}/draft`)
-  const saved = await request<{ revision: number }>(page, token, `/workflows/${workflow.id}/draft`, 'PUT', {
+  const draft = await request<{ revision: number; editorDocument: Record<string, unknown> }>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
+  const saved = await request<{ revision: number }>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`, 'PUT', {
     expectedRevision: draft.revision,
     definition: {
       schemaVersion: '8.0',
@@ -271,7 +272,7 @@ async function createFileEchoPlaygroundFixture(page: Page, token: string, enviro
     },
     editorDocument: { ...draft.editorDocument, nodeLayouts: [{ nodeId: 'echo-input', x: 220, y: 160 }], edges: [{ edgeId: 'start-echo' }, { edgeId: 'echo-end' }] },
   })
-  const version = await request<WorkflowVersion>(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftRevision: saved.revision })
+  const version = await request<WorkflowVersion>(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftId: await fixtureDraftId(page, workflow.id),  draftRevision: saved.revision })
   await request(page, token, `/workflows/${workflow.id}/deployments`, 'POST', { workflowVersionId: version.id, environmentId: environment.id })
   const application = await request<Application>(page, token, '/applications', 'POST', {
     workflowId: workflow.id,
@@ -341,8 +342,8 @@ test('M7 closes Application, Trigger, Evaluation, Approval and governance paths 
     description: 'M7 Poll and Lifecycle integration',
     visibility: 'company',
   })
-  const triggerDraft = await request<{ revision: number; editorDocument: Record<string, unknown> }>(page, token, `/workflows/${triggerWorkflow.id}/draft`)
-  const savedTriggerDraft = await request<{ revision: number }>(page, token, `/workflows/${triggerWorkflow.id}/draft`, 'PUT', {
+  const triggerDraft = await request<{ revision: number; editorDocument: Record<string, unknown> }>(page, token, `/workflows/${triggerWorkflow.id}/drafts/${await fixtureDraftId(page, triggerWorkflow.id)}`)
+  const savedTriggerDraft = await request<{ revision: number }>(page, token, `/workflows/${triggerWorkflow.id}/drafts/${await fixtureDraftId(page, triggerWorkflow.id)}`, 'PUT', {
     expectedRevision: triggerDraft.revision,
     definition: {
       schemaVersion: '8.0',
@@ -380,7 +381,7 @@ test('M7 closes Application, Trigger, Evaluation, Approval and governance paths 
       edges: [{ edgeId: 'set-to-set' }],
     },
   })
-  const triggerVersion = await request<WorkflowVersion>(page, token, `/workflows/${triggerWorkflow.id}/versions`, 'POST', { draftRevision: savedTriggerDraft.revision })
+  const triggerVersion = await request<WorkflowVersion>(page, token, `/workflows/${triggerWorkflow.id}/versions`, 'POST', { draftId: await fixtureDraftId(page, triggerWorkflow.id),  draftRevision: savedTriggerDraft.revision })
   await request(page, token, `/workflows/${triggerWorkflow.id}/deployments`, 'POST', { workflowVersionId: triggerVersion.id, environmentId: environment!.id })
   const triggerApplication = await request<Application>(page, token, '/applications', 'POST', {
     workflowId: triggerWorkflow.id,
@@ -475,7 +476,7 @@ test('M7 closes Application, Trigger, Evaluation, Approval and governance paths 
 
   await page.route('**/gateway/v1/artifacts', async (route) => route.abort('connectionfailed'))
   await page.locator('input[type=file]').setInputFiles({ name: 'failed-upload.png', mimeType: 'image/png', buffer: Buffer.from('failed upload') })
-  await expect(page.getByRole('region', { name: 'Notifications (F8)' }).getByText(/无法连接服务/).first()).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Notifications (F8)' }).getByText('无法连接服务。请检查网络、服务地址或浏览器的安全提示后重试。', { exact: true })).toBeVisible()
   await page.unroute('**/gateway/v1/artifacts')
 
   await page.route('**/gateway/v1/sessions/*/messages', async (route) => {

@@ -136,6 +136,8 @@ Agentx 继续维护 Readiness/Liveness、Drain、PDB、Claim/Lease/Fencing 和�
 
 ## 3. 模块依赖规则
 
+[plan8 多草稿与 AI 编辑](plan8/README.md) 增加 Control Studio Builder Host：复用同一个 Agent Core 承载设计态会话，通过 Runtime 专用设计态 API 调用模型；这是“Control 不执行业务 Agent loop”的明确设计态扩展，已实现。Builder 只编辑当前画布并静态校验，保存沿用编辑器链路，实际运行/测试、创建版本和部署由用户 UI 触发。业务 Worker 不修改 Draft、Runtime 不回读 Control 的边界保持；来源、账本、ACK 与恢复目标见 [plan8 架构](plan8/02-architecture-and-contracts.md)。以下条目仍描述当前已实现边界。
+
 - Studio 只能通过 Platform Control BFF 和 Runtime Gateway 调用后端。
 - Model、MCP、Memory、RAG、HTTP Request 和插件 `ctx.http/model` 的公网 HTTPS 必须使用 `ProviderHttpClient -> agentx-egress-gateway`；基础设施 Client 继续只访问固定内部依赖。
 - Platform Control 不直接执行节点，也不直连 Runtime MySQL/Redis/OSS 或 ClickHouse。
@@ -199,3 +201,12 @@ Outbox Dispatcher 将事务内事件投递到 Redis。即使 Redis 投递重复�
 - 重试前确认
 - Dry Run
 - 补偿分支
+
+
+### plan8 设计态边界
+
+Control 的 Studio Builder Host 使用同一纯 `agentx-agent-core`，Runtime Contracts 只引用其不可变请求/响应 DTO；Core 不依赖服务或基础设施。设计态模型调用通过绑定请求摘要的最小 JWT 交给 Runtime Gateway，账本来源为 `studio_builder`，所有业务 Execution/Attempt/Agent 标识为空。七个工具不具有保存、运行、测试、授权、版本或部署能力。
+
+设计态表直接纳入初始 DDL，其 `schema_file` 在表所有权目录明确登记；历史表处置清单不再承担新增表目录职责。边界检查继续区分历史基线与增量表，并检查声明的初始化位置。Redis 的现有 Admission 限流、SSE 唤醒及 Trace Delivery Host 纳入具名模块约束，不向 Builder 开放 Redis 权限。
+
+Draft revision 0 与后续修订都有不可变文档和资源快照；从版本派生及资源引用未变时保留原部署、价格和凭据 Secret Version。公开执行结果使用 `DraftRevision | Version` 来源，草稿调试不显示虚构版本。画布本地命令先持久化恢复数据再 ACK，重复 ACK 必须内容相同，Undo 后不重复应用同一命令。

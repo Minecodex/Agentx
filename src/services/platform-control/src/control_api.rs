@@ -197,7 +197,7 @@ fn routes() -> Router<ControlApiState> {
         .route("/api/v1/auth/me", get(me))
         .route(
             "/api/v1/workflows/{id}/debug-runs",
-            get(crate::governance_api::list_debug_runs).post(crate::work_packages::start_debug_run),
+            get(crate::governance_api::list_debug_runs),
         )
         .route(
             "/api/v1/applications/{id}",
@@ -269,6 +269,9 @@ fn routes() -> Router<ControlApiState> {
         .merge(crate::deletion_api::routes())
         .merge(crate::sandbox_profile_api::routes())
         .merge(crate::model_api::routes())
+        .merge(crate::studio_builder_setting::routes())
+        .merge(crate::studio_builder_api::routes())
+        .merge(crate::workflow_drafts::routes())
         .merge(crate::operations_api::routes())
         .merge(crate::external_resource_api::routes())
         .merge(crate::knowledge_document_api::routes())
@@ -626,6 +629,30 @@ pub(crate) fn decode_token(settings: &AuthSettings, token: &str, kind: &str) -> 
         ));
     }
     Ok(claims)
+}
+
+pub(crate) async fn reload_actor(
+    state: &ControlApiState,
+    tenant: Uuid,
+    user: Uuid,
+    version: u64,
+) -> ApiResult<Actor> {
+    load_actor(
+        state,
+        &Claims {
+            sub: user,
+            tid: tenant,
+            ver: version,
+            kind: "access".into(),
+            jti: Uuid::nil(),
+            family: None,
+            iss: String::new(),
+            aud: String::new(),
+            iat: 0,
+            exp: 0,
+        },
+    )
+    .await
 }
 
 async fn load_actor(state: &ControlApiState, claims: &Claims) -> ApiResult<Actor> {

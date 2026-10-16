@@ -1,0 +1,1111 @@
+{
+  "$defs": {
+    "BoundaryLayout": {
+      "additionalProperties": false,
+      "properties": {
+        "boundary": {
+          "$ref": "#/$defs/WorkflowBoundary"
+        },
+        "x": {
+          "format": "double",
+          "type": "number"
+        },
+        "y": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "boundary",
+        "x",
+        "y"
+      ],
+      "type": "object"
+    },
+    "ContextDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "clientWritable": {
+          "default": false,
+          "type": "boolean"
+        },
+        "default": {
+          "default": null
+        },
+        "description": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "maxSize": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mergePolicy": {
+          "$ref": "#/$defs/ContextMergePolicy",
+          "default": "replace"
+        },
+        "mutable": {
+          "default": false,
+          "type": "boolean"
+        },
+        "schema": {
+          "default": null
+        },
+        "scope": {
+          "$ref": "#/$defs/ContextScope",
+          "default": "execution_tree"
+        },
+        "sensitive": {
+          "default": false,
+          "type": "boolean"
+        },
+        "title": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ContextMergePolicy": {
+      "enum": [
+        "replace",
+        "append",
+        "merge_object",
+        "increment",
+        "reject_conflict"
+      ],
+      "type": "string"
+    },
+    "ContextScope": {
+      "enum": [
+        "execution_tree",
+        "session"
+      ],
+      "type": "string"
+    },
+    "ContextWrite": {
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/ContextWriteOperation"
+        },
+        "path": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/InputBinding"
+        }
+      },
+      "required": [
+        "operation",
+        "path",
+        "value"
+      ],
+      "type": "object"
+    },
+    "ContextWriteOperation": {
+      "enum": [
+        "set",
+        "set_if_absent",
+        "delete",
+        "append",
+        "merge_object",
+        "increment",
+        "min",
+        "max",
+        "compare_and_set"
+      ],
+      "type": "string"
+    },
+    "EditorAnnotation": {
+      "additionalProperties": false,
+      "properties": {
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "height": {
+          "default": 160.0,
+          "format": "double",
+          "type": "number"
+        },
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "width": {
+          "default": 240.0,
+          "format": "double",
+          "type": "number"
+        },
+        "x": {
+          "format": "double",
+          "type": "number"
+        },
+        "y": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "x",
+        "y"
+      ],
+      "type": "object"
+    },
+    "EditorDocument": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/EditorAnnotation"
+          },
+          "type": "array"
+        },
+        "boundaryLayouts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BoundaryLayout"
+          },
+          "type": "array"
+        },
+        "edges": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/EditorEdge"
+          },
+          "type": "array"
+        },
+        "groups": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/EditorGroup"
+          },
+          "type": "array"
+        },
+        "nodeLayouts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NodeLayout"
+          },
+          "type": "array"
+        },
+        "viewport": {
+          "$ref": "#/$defs/EditorViewport",
+          "default": {
+            "x": 0.0,
+            "y": 0.0,
+            "zoom": 1.0
+          }
+        }
+      },
+      "type": "object"
+    },
+    "EditorEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "edgeId": {
+          "type": "string"
+        },
+        "labelPosition": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "edgeId"
+      ],
+      "type": "object"
+    },
+    "EditorGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "collapsed": {
+          "default": false,
+          "type": "boolean"
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "nodeIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "nodeIds"
+      ],
+      "type": "object"
+    },
+    "EditorViewport": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "format": "double",
+          "type": "number"
+        },
+        "y": {
+          "format": "double",
+          "type": "number"
+        },
+        "zoom": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "zoom"
+      ],
+      "type": "object"
+    },
+    "ExecutionOrder": {
+      "enum": [
+        "deterministic",
+        "parallel"
+      ],
+      "type": "string"
+    },
+    "InputBinding": {
+      "description": "The only public value language accepted by Workflow Definition 8.0.\n\nInput bindings deliberately contain no calculation node. Arrays and objects\nare recursive so structured JSON may embed stable references and text\ntemplates without falling back to a second expression protocol.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "literal",
+              "type": "string"
+            },
+            "value": true
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "reference",
+              "type": "string"
+            },
+            "missingPolicy": {
+              "$ref": "#/$defs/MissingValuePolicy",
+              "default": {
+                "kind": "error"
+              }
+            },
+            "selector": {
+              "$ref": "#/$defs/ValueSelector"
+            }
+          },
+          "required": [
+            "kind",
+            "selector"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "template",
+              "type": "string"
+            },
+            "segments": {
+              "items": {
+                "$ref": "#/$defs/InputTemplateSegment"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "segments"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/$defs/InputBinding"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "array",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "items"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "fields": {
+              "additionalProperties": {
+                "$ref": "#/$defs/InputBinding"
+              },
+              "type": "object"
+            },
+            "kind": {
+              "const": "object",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "fields"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "InputTemplateSegment": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "text",
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "reference",
+              "type": "string"
+            },
+            "missingPolicy": {
+              "$ref": "#/$defs/MissingValuePolicy",
+              "default": {
+                "kind": "error"
+              }
+            },
+            "selector": {
+              "$ref": "#/$defs/ValueSelector"
+            }
+          },
+          "required": [
+            "kind",
+            "selector"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "MissingValuePolicy": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "error",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "null",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "omit",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "NodeLayout": {
+      "additionalProperties": false,
+      "properties": {
+        "collapsed": {
+          "default": false,
+          "type": "boolean"
+        },
+        "height": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "width": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "x": {
+          "format": "double",
+          "type": "number"
+        },
+        "y": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "nodeId",
+        "x",
+        "y"
+      ],
+      "type": "object"
+    },
+    "NodeSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "alwaysOutputData": {
+          "default": false,
+          "type": "boolean"
+        },
+        "executeOnce": {
+          "default": false,
+          "type": "boolean"
+        },
+        "maxTries": {
+          "default": 1,
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "retryOnFail": {
+          "default": false,
+          "type": "boolean"
+        },
+        "timeoutMs": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "waitBetweenTriesMs": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ResourceOperation": {
+      "enum": [
+        "view",
+        "use",
+        "read",
+        "write",
+        "manage"
+      ],
+      "type": "string"
+    },
+    "ResourceReference": {
+      "additionalProperties": false,
+      "properties": {
+        "bindingRole": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "operation": {
+          "$ref": "#/$defs/ResourceOperation"
+        },
+        "resourceId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "resourceType": {
+          "$ref": "#/$defs/ResourceType"
+        },
+        "resourceVersionId": {
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "resourceType",
+        "resourceId",
+        "operation"
+      ],
+      "type": "object"
+    },
+    "ResourceType": {
+      "enum": [
+        "credential",
+        "model",
+        "mcp_server",
+        "mcp_tool",
+        "skill",
+        "rag",
+        "memory",
+        "sandbox_profile"
+      ],
+      "type": "string"
+    },
+    "StudioDocumentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "definition": {
+          "$ref": "#/$defs/WorkflowDefinition"
+        },
+        "editorDocument": {
+          "$ref": "#/$defs/EditorDocument"
+        }
+      },
+      "required": [
+        "definition",
+        "editorDocument"
+      ],
+      "type": "object"
+    },
+    "ValueNamespace": {
+      "enum": [
+        "inputs",
+        "outputs",
+        "contexts",
+        "execution",
+        "item",
+        "loop"
+      ],
+      "type": "string"
+    },
+    "ValuePathSegment": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      ]
+    },
+    "ValueSelection": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "current",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "first",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "last",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "all",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "index": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "index",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "index"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ValueSelector": {
+      "additionalProperties": false,
+      "properties": {
+        "item": {
+          "$ref": "#/$defs/ValueSelection",
+          "default": {
+            "kind": "current"
+          }
+        },
+        "namespace": {
+          "$ref": "#/$defs/ValueNamespace"
+        },
+        "path": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ValuePathSegment"
+          },
+          "type": "array"
+        },
+        "port": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run": {
+          "$ref": "#/$defs/ValueSelection",
+          "default": {
+            "kind": "current"
+          }
+        },
+        "sourceNodeId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "namespace"
+      ],
+      "type": "object"
+    },
+    "WorkflowBoundary": {
+      "enum": [
+        "start"
+      ],
+      "type": "string"
+    },
+    "WorkflowCompletion": {
+      "description": "How the engine finalizes an execution whose branches reach exit nodes.\n\n- `FirstReturn` (default): the first delivery to reach an exit (main or\n  error port, symmetric) finalizes the execution immediately and cancels\n  every other in-flight activation.\n- `AllComplete`: the execution waits for quiescence; every reached exit is\n  evaluated against the shared `end.outputs` contract and each output field\n  is returned as an array with one element per reached exit (definition\n  order; unreached exits and unbound fields are omitted).",
+      "enum": [
+        "first_return",
+        "all_complete"
+      ],
+      "type": "string"
+    },
+    "WorkflowConnection": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "order": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sourceHandle": {
+          "type": "string"
+        },
+        "sourceNodeId": {
+          "type": "string"
+        },
+        "targetHandle": {
+          "type": "string"
+        },
+        "targetNodeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sourceNodeId",
+        "sourceHandle",
+        "targetNodeId",
+        "targetHandle",
+        "order"
+      ],
+      "type": "object"
+    },
+    "WorkflowDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "connections": {
+          "items": {
+            "$ref": "#/$defs/WorkflowConnection"
+          },
+          "type": "array"
+        },
+        "end": {
+          "$ref": "#/$defs/WorkflowEnd"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/WorkflowNode"
+          },
+          "type": "array"
+        },
+        "schemaVersion": {
+          "$ref": "#/$defs/WorkflowSchemaVersion"
+        },
+        "settings": {
+          "$ref": "#/$defs/WorkflowSettings",
+          "default": {
+            "activationBudget": 10000,
+            "executionOrder": "deterministic",
+            "timeoutMs": null
+          }
+        },
+        "start": {
+          "$ref": "#/$defs/WorkflowStart"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "start",
+        "nodes",
+        "connections",
+        "end"
+      ],
+      "type": "object"
+    },
+    "WorkflowEnd": {
+      "additionalProperties": false,
+      "properties": {
+        "completion": {
+          "$ref": "#/$defs/WorkflowCompletion",
+          "default": "first_return"
+        },
+        "error": {
+          "$ref": "#/$defs/WorkflowErrorEnd",
+          "default": {
+            "outputs": {}
+          }
+        },
+        "outputs": {
+          "additionalProperties": {
+            "$ref": "#/$defs/WorkflowOutput"
+          },
+          "default": {},
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "WorkflowErrorEnd": {
+      "additionalProperties": false,
+      "properties": {
+        "outputs": {
+          "additionalProperties": {
+            "$ref": "#/$defs/WorkflowOutput"
+          },
+          "default": {},
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "WorkflowNode": {
+      "additionalProperties": false,
+      "properties": {
+        "contextWrites": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ContextWrite"
+          },
+          "type": "array"
+        },
+        "disabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "parameters": {
+          "default": null
+        },
+        "parentId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "protected": {
+          "default": false,
+          "description": "Protected exit nodes cannot be removed from the canvas; the initial\nexit created with the workflow is protected.",
+          "type": "boolean"
+        },
+        "resourceReferences": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ResourceReference"
+          },
+          "type": "array"
+        },
+        "settings": {
+          "$ref": "#/$defs/NodeSettings",
+          "default": {
+            "alwaysOutputData": false,
+            "executeOnce": false,
+            "maxTries": 1,
+            "retryOnFail": false,
+            "timeoutMs": null,
+            "waitBetweenTriesMs": 0
+          }
+        },
+        "type": {
+          "type": "string"
+        },
+        "typeVersion": {
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "key",
+        "type",
+        "typeVersion",
+        "name"
+      ],
+      "type": "object"
+    },
+    "WorkflowOutput": {
+      "additionalProperties": false,
+      "description": "The global output contract shared by every exit node. Field values are\nmapped per exit in [`ExitParameters`], never here.",
+      "properties": {
+        "required": {
+          "default": false,
+          "type": "boolean"
+        },
+        "schema": {
+          "default": null
+        },
+        "sensitive": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "WorkflowSchemaVersion": {
+      "enum": [
+        "8.0"
+      ],
+      "type": "string"
+    },
+    "WorkflowSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "activationBudget": {
+          "default": 10000,
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "executionOrder": {
+          "$ref": "#/$defs/ExecutionOrder",
+          "default": "deterministic"
+        },
+        "timeoutMs": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "WorkflowStart": {
+      "additionalProperties": false,
+      "properties": {
+        "contexts": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ContextDefinition"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "inputs": {
+          "default": null
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "autoLayout": {
+      "description": "The editor may change only node geometry and the Start position before its atomic commit.",
+      "type": "boolean"
+    },
+    "changedNodeIds": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "commandId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "document": {
+      "$ref": "#/$defs/StudioDocumentV1"
+    },
+    "draftId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "editorInstanceId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "expectedDocumentHash": {
+      "type": "string"
+    },
+    "expectedLocalDocumentRevision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "resultDocumentHash": {
+      "type": "string"
+    },
+    "runId": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "commandId",
+    "runId",
+    "draftId",
+    "editorInstanceId",
+    "expectedLocalDocumentRevision",
+    "expectedDocumentHash",
+    "resultDocumentHash",
+    "autoLayout",
+    "document",
+    "changedNodeIds"
+  ],
+  "title": "StudioEditorCommandV1",
+  "type": "object"
+}

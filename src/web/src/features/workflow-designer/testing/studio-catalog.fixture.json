@@ -606,7 +606,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
+      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -969,7 +969,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
+      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -1397,7 +1397,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
+      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -2296,7 +2296,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
+      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -2311,6 +2311,354 @@
     },
     "sandboxRequired": false,
     "supportsMock": true,
+    "sideEffectLevel": "none"
+  },
+  {
+    "protocolVersion": "3.0",
+    "nodeType": "knowledge_retrieval",
+    "version": 1,
+    "displayName": "Knowledge Retrieval",
+    "description": "Retrieve document chunks and existing attachment sources from an authorized knowledge resource.",
+    "category": "ai",
+    "keywords": [
+      "knowledge",
+      "retrieval",
+      "rag"
+    ],
+    "localizations": {
+      "en-US": {
+        "displayName": "Knowledge Retrieval",
+        "description": "Retrieve document chunks and existing attachment sources.",
+        "keywords": [
+          "knowledge",
+          "retrieval",
+          "知识库",
+          "检索"
+        ],
+        "inputPortLabels": {
+          "main": "Input"
+        },
+        "outputPortLabels": {
+          "error": "Error",
+          "main": "Output"
+        },
+        "parameterLabels": {
+          "query": "Query",
+          "topK": "Top K"
+        }
+      },
+      "zh-CN": {
+        "displayName": "知识检索",
+        "description": "检索知识片段、文档来源和已有附件引用。",
+        "keywords": [
+          "knowledge",
+          "retrieval",
+          "知识库",
+          "检索"
+        ],
+        "inputPortLabels": {
+          "main": "输入"
+        },
+        "outputPortLabels": {
+          "error": "错误",
+          "main": "输出"
+        },
+        "parameterLabels": {
+          "query": "查询内容",
+          "topK": "返回片段数量"
+        }
+      }
+    },
+    "iconKey": "book-open",
+    "executionStyle": "action",
+    "capability": "rag",
+    "readiness": "any",
+    "inputPorts": [
+      {
+        "name": "main",
+        "kind": "main",
+        "required": true,
+        "variadic": false
+      }
+    ],
+    "outputPorts": [
+      {
+        "name": "main",
+        "kind": "main",
+        "required": false,
+        "variadic": false
+      },
+      {
+        "name": "error",
+        "kind": "error",
+        "required": false,
+        "variadic": false
+      }
+    ],
+    "bindingSlots": [],
+    "parameterSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "minLength": 1,
+          "type": "string",
+          "x-agentx-binding": {
+            "acceptedCardinality": [
+              "single"
+            ],
+            "acceptedKinds": [
+              "literal",
+              "reference",
+              "template"
+            ],
+            "allowedNamespaces": [
+              "inputs",
+              "outputs",
+              "contexts",
+              "execution",
+              "item",
+              "loop"
+            ],
+            "missingPolicies": [
+              "error",
+              "null",
+              "omit"
+            ],
+            "recursive": false
+          }
+        },
+        "topK": {
+          "default": 5,
+          "maximum": 20,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "documents": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "chunkId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "content": {
+                "type": "string"
+              },
+              "documentId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "knowledgeResourceId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "metadata": {
+                "type": "object"
+              },
+              "score": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "uri": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "knowledgeResourceId",
+              "documentId",
+              "chunkId",
+              "title",
+              "uri",
+              "content",
+              "score",
+              "metadata"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "files": {
+          "description": "External attachment source references, not platform Artifacts or downloaded originals.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "contentType": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "documentId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "knowledgeResourceId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "referenceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "uri": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "knowledgeResourceId",
+              "documentId",
+              "referenceId",
+              "uri",
+              "name",
+              "contentType"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "documents",
+        "files"
+      ],
+      "type": "object"
+    },
+    "outputPortSchemas": {
+      "error": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object"
+          },
+          "message": {
+            "type": "string"
+          },
+          "nodeExecutionId": {
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "sourceNodeId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable",
+          "details",
+          "sourceNodeId",
+          "nodeExecutionId"
+        ],
+        "type": "object"
+      }
+    },
+    "outputCardinality": {
+      "error": "many",
+      "main": "exactly_one"
+    },
+    "selectorCapabilities": {
+      "namespaces": [
+        "inputs",
+        "outputs",
+        "contexts"
+      ],
+      "supportsCurrent": true,
+      "supportsFirstLast": true,
+      "supportsAll": true,
+      "supportsRunSelection": true
+    },
+    "contextReadCapability": true,
+    "contextWriteCapability": true,
+    "artifactOutputSchema": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "uiSchema": {
+      "fields": {
+        "query": {
+          "control": "template"
+        },
+        "topK": {
+          "control": "number"
+        }
+      },
+      "resourceSelectors": [
+        {
+          "operation": "read",
+          "required": true,
+          "resourceType": "rag"
+        }
+      ],
+      "canvas": {
+        "role": "default"
+      }
+    },
+    "plugin": {
+      "packageId": "agentx/core",
+      "packageVersion": "1.0.0",
+      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
+      "runtimeEntry": "native",
+      "runtimeSource": ""
+    },
+    "providers": [],
+    "credentials": [],
+    "defaultTimeoutMs": 300000,
+    "retryPolicy": {
+      "retryable": false,
+      "maxAttempts": 0,
+      "initialBackoffMs": 0,
+      "maxBackoffMs": 0
+    },
+    "sandboxRequired": false,
+    "supportsMock": false,
     "sideEffectLevel": "none"
   },
   {
@@ -3091,7 +3439,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
+      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3368,7 +3716,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
+      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3790,7 +4138,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
+      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3901,7 +4249,31 @@
       "additionalProperties": false,
       "properties": {
         "content": {
-          "type": "string"
+          "type": "string",
+          "x-agentx-binding": {
+            "acceptedCardinality": [
+              "single"
+            ],
+            "acceptedKinds": [
+              "literal",
+              "reference",
+              "template"
+            ],
+            "allowedNamespaces": [
+              "inputs",
+              "outputs",
+              "contexts",
+              "execution",
+              "item",
+              "loop"
+            ],
+            "missingPolicies": [
+              "error",
+              "null",
+              "omit"
+            ],
+            "recursive": false
+          }
         }
       },
       "required": [
@@ -3998,7 +4370,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
+      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4120,7 +4492,31 @@
           "type": "string"
         },
         "content": {
-          "type": "string"
+          "type": "string",
+          "x-agentx-binding": {
+            "acceptedCardinality": [
+              "single"
+            ],
+            "acceptedKinds": [
+              "literal",
+              "reference",
+              "template"
+            ],
+            "allowedNamespaces": [
+              "inputs",
+              "outputs",
+              "contexts",
+              "execution",
+              "item",
+              "loop"
+            ],
+            "missingPolicies": [
+              "error",
+              "null",
+              "omit"
+            ],
+            "recursive": false
+          }
         },
         "senderId": {
           "type": "string"
@@ -4242,7 +4638,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
+      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4686,7 +5082,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:43f713ed48f92502ab583aa15560bc4342d0ba8a71a8f2df1f25d2196521d466",
+      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },

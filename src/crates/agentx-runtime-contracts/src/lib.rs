@@ -84,3 +84,7 @@ pub const fn is_supported_version(version: u32, current: u32) -> bool {
 }
 
 pub mod rag;
+mod studio_builder;
+mod studio_editor;
+pub use studio_builder::*;
+pub use studio_editor::*;

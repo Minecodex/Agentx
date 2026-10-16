@@ -1,3 +1,4 @@
+import { selectorWithDefaults } from "../../model/selector";
 import type {
   JsonSchemaProperty,
   NodeManifest,
@@ -436,7 +437,7 @@ function schemaEntries(
     const path = appendSegment(parentPath, name);
     const id = appendSegment(idPrefix, name);
     const selector = parentSelector
-      ? { ...parentSelector, path: [...parentSelector.path, name] }
+      ? { ...parentSelector, path: [...(parentSelector.path ?? []), name] }
       : undefined;
     const children = schemaEntries(child, path, id, sensitive, selector);
     return {
@@ -465,7 +466,7 @@ function outputEntries(
     return schemaEntries(schema, parentPath, idPrefix, sensitive, parentSelector);
   }
   const structured = schema.properties.structuredOutput;
-  const selector = parentSelector ? { ...parentSelector, path: [...parentSelector.path, "structuredOutput"] } : undefined;
+  const selector = parentSelector ? { ...parentSelector, path: [...(parentSelector.path ?? []), "structuredOutput"] } : undefined;
   const business = schemaEntries(structured, parentPath, idPrefix, sensitive, selector);
   const full: ReferenceEntry = {
     id: `${idPrefix}.completeResult`,
@@ -588,11 +589,12 @@ function bindingSchema(
 
 function selectorSchema(
   document: Pick<StudioDocument, "start" | "nodes" | "edges">,
-  selector: ValueSelector,
+  selectorValue: ValueSelector,
   manifests: Map<string, NodeManifest>,
   localize: Localize,
   visiting: Set<string>,
 ): JsonSchemaProperty {
+  const selector = selectorWithDefaults(selectorValue);
   let schema = selector.namespace === "inputs"
     ? asSchema(document.start.inputs)
     : selector.namespace === "contexts"

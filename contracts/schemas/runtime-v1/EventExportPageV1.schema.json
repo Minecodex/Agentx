@@ -283,6 +283,9 @@
                 "null"
               ]
             },
+            "source": {
+              "$ref": "#/$defs/WorkflowDesignSourceV1"
+            },
             "stateVersion": {
               "format": "uint64",
               "minimum": 0,
@@ -302,14 +305,17 @@
             },
             "workflowVersionId": {
               "format": "uuid",
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [
             "kind",
             "executionId",
             "workflowId",
-            "workflowVersionId",
+            "source",
             "bundleId",
             "status",
             "stateVersion",
@@ -836,6 +842,63 @@
         "observability"
       ],
       "type": "string"
+    },
+    "WorkflowDesignSourceV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "draftId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "kind": {
+              "const": "draft_revision",
+              "type": "string"
+            },
+            "revision": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "revisionId": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "draftId",
+            "revisionId",
+            "revision"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "version",
+              "type": "string"
+            },
+            "versionId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "versionNumber": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "versionId",
+            "versionNumber"
+          ],
+          "type": "object"
+        }
+      ]
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

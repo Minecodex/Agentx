@@ -18,8 +18,8 @@ use agentx_runtime_contracts::{
     GovernanceSnapshotPageV1, GovernanceSnapshotRequestV1, InvocationDetailV1,
     InvocationSearchPageV1, InvocationSearchRequestV1, ObservabilityAggregatePageV1,
     ObservabilityAggregateRequestV1, PluginDesignOperationRequestV1,
-    PluginDesignOperationResponseV1, PrepareBundleRequestV1, PrepareWorkPackageRequestV1,
-    ProcessSessionControlRequestV1, ProcessSessionControlResponseV1,
+    PluginDesignOperationResponseV1, PluginResolveSessionV1, PrepareBundleRequestV1,
+    PrepareWorkPackageRequestV1, ProcessSessionControlRequestV1, ProcessSessionControlResponseV1,
     ProcessSessionFramesResponseV1, ProcessSessionReadRequestV1, ProcessSessionStartRequestV1,
     ProcessSessionStartResponseV1, ProcessSessionWriteRequestV1, ProjectionStatusV1,
     PublishReceiptV1, ReferenceCheckReceiptV1, ReferenceCheckRequestV1, RetentionCommandRequestV1,
@@ -89,6 +89,38 @@ fn main() -> Result<()> {
 
 fn contract_schemas() -> Result<Map<String, Value>> {
     let mut schemas = Map::new();
+    insert::<agentx_runtime_contracts::DesignModelEffectRequestV1>(
+        &mut schemas,
+        "DesignModelEffectRequestV1",
+    )?;
+    insert::<agentx_runtime_contracts::DesignModelReceiptRequestV1>(
+        &mut schemas,
+        "DesignModelReceiptRequestV1",
+    )?;
+    insert::<agentx_runtime_contracts::DesignModelReceiptV1>(&mut schemas, "DesignModelReceiptV1")?;
+    insert::<agentx_runtime_contracts::StudioBuilderTargetV1>(
+        &mut schemas,
+        "StudioBuilderTargetV1",
+    )?;
+    insert::<agentx_runtime_contracts::StudioEditorSnapshotV1>(
+        &mut schemas,
+        "StudioEditorSnapshotV1",
+    )?;
+    insert::<agentx_runtime_contracts::StudioEditIntentV1>(&mut schemas, "StudioEditIntentV1")?;
+    insert::<agentx_runtime_contracts::StudioEditScopeV1>(&mut schemas, "StudioEditScopeV1")?;
+    insert::<agentx_runtime_contracts::StudioEditorCommandV1>(
+        &mut schemas,
+        "StudioEditorCommandV1",
+    )?;
+    insert::<agentx_runtime_contracts::StudioEditorAcknowledgementV1>(
+        &mut schemas,
+        "StudioEditorAcknowledgementV1",
+    )?;
+    insert::<agentx_runtime_contracts::WorkflowDesignSourceV1>(
+        &mut schemas,
+        "WorkflowDesignSourceV1",
+    )?;
+
     insert::<ExecutionSpecBundleV2>(&mut schemas, "ExecutionSpecBundleV2")?;
     insert::<RuntimeWorkPackageV1>(&mut schemas, "RuntimeWorkPackageV1")?;
     insert::<ExecutionContextSnapshotV1>(&mut schemas, "ExecutionContextSnapshotV1")?;
@@ -105,6 +137,7 @@ fn contract_schemas() -> Result<Map<String, Value>> {
         "RuntimeResourceOperationResponseV1",
     )?;
     insert::<PluginDesignOperationRequestV1>(&mut schemas, "PluginDesignOperationRequestV1")?;
+    insert::<PluginResolveSessionV1>(&mut schemas, "PluginResolveSessionV1")?;
     insert::<PluginDesignOperationResponseV1>(&mut schemas, "PluginDesignOperationResponseV1")?;
     insert::<RuntimeSkillProgramV2>(&mut schemas, "RuntimeSkillProgramV2")?;
     insert::<AgentKnowledgeSearchResultV1>(&mut schemas, "AgentKnowledgeSearchResultV1")?;
@@ -227,6 +260,12 @@ fn internal_openapi(schemas: Map<String, Value>) -> Value {
             "/internal/runtime/v1/retention-commands:apply": post("Apply Retention Command", "RetentionCommandRequestV1", "ApplyReceiptV1"),
             "/internal/runtime/v1/resource-checks:execute": post("Execute Resource Check", "RuntimeResourceCheckRequestV1", "RuntimeResourceCheckResponseV1"),
             "/internal/runtime/v1/resource-operations:execute": post("Execute Resource Operation", "RuntimeResourceOperationRequestV1", "RuntimeResourceOperationResponseV1"),
+            "/internal/runtime/v1/studio-model:submit": post("Submit design model effect", "DesignModelEffectRequestV1", "DesignModelReceiptV1"),
+            "/internal/runtime/v1/studio-model:inspect": post("Inspect design model receipt", "DesignModelReceiptRequestV1", "DesignModelReceiptV1"),
+            "/internal/runtime/v1/studio-model:cancel": post("Cancel design model effect", "DesignModelReceiptRequestV1", "DesignModelReceiptV1"),
+            "/internal/runtime/v1/sandboxes:resolve": post("Resolve plugin in a network-denied sandbox", "PluginDesignOperationRequestV1", "PluginDesignOperationResponseV1"),
+            "/internal/runtime/v1/sandboxes:close-resolve-session": post("Close resolve-only sandbox session", "PluginResolveSessionV1", "PluginResolveSessionV1"),
+            "/internal/runtime/v1/plugin-resolve-sessions:close": post("Close plugin definition resolution session", "PluginResolveSessionV1", "PluginResolveSessionV1"),
             "/internal/runtime/v1/plugin-design-operations:execute": post("Execute Plugin Design Operation", "PluginDesignOperationRequestV1", "PluginDesignOperationResponseV1"),
             "/internal/runtime/v1/sandboxes:acquire": post("Acquire Agent Workspace", "WorkspaceAcquireRequestV1", "WorkspaceAcquireResponseV1"),
             "/internal/runtime/v1/sandboxes:tool": post("Execute Agent Workspace Tool", "ToolEffectRequestV1", "ToolEffectResponseV1"),

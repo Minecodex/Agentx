@@ -1,3 +1,4 @@
+import { fixtureDraftId } from '../draft-fixtures'
 import { expect, type APIResponse, type Page, test } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { readFile } from 'node:fs/promises'
@@ -60,35 +61,36 @@ function syntheticDraft(base: Draft, nodeCount: number, nodeType: string, typeVe
 
 async function benchmark(page: Page, token: string, nodeCount: number, nodeType: string, typeVersion: number, parameters: Record<string, unknown>): Promise<Metric> {
   const workflow = await createWorkflow(page, token, nodeCount)
-  const base = await request<Draft>(page, token, `/workflows/${workflow.id}/draft`)
+  const draftId = await fixtureDraftId(page, workflow.id)
+  const base = await request<Draft>(page, token, `/workflows/${workflow.id}/drafts/${draftId}`)
   const draft = syntheticDraft(base, nodeCount, nodeType, typeVersion, parameters)
   let fixtureContractPreparationMs: number | undefined
   if (nodeType === 'acme.json_mapper') {
     const preparedAt = Date.now()
     const definition = JSON.parse(JSON.stringify(serializeStudio(deserializeDraft(draft as Parameters<typeof deserializeDraft>[0])).definition))
     const contracts = await request<{ nodes: Record<string, { status: string }> }>(page, token,
-      `/workflows/${workflow.id}/draft/resolve-plugins`, 'POST', { definition }, 60_000)
+      `/workflows/${workflow.id}/drafts/${draftId}/resolve-plugins`, 'POST', { definition }, 60_000)
     expect(Object.keys(contracts.nodes)).toHaveLength(nodeCount)
     expect(Object.values(contracts.nodes).every(value => value.status === 'complete')).toBeTruthy()
     fixtureContractPreparationMs = Date.now() - preparedAt
     // Draft/catalog are already fixed fixtures. Feed the same actual SDK
     // result to the current batch endpoint, rather than timing cold server
     // compilation during the UI benchmark or fabricating a contract.
-    await page.route(`**/api/v1/workflows/${workflow.id}/draft/resolve-plugins`, async route => {
+    await page.route(`**/api/v1/workflows/${workflow.id}/drafts/${draftId}/resolve-plugins`, async route => {
       expect(route.request().postDataJSON().definition).toEqual(definition)
       await route.fulfill({ json: contracts })
     })
   }
-  await page.route(`**/api/v1/workflows/${workflow.id}/draft`, async (route) => {
+  await page.route(`**/api/v1/workflows/${workflow.id}/drafts/${draftId}`, async (route) => {
     if (route.request().method() === 'GET') await route.fulfill({ json: draft })
     else await route.fulfill({ json: { ...draft, revision: base.revision + 1, updatedAt: new Date().toISOString() } })
   })
 
   const started = Date.now()
   const contractReady = nodeType === 'acme.json_mapper'
-    ? page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/workflows/${workflow.id}/draft/resolve-plugins`))
+    ? page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/workflows/${workflow.id}/drafts/${draftId}/resolve-plugins`))
     : undefined
-  await page.goto(`/workflows/${workflow.id}/editor`)
+  await page.goto(`/workflows/${workflow.id}/drafts/${draftId}/editor`)
   const canvas = page.getByTestId('workflow-canvas')
   await expect(canvas).toBeVisible()
   const firstNode = page.getByTestId('studio-node-perf-0')
@@ -112,7 +114,8 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
       await expect(page.getByTestId('node-details-view')).toBeVisible()
       await page.getByTestId('node-details-view').getByRole('button', { name: /^(关闭|Close)$/ }).first().click()
     }
-    await expect(page.locator('style[data-agentx-plugin]')).toHaveCount(1)
+    // Design-only canvases render schema controls and never load plugin UI/CSS.
+    await expect(page.locator('style[data-agentx-plugin]')).toHaveCount(0)
   }
   await expect(page.locator('.react-flow__minimap')).toHaveCount(nodeCount >= 300 ? 0 : 1)
   await page.waitForTimeout(750)
@@ -195,7 +198,7 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
   else expect(metric.renderedNodes).toBe(nodeCount)
   expect(metric.medianFps).toBeGreaterThanOrEqual(nodeCount <= 500 ? 50 : 30)
   expect(metric.p95InputDelayMs).toBeLessThanOrEqual(nodeCount <= 500 ? 50 : 100)
-  await page.unroute(`**/api/v1/workflows/${workflow.id}/draft`)
+  await page.unroute(`**/api/v1/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
   return metric
 }
 

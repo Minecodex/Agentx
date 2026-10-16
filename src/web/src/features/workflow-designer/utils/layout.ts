@@ -1,11 +1,13 @@
-import type { NodeManifest, StudioEdge, StudioNode } from '../model/types'
+import type { NodeManifest, StudioDocument, StudioEdge, StudioNode } from '../model/types'
 import { canvasBranchPorts } from '../nodes/manifest-node'
 import { canvasNodeMetrics, canvasNodeRole } from '../nodes/node-appearance'
 
 export const LARGE_GRAPH_LAYOUT_THRESHOLD = 250
+export const LAYOUT_LAYER_GAP = 160
+export const LAYOUT_NODE_GAP = 80
 
 /** Loop container geometry (demo2 .container): resizer floor and inner padding around the body sub-DAG. */
-export const LOOP_CONTAINER_MIN_WIDTH = 300
+export const LOOP_CONTAINER_MIN_WIDTH = 360
 export const LOOP_CONTAINER_MIN_HEIGHT = 160
 export const LOOP_CONTAINER_DEFAULT_WIDTH = 470
 export const LOOP_CONTAINER_DEFAULT_HEIGHT = 300
@@ -64,7 +66,8 @@ function partitionContainers(nodes: StudioNode[]): ContainerPartition {
     .map((node) => node.id))
   const childrenByLoop = new Map<string, StudioNode[]>()
   const roots: StudioNode[] = []
-  for (const node of nodes) {
+  for (const source of nodes) {
+    const node = { ...source, position: { ...source.position } }
     const parentId = node.data.editorKind === 'action' && node.data.parentId && loops.has(node.data.parentId) ? node.data.parentId : undefined
     if (parentId && parentId !== node.id) {
       const siblings = childrenByLoop.get(parentId)
@@ -98,13 +101,13 @@ async function layoutWithElk(nodes: StudioNode[], edges: StudioEdge[], manifests
   const elk = new ELK()
   const graph = await elk.layout({
     id: 'root',
-    layoutOptions: { 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.spacing.nodeNode': '48', 'elk.layered.spacing.nodeNodeBetweenLayers': '90' },
+    layoutOptions: { 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.spacing.nodeNode': String(LAYOUT_NODE_GAP), 'elk.spacing.componentComponent': String(LAYOUT_LAYER_GAP), 'elk.layered.spacing.nodeNodeBetweenLayers': String(LAYOUT_LAYER_GAP) },
     children: nodes.map((node) => {
       const override = sizes?.get(node.id)
       const metrics = override ?? nodeMetricsOf(node, manifests)
       return { id: node.id, width: metrics.width, height: metrics.height }
     }),
-    edges: edges.map((edge) => ({ id: edge.id, sources: [edge.source], targets: [edge.target] })),
+    edges: edges.filter(edge => nodes.some(node => node.id === edge.source) && nodes.some(node => node.id === edge.target)).map((edge) => ({ id: edge.id, sources: [edge.source], targets: [edge.target] })),
   })
   const positions = new Map(graph.children?.map((node) => [node.id, { x: node.x ?? 0, y: node.y ?? 0 }]))
   return nodes.map((node) => ({ ...node, position: { x: (positions.get(node.id)?.x ?? node.position.x) + origin.x, y: (positions.get(node.id)?.y ?? node.position.y) + origin.y } }))
@@ -140,10 +143,18 @@ function bucketLayout(nodes: StudioNode[], edges: StudioEdge[], manifests: Map<s
     if (bucket) bucket.push(node.id)
     else buckets.set(level, [node.id])
   }
-  for (const [level, bucketIds] of buckets) for (const [index, id] of bucketIds.entries()) {
-    const node = byId.get(id)
-    const metrics = sizes?.get(id) ?? nodeMetricsOf(node, manifests)
-    node!.position = { x: origin.x + 80 + level * 280, y: origin.y + 60 + index * Math.max(120, metrics.height + 32) }
+  let x = origin.x + 80
+  for (const [, bucketIds] of [...buckets].sort(([left], [right]) => left - right)) {
+    let y = origin.y + 60
+    let width = 0
+    for (const id of bucketIds) {
+      const node = byId.get(id)!
+      const metrics = sizes?.get(id) ?? nodeMetricsOf(node, manifests)
+      node.position = { x, y }
+      y += metrics.height + LAYOUT_NODE_GAP
+      width = Math.max(width, metrics.width)
+    }
+    x += width + LAYOUT_LAYER_GAP
   }
 }
 
@@ -159,5 +170,20 @@ const frameHeight = (body: StudioNode[], manifests?: Map<string, NodeManifest>) 
 /** Container frame size after a body layout, reusing measured or persisted overrides. */
 function frameSize(layouted: Map<string, StudioNode>, loopId: string, children: StudioNode[], manifests?: Map<string, NodeManifest>) {
   const loop = layouted.get(loopId)
-  return { width: Math.max(loop?.width ?? 0, frameWidth(children, manifests)), height: Math.max(loop?.height ?? 0, frameHeight(children, manifests)) }
+  const body = children.map(node => layouted.get(node.id) ?? node)
+  return { width: Math.max(loop?.width ?? 0, frameWidth(body, manifests)), height: Math.max(loop?.height ?? 0, frameHeight(body, manifests)) }
+}
+
+/** Start participates in the same layout as real nodes; it is never serialized as a business node. */
+export async function layoutStudioDocument(document: StudioDocument, manifests?: Map<string, NodeManifest>): Promise<StudioDocument> {
+  const position = document.boundaryLayouts.find(layout => layout.boundary === 'start') ?? { x: 40, y: 220 }
+  const start: StudioNode = { id: '__start__', type: 'exit', position: { x: position.x, y: position.y }, width: 240, height: 62,
+    data: { editorKind: 'exit', key: '__start__', label: '', protected: true, parameters: { outputs: {}, errorOutputs: {} } } }
+  const layouted = await autoLayout([start, ...document.nodes], document.edges, manifests)
+  const anchor = layouted.find(node => node.id === start.id)!.position
+  const offset = { x: position.x - anchor.x, y: position.y - anchor.y }
+  return { ...document,
+    nodes: layouted.filter(node => node.id !== start.id).map(node => ({ ...node, position: node.data.editorKind === 'action' && node.data.parentId ? node.position : { x: node.position.x + offset.x, y: node.position.y + offset.y } })),
+    boundaryLayouts: [{ boundary: 'start', x: position.x, y: position.y }],
+  }
 }

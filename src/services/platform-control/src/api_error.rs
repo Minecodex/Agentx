@@ -26,6 +26,9 @@ pub fn invalid_credentials() -> ApiError {
 }
 
 impl ApiError {
+    pub(crate) fn design_feedback(&self) -> serde_json::Value {
+        serde_json::json!({"code":self.code,"message":self.message,"fieldErrors":self.field_errors})
+    }
     pub fn bad_request(code: &'static str, message: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_REQUEST, code, message)
     }
@@ -130,6 +133,15 @@ impl IntoResponse for ApiError {
 
 impl From<sqlx::Error> for ApiError {
     fn from(value: sqlx::Error) -> Self {
+        if value
+            .as_database_error()
+            .is_some_and(|db| db.is_foreign_key_violation())
+        {
+            return Self::conflict(
+                "RESOURCE_REFERENCED",
+                "The resource is referenced and cannot be deleted",
+            );
+        }
         Self::internal(value)
     }
 }

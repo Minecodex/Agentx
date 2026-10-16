@@ -17,7 +17,7 @@ export type NodeVisualGroup = 'start' | 'ai' | 'logic' | 'transform' | 'integrat
 
 const VISUAL_GROUPS: Record<string, NodeVisualGroup> = {
   start: 'start', boundary: 'start',
-  agent: 'ai', model: 'ai',
+  agent: 'ai', model: 'ai', knowledge_retrieval: 'ai',
   if: 'logic', merge: 'logic', loop_over_items: 'logic', approval: 'logic',
   code: 'transform', set: 'transform', list: 'transform',
   declarative_http: 'integrate', sub_workflow: 'integrate', reply_message: 'integrate', send_message: 'integrate',

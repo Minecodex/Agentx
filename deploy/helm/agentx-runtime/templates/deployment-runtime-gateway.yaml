@@ -21,6 +21,7 @@ spec:
           imagePullPolicy: {{ .Values.global.images.pullPolicy }}
           env:
             - { name: AGENTX_PLUGIN_WORK_DIR, value: /var/run/agentx/plugin-work }
+            - { name: AGENTX_SANDBOX_MANAGER_ENDPOINT, value: http://sandbox-manager:8080 }
             - name: AGENTX_INSTANCE_ID
               valueFrom: { fieldRef: { fieldPath: metadata.uid } }
             - { name: AGENTX_RUNTIME_MYSQL_HOST, value: {{ .Values.global.components.runtimeMysql.host | quote }} }

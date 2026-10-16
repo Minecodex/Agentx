@@ -21,6 +21,12 @@ enum Task {
         fast: bool,
     },
     Images(Images),
+    ImportImages {
+        #[arg(long)]
+        values: PathBuf,
+        #[arg(long, required = true)]
+        image: Vec<String>,
+    },
 }
 
 #[derive(Args)]
@@ -44,6 +50,10 @@ fn main() -> Result<()> {
     match Cli::parse().command {
         Task::Check { fast } => check(&root, fast),
         Task::Images(args) => images(&root, args),
+        Task::ImportImages { values, image } => {
+            let values = serde_yaml::from_str(&std::fs::read_to_string(values)?)?;
+            import_images(&root, &values, &image)
+        }
     }
 }
 
@@ -316,7 +326,7 @@ fn images(root: &Path, args: Images) -> Result<()> {
     // The runtime-provider Kustomize overlay deploys this fixture from the
     // local Docker image, so a full local image build must refresh it too.
     if !explicit_selection && local_runtime_fixture {
-        for fixture in ["echo-node", "echo-mcp"] {
+        for fixture in ["echo-node", "echo-mcp", "mem0-server"] {
             if !selected.iter().any(|service| service == fixture) {
                 selected.push(fixture.to_owned());
             }
@@ -383,6 +393,8 @@ fn images(root: &Path, args: Images) -> Result<()> {
             if let Ok(index) = std::env::var("PIP_INDEX_URL") {
                 command.args(["--build-arg", &format!("PIP_INDEX_URL={index}")]);
             }
+        } else if service == "mem0-server" {
+            command.args(["-f", "deploy/docker/mem0.Dockerfile"]);
         } else {
             command
                 .args(["-f", "deploy/docker/backend.Dockerfile", "--build-arg"])
@@ -433,6 +445,23 @@ fn images(root: &Path, args: Images) -> Result<()> {
     Ok(())
 }
 
+fn containerd_reference(image: &str) -> String {
+    let mut name = match image.split_once('/') {
+        Some(("docker.io", repository)) if !repository.contains('/') => {
+            format!("docker.io/library/{repository}")
+        }
+        Some((registry, _)) if registry.contains(['.', ':']) || registry == "localhost" => {
+            image.to_owned()
+        }
+        Some(_) => format!("docker.io/{image}"),
+        None => format!("docker.io/library/{image}"),
+    };
+    if !name.contains('@') && !name.rsplit('/').next().unwrap().contains(':') {
+        name.push_str(":latest");
+    }
+    name
+}
+
 fn import_images(root: &Path, values: &Value, images: &[String]) -> Result<()> {
     let directory = root.join(".local/tmp/images");
     std::fs::create_dir_all(&directory)?;
@@ -469,11 +498,7 @@ fn import_images(root: &Path, values: &Value, images: &[String]) -> Result<()> {
     let node = String::from_utf8_lossy(&desktop.stdout).trim().to_owned();
     if !node.is_empty() {
         for image in images {
-            let containerd = if image.contains('/') {
-                format!("docker.io/{image}")
-            } else {
-                image.clone()
-            };
+            let containerd = containerd_reference(image);
             let _ = output(
                 root,
                 "docker",
@@ -610,17 +635,20 @@ fn tag_digest_images(root: &Path, prefix: &[&str], selected: &[String]) -> Resul
     args.extend(["ctr", "--namespace", "k8s.io", "images", "ls"]);
     let listing = output(root, prefix[0], &args, true)?;
     let listing_text = String::from_utf8_lossy(&listing.stdout);
+    let selected = selected
+        .iter()
+        .map(|image| containerd_reference(image))
+        .collect::<std::collections::HashSet<_>>();
     let mut tagged = std::collections::HashSet::new();
     for line in listing_text.lines().skip(1) {
         let fields = line.split_whitespace().collect::<Vec<_>>();
-        if fields.len() < 3
-            || !selected.iter().any(|image| {
-                fields[0] == image || fields[0].strip_prefix("docker.io/") == Some(image.as_str())
-            })
-        {
+        if fields.len() < 3 || !selected.contains(fields[0]) {
             continue;
         }
-        let repository = fields[0].rsplit_once(':').context("image has no tag")?.0;
+        let repository = match fields[0].split_once('@') {
+            Some((repository, _)) => repository,
+            None => fields[0].rsplit_once(':').context("image has no tag")?.0,
+        };
         let reference = format!("{repository}@{}", fields[2]);
         let mut tag = prefix[1..].to_vec();
         tag.extend([
@@ -637,10 +665,7 @@ fn tag_digest_images(root: &Path, prefix: &[&str], selected: &[String]) -> Resul
         tagged.insert(fields[0]);
     }
     for image in selected {
-        if !tagged
-            .iter()
-            .any(|name| *name == image || name.strip_prefix("docker.io/") == Some(image.as_str()))
-        {
+        if !tagged.contains(image.as_str()) {
             bail!("Imported image was not found in Kubernetes containerd: {image}");
         }
     }

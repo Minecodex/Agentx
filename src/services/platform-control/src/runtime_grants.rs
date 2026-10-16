@@ -5,6 +5,38 @@ use agentx_runtime_contracts::{
 use anyhow::Result;
 use sqlx::{MySql, Row, Transaction};
 use std::collections::BTreeMap;
+
+/// Rebuild the user admission projection through the normal durable publisher
+/// path on startup, including disabled users. Runtime still checks signatures,
+/// token versions, tenant scope and Workflow/Application grants independently.
+pub(crate) async fn reconcile_user_admissions(pool: &sqlx::MySqlPool) -> Result<()> {
+    let mut cursor = uuid::Uuid::nil();
+    loop {
+        let mut tx = pool.begin().await?;
+        let users = sqlx::query(
+            "SELECT id,tenant_id,status FROM users WHERE id>? ORDER BY id LIMIT 200 FOR UPDATE",
+        )
+        .bind(cursor)
+        .fetch_all(&mut *tx)
+        .await?;
+        if users.is_empty() {
+            tx.commit().await?;
+            return Ok(());
+        }
+        for user in users {
+            cursor = user.try_get("id")?;
+            crate::iam_api::enqueue_user_admission(
+                &mut tx,
+                user.try_get("tenant_id")?,
+                cursor,
+                user.try_get::<String, _>("status")? == "active",
+            )
+            .await
+            .map_err(|error| anyhow::anyhow!("User admission reconciliation failed: {error:?}"))?;
+        }
+        tx.commit().await?;
+    }
+}
 use uuid::Uuid;
 
 const APPLICATION_USER_QUERY: &str = "SELECT u.id,u.display_name,ud.department_id,d.name department_name,u.token_version,u.status,EXISTS(SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id AND r.tenant_id=ur.tenant_id AND r.status='active' JOIN role_permissions rp ON rp.role_id=r.id AND rp.tenant_id=r.tenant_id JOIN permissions p ON p.id=rp.permission_id WHERE ur.tenant_id=u.tenant_id AND ur.user_id=u.id AND p.permission_key='application:invoke' AND (a.owner_user_id=u.id OR r.data_scope='company' OR (r.data_scope='department_tree' AND EXISTS(SELECT 1 FROM department_closure scoped WHERE scoped.tenant_id=a.tenant_id AND scoped.ancestor_id=COALESCE(ur.scope_department_id,ud.department_id) AND scoped.descendant_id=a.owner_department_id)) OR a.visibility='company' OR (a.visibility='department' AND EXISTS(SELECT 1 FROM department_closure visible WHERE visible.tenant_id=a.tenant_id AND ((visible.ancestor_id=a.owner_department_id AND visible.descendant_id=ud.department_id) OR (visible.ancestor_id=ud.department_id AND visible.descendant_id=a.owner_department_id)))))) can_invoke,EXISTS(SELECT 1 FROM user_roles qur JOIN roles qr ON qr.id=qur.role_id AND qr.tenant_id=qur.tenant_id AND qr.status='active' AND qr.data_scope='company' JOIN role_permissions qrp ON qrp.role_id=qr.id AND qrp.tenant_id=qr.tenant_id JOIN permissions qp ON qp.id=qrp.permission_id AND qp.permission_key='execution:view' WHERE qur.tenant_id=u.tenant_id AND qur.user_id=u.id) tenant_query_enabled FROM users u JOIN user_departments ud ON ud.tenant_id=u.tenant_id AND ud.user_id=u.id JOIN departments d ON d.tenant_id=ud.tenant_id AND d.id=ud.department_id JOIN applications a ON a.tenant_id=u.tenant_id AND a.id=? WHERE u.tenant_id=? AND (? IS NULL OR u.id=?) ORDER BY u.id";

@@ -108,8 +108,10 @@ test('channel dialog renders provider-specific fields and stream channels hide t
   await expect(channel.getByText(/钉钉 · 长连接 \(Stream\)/)).toBeVisible()
   await expect(page.getByText('连接状态', { exact: true })).toBeVisible()
   await expect(page.getByText('生产接入地址', { exact: true })).toHaveCount(0)
-  await expect(page.getByRole('group', { name: '连接状态' })).toContainText('待发布')
-  await expect(page.getByRole('button', { name: '创建部署', exact: true })).toBeVisible()
+  const connection = page.getByRole('group', { name: '连接状态' })
+  await expect(connection.getByText('待发布', { exact: true })).toBeVisible()
+  await expect(connection.getByText('渠道配置尚未发布，长连接还未启动。请创建应用部署，发布成功后系统会自动连接平台。', { exact: true })).toBeVisible()
+  await expect(connection.getByRole('button', { name: '创建部署', exact: true })).toBeVisible()
 
   // Missing required config fields are rejected server-side per the template.
   const rejected = await page.request.fetch(`/api/v1/applications/${application.id}/webhooks`, {

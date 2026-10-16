@@ -19,7 +19,9 @@ ingress-nginx 使用固定上游 Chart和独立 Release `agentx-ingress-nginx`�
 
 开发和生产统一使用 `agentxctl validate/install/upgrade/doctor/uninstall`，核心资源和依赖初始化都由现有四个 Helm Release 管理。Python 只编排构建和 E2E，不另行安装 Agentx 数据库、生成业务 Secret 或创建第二套核心资源。`local-tls.yaml` 在 local 环境验证 TLS 依赖；生产仍只接受预置外部基础设施和 Secret。
 
-本地可显式配置 `global.ingress.serviceType: NodePort` 及不同的 `httpNodePort`、`httpsNodePort`；ctl 返回带端口的访问地址，Ingress Host 必须解析到可达节点。默认 LoadBalancer 不变。production 要求 LoadBalancer，Sandbox 入口额外要求内部 LoadBalancer Annotation；Run ID 只在 local/test 使用，临时 Sandbox 入口使用独立 NodePort。
+本地可显式配置 `global.ingress.serviceType: NodePort` 及不同的 `httpNodePort`、`httpsNodePort`；ctl 返回带端口的访问地址，Ingress Host 必须解析到可达节点。默认 LoadBalancer 不变。production 要求 LoadBalancer，Sandbox 入口额外要求内部 LoadBalancer Annotation；Run ID 只在 local/test 使用，临时 Sandbox 入口使用独立 NodePort，并保留 `sandboxAccess.endpoint` 中配置的主机。该主机必须能从外部 Sandbox 网络访问，TLS 证书包含该主机身份。
+
+Docker Desktop 的 Sandbox 容器与 Kubernetes 节点可能处于不同桥接网络。临时 E2E 配置为 `nodePort` 且主机为 `host.docker.internal` 时，pytest 将该 Run 的 `agentx-egress-sandbox` Service 转发到宿主同名端口；端口已占用时直接失败。转发透传 TLS，实际网关仍校验证书、短期令牌与目标白名单；测试退出时关闭转发。远端节点地址不启用该本地转发，此路径也不作为生产 CNI 隔离认证。
 
 Kustomize 只管理 LightRAG/Mem0 Addon与临时 E2E Fixture。核心 Helm与 Kustomize资源不得重名、使用同一 Selector或声明相同 Helm所有权。
 
@@ -124,6 +126,7 @@ Readiness表示必需依赖与 Schema可用，Liveness只表示进程存活：
 
 - Platform Control无状态扩展，Control MySQL保存权威管理状态。
 - Runtime Gateway通过 Runtime MySQL持久化游标，Redis仅唤醒。
+- Runtime Redis 使用 SDK 的连接管理器恢复连接；首次连接及每次重连握手均有 5 秒超时，TCP keepalive 检测失效连接，Linux 同时限制未确认传输的等待时间。业务调用自己的超时与 Redis 阻塞读取语义保持独立。
 - Workflow Runtime多副本使用 MySQL状态条件、Claim/Lease/Fencing和 Outbox。
 - Worker按 Capability扩展，并依赖 Runtime MySQL、Redis、S3和 Runtime API。
 - `plugin_nodejs` Worker镜像固定Node.js 24.20.0和Runner摘要；启动时校验Node主版本与Runner文件。`pluginMaxProcesses`限制插件消费循环和Node并发数；每次调用独立进程，完成后立即回收。`plugin-work` emptyDir承载调用级文件，源码缓存单独按摘要保留。Linux使用进程组，Windows本地使用Job Object回收整棵进程树。

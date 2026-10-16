@@ -625,6 +625,13 @@ async fn delete_server(
 ) -> ApiResult<StatusCode> {
     actor.require("mcp:manage")?;
     require_server(&state, &actor, id).await?;
+    let mut tx = crate::workflow_revision_resources::begin_delete(
+        &state.pool,
+        actor.tenant_id,
+        "mcp_server",
+        id,
+    )
+    .await?;
     let references:i64=sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM workflow_draft_resources WHERE tenant_id=? AND resource_type IN ('mcp_server','mcp_tool') AND (resource_id=? OR resource_id IN (SELECT id FROM mcp_tools WHERE tenant_id=? AND server_id=?)))+(SELECT COUNT(*) FROM workflow_version_resources WHERE tenant_id=? AND resource_type IN ('mcp_server','mcp_tool') AND (resource_id=? OR resource_id IN (SELECT id FROM mcp_tools WHERE tenant_id=? AND server_id=?)))").bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
     if references != 0 {
         return Err(ApiError::conflict(
@@ -632,7 +639,7 @@ async fn delete_server(
             "MCP server or tool is referenced",
         ));
     }
-    let mut tx = state.pool.begin().await?;
+
     let tools = sqlx::query("SELECT id FROM mcp_tools WHERE tenant_id=? AND server_id=?")
         .bind(actor.tenant_id)
         .bind(id)

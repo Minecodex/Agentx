@@ -61,22 +61,28 @@ async fn validate_version(
     let Some(version) = input.resource_version_id else {
         return Ok(());
     };
-    let relation = match input.resource_type.as_str() {
-        "skill" => Some(("skill_versions", "skill_id")),
-        "mcp_server" => Some(("mcp_server_versions", "server_id")),
-        "mcp_tool" => Some(("mcp_tool_versions", "tool_id")),
-        "sandbox_profile" => Some(("sandbox_profile_versions", "profile_id")),
+    let query = match input.resource_type.as_str() {
+        "skill" => Some(
+            "SELECT EXISTS(SELECT 1 FROM skill_versions WHERE tenant_id=? AND skill_id=? AND id=?)",
+        ),
+        "mcp_server" => Some(
+            "SELECT EXISTS(SELECT 1 FROM mcp_server_versions WHERE tenant_id=? AND server_id=? AND id=?)",
+        ),
+        "mcp_tool" => Some(
+            "SELECT EXISTS(SELECT 1 FROM mcp_tool_versions WHERE tenant_id=? AND tool_id=? AND id=?)",
+        ),
+        "sandbox_profile" => Some(
+            "SELECT EXISTS(SELECT 1 FROM sandbox_profile_versions WHERE tenant_id=? AND profile_id=? AND id=?)",
+        ),
         _ => None,
     };
-    let valid = if let Some((table, column)) = relation {
-        sqlx::query_scalar::<_, bool>(&format!(
-            "SELECT EXISTS(SELECT 1 FROM {table} WHERE tenant_id=? AND {column}=? AND id=?)"
-        ))
-        .bind(tenant)
-        .bind(input.resource_id)
-        .bind(version)
-        .fetch_one(&state.pool)
-        .await?
+    let valid = if let Some(query) = query {
+        sqlx::query_scalar::<_, bool>(query)
+            .bind(tenant)
+            .bind(input.resource_id)
+            .bind(version)
+            .fetch_one(&state.pool)
+            .await?
     } else {
         current_resource_version(state, tenant, &input.resource_type, input.resource_id).await?
             == Some(version)

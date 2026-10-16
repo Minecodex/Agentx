@@ -65,6 +65,7 @@
           "ToolOriginV1": {
             "enum": [
               "core",
+              "platform",
               "mcp",
               "skill",
               "knowledge",
@@ -390,7 +391,8 @@
           },
           "ExternalContextOriginV1": {
             "enum": [
-              "skill"
+              "skill",
+              "studio_document"
             ],
             "type": "string"
           },
@@ -622,6 +624,7 @@
           "ToolOriginV1": {
             "enum": [
               "core",
+              "platform",
               "mcp",
               "skill",
               "knowledge",
@@ -1565,6 +1568,22 @@
               {
                 "properties": {
                   "phase": {
+                    "const": "pending",
+                    "type": "string"
+                  },
+                  "token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "phase",
+                  "token"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "phase": {
                     "const": "effect_completed",
                     "type": "string"
                   },
@@ -1694,6 +1713,7 @@
           "TerminalReasonV1": {
             "enum": [
               "completed",
+              "suspended",
               "cancelled",
               "budget_exhausted",
               "model_error",
@@ -2228,6 +2248,22 @@
                 },
                 "required": [
                   "phase"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "phase": {
+                    "const": "pending",
+                    "type": "string"
+                  },
+                  "token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "phase",
+                  "token"
                 ],
                 "type": "object"
               },

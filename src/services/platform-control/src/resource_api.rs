@@ -43,7 +43,7 @@ pub fn routes() -> Router<ControlApiState> {
             post(create_request),
         )
         .route(
-            "/api/v1/workflows/{id}/resource-validation",
+            "/api/v1/workflows/{id}/drafts/{draft_id}/resource-validation",
             get(validate_resources),
         )
         .route(
@@ -80,11 +80,11 @@ macro_rules! grantable_query {
             "WITH grantable AS (",
             " SELECT tenant_id,id,CONVERT('credential' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci resource_type,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci name,CONVERT(credential_type USING utf8mb4) COLLATE utf8mb4_0900_ai_ci detail,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci status,owner_department_id,updated_at FROM credentials",
             " UNION ALL SELECT a.tenant_id,a.id,CONVERT('model' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(a.alias USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(CONCAT(d.connection_name,' / ',d.model_name) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(a.status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,d.owner_department_id,a.updated_at FROM model_aliases a JOIN model_deployments d ON d.id=a.deployment_id",
-            " UNION ALL SELECT s.tenant_id,s.id,CONVERT('mcp_server' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(s.name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(sv.endpoint USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(s.status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,s.owner_department_id,s.updated_at FROM mcp_servers s JOIN mcp_server_versions sv ON sv.server_id=s.id AND sv.version_number=s.current_version_number",
+            " UNION ALL SELECT s.tenant_id,s.id,CONVERT('mcp_server' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(s.name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(sv.endpoint,'') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(s.status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,s.owner_department_id,s.updated_at FROM mcp_servers s JOIN mcp_server_versions sv ON sv.server_id=s.id AND sv.version_number=s.current_version_number",
             " UNION ALL SELECT t.tenant_id,t.id,CONVERT('mcp_tool' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(t.title,t.name) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(CONCAT(s.name,' / ',t.name) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(IF(t.availability='available' AND p.enabled=TRUE AND s.status='active','active','unavailable') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,s.owner_department_id,GREATEST(t.updated_at,p.updated_at,s.updated_at) FROM mcp_tools t JOIN mcp_servers s ON s.id=t.server_id AND s.tenant_id=t.tenant_id JOIN mcp_tool_policies p ON p.tool_id=t.id AND p.tenant_id=t.tenant_id",
             " UNION ALL SELECT tenant_id,id,CONVERT('skill' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(description,'') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,owner_department_id,updated_at FROM skills",
-            " UNION ALL SELECT tenant_id,id,CONVERT('rag' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(external_resource_id USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,owner_department_id,updated_at FROM rag_resources",
-            " UNION ALL SELECT tenant_id,id,CONVERT('memory' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(external_namespace USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,owner_department_id,updated_at FROM memory_namespaces",
+            " UNION ALL SELECT tenant_id,id,CONVERT('rag' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(external_resource_id,'') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,owner_department_id,updated_at FROM rag_resources",
+            " UNION ALL SELECT tenant_id,id,CONVERT('memory' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(external_namespace,'') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,owner_department_id,updated_at FROM memory_namespaces",
             " UNION ALL SELECT p.tenant_id,p.id,CONVERT('sandbox_profile' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(p.name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(v.image_digest USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(p.status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,p.owner_department_id,p.updated_at FROM sandbox_profiles p JOIN sandbox_profile_versions v ON v.profile_id=p.id AND v.version_number=p.current_version_number",
             ") ",
             $tail
@@ -165,6 +165,7 @@ struct RequestInput {
     operation: String,
     source_node_id: Option<String>,
     source_revision: Option<u64>,
+    source_draft_id: Option<Uuid>,
     message: Option<String>,
 }
 
@@ -181,9 +182,10 @@ struct CancelInput {
     expected_version: u64,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct OptionQuery {
+pub(crate) struct OptionQuery {
+    draft_id: Option<Uuid>,
     resource_type: String,
     operation: Option<String>,
     search: Option<String>,
@@ -397,6 +399,34 @@ async fn delete_grant(
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub(crate) async fn builder_resource_options(
+    state: &ControlApiState,
+    actor: &Actor,
+    document: (Uuid, Uuid),
+    resource_type: String,
+    operation: String,
+    search: Option<String>,
+    page: u32,
+) -> ApiResult<Value> {
+    let (workflow, draft) = document;
+    crate::workflow_api::require_workflow_access(state, actor, workflow, false).await?;
+    let Json(value) = resource_options(
+        State(state.clone()),
+        actor.clone(),
+        Path(workflow),
+        Query(OptionQuery {
+            draft_id: Some(draft),
+            resource_type,
+            operation: Some(operation),
+            search,
+            page: Some(page),
+            page_size: Some(50),
+        }),
+    )
+    .await?;
+    serde_json::to_value(value).map_err(ApiError::internal)
+}
+
 async fn resource_options(
     State(state): State<ControlApiState>,
     actor: Actor,
@@ -404,6 +434,14 @@ async fn resource_options(
     Query(query): Query<OptionQuery>,
 ) -> ApiResult<Json<PageResponse<Value>>> {
     actor.require("workflow:view")?;
+    crate::workflow_api::require_workflow_access(&state, &actor, workflow, false).await?;
+    if let Some(draft) = query.draft_id {
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_drafts WHERE tenant_id=? AND workflow_id=? AND id=?)")
+            .bind(actor.tenant_id).bind(workflow).bind(draft).fetch_one(&state.pool).await?;
+        if !exists {
+            return Err(ApiError::not_found("Workflow Draft"));
+        }
+    }
     let identity = workflow_identity(&state, actor.tenant_id, workflow).await?;
     validate_kind(&query.resource_type)?;
     let operation = query.operation.unwrap_or_else(|| "use".into());
@@ -478,10 +516,10 @@ async fn resource_options(
                 "active":item_status=="active"
             }));
         }
-        let pending: Option<Uuid> = sqlx::query_scalar("SELECT id FROM resource_grant_requests WHERE tenant_id=? AND workflow_service_identity_id=? AND primary_resource_type=? AND primary_resource_id=? AND operation_key=? AND status='pending' LIMIT 1")
-            .bind(actor.tenant_id).bind(identity).bind(&query.resource_type).bind(resource_id).bind(&operation).fetch_optional(&state.pool).await?;
-        let rejected: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM resource_grant_requests WHERE tenant_id=? AND workflow_service_identity_id=? AND primary_resource_type=? AND primary_resource_id=? AND operation_key=? AND status='rejected')")
-            .bind(actor.tenant_id).bind(identity).bind(&query.resource_type).bind(resource_id).bind(&operation).fetch_one(&state.pool).await?;
+        let pending: Option<Uuid> = sqlx::query_scalar("SELECT id FROM resource_grant_requests WHERE tenant_id=? AND workflow_service_identity_id=? AND primary_resource_type=? AND primary_resource_id=? AND operation_key=? AND source_draft_id <=> ? AND status='pending' LIMIT 1")
+            .bind(actor.tenant_id).bind(identity).bind(&query.resource_type).bind(resource_id).bind(&operation).bind(query.draft_id).fetch_optional(&state.pool).await?;
+        let rejected: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM resource_grant_requests WHERE tenant_id=? AND workflow_service_identity_id=? AND primary_resource_type=? AND primary_resource_id=? AND operation_key=? AND source_draft_id <=> ? AND status='rejected')")
+            .bind(actor.tenant_id).bind(identity).bind(&query.resource_type).bind(resource_id).bind(&operation).bind(query.draft_id).fetch_one(&state.pool).await?;
         let name: String = row.try_get("name")?;
         let status: String = row.try_get("status")?;
         let access_state =
@@ -712,6 +750,7 @@ async fn authorize_resource(
 ) -> ApiResult<Json<Value>> {
     actor.require("workflow:edit")?;
     actor.require("resource:grant")?;
+    crate::workflow_api::require_workflow_access(&state, &actor, workflow, true).await?;
     let identity = workflow_identity(&state, actor.tenant_id, workflow).await?;
     let requirements = expand_requirements(&state, actor.tenant_id, &input).await?;
     let mut tx = state.pool.begin().await?;
@@ -752,15 +791,18 @@ async fn authorize_resource(
 async fn validate_resources(
     State(state): State<ControlApiState>,
     actor: Actor,
-    Path(workflow): Path<Uuid>,
+    Path((workflow, draft_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<Value>> {
     actor.require("workflow:view")?;
+    crate::workflow_api::require_workflow_access(&state, &actor, workflow, false).await?;
+    crate::workflow_api::require_workflow_access(&state, &actor, workflow, true).await?;
     let identity = workflow_identity(&state, actor.tenant_id, workflow).await?;
     let definition: Value = sqlx::query_scalar(
-        "SELECT definition_json FROM workflow_drafts WHERE tenant_id=? AND workflow_id=?",
+        "SELECT definition_json FROM workflow_drafts WHERE tenant_id=? AND workflow_id=? AND id=?",
     )
     .bind(actor.tenant_id)
     .bind(workflow)
+    .bind(draft_id)
     .fetch_optional(&state.pool)
     .await?
     .ok_or_else(|| ApiError::not_found("Workflow draft"))?;
@@ -786,6 +828,7 @@ async fn create_request(
     Json(input): Json<RequestInput>,
 ) -> ApiResult<(StatusCode, Json<Value>)> {
     actor.require("workflow:edit")?;
+    crate::workflow_api::require_workflow_access(&state, &actor, workflow, true).await?;
     let identity = workflow_identity(&state, actor.tenant_id, workflow).await?;
     create_subject_request(
         &state,
@@ -805,6 +848,22 @@ async fn create_subject_request(
     subject: GrantSubject,
     input: RequestInput,
 ) -> ApiResult<(StatusCode, Json<Value>)> {
+    if input.source_revision.is_some() != input.source_draft_id.is_some() {
+        return Err(ApiError::bad_request(
+            "DRAFT_SOURCE_REQUIRED",
+            "Draft ID and revision must be supplied together",
+        ));
+    }
+    if let (Some(workflow), Some(draft)) = (subject.workflow(), input.source_draft_id) {
+        let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_drafts WHERE tenant_id=? AND workflow_id=? AND id=? AND revision=? AND status='active')")
+            .bind(actor.tenant_id).bind(workflow).bind(draft).bind(input.source_revision).fetch_one(&state.pool).await?;
+        if !valid {
+            return Err(ApiError::conflict(
+                "DRAFT_REVISION_CONFLICT",
+                "Resource request source is stale",
+            ));
+        }
+    }
     let root = AuthorizationInput {
         resource_type: input.resource_type.clone(),
         resource_id: input.resource_id,
@@ -822,8 +881,8 @@ async fn create_subject_request(
             "Request message must not exceed 1000 characters",
         ));
     }
-    if let Some(id) = sqlx::query_scalar::<_,Uuid>("SELECT id FROM resource_grant_requests WHERE tenant_id=? AND subject_type=? AND subject_id=? AND primary_resource_type=? AND primary_resource_id=? AND operation_key=? AND status='pending'")
-        .bind(actor.tenant_id).bind(subject.kind()).bind(subject.id()).bind(&input.resource_type).bind(input.resource_id).bind(&input.operation).fetch_optional(&state.pool).await? {
+    if let Some(id) = sqlx::query_scalar::<_,Uuid>("SELECT id FROM resource_grant_requests WHERE tenant_id=? AND subject_type=? AND subject_id=? AND primary_resource_type=? AND primary_resource_id=? AND operation_key=? AND source_draft_id <=> ? AND status='pending'")
+        .bind(actor.tenant_id).bind(subject.kind()).bind(subject.id()).bind(&input.resource_type).bind(input.resource_id).bind(&input.operation).bind(input.source_draft_id).fetch_optional(&state.pool).await? {
         return Ok((StatusCode::OK,Json(load_request(state,actor,id).await?)));
     }
     let hash = format!(
@@ -845,8 +904,8 @@ async fn create_subject_request(
                 ApiError::conflict("RESOURCE_GRANT_REQUEST_STALE", "Resource package changed")
             })?;
     let mut tx = state.pool.begin().await?;
-    sqlx::query("INSERT INTO resource_grant_requests(id,tenant_id,subject_type,subject_id,workflow_id,workflow_service_identity_id,primary_resource_type,primary_resource_id,primary_resource_version_id,operation_key,source_node_id,source_revision,request_message,dependency_hash,open_dedupe_key,requested_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .bind(request).bind(actor.tenant_id).bind(subject.kind()).bind(subject.id()).bind(subject.workflow()).bind(match subject { GrantSubject::WorkflowServiceIdentity { identity_id, .. } => Some(identity_id), GrantSubject::Department(_) => None }).bind(&input.resource_type).bind(input.resource_id).bind(input.resource_version_id).bind(&input.operation).bind(input.source_node_id).bind(input.source_revision).bind(input.message).bind(&dependency_hash).bind(&hash).bind(actor.user_id).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO resource_grant_requests(id,tenant_id,subject_type,subject_id,workflow_id,workflow_service_identity_id,primary_resource_type,primary_resource_id,primary_resource_version_id,operation_key,source_node_id,source_revision,source_draft_id,request_message,dependency_hash,open_dedupe_key,requested_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(request).bind(actor.tenant_id).bind(subject.kind()).bind(subject.id()).bind(subject.workflow()).bind(match subject { GrantSubject::WorkflowServiceIdentity { identity_id, .. } => Some(identity_id), GrantSubject::Department(_) => None }).bind(&input.resource_type).bind(input.resource_id).bind(input.resource_version_id).bind(&input.operation).bind(input.source_node_id).bind(input.source_revision).bind(input.source_draft_id).bind(input.message).bind(&dependency_hash).bind(&hash).bind(actor.user_id).execute(&mut *tx).await?;
     let mut departments = BTreeSet::new();
     for item in requirements {
         departments.insert(item.owner_department_id);
@@ -1332,6 +1391,7 @@ async fn load_request(state: &ControlApiState, actor: &Actor, id: Uuid) -> ApiRe
         "operation":row.try_get::<String,_>("operation_key")?,
         "sourceNodeId":row.try_get::<Option<String>,_>("source_node_id")?,
         "sourceRevision":row.try_get::<Option<u64>,_>("source_revision")?,
+        "sourceDraftId":row.try_get::<Option<Uuid>,_>("source_draft_id")?,
         "message":row.try_get::<Option<String>,_>("request_message")?,
         "status":row.try_get::<String,_>("status")?,
         "requestedBy":requester,

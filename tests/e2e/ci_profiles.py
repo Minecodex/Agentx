@@ -24,6 +24,7 @@ PR_TESTS = {
     "product/test_model_streaming.py::test_vision_attachment_reaches_model_as_native_parts",
     "product/test_model_streaming.py::test_studio_debug_has_an_independent_durable_delta_cursor",
     "product/test_playwright.py::test_product_playwright_suite",
+    "product/test_studio_builder.py::test_plan8_layout_protocol",
     "product/test_web_asset_loading.py::test_workflow_creation_and_chunk_recovery",
     "observability/test_observability.py::test_observability_is_available",
     "security/test_isolation.py::test_each_namespace_has_default_deny",
@@ -43,7 +44,7 @@ def select_ci_profile(config: pytest.Config, items: list[pytest.Item]) -> None:
         raise pytest.UsageError(f"Core PR scenarios missing from collection: {sorted(missing)}")
     selected, deselected = [], []
     for item in items:
-        if "live_kimi_secret" in item.fixturenames and not item.get_closest_marker("live_model"):
+        if "existing_model_secret" in item.fixturenames and not item.get_closest_marker("live_model"):
             raise pytest.UsageError(f"Real credential dependency must be declared live_model: {item.nodeid}")
         node = item.nodeid.replace("\\", "/").removeprefix("tests/e2e/").split("[", 1)[0]
         special_environment = any(item.get_closest_marker(mark) for mark in ("capacity", "live_model"))

@@ -1,3 +1,4 @@
+import { fixtureDraftId } from '../draft-fixtures'
 import { expect, type APIResponse, type Page, test } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 
@@ -65,7 +66,7 @@ test('V2-08 API-first empty-domain closure creates product facts without SQL fix
   const workflow = await request<{ id: string }>(page, token, '/workflows', 'POST', {
     name: `V2-08 API First ${suffix}`, description: 'V2-08 empty-domain closure', visibility: 'company',
   })
-  const draft = await request<Draft>(page, token, `/workflows/${workflow.id}/draft`)
+  const draft = await request<Draft>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
   const definition = {
     schemaVersion: '8.0',
     start: { inputs: { type: 'object', properties: { message: { type: 'string' } }, required: ['message'], additionalProperties: true }, contexts: {} },
@@ -88,7 +89,7 @@ test('V2-08 API-first empty-domain closure creates product facts without SQL fix
     end: { outputs: { message: { schema: { type: 'string' }, required: true, sensitive: false } } },
     settings: { activationBudget: 8, executionOrder: 'deterministic' },
   }
-  const saved = await request<{ revision: number }>(page, token, `/workflows/${workflow.id}/draft`, 'PUT', {
+  const saved = await request<{ revision: number }>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`, 'PUT', {
     expectedRevision: draft.revision, definition,
     editorDocument: {
       ...draft.editorDocument,
@@ -96,7 +97,7 @@ test('V2-08 API-first empty-domain closure creates product facts without SQL fix
       edges: ['start-step-1', 'step-1-step-2', 'step-2-step-3', 'step-3-step-4', 'step-4-end'].map(edgeId => ({ edgeId })),
     },
   })
-  const version = await request<{ id: string }>(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftRevision: saved.revision })
+  const version = await request<{ id: string }>(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftId: await fixtureDraftId(page, workflow.id),  draftRevision: saved.revision })
   const environment = (await request<Environment[]>(page, token, '/environments')).find((item) => item.code === 'development')
   expect(environment).toBeTruthy()
   await request(page, token, `/workflows/${workflow.id}/deployments`, 'POST', { workflowVersionId: version.id, environmentId: environment!.id })

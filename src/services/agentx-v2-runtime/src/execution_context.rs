@@ -167,8 +167,12 @@ mod tests {
             workflow: ExecutionWorkflowSnapshotV1 {
                 id: Uuid::from_u128(2),
                 name: "Workflow".into(),
-                version_id: Uuid::from_u128(3),
-                version_number: 1,
+                source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version {
+                    version_id: Uuid::from_u128(3),
+                    version_number: 1,
+                },
+                version_id: Some(Uuid::from_u128(3)),
+                version_number: Some(1),
                 owner_department: None,
             },
             trigger_type: "debug",
@@ -205,8 +209,12 @@ mod tests {
             workflow: ExecutionWorkflowSnapshotV1 {
                 id: Uuid::from_u128(2),
                 name: "Workflow".into(),
-                version_id: Uuid::from_u128(3),
-                version_number: 1,
+                source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version {
+                    version_id: Uuid::from_u128(3),
+                    version_number: 1,
+                },
+                version_id: Some(Uuid::from_u128(3)),
+                version_number: Some(1),
                 owner_department: None,
             },
             trigger_type: "schedule",

@@ -14,15 +14,15 @@ from tests.e2e.product.remaining_support import evaluation, get, model_workflow,
 from tests.e2e.runtime.test_agent_attachments import _runtime_mysql
 
 
-def cost(input_tokens, output_tokens):
+def cost(input_tokens, output_tokens, input_price, output_price):
     return int(
-        (Decimal(input_tokens) * Decimal("1.25") + Decimal(output_tokens) * Decimal("2.5")).quantize(
+        (Decimal(input_tokens) * Decimal(input_price) + Decimal(output_tokens) * Decimal(output_price)).quantize(
             Decimal(1), rounding=ROUND_HALF_UP
         )
     )
 
 
-def ledger(state, execution):
+def ledger(state, execution, input_price="1.25", output_price="2.5"):
     rows = json.loads(
         _runtime_mysql(
             state["context"],
@@ -31,7 +31,10 @@ def ledger(state, execution):
         )
     )
     assert rows and all(r["status"] == "succeeded" for r in rows), rows
-    assert all(r["costMicros"] == cost(r["inputTokens"], r["outputTokens"]) and r["costMicros"] > 0 for r in rows), rows
+    assert all(
+        r["costMicros"] == cost(r["inputTokens"], r["outputTokens"], input_price, output_price) and r["costMicros"] > 0
+        for r in rows
+    ), rows
     deadline = time.monotonic() + 60
     while True:
         detail = get(state["control"], f"/executions/{execution}")

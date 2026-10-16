@@ -1,3 +1,5 @@
+import { CanvasRenderProvider } from './canvas-render-store';
+import { serializeStudio } from "../model/serializer";
 import {
   addEdge,
   applyEdgeChanges,
@@ -7,7 +9,8 @@ import {
   type NodeChange,
   type Viewport,
 } from "@xyflow/react";
-import { create } from "zustand";
+import { createStore, useStore, type StoreApi } from "zustand";
+import { createContext, createElement, useContext, useState, type ReactNode } from "react";
 
 import type {
   ActionNodeData,
@@ -28,7 +31,7 @@ import {
   type HistoryPatch,
 } from "./history-patch";
 
-type DocumentSlice = StudioDocument & { dirty: boolean; graphRevision: number };
+type DocumentSlice = StudioDocument & { dirty: boolean; graphRevision: number; localDocumentRevision: number; readOnly: boolean; appliedCommands: Record<string, number> };
 type GestureSnapshot = {
   nodes: StudioNode[];
   annotations: StudioDocument["annotations"][number][];
@@ -44,10 +47,11 @@ type InteractionSlice = {
 type HistorySlice = { past: HistoryPatch[]; future: HistoryPatch[] };
 type EditTargets = { nodeIds?: string[]; annotationIds?: string[]; boundary?: "start" };
 
-type EditorState = DocumentSlice &
+export type EditorState = DocumentSlice &
   InteractionSlice &
   HistorySlice & {
     hydrate: (value: StudioDocument) => void;
+    applyEditorCommand: (commandId: string, expectedRevision: number, document: StudioDocument) => "applied" | "already_applied" | "stale" | "read_only";
     onNodesChange: (changes: NodeChange<StudioNode>[]) => void;
     onEdgesChange: (changes: EdgeChange<StudioEdge>[]) => void;
     removeSelectedEdges: () => void;
@@ -114,7 +118,7 @@ type EditorState = DocumentSlice &
     beginEdit: (targets?: EditTargets) => void;
     commitEdit: () => void;
     paste: (nodes: StudioNode[], edges: StudioEdge[]) => void;
-    markSaved: () => void;
+    markSaved: (expectedDocumentRevision: number) => boolean;
     undo: () => void;
     redo: () => void;
   };
@@ -168,6 +172,9 @@ const documentSlice = (): DocumentSlice => ({
   settings: { executionOrder: "deterministic", activationBudget: 10_000 },
   dirty: false,
   graphRevision: 0,
+  localDocumentRevision: 0,
+  readOnly: false,
+  appliedCommands: {},
 });
 const interactionSlice = (): InteractionSlice => ({
   selectedId: undefined,
@@ -269,16 +276,43 @@ function mergeInputHandleValid(data: ActionNodeData, handle: string | null | und
     : handle === "left" || handle === "right";
 }
 
-export const useEditorStore = create<EditorState>((set) => ({
+export function createEditorStore(readOnly = false) {
+  return createStore<EditorState>((rawSet, get) => {
+    const set: typeof rawSet = (update, replace) => {
+      rawSet((state) => {
+        const next = typeof update === "function" ? update(state) : update;
+        const candidate = { ...state, ...next };
+        if (state.readOnly) {
+          const graphChanged = persistedDocumentChanged(state, candidate, true);
+          if (graphChanged) return state;
+          return {...next, dirty: false};
+        }
+        const changed = persistedDocumentChanged(state, candidate);
+        return changed ? { ...next, localDocumentRevision: state.localDocumentRevision + 1 } : next;
+      }, replace as false);
+    };
+    return ({
   ...documentSlice(),
   ...interactionSlice(),
   ...historySlice(),
+  readOnly,
+  applyEditorCommand: (commandId, expectedRevision, document) => {
+    const state = get();
+    if (state.readOnly) return "read_only";
+    if (commandId in state.appliedCommands) return "already_applied";
+    if (state.localDocumentRevision !== expectedRevision || state.gestureSnapshot) return "stale";
+    const protectedIds = state.nodes.filter(node => node.data.editorKind === "exit" && node.data.protected).map(node => node.id);
+    if (protectedIds.some(id => !document.nodes.some(node => node.id === id && node.data.editorKind === "exit"))) return "read_only";
+    set(current => ({ ...commit(current, document), graphRevision: current.graphRevision + 1, appliedCommands: { ...current.appliedCommands, [commandId]: current.localDocumentRevision + 1 } }));
+    return "applied";
+  },
   hydrate: (value) =>
-    set((state) => ({
+    rawSet((state) => ({
       ...value,
       dirty: false,
       selectedId: undefined,
       graphRevision: state.graphRevision + 1,
+      localDocumentRevision: state.localDocumentRevision + 1,
       past: [],
       future: [],
       gestureSnapshot: undefined,
@@ -937,7 +971,11 @@ export const useEditorStore = create<EditorState>((set) => ({
       }),
       graphRevision: state.graphRevision + 1,
     })),
-  markSaved: () => set({ dirty: false }),
+  markSaved: (expectedDocumentRevision) => {
+    if (get().localDocumentRevision !== expectedDocumentRevision) return false;
+    set({ dirty: false });
+    return true;
+  },
   undo: () =>
     set((state) => {
       const patch = state.past.at(-1);
@@ -966,4 +1004,52 @@ export const useEditorStore = create<EditorState>((set) => ({
         gestureSnapshot: undefined,
       };
     }),
-}));
+});
+  });
+}
+
+// Pointer movement changes only layout. Compare those fields directly, while
+// retaining the canonical serializer comparison for semantic document edits.
+function persistedDocumentChanged(before: EditorState, after: EditorState, ignoreViewport = false): boolean {
+  const slices = ['start', 'end', 'settings', 'annotations', 'groups', 'boundaryLayouts', 'edges'] as const;
+  const semanticChange = slices.some(key => before[key] !== after[key]);
+  if (!semanticChange && before.viewport === after.viewport && before.nodes === after.nodes) return false;
+  const sameViewport = ignoreViewport || before.viewport === after.viewport;
+  if (!semanticChange && sameViewport && before.nodes.length === after.nodes.length) {
+    let layoutChanged = false;
+    for (let index = 0; index < before.nodes.length; index += 1) {
+      const previous = before.nodes[index]!;
+      const next = after.nodes[index]!;
+      if (previous.id !== next.id || previous.data !== next.data) return canonicalChange(before, after, ignoreViewport);
+      if (isIterationChipId(previous.id)) continue;
+      layoutChanged ||= previous.position.x !== next.position.x || previous.position.y !== next.position.y
+        || (previous.editorCollapsed ?? false) !== (next.editorCollapsed ?? false)
+        || (previous.width ?? previous.measured?.width) !== (next.width ?? next.measured?.width)
+        || (previous.height ?? previous.measured?.height) !== (next.height ?? next.measured?.height);
+    }
+    return layoutChanged;
+  }
+  return canonicalChange(before, after, ignoreViewport);
+}
+
+function canonicalChange(before: EditorState, after: EditorState, ignoreViewport: boolean): boolean {
+  const previous = serializeStudio(before);
+  const next = serializeStudio(after);
+  if (ignoreViewport) return JSON.stringify({...previous, editorDocument: {...previous.editorDocument, viewport: null}})
+    !== JSON.stringify({...next, editorDocument: {...next.editorDocument, viewport: null}});
+  return JSON.stringify(previous) !== JSON.stringify(next);
+}
+
+const EditorStoreContext = createContext<StoreApi<EditorState> | null>(null);
+export function EditorStoreProvider({ children, readOnly = false, store }: { children: ReactNode; readOnly?: boolean; store?: StoreApi<EditorState> }) {
+  const [instance] = useState(() => store ?? createEditorStore(readOnly));
+  return createElement(EditorStoreContext.Provider, { value: instance }, createElement(CanvasRenderProvider, null, children));
+}
+export function useEditorStoreApi() {
+  const store = useContext(EditorStoreContext);
+  if (!store) throw new Error("An editor store provider is required");
+  return store;
+}
+export function useEditorStore<T>(selector: (state: EditorState) => T): T {
+  return useStore(useEditorStoreApi(), selector);
+}

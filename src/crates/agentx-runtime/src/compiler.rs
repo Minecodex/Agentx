@@ -115,6 +115,12 @@ impl<'a> WorkflowCompiler<'a> {
             })
             .collect::<Vec<_>>();
         crate::schema_contract::validate_workflow_contract_schemas(definition, &mut issues);
+        parameter_bindings::validate_disabled_parameter_shapes(
+            definition,
+            self.registry,
+            self.resolved_manifests,
+            &mut issues,
+        );
         let enabled = definition
             .nodes
             .iter()
@@ -876,6 +882,49 @@ impl<'a> WorkflowCompiler<'a> {
             })
             .unwrap_or_default()
     }
+
+    /// Resolve the same output contracts used by compilation without executing
+    /// nodes or requiring a complete, publishable graph.
+    pub fn design_output_contracts(
+        &self,
+        definition: &WorkflowDefinition,
+    ) -> BTreeMap<String, agentx_runtime_contracts::EffectiveOutputContractV1> {
+        let nodes = definition
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, node)| !node.disabled)
+            .collect::<Vec<_>>();
+        let manifests = nodes
+            .iter()
+            .map(|(_, node)| {
+                self.resolved_manifests
+                    .and_then(|resolved| resolved.get(&node.id))
+                    .cloned()
+                    .or_else(|| {
+                        self.registry
+                            .resolve_definition_manifest(
+                                &node.node_type,
+                                node.type_version,
+                                &node.parameters,
+                            )
+                            .cloned()
+                    })
+            })
+            .collect::<Vec<_>>();
+        nodes
+            .iter()
+            .zip(&manifests)
+            .filter_map(|((_, node), manifest)| {
+                manifest.as_ref().map(|manifest| {
+                    (
+                        node.id.clone(),
+                        effective_output_contract(node, manifest, definition, &nodes, &manifests),
+                    )
+                })
+            })
+            .collect()
+    }
 }
 
 fn effective_output_contract(
@@ -944,6 +993,9 @@ fn draft_save_issue(code: &str) -> bool {
     matches!(
         code,
         "UNKNOWN_NODE_VERSION"
+            | "BINDING_MULTIPLE_NOT_ALLOWED"
+            | "INVALID_NODE_PARAMETERS"
+            | "INVALID_PARAMETER_SCHEMA"
             | "RESOURCE_CAPABILITY_NODE_REMOVED"
             | "NODE_TYPE_NOT_PUBLIC"
             | "UNKNOWN_SOURCE_PORT"
@@ -1007,8 +1059,20 @@ fn validate_parameters(
     };
     for error in validator.iter_errors(parameters) {
         let suffix = error.instance_path.to_string();
+        // A draft can omit a top-level configuration field. A supplied value must still
+        // satisfy its shape, including nested bindings/conditions that inspectors read.
+        let missing_configuration = suffix.is_empty()
+            && matches!(
+                error.kind,
+                jsonschema::error::ValidationErrorKind::Required { .. }
+            );
         issues.push(CompileIssue {
-            code: "INVALID_NODE_PARAMETERS".into(),
+            code: if missing_configuration {
+                "NODE_PARAMETER_REQUIRED"
+            } else {
+                "INVALID_NODE_PARAMETERS"
+            }
+            .into(),
             path: format!(
                 "nodes[{definition_index}].parameters{}",
                 suffix.replace('/', ".")
@@ -1074,17 +1138,35 @@ fn validate_dynamic_branch_ids(
         .enumerate()
     {
         let id = entry.get("id").and_then(Value::as_str).unwrap_or_default();
-        let valid = !id.is_empty()
-            && id.len() <= 128
-            && id.chars().all(|character| {
+        let message = if id.is_empty() {
+            Some(format!(
+                "Missing non-empty string at parameters.{field}[{index}].id. Put id inside each {field} array item, not directly under parameters."
+            ))
+        } else if id.len() > 128
+            || !id.chars().all(|character| {
                 character.is_ascii_alphanumeric() || matches!(character, '_' | '-')
             })
-            && !reserved.contains(&id);
-        if !valid || !seen.insert(id) {
+        {
+            Some(
+                "Branch id must contain 1–128 ASCII letters, digits, underscores or hyphens".into(),
+            )
+        } else if reserved.contains(&id) {
+            Some(format!(
+                "Branch id '{id}' is reserved; reserved ids: {}",
+                reserved.join(", ")
+            ))
+        } else if !seen.insert(id) {
+            Some(format!(
+                "Duplicate branch id '{id}'; each {field} item needs a unique id"
+            ))
+        } else {
+            None
+        };
+        if let Some(message) = message {
             issues.push(CompileIssue {
                 code: "DYNAMIC_BRANCH_ID_INVALID".into(),
                 path: format!("nodes[{definition_index}].parameters.{field}[{index}].id"),
-                message: "Dynamic branch ids must be unique stable identifiers and cannot use reserved port names".into(),
+                message,
             });
         }
     }
@@ -1892,3 +1974,7 @@ fn validate_reachability(
 #[cfg(test)]
 #[path = "compiler_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "compiler_knowledge_tests.rs"]
+mod knowledge_tests;
