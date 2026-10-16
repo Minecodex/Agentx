@@ -4,17 +4,74 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 import uuid
 from pathlib import Path
 
+import httpx
 import pytest
 
 from tests.e2e.runtime.test_agent_attachments import _control_mysql, _runtime_mysql
 from tests.e2e.support import run
 
 
+def restore_builder_services(context, urls):
+    namespace = context["control_namespace"]
+    run(("kubectl", "-n", namespace, "scale", "deployment/platform-control", "--replicas=1"), timeout=60)
+    for plane, deployment in (("control", "platform-control"), ("runtime", "runtime-gateway")):
+        namespace = context[f"{plane}_namespace"]
+        run(
+            ("kubectl", "-n", namespace, "rollout", "status", f"deployment/{deployment}", "--timeout=180s"), timeout=190
+        )
+        run(
+            (
+                "kubectl",
+                "-n",
+                namespace,
+                "wait",
+                "--for=jsonpath={.status.replicas}=1",
+                f"deployment/{deployment}",
+                "--timeout=180s",
+            ),
+            timeout=190,
+        )
+        # A successful scale request or rollout can precede the old replica's
+        # preStop drain. Finish that lifecycle before the next test sends POSTs.
+        pods = run(
+            ("kubectl", "-n", namespace, "get", "pods", "-l", f"app.kubernetes.io/name={deployment}", "-o", "json")
+        ).json()["items"]
+        for pod in pods:
+            if pod["metadata"].get("deletionTimestamp"):
+                run(
+                    (
+                        "kubectl",
+                        "-n",
+                        namespace,
+                        "wait",
+                        "--for=delete",
+                        f"pod/{pod['metadata']['name']}",
+                        "--timeout=180s",
+                    ),
+                    timeout=190,
+                )
+    # Probe the same public routes used by the next case. The web server's own
+    # health endpoint does not check its Control upstream. Never retry login or
+    # another business mutation to hide an unfinished fault cleanup.
+    for url, expected in ((f"{urls['web']}/api/v1/auth/me", 401), (f"{urls['runtime']}/health/ready", 200)):
+        deadline = time.monotonic() + 60
+        while True:
+            try:
+                if httpx.get(url, timeout=3, trust_env=False).status_code == expected:
+                    break
+            except httpx.HTTPError:
+                pass
+            if time.monotonic() >= deadline:
+                raise AssertionError(f"Builder fault cleanup did not restore {url}")
+            time.sleep(0.5)
+
+
 @pytest.fixture
-def studio_faults(installed_agentx, request):
+def studio_faults(installed_agentx, service_urls, request):
     stop = threading.Event()
     events = []
     failures = []
@@ -101,22 +158,12 @@ def studio_faults(installed_agentx, request):
     finally:
         stop.set()
         worker.join(timeout=70)
-        run(
-            (
-                "kubectl",
-                "-n",
-                installed_agentx["control_namespace"],
-                "scale",
-                "deployment/platform-control",
-                "--replicas=1",
-            ),
-            timeout=60,
-        )
         path = Path(installed_agentx["artifact_dir"]) / "studio-faults.json"
         path.write_text(
             json.dumps({"events": events, "errors": failures, "maxConcurrentDesignModels": capacity_peak}, indent=2),
             encoding="utf-8",
         )
+        restore_builder_services(installed_agentx, service_urls)
         assert not failures, failures
         assert not worker.is_alive(), "The fault injector did not stop"
         expected_peak = getattr(request, "param", 4)

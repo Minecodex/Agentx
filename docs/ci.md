@@ -55,3 +55,5 @@ Minikube 显式映射的 NodePort 地址/端口在 agentxctl --run-id 作用域�
 边界鉴权使用独立 boundary-echo-mcp Deployment/Service 与随机密钥，不修改其他场景的共享 Echo 凭据。连线测试同时核验规范图中只增加一条连接和指定节点对，不把 ReactFlow 延迟挂载的 SVG 总数当作新增操作的起点；最终四条连接的持久化断言保留。diagnostics 的 performance、attachments、studio 仅用于这些聚焦复验，不替代完整发布门禁。
 
 plan8 的 Fixture 模型与真实模型分别由 `studio_models`、`studio_live_models` 提供。PR 核心矩阵包含 AI 编辑、Undo、ACK、版本派生和恢复的 Fixture 场景，不需要读取本地模型或 Vault。真实模型用例标注 `live_model`，仅在已有本地集群中读取已配置的 `glm-5.3-flash` 元数据和凭据；托管 Minikube 不执行此独立环境验收，也不读取旧 Kimi 环境变量。
+
+Builder 强退测试在收尾时等待 Deployment 副本数收敛、旧 Pod 完成 drain 并退出，再用 Web 代理的匿名身份查询和 Runtime readiness 验证真实服务路径恢复。Web 自身静态健康接口不能证明 Control 可用；不重试后续登录或业务写请求来掩盖尚未完成的故障清理。
