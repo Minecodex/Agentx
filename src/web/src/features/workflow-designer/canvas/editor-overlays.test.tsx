@@ -3,14 +3,15 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { CanvasNode } from '../model/types'
-import { useEditorStore } from '../store/editor-store'
+import { createEditorStore, EditorStoreProvider } from '../store/editor-store'
+const useEditorStore = createEditorStore()
 import { AnnotationNode, GroupNode, IterationChipNode, IterationEndNode, LoopContainerNode } from './editor-overlays'
 
 describe('editor overlay nodes', () => {
   it('edits and colors a Sticky Note without entering the Workflow Definition', () => {
     const onChange = vi.fn()
     const props = { id: 'annotation:note', selected: true, data: { editorKind: 'annotation', annotationId: 'note', text: 'Initial note', color: 'yellow', onChange, onRemove: vi.fn(), onResizeStart: vi.fn(), onResize: vi.fn(), onResizeEnd: vi.fn() } } as unknown as NodeProps<CanvasNode>
-    render(<ReactFlowProvider><AnnotationNode {...props} /></ReactFlowProvider>)
+    render(<EditorStoreProvider store={useEditorStore}><ReactFlowProvider><AnnotationNode {...props} /></ReactFlowProvider></EditorStoreProvider>)
 
     fireEvent.doubleClick(screen.getByTestId('studio-note-note'))
     const editor = screen.getByRole('textbox')
@@ -25,7 +26,7 @@ describe('editor overlay nodes', () => {
     const onToggle = vi.fn()
     const onRemove = vi.fn()
     const props = { id: 'group:main', selected: false, data: { editorKind: 'group', groupId: 'main', label: 'Main', collapsed: true, memberCount: 3, onToggle, onRemove } } as unknown as NodeProps<CanvasNode>
-    render(<ReactFlowProvider><GroupNode {...props} /></ReactFlowProvider>)
+    render(<EditorStoreProvider store={useEditorStore}><ReactFlowProvider><GroupNode {...props} /></ReactFlowProvider></EditorStoreProvider>)
 
     const group = screen.getByTestId('studio-group-main')
     expect(group.querySelector('[data-nodeid]')).not.toBeInTheDocument()
@@ -40,7 +41,7 @@ describe('editor overlay nodes', () => {
 describe('loop container overlays', () => {
   it('renders the loop container frame with header, parallel chip, footer note and ports', () => {
     const props = { id: 'loop-1', selected: false, data: { editorKind: 'loop-container', loopId: 'loop-1', label: '循环处理', parallelism: 6, childCount: 0, boundaryLinks: [] } } as unknown as NodeProps<CanvasNode>
-    render(<ReactFlowProvider><LoopContainerNode {...props} /></ReactFlowProvider>)
+    render(<EditorStoreProvider store={useEditorStore}><ReactFlowProvider><LoopContainerNode {...props} /></ReactFlowProvider></EditorStoreProvider>)
 
     const frame = screen.getByTestId('studio-loop-loop-1')
     expect(frame.className).toContain('studio-loop-container')
@@ -59,7 +60,7 @@ describe('loop container overlays', () => {
   it('resizes the canonical loop from a corner pointer gesture', () => {
     useEditorStore.setState({ nodes: [{ id: 'loop-1', type: 'manifest', position: { x: 20, y: 30 }, width: 470, height: 300, data: { editorKind: 'action', nodeType: 'loop_over_items', typeVersion: 1, label: '循环处理', key: 'loop', parameters: {}, contextWrites: [], resourceReferences: [], settings: {}, disabled: false } }], past: [], future: [], dirty: false })
     const props = { id: 'loop-1', selected: true, data: { editorKind: 'loop-container', loopId: 'loop-1', label: '循环处理', parallelism: 1, childCount: 0, boundaryLinks: [] } } as unknown as NodeProps<CanvasNode>
-    render(<ReactFlowProvider><LoopContainerNode {...props} /></ReactFlowProvider>)
+    render(<EditorStoreProvider store={useEditorStore}><ReactFlowProvider><LoopContainerNode {...props} /></ReactFlowProvider></EditorStoreProvider>)
 
     const corner = screen.getByRole('button', { name: /bottom-right/ })
     fireEvent.pointerDown(corner, { pointerId: 1, clientX: 100, clientY: 100 })
@@ -72,7 +73,7 @@ describe('loop container overlays', () => {
 
   it('renders the iteration start chip with a single source handle', () => {
     const props = { id: 'loop-1::iteration-start', selected: false, data: { editorKind: 'iteration-chip', loopId: 'loop-1' } } as unknown as NodeProps<CanvasNode>
-    render(<ReactFlowProvider><IterationChipNode {...props} /></ReactFlowProvider>)
+    render(<EditorStoreProvider store={useEditorStore}><ReactFlowProvider><IterationChipNode {...props} /></ReactFlowProvider></EditorStoreProvider>)
 
     const chip = screen.getByTestId('studio-chip-loop-1')
     expect(chip.className).toContain('studio-loop-chip')
@@ -85,7 +86,7 @@ describe('loop container overlays', () => {
 
   it('renders the iteration end chip with success and error target handles', () => {
     const props = { id: 'loop-1::iteration-end', selected: false, data: { editorKind: 'iteration-end', loopId: 'loop-1' } } as unknown as NodeProps<CanvasNode>
-    render(<ReactFlowProvider><IterationEndNode {...props} /></ReactFlowProvider>)
+    render(<EditorStoreProvider store={useEditorStore}><ReactFlowProvider><IterationEndNode {...props} /></ReactFlowProvider></EditorStoreProvider>)
 
     const chip = screen.getByTestId('studio-end-chip-loop-1')
     expect(chip.textContent).toMatch(/迭代结束|Iteration end/)

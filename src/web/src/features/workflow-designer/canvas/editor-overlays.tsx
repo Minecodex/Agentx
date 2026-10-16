@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '../../../shared/lib/cn'
 import type { CanvasNode } from '../model/types'
 import { PortHandle } from '../nodes/manifest-node'
-import { useEditorStore } from '../store/editor-store'
+import { useEditorStoreApi } from '../store/editor-store'
 import { useCanvasRenderStore } from '../store/canvas-render-store'
 import { LOOP_CONTAINER_DEFAULT_HEIGHT, LOOP_CONTAINER_DEFAULT_WIDTH, LOOP_CONTAINER_MIN_HEIGHT, LOOP_CONTAINER_MIN_WIDTH } from '../utils/layout'
 
@@ -87,16 +87,17 @@ type LoopResizeGesture = { pointerId: number; corner: LoopResizeCorner; clientX:
 const LOOP_RESIZE_CORNERS: LoopResizeCorner[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right']
 
 function LoopResizeHandles({ loopId }: { loopId: string }) {
+  const storeApi = useEditorStoreApi()
   const { t } = useTranslation()
   const { zoom } = useViewport()
   const gesture = useRef<LoopResizeGesture>()
   const start = (corner: LoopResizeCorner, event: ReactPointerEvent<HTMLButtonElement>) => {
-    const node = useEditorStore.getState().nodes.find((candidate) => candidate.id === loopId)
+    const node = storeApi.getState().nodes.find((candidate) => candidate.id === loopId)
     if (!node) return
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget.setPointerCapture?.(event.pointerId)
-    useEditorStore.getState().beginEdit({ nodeIds: [loopId] })
+    storeApi.getState().beginEdit({ nodeIds: [loopId] })
     gesture.current = { pointerId: event.pointerId, corner, clientX: event.clientX, clientY: event.clientY, x: node.position.x, y: node.position.y, width: node.width ?? node.measured?.width ?? LOOP_CONTAINER_DEFAULT_WIDTH, height: node.height ?? node.measured?.height ?? LOOP_CONTAINER_DEFAULT_HEIGHT }
   }
   const move = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -108,7 +109,7 @@ function LoopResizeHandles({ loopId }: { loopId: string }) {
     const dy = (event.clientY - active.clientY) / zoom
     const width = Math.max(LOOP_CONTAINER_MIN_WIDTH, active.width + (active.corner.endsWith('right') ? dx : -dx))
     const height = Math.max(LOOP_CONTAINER_MIN_HEIGHT, active.height + (active.corner.startsWith('bottom') ? dy : -dy))
-    useEditorStore.getState().updateLoopFrame(loopId, {
+    storeApi.getState().updateLoopFrame(loopId, {
       x: active.corner.endsWith('left') ? active.x - (width - active.width) : active.x,
       y: active.corner.startsWith('top') ? active.y - (height - active.height) : active.y,
       width,
@@ -120,7 +121,7 @@ function LoopResizeHandles({ loopId }: { loopId: string }) {
     event.preventDefault()
     event.stopPropagation()
     gesture.current = undefined
-    useEditorStore.getState().commitEdit()
+    storeApi.getState().commitEdit()
   }
   return <>{LOOP_RESIZE_CORNERS.map((corner) => <button aria-label={`${t('studio.container.resize')} ${corner}`} className={`studio-loop-resize-handle nodrag nopan ${corner.replace('-', ' ')}`} data-resize-corner={corner} key={corner} onPointerCancel={end} onPointerDown={(event) => start(corner, event)} onPointerMove={move} onPointerUp={end} type="button" />)}</>
 }

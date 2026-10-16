@@ -965,6 +965,56 @@ struct TraceQuery {
     node_execution_id: Option<Uuid>,
 }
 
+pub(crate) async fn builder_trace(
+    state: &ControlApiState,
+    actor: &Actor,
+    execution: Uuid,
+) -> ApiResult<Value> {
+    let Json(value) = get_trace(
+        State(state.clone()),
+        actor.clone(),
+        Path(execution),
+        Query(TraceQuery {
+            limit: Some(100),
+            cursor: None,
+            node_execution_id: None,
+        }),
+    )
+    .await?;
+    Ok(value)
+}
+
+pub(crate) async fn builder_artifact(
+    state: &ControlApiState,
+    actor: &Actor,
+    execution: Uuid,
+    artifact: Uuid,
+) -> ApiResult<Value> {
+    let response = get_artifact(
+        State(state.clone()),
+        actor.clone(),
+        Path((execution, artifact)),
+    )
+    .await?;
+    let kind = response
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_owned();
+    if !kind.starts_with("text/") && !kind.contains("json") {
+        return Ok(json!({"artifactId":artifact,"contentType":kind,"contentIncluded":false}));
+    }
+    match axum::body::to_bytes(response.into_body(), 65536).await {
+        Ok(bytes) => Ok(
+            json!({"artifactId":artifact,"contentType":kind,"content":String::from_utf8_lossy(&bytes),"truncated":false}),
+        ),
+        Err(_) => Ok(
+            json!({"artifactId":artifact,"contentType":kind,"contentIncluded":false,"truncated":true}),
+        ),
+    }
+}
+
 async fn get_trace(
     State(state): State<ControlApiState>,
     actor: Actor,
@@ -1086,7 +1136,7 @@ async fn get_trace_span(
     })))
 }
 
-async fn runtime_execution_detail(
+pub(crate) async fn runtime_execution_detail(
     state: &ControlApiState,
     actor: &Actor,
     id: Uuid,
@@ -1117,7 +1167,7 @@ async fn runtime_execution_detail(
     runtime_json(response).await
 }
 
-async fn runtime_execution_get<T: serde::de::DeserializeOwned>(
+pub(crate) async fn runtime_execution_get<T: serde::de::DeserializeOwned>(
     state: &ControlApiState,
     actor: &Actor,
     id: Uuid,
@@ -1272,7 +1322,7 @@ async fn runtime_response_error(response: reqwest::Response) -> ApiError {
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
     tracing::warn!(%status, response_body=%body, "Runtime Query rejected BFF request");
-    if status == reqwest::StatusCode::SERVICE_UNAVAILABLE {
+    if status.is_server_error() {
         ApiError::unavailable("RUNTIME_QUERY_UNAVAILABLE", "Runtime Query is unavailable")
     } else if status == reqwest::StatusCode::GONE {
         ApiError::bad_request(
@@ -1345,7 +1395,7 @@ async fn summaries_json(
     }
     let mut workflow_versions = summaries
         .iter()
-        .map(|summary| summary.workflow_version_id)
+        .filter_map(|summary| summary.workflow_version_id)
         .collect::<Vec<_>>();
     workflow_versions.sort_unstable();
     workflow_versions.dedup();
@@ -1360,6 +1410,9 @@ async fn summaries_json(
     );
     {
         let mut separated = workflow_query.separated(",");
+        if workflow_versions.is_empty() {
+            separated.push("NULL");
+        }
         for id in workflow_versions {
             separated.push_bind(id);
         }
@@ -1418,7 +1471,9 @@ async fn summaries_json(
                 .get(&summary.workflow_id)
                 .cloned()
                 .unwrap_or_else(|| summary.workflow_id.to_string());
-            let version = version_numbers.get(&summary.workflow_version_id).copied();
+            let version = summary
+                .workflow_version_id
+                .and_then(|id| version_numbers.get(&id).copied());
             let application_name = summary
                 .application_id
                 .and_then(|id| application_metadata.get(&id).cloned());
@@ -1436,7 +1491,7 @@ fn execution_summary_json(
     json!({
         "id":summary.execution_id,"workflowId":summary.workflow_id,"workflowName":workflow_name,
         "applicationId":summary.application_id,"applicationName":application_name,
-        "workflowVersionId":summary.workflow_version_id,"workflowVersionNumber":version,
+        "workflowVersionId":summary.workflow_version_id,"workflowVersionNumber":version,"source":summary.source,
         "invocationId":summary.invocation_id,"sessionId":summary.session_id,"traceId":summary.trace_id,
         "triggerType":summary.trigger_type,"executionType":if summary.trigger_type == "fork" { "fork" } else if summary.parent_execution_id.is_some() { "sub_workflow" } else { "whole" },"parentExecutionId":summary.parent_execution_id,
         "initiatorUserId":summary.initiator_user_id,"initiatorUserName":summary.initiator_user_name,
@@ -1623,7 +1678,12 @@ mod tests {
                 invocation_id: None,
                 application_id: None,
                 workflow_id: Uuid::now_v7(),
-                workflow_version_id: Uuid::now_v7(),
+                workflow_version_id: None,
+                source: agentx_runtime_contracts::WorkflowDesignSourceV1::DraftRevision {
+                    draft_id: Uuid::now_v7(),
+                    revision_id: Uuid::now_v7(),
+                    revision: 0,
+                },
                 session_id: None,
                 parent_execution_id: None,
                 bundle_id: Uuid::now_v7(),

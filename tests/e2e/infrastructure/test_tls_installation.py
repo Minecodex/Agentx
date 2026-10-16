@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tests.e2e.support import agentxctl, redact, run
+from tests.e2e.support import agentxctl, redact, render, run
 
 pytestmark = [pytest.mark.cluster, pytest.mark.infrastructure]
 
@@ -41,22 +41,6 @@ def _ca(namespace: str, name: str) -> str:
     return run(("kubectl", "-n", namespace, "get", "secret", name, "-o", r"jsonpath={.data.ca\.crt}")).stdout
 
 
-def _set_ca(namespace: str, name: str, value: str) -> None:
-    run(
-        (
-            "kubectl",
-            "-n",
-            namespace,
-            "patch",
-            "secret",
-            name,
-            "--type=merge",
-            "-p",
-            json.dumps({"data": {"ca.crt": value}}),
-        )
-    )
-
-
 def test_tls_doctors_confirm_encryption(tls_agentx: dict[str, str]) -> None:
     values = _values(tls_agentx)
     for plane in ("control", "runtime", "observability"):
@@ -86,7 +70,7 @@ def test_tls_doctors_confirm_encryption(tls_agentx: dict[str, str]) -> None:
     assert json.loads(Path(tls_agentx["artifact_dir"], "install.json").read_text())["status"] == "ready"
 
 
-def test_ctl_doctor_rejects_wrong_ca_and_recovers(tls_agentx: dict[str, str]) -> None:
+def test_runtime_doctor_rejects_wrong_ca_and_ctl_recovers(tls_agentx: dict[str, str]) -> None:
     values = _values(tls_agentx)
     namespace = tls_agentx["runtime_namespace"]
     ca_name = values["global"]["components"]["runtimeMysql"]["caSecretName"]
@@ -94,18 +78,32 @@ def test_ctl_doctor_rejects_wrong_ca_and_recovers(tls_agentx: dict[str, str]) ->
     original = _ca(namespace, ca_name)
     wrong = _ca(namespace, egress_ca)
     assert original and wrong and original != wrong
+    # Point only a separate Doctor Job at the wrong public trust anchor. Mutating the
+    # shared Secret also changes live SQL clients until kubelet propagates the
+    # restoration, contaminating unrelated tests after this one has passed.
+    values["global"]["components"]["runtimeMysql"]["caSecretName"] = egress_ca
+    fault_path = Path(tls_agentx["artifact_dir"], "tls-doctor-wrong-ca-values.yaml")
+    fault_path.write_text(yaml.safe_dump(values), encoding="utf-8")
+    doctor = next(
+        item
+        for item in yaml.safe_load_all(render(fault_path, "runtime", tls_agentx["run_id"]))
+        if item and item.get("kind") == "Job" and item["metadata"]["name"] == "runtime-doctor"
+    )
+    name = "runtime-doctor-wrong-ca"
+    doctor["metadata"]["name"] = name
+    doctor["metadata"].pop("annotations", None)
     try:
-        _set_ca(namespace, ca_name, wrong)
-        result = run(_ctl(tls_agentx, "doctor", "runtime"), check=False, timeout=600)
-        assert result.returncode != 0
-        logs = run(("kubectl", "-n", namespace, "logs", "job/runtime-doctor", "-c", "doctor"), check=False).stdout
+        run(("kubectl", "apply", "-f", "-"), input_text=json.dumps(doctor), timeout=60)
+        run(
+            ("kubectl", "-n", namespace, "wait", "--for=condition=Failed", f"job/{name}", "--timeout=180s"), timeout=190
+        )
+        logs = run(("kubectl", "-n", namespace, "logs", f"job/{name}", "-c", "doctor")).stdout
         assert any(term in logs.lower() for term in ("certificate", "unknownissuer", "unknown issuer"))
         assert "Could not automatically determine" not in logs
-        Path(tls_agentx["artifact_dir"], "tls-doctor-rejection.txt").write_text(
-            redact(result.stderr + logs), encoding="utf-8"
-        )
+        Path(tls_agentx["artifact_dir"], "tls-doctor-rejection.txt").write_text(redact(logs), encoding="utf-8")
     finally:
-        _set_ca(namespace, ca_name, original)
+        run(("kubectl", "-n", namespace, "delete", f"job/{name}", "--ignore-not-found", "--wait=true"), timeout=60)
+        assert _ca(namespace, ca_name) == original
         assert run(_ctl(tls_agentx, "doctor", "runtime"), timeout=600).json()["status"] == "healthy"
 
 

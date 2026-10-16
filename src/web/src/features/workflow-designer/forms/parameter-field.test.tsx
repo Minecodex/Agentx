@@ -16,6 +16,19 @@ vi.mock('./code-editor', () => ({
 }))
 
 describe('ParameterField', () => {
+  it('exposes manifest labels as accessible names for static text, number and option controls', () => {
+    const onChange = vi.fn()
+    render(<>
+      <ParameterField name="label" onChange={onChange} parameters={{}} schema={{type:'string'}} ui={{control:'text',label:'Plugin label'}} value="before" />
+      <ParameterField name="limit" onChange={onChange} parameters={{}} schema={{type:'integer'}} ui={{control:'number',label:'Result limit'}} value={5} />
+      <ParameterField name="mode" onChange={onChange} parameters={{}} schema={{type:'string',enum:['safe']}} ui={{control:'select',label:'Design mode'}} value="safe" />
+    </>)
+    fireEvent.change(screen.getByRole('textbox',{name:'Plugin label'}),{target:{value:'after'}})
+    expect(onChange).toHaveBeenCalledWith('after')
+    expect(screen.getByRole('spinbutton',{name:'Result limit'})).toHaveValue(5)
+    expect(screen.getByRole('combobox',{name:'Design mode'})).toHaveTextContent('safe')
+  })
+
   it('renders Platform API provider options declared by the manifest', () => {
     render(
       <ParameterField

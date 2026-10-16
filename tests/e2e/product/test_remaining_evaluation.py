@@ -23,14 +23,25 @@ from tests.e2e.product.remaining_support import (
 pytestmark = [pytest.mark.cluster, pytest.mark.product]
 
 
-def test_real_kimi_nonzero_price_matches_calls_execution_and_insights(boundary_state, live_kimi_secret):
+def test_real_model_nonzero_price_matches_calls_execution_and_insights(
+    boundary_state, existing_model, existing_model_secret
+):
     state = boundary_state
     model = new_model(
-        state, "priced-kimi", upstream="k3", endpoint="https://api.kimi.com/coding/v1", secret=live_kimi_secret.value
+        state,
+        "priced-live-model",
+        upstream=existing_model["modelName"],
+        endpoint=existing_model["endpoint"],
+        secret=existing_model_secret.value,
+        price={
+            "currency": existing_model["currency"],
+            "inputPerMillion": existing_model["inputPrice"],
+            "outputPerMillion": existing_model["outputPrice"],
+        },
     )
-    workflow = model_workflow(state, model, "priced Kimi")
+    workflow = model_workflow(state, model, "priced real model")
     execution, _ = invoke(state, workflow["workflowId"], input_value={"message": "请只回复:水星费用验证"})
-    rows, detail = ledger(state, execution)
+    rows, detail = ledger(state, execution, existing_model["inputPrice"], existing_model["outputPrice"])
     now = datetime.now(UTC)
     body = {
         "from": (now - timedelta(hours=1)).isoformat(),
@@ -53,13 +64,13 @@ def test_real_kimi_nonzero_price_matches_calls_execution_and_insights(boundary_s
     assert sum(row["metrics"]["outputTokens"] for row in values) == sum(r["outputTokens"] for r in rows), values
     report(
         state,
-        "remaining-real-kimi-cost",
+        "remaining-real-model-cost",
         {
             "executionId": execution,
             "ledger": rows,
             "executionCostMicros": detail["costMicros"],
             "insights": values,
-            "testPriceOnly": True,
+            "sourceModel": existing_model["alias"],
         },
     )
 

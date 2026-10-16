@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "draftId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "runId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "sessionId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "tenantId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "userId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "workflowId": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tenantId",
+    "workflowId",
+    "draftId",
+    "sessionId",
+    "runId",
+    "userId"
+  ],
+  "title": "StudioBuilderTargetV1",
+  "type": "object"
+}

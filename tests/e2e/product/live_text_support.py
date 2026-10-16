@@ -1,22 +1,17 @@
-"""Real Kimi resources for opt-in local acceptance; secrets stay in memory."""
+"""Real configured-model resources for local acceptance; secrets stay in memory."""
 
 from __future__ import annotations
 
-import base64
-import os
-import socket
-import ssl
 import time
-from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 import httpx
 import pytest
 
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
 from tests.e2e.product.test_model_streaming import _grant_model_to_workflow, _stream_workflow
 from tests.e2e.product.test_provider_integration import _publish_application_deployment
 from tests.e2e.runtime.test_agent_attachments import _access_token
-from tests.e2e.support import ROOT, run, start_process
 
 
 @dataclass
@@ -30,55 +25,8 @@ def post(client: httpx.Client, path: str, payload: dict) -> dict:
     return response.json()
 
 
-@pytest.fixture(scope="session")
-def live_kimi_secret(run_id: str) -> Iterator[Secret]:
-    reference = os.environ.get("AGENTX_E2E_LIVE_VAULT_SECRET_REF")
-    if not reference:
-        raise RuntimeError("AGENTX_E2E_LIVE_VAULT_SECRET_REF must identify the existing Kimi Vault credential")
-    directory = ROOT / ".local/artifacts/e2e" / run_id / "live-model"
-    directory.mkdir(parents=True, exist_ok=True)
-    control_secret = run(
-        ("kubectl", "-n", "agentx-prod-control", "get", "secret", "agentx-control-secrets", "-o", "json")
-    ).json()["data"]
-    vault_token = base64.b64decode(control_secret["AGENTX_CONTROL_VAULT_TOKEN"]).decode()
-    ca_secret = run(
-        ("kubectl", "-n", "agentx-prod-control", "get", "secret", "agentx-prod-vault-ca", "-o", "json")
-    ).json()["data"]
-    ca = directory / "vault-ca.pem"
-    ca.write_bytes(base64.b64decode(ca_secret["ca.crt"]))
-    with socket.socket() as listener:
-        listener.bind(("127.0.0.1", 0))
-        port = listener.getsockname()[1]
-    forward = start_process(
-        ("kubectl", "-n", "agentx-prod-external", "port-forward", "service/vault", f"{port}:8200"),
-        stdout_path=directory / "vault-forward.log",
-        stderr_path=directory / "vault-forward-error.log",
-    )
-    try:
-        with httpx.Client(verify=ssl.create_default_context(cafile=str(ca)), trust_env=False, timeout=10) as vault:
-            deadline = time.monotonic() + 30
-            while True:
-                try:
-                    response = vault.get(
-                        f"https://127.0.0.1:{port}/v1/agentx-v2/data/{reference}?version=1",
-                        headers={"X-Vault-Token": vault_token},
-                        extensions={"sni_hostname": "vault.agentx-prod-external.svc"},
-                    )
-                    break
-                except httpx.ConnectError:
-                    if time.monotonic() > deadline:
-                        raise
-                    time.sleep(0.3)
-            response.raise_for_status()
-            secret = Secret(response.json()["data"]["data"]["value"])
-        yield secret
-        secret.value = ""
-    finally:
-        forward.stop()
-
-
 def publish_version(control: httpx.Client, workflow_id: str, prompt: str) -> dict:
-    draft = control.get(f"/api/v1/workflows/{workflow_id}/draft").json()
+    draft = control.get(f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, None)}").json()
     definition = draft["definition"]
     model = next(node for node in definition["nodes"] if node["type"] == "model")
     model["parameters"]["prompt"] = {"kind": "template", "segments": [{"kind": "text", "text": prompt}]}
@@ -89,15 +37,26 @@ def publish_version(control: httpx.Client, workflow_id: str, prompt: str) -> dic
             selected.raise_for_status()
             reference["resourceVersionId"] = selected.json()["deploymentId"]
     saved = control.put(
-        f"/api/v1/workflows/{workflow_id}/draft", json={"expectedRevision": draft["revision"], "definition": definition}
+        f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, None)}",
+        json={
+            "editorDocument": fixture_draft(control, workflow_id, None)["editorDocument"],
+            "expectedRevision": draft["revision"],
+            "definition": definition,
+        },
     )
     assert saved.status_code in (200, 204), saved.text
-    revision = control.get(f"/api/v1/workflows/{workflow_id}/draft").json()["revision"]
-    return post(control, f"/workflows/{workflow_id}/versions", {"draftRevision": revision})
+    revision = control.get(
+        f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, None)}"
+    ).json()["revision"]
+    return post(
+        control,
+        f"/workflows/{workflow_id}/versions",
+        {"draftId": fixture_draft(control, workflow_id, None)["id"], "draftRevision": revision},
+    )
 
 
 @pytest.fixture(scope="session")
-def live_application(installed_agentx, service_urls, run_id, live_kimi_secret):
+def live_application(installed_agentx, service_urls, run_id, existing_model, existing_model_secret):
     with httpx.Client(base_url=service_urls["web"], timeout=60) as control:
         token, me = _access_token(control)
         headers = {"Authorization": f"Bearer {token}"}
@@ -106,25 +65,37 @@ def live_application(installed_agentx, service_urls, run_id, live_kimi_secret):
             control,
             "/credentials",
             {
-                "name": f"P7 live Kimi {run_id}",
+                "name": f"P7 live GLM {run_id}",
                 "credentialType": "bearer",
-                "secret": live_kimi_secret.value,
+                "secret": existing_model_secret.value,
                 "ownerDepartmentId": me["departmentId"],
             },
         )
-        alias = f"p7-kimi-{run_id}"
+        alias = f"p7-live-model-{run_id}"
         model = post(
             control,
             "/models/aliases",
             {
                 "connectionName": alias,
-                "providerType": "openai_compatible",
-                "endpoint": "https://api.kimi.com/coding/v1",
+                **{
+                    key: existing_model[key]
+                    for key in (
+                        "providerType",
+                        "endpoint",
+                        "modelName",
+                        "defaultParameters",
+                        "maxInputTokens",
+                        "maxOutputTokens",
+                    )
+                },
                 "credentialId": credential["id"],
                 "ownerDepartmentId": me["departmentId"],
                 "alias": alias,
-                "modelName": "k3",
-                "price": {"currency": "USD", "inputPerMillion": "0", "outputPerMillion": "0"},
+                "price": {
+                    "currency": existing_model["currency"],
+                    "inputPerMillion": existing_model["inputPrice"],
+                    "outputPerMillion": existing_model["outputPrice"],
+                },
             },
         )
         workflow_id = _stream_workflow(control, headers, f"P7 live text {run_id}", model["id"])

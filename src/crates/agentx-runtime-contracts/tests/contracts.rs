@@ -186,6 +186,14 @@ fn execution_origin_and_search_filters_round_trip_without_compatibility_fields()
 
 #[test]
 fn every_top_level_wire_family_rejects_version_two() {
+    assert_version_rejected(
+        agentx_runtime_contracts::PluginResolveSessionV1 {
+            protocol_version: 1,
+            tenant_id: Uuid::now_v7(),
+            session_id: Uuid::now_v7(),
+        },
+        "protocolVersion",
+    );
     let tenant_id = agentx_domain::TenantId::new();
     assert_version_rejected(
         RuntimeCommand::new(
@@ -261,7 +269,11 @@ fn internal_api_response_wrappers_reject_version_two() {
         invocation_id: None,
         application_id: None,
         workflow_id: Uuid::now_v7(),
-        workflow_version_id: Uuid::now_v7(),
+        workflow_version_id: Some(Uuid::now_v7()),
+        source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version {
+            version_id: Uuid::now_v7(),
+            version_number: 1,
+        },
         session_id: None,
         parent_execution_id: None,
         bundle_id: Uuid::now_v7(),
@@ -479,15 +491,24 @@ fn work_package_uses_an_independent_key_and_rejects_payload_tampering() {
             workflow: agentx_runtime_contracts::ExecutionWorkflowSnapshotV1 {
                 id: workflow_id,
                 name: "Workflow".into(),
-                version_id: Uuid::now_v7(),
-                version_number: 7,
+                source: agentx_runtime_contracts::WorkflowDesignSourceV1::DraftRevision {
+                    draft_id: Uuid::from_u128(31),
+                    revision_id: Uuid::from_u128(32),
+                    revision: 7,
+                },
+                version_id: None,
+                version_number: None,
                 owner_department: None,
             },
             origin: agentx_runtime_contracts::ExecutionOriginV1::system(None),
             purpose: WorkPackagePurpose::Debug,
             call_purpose: RuntimeCallPurposeV1::Debug,
             spec: agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Debug {
-                draft_revision: 7,
+                source: agentx_runtime_contracts::WorkflowDesignSourceV1::DraftRevision {
+                    draft_id: Uuid::from_u128(31),
+                    revision_id: Uuid::from_u128(32),
+                    revision: 7,
+                },
                 debug_plan: agentx_runtime_contracts::RuntimeDebugPlanV1::whole(&compiled),
             },
             model_evaluator_executions: vec![],
@@ -701,16 +722,20 @@ fn evaluation_work_package_payload() -> RuntimeWorkPackagePayloadV1 {
         workflow: agentx_runtime_contracts::ExecutionWorkflowSnapshotV1 {
             id: workflow_id,
             name: "Workflow".into(),
-            version_id: Uuid::now_v7(),
-            version_number: 1,
+            source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version {
+                version_id: Uuid::from_u128(33),
+                version_number: 1,
+            },
+            version_id: Some(Uuid::from_u128(33)),
+            version_number: Some(1),
             owner_department: None,
         },
         origin: agentx_runtime_contracts::ExecutionOriginV1::system(None),
         purpose: WorkPackagePurpose::Evaluation,
         call_purpose: RuntimeCallPurposeV1::Evaluation,
         spec: agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Evaluation {
-            dataset_version_id: Uuid::now_v7(),
-            profile_version_id: Uuid::now_v7(),
+            dataset_version_id: Uuid::from_u128(33),
+            profile_version_id: Uuid::from_u128(33),
             cases: vec![agentx_runtime_contracts::RuntimeEvaluationCaseV1 {
                 case_id: Uuid::now_v7(),
                 input: json!({"message":"evaluate"}),
@@ -788,7 +813,7 @@ fn bundle_payload() -> ExecutionSpecPayloadV2 {
         application_id: Uuid::now_v7(),
         deployment_id: Uuid::now_v7(),
         workflow_id,
-        workflow_version_id: Uuid::now_v7(),
+        workflow_version_id: Uuid::from_u128(33),
         workflow_name: "Workflow".into(),
         workflow_version_number: 7,
         workflow_owner_department: None,

@@ -1013,11 +1013,13 @@ fn validate_work_package_payload(
         (
             WorkPackagePurpose::Debug,
             RuntimeCallPurposeV1::Debug,
-            crate::RuntimeWorkPackageSpecV1::Debug {
-                draft_revision,
-                debug_plan,
-            },
-        ) => *draft_revision > 0 && valid_debug_plan(payload, debug_plan),
+            crate::RuntimeWorkPackageSpecV1::Debug { source, debug_plan },
+        ) => {
+            source.is_valid()
+                && serde_json::to_value(source).ok()
+                    == serde_json::to_value(&payload.workflow.source).ok()
+                && valid_debug_plan(payload, debug_plan)
+        }
         (
             WorkPackagePurpose::Evaluation,
             RuntimeCallPurposeV1::Evaluation,
@@ -1108,7 +1110,7 @@ fn validate_work_package_payload(
     if payload.authorization.tenant_id != payload.tenant_id
         || payload.authorization.workflow_id != payload.workflow.id
         || payload.workflow.name.trim().is_empty()
-        || payload.workflow.version_number == 0
+        || !payload.workflow.source_is_valid()
         || payload
             .objects
             .iter()
@@ -1282,11 +1284,12 @@ fn valid_configuration(resource: &RuntimeResourceBindingV1) -> bool {
             definition_object_id,
             ir_object_id,
         } => {
-            resource.resource_id == workflow.version_id
-                && resource.resource_version == workflow.version_id.to_string()
-                && workflow.version_number > 0
+            Some(resource.resource_id) == workflow.version_id
+                && Some(resource.resource_version.as_str())
+                    == workflow.version_id.map(|id| id.to_string()).as_deref()
+                && workflow.version_number.is_some_and(|number| number > 0)
                 && !workflow.name.trim().is_empty()
-                && definition_object_id == &workflow.version_id
+                && Some(*definition_object_id) == workflow.version_id
                 && definition_object_id != ir_object_id
         }
         _ => true,

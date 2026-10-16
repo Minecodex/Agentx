@@ -13,7 +13,10 @@
   ],
   "runtime_gateway_redis_allowed_modules": [
     "src/services/agentx-v2-runtime/src/sse_wakeup.rs",
-    "src/services/agentx-v2-runtime/src/trace_delivery.rs"
+    "src/services/agentx-v2-runtime/src/trace_delivery.rs",
+    "src/services/agentx-v2-runtime/src/lib.rs",
+    "src/services/agentx-v2-runtime/src/admission.rs",
+    "src/services/agentx-v2-runtime/src/redis_admission.rs"
   ],
   "legacy_direct_dependencies": [],
   "legacy_rust_imports": [],

@@ -305,7 +305,7 @@ def test_p305_application_session_continues_across_gateway_executions(
         "AND e.stable_agent_node_key=r.stable_agent_node_key))) "
         "FROM agent_session_registers r "
         f"WHERE r.tenant_id=UUID_TO_BIN('{me['companyId']}') "
-        "AND r.session_key LIKE 'application:%';",
+        f"AND r.session_key='application:{application_id}:{session_id}';",
     )
     items = json.loads(rows) if rows and rows.lower() != "null" else []
     assert len(items) == 1, items

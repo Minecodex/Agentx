@@ -25,7 +25,7 @@ async fn completed_history_does_not_block_the_next_node(fixture: &Fixture) {
     source.definition = serde_json::from_value(definition).unwrap();
     let compiled = compile_workflow_version(&source.definition, package_id).unwrap();
     source.spec = agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Debug {
-        draft_revision: 1,
+        source: agentx_runtime_contracts::WorkflowDesignSourceV1::DraftRevision { draft_id: uuid::Uuid::now_v7(), revision_id: uuid::Uuid::now_v7(), revision: 1 },
         debug_plan: agentx_runtime_contracts::RuntimeDebugPlanV1::whole(&compiled),
     };
     let _ = prepare_work_package(

@@ -1,3 +1,4 @@
+import { fixtureDraftId } from '../draft-fixtures'
 import { expect, test } from '@playwright/test'
 
 import { connect, login } from '../support/canvas-plugin'
@@ -15,9 +16,9 @@ test('propagates dynamic contracts across a plugin chain and preserves them afte
   const created = await page.request.post('/api/v1/workflows', { headers, data: { name: `Dynamic chain ${Date.now()}`, visibility: 'company' } })
   expect(created.ok(), await created.text()).toBeTruthy()
   const workflow = await created.json() as { id: string }
-  const draftResponse = await page.request.get(`/api/v1/workflows/${workflow.id}/draft`, { headers })
+  const draftResponse = await page.request.get(`/api/v1/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`, { headers })
   const draft = await draftResponse.json() as { definition: { connections: Array<{ id: string }> } }
-  await page.goto(`/workflows/${workflow.id}/editor`)
+  await page.goto(`/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}/editor`)
   const initialId = draft.definition.connections[0].id
   await page.locator(`.react-flow__edge[data-testid="rf__edge-${initialId}"]`).click({ force: true })
   await page.locator(`.studio-edge-toolbar[data-edge-id="${initialId}"]`).getByRole('button', { name: '删除连线' }).click()
@@ -26,12 +27,12 @@ test('propagates dynamic contracts across a plugin chain and preserves them afte
   await page.getByTestId('palette-action-acme.boundaries').first().click()
   await inspector.getByLabel('Label', { exact: true }).fill('first')
   await inspector.getByRole('button', { name: '关闭', exact: true }).first().click()
-  const upstream = page.locator('.react-flow__node-manifest').filter({ hasText: 'Label: first' })
+  const upstream = page.locator('.react-flow__node-manifest').filter({ hasText: 'Boundary Plugin' }).nth(0)
   await expect(upstream).toBeVisible()
   await page.getByTestId('palette-action-acme.boundaries').first().click()
   await inspector.getByLabel('Label', { exact: true }).fill('follow')
   await inspector.getByRole('button', { name: '关闭', exact: true }).first().click()
-  const downstream = page.locator('.react-flow__node-manifest').filter({ hasText: 'Label: follow' })
+  const downstream = page.locator('.react-flow__node-manifest').filter({ hasText: 'Boundary Plugin' }).nth(1)
   await page.getByRole('button', { name: '适应画布', exact: true }).click({ force: true })
   await connect(page, page.getByTestId('workflow-start'), 'main', upstream, 'main')
   await connect(page, upstream, 'main', downstream, 'main')
@@ -47,9 +48,9 @@ test('propagates dynamic contracts across a plugin chain and preserves them afte
   await expect(page.locator('header').getByText(/修订号 \d+ · 已保存/)).toBeVisible()
   await page.reload()
   await expect(downstream.locator('.react-flow__handle.source[data-handleid="second"]')).toBeVisible()
-  const savedResponse = await page.request.get(`/api/v1/workflows/${workflow.id}/draft`, { headers })
+  const savedResponse = await page.request.get(`/api/v1/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`, { headers })
   const saved = await savedResponse.json() as { revision: number }
-  const version = await page.request.post(`/api/v1/workflows/${workflow.id}/versions`, { headers, data: { draftRevision: saved.revision } })
+  const version = await page.request.post(`/api/v1/workflows/${workflow.id}/versions`, { headers, data: { draftId: await fixtureDraftId(page, workflow.id),  draftRevision: saved.revision } })
   expect(version.ok(), await version.text()).toBeTruthy()
   await page.screenshot({ path: testInfo.outputPath('dynamic-plugin-chain.png'), fullPage: true })
 })

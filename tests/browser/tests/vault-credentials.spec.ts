@@ -15,7 +15,7 @@ test('creates and rotates a Bearer credential through the UI with Vault TLS stor
   await page.getByRole('option', { name: 'Bearer Token', exact: true }).click()
   await form.getByLabel('密钥内容').fill('agentx-e2e-vault-placeholder-v1')
   await form.getByRole('combobox', { name: '所属部门' }).click()
-  await page.getByRole('option', { name: 'Agentx P3-04 E2E', exact: true }).click()
+  await page.getByRole('option', { name: 'Agentx E2E', exact: true }).click()
   const created = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith('/api/v1/credentials'))
   await form.getByRole('button', { name: '保存', exact: true }).click()
   const response = await created

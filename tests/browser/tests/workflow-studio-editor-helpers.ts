@@ -1,7 +1,13 @@
 import { expect, type Locator, type Page } from '@playwright/test'
 
+export function sandboxImageDigest(): string {
+  const image = process.env.AGENTX_E2E_SANDBOX_IMAGE
+  if (!image?.includes('@sha256:')) throw new Error('The pytest harness must provide the verified Sandbox image digest')
+  return image
+}
+
 export async function showEdgeToolbar(edge: Locator, toolbar: Locator) {
-  await edge.locator('path[stroke="transparent"]').dispatchEvent('mouseover')
+  await edge.locator('path[stroke="transparent"]').hover()
   await expect(toolbar).toHaveCSS('opacity', '1')
 }
 
@@ -34,16 +40,11 @@ export async function resizeLoop(page: Page, loopFrame: Locator, resizeHandle: L
 
 export async function fillMonaco(page: Page, scope: Locator, value: string, paste = false) {
   await scope.scrollIntoViewIfNeeded()
-  const monaco = scope.getByRole('textbox', { name: 'Editor content' })
-  const richText = scope.locator('[contenteditable="true"]').first()
-  const fallback = scope.locator('textarea:not([readonly]):not([aria-hidden="true"])').first()
-  await expect.poll(async () => await monaco.isVisible().catch(() => false)
-    || await fallback.isVisible().catch(() => false)
-    || await richText.isVisible().catch(() => false), { timeout: 30_000 }).toBeTruthy()
-  const usesMonaco = await monaco.isVisible().catch(() => false)
-  const usesFallback = !usesMonaco && await fallback.isVisible().catch(() => false)
-  const editor = usesMonaco ? monaco : usesFallback ? fallback : richText
-  if (usesMonaco) {
+  const editor = scope.getByRole('textbox', { name: 'Editor content' })
+  // Source controls lazy-load Monaco; its loading textarea is transient.
+  // The output-example control is a permanent plain textarea.
+  if (await scope.getAttribute('data-testid') === 'parameter-source') {
+    await expect(editor).toBeVisible({ timeout: 30_000 })
     await editor.focus()
     await page.keyboard.press('Control+A')
     if (paste) {
@@ -55,14 +56,14 @@ export async function fillMonaco(page: Page, scope: Locator, value: string, past
     } else await page.keyboard.insertText(value)
     await page.keyboard.press('Control+Home')
     await expect.poll(async () => (await scope.locator('.view-lines:visible').textContent())?.replaceAll('\u00a0', ' ')).toContain(value.split('\n')[0])
-  } else if (usesFallback) {
-    await editor.fill(value)
-    await expect(editor).toHaveValue(value)
   } else {
-    await editor.fill(value)
-    await expect(editor).toContainText(value.split('\n')[0])
+    const textarea = scope.locator('textarea:not([readonly])')
+    await textarea.fill(value)
+    await expect(textarea).toHaveValue(value)
   }
-  await page.keyboard.press('Escape')
-  await editor.blur()
+  // Blur the current focus to commit; Escape would close the entire inspector.
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+  })
   await page.waitForTimeout(100)
 }

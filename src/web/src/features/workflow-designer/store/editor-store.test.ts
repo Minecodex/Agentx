@@ -1,6 +1,73 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { useEditorStore } from './editor-store'
+import { createEditorStore } from './editor-store'
+const useEditorStore = createEditorStore()
+
+describe('draft editing transactions', () => {
+  const document = (store: ReturnType<typeof createEditorStore>) => {
+    const state = store.getState()
+    return {start:state.start,nodes:state.nodes,edges:state.edges,end:state.end,settings:state.settings,viewport:state.viewport,boundaryLayouts:state.boundaryLayouts,annotations:state.annotations,groups:state.groups}
+  }
+  it('tracks layout and measured size edits while selection and equivalent parameters keep the document sequence', () => {
+    const store = createEditorStore()
+    const id = store.getState().addAction({editorKind:'action',nodeType:'if',typeVersion:1,label:'Decision',key:'decision',parameters:{cases:[]},contextWrites:[],resourceReferences:[],settings:{},disabled:false})
+    const original = store.getState().localDocumentRevision
+    store.getState().onNodesChange([{type:'select',id,selected:true}])
+    expect(store.getState().localDocumentRevision).toBe(original)
+    store.getState().onNodesChange([{type:'position',id,position:{x:123,y:456},dragging:true}])
+    const moved = store.getState().localDocumentRevision
+    expect(moved).toBeGreaterThan(original)
+    expect(store.getState().markSaved(original)).toBe(false)
+    store.getState().onNodesChange([{type:'position',id,position:{x:123,y:456},dragging:false}])
+    expect(store.getState().localDocumentRevision).toBe(moved)
+    store.getState().onNodesChange([{type:'dimensions',id,dimensions:{width:240,height:150}}])
+    const measured = store.getState().localDocumentRevision
+    expect(measured).toBeGreaterThan(moved)
+    store.getState().updateNode(id,{parameters:{cases:[]}})
+    expect(store.getState().localDocumentRevision).toBe(measured)
+    store.getState().updateNode(id,{label:'Revised'})
+    expect(store.getState().localDocumentRevision).toBeGreaterThan(measured)
+  })
+  it('keeps later edits dirty when a previous save finishes', () => {
+    const store=createEditorStore()
+    store.getState().addAnnotation({x:10,y:10},'First')
+    const submitted=store.getState().localDocumentRevision
+    store.getState().setStart({inputs:{type:'object',properties:{name:{type:'string'}}},contexts:{}})
+    expect(store.getState().markSaved(submitted)).toBe(false)
+    expect(store.getState().dirty).toBe(true)
+    expect(store.getState().markSaved(store.getState().localDocumentRevision)).toBe(true)
+  })
+  it('applies a batch once, undoes it as one transaction, and never replays it after Undo', () => {
+    const store=createEditorStore()
+    const candidate={...document(store),annotations:[{id:'note',text:'AI note',x:10,y:10,width:240,height:160}],groups:[]}
+    expect(store.getState().applyEditorCommand('command-1',0,candidate)).toBe('applied')
+    expect(store.getState().past).toHaveLength(1)
+    expect(store.getState().applyEditorCommand('command-1',0,candidate)).toBe('already_applied')
+    store.getState().undo()
+    expect(store.getState().annotations).toHaveLength(0)
+    expect(store.getState().applyEditorCommand('command-1',0,candidate)).toBe('already_applied')
+    expect(store.getState().annotations).toHaveLength(0)
+  })
+  it('rejects a command after a manual edit and isolates two draft stores', () => {
+    const left=createEditorStore(),right=createEditorStore()
+    const candidate=document(left)
+    left.getState().addAnnotation({x:1,y:1},'Manual')
+    expect(left.getState().applyEditorCommand('stale',0,candidate)).toBe('stale')
+    expect(left.getState().annotations).toHaveLength(1)
+    expect(right.getState().annotations).toHaveLength(0)
+    expect(right.getState().dirty).toBe(false)
+  })
+  it('enforces a read-only version inside the dispatcher and manual mutations', () => {
+    const store=createEditorStore(true)
+    store.getState().hydrate(document(createEditorStore()))
+    store.getState().addAnnotation({x:1,y:1},'Forbidden')
+    store.getState().setEnd({completion:'all_complete',outputs:{},error:{outputs:{}}})
+    expect(store.getState().annotations).toHaveLength(0)
+    expect(store.getState().end.completion).toBe('first_return')
+    expect(store.getState().applyEditorCommand('readonly',store.getState().localDocumentRevision,document(store))).toBe('read_only')
+    expect(store.getState().dirty).toBe(false)
+  })
+})
 
 describe('editor store exit nodes', () => {
   beforeEach(() => {

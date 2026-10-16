@@ -645,7 +645,8 @@ async fn persist_resource_bindings(
         if let agentx_runtime_contracts::RuntimeResourceConfigurationV1::Composite {
             workflow, ..
         } = &resource.configuration
-            && let Some(snapshot) = composites.get(&workflow.version_id)
+            && let Some(version_id) = workflow.version_id
+            && let Some(snapshot) = composites.get(&version_id)
         {
             crate::composite::persist(tx, tenant_id, None, Some(package_id), binding_id, snapshot)
                 .await?;

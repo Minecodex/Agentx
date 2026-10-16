@@ -13,7 +13,7 @@ const MAX_FRAME_BYTES: usize = 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_TOOL_CALLS: u64 = 256;
 
-pub(super) async fn aggregate_openai_sse_stream<F, Fut>(
+pub(crate) async fn aggregate_openai_sse_stream<F, Fut>(
     response: reqwest::Response,
     request: &Value,
     on_delta: &mut F,

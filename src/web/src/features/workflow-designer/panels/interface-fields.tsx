@@ -221,7 +221,7 @@ export function ContextForm({ contexts, onChange }: { contexts: WorkflowStart["c
         description={t("studio.interface.contextsDescription")}
         title={t("studio.interface.contexts")}
       />
-      <div className="space-y-2">{Object.entries(contexts).map(([name, context]) => <FieldSummary key={name} name={name} description={context.description} title={context.title} type={String((context.schema as JsonSchemaProperty).type ?? "string")} onDelete={() => remove(name)} onEdit={() => { setEditing({ name, context }); setDialogOpen(true); }} />)}</div>
+      <div className="space-y-2">{Object.entries(contexts).map(([name, context]) => <FieldSummary key={name} name={name} description={context.description ?? undefined} title={context.title ?? undefined} type={String((context.schema as JsonSchemaProperty).type ?? "string")} onDelete={() => remove(name)} onEdit={() => { setEditing({ name, context }); setDialogOpen(true); }} />)}</div>
       <ContextFieldDialog editing={editing} onOpenChange={setDialogOpen} onSave={(name, context) => { save(name, context); setDialogOpen(false); }} open={dialogOpen} contexts={contexts} />
     </section>
   );

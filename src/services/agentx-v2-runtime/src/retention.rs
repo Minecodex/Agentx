@@ -99,6 +99,11 @@ async fn mark_candidates(state: &RuntimeState, claim: &RetentionRunClaim) -> Run
         let data_type: String = policy.try_get("data_type")?;
         let limit = BATCH_SIZE - u32::try_from(marked).unwrap_or(BATCH_SIZE);
         let retention_days = policy.try_get::<u32, _>("retention_days")?;
+        if data_type == "trace" && !claim.dry_run {
+            sqlx::query("DELETE d FROM studio_model_deltas d JOIN runtime_calls c ON c.tenant_id=d.tenant_id AND c.id=d.call_id WHERE c.tenant_id=? AND c.source_kind='studio_builder' AND c.status IN ('succeeded','failed','cancelled') AND c.ended_at<DATE_SUB(UTC_TIMESTAMP(6),INTERVAL ? DAY)").bind(claim.tenant_id).bind(retention_days).execute(&mut *tx).await?;
+            // Keep source, frozen model identity and billable totals; expire only settled model bodies.
+            sqlx::query("UPDATE runtime_calls SET request_json=NULL,response_json=NULL WHERE tenant_id=? AND source_kind='studio_builder' AND status IN ('succeeded','failed','cancelled') AND ended_at<DATE_SUB(UTC_TIMESTAMP(6),INTERVAL ? DAY)").bind(claim.tenant_id).bind(retention_days).execute(&mut *tx).await?;
+        }
         let rows = match data_type.as_str() {
             "artifact" => mark_artifact_rows(&mut tx, claim, retention_days, limit).await?,
             "execution" => mark_execution_rows(&mut tx, claim, retention_days, limit).await?,

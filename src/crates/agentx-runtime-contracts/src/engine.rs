@@ -524,7 +524,7 @@ impl RuntimeDebugPlanV1 {
 )]
 pub enum RuntimeWorkPackageSpecV1 {
     Debug {
-        draft_revision: u64,
+        source: WorkflowDesignSourceV1,
         debug_plan: RuntimeDebugPlanV1,
     },
     Evaluation {
@@ -533,6 +533,41 @@ pub enum RuntimeWorkPackageSpecV1 {
         cases: Vec<RuntimeEvaluationCaseV1>,
         evaluators: Vec<RuntimeEvaluatorV1>,
     },
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum WorkflowDesignSourceV1 {
+    DraftRevision {
+        draft_id: Uuid,
+        revision_id: Uuid,
+        revision: u64,
+    },
+    Version {
+        version_id: Uuid,
+        version_number: u64,
+    },
+}
+
+impl WorkflowDesignSourceV1 {
+    pub fn is_valid(&self) -> bool {
+        match self {
+            Self::DraftRevision {
+                draft_id,
+                revision_id,
+                ..
+            } => !draft_id.is_nil() && !revision_id.is_nil(),
+            Self::Version {
+                version_id,
+                version_number,
+            } => !version_id.is_nil() && *version_number > 0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
@@ -960,7 +995,8 @@ pub enum RuntimeEventPayloadV1 {
         invocation_id: Option<Uuid>,
         application_id: Option<Uuid>,
         workflow_id: Uuid,
-        workflow_version_id: Uuid,
+        workflow_version_id: Option<Uuid>,
+        source: WorkflowDesignSourceV1,
         bundle_id: Uuid,
         status: String,
         state_version: u64,

@@ -1,3 +1,4 @@
+import { fixtureDraftId } from '../draft-fixtures'
 import { expect, type Page, test } from '@playwright/test'
 
 import { useRuntimePortForward } from './playground-helpers'
@@ -22,7 +23,7 @@ test('publishes untitled chat fields and explains blocked parameter and session 
 
   const runId = process.env.AGENTX_E2E_RUN_ID ?? String(Date.now())
   const workflow = await api(page, token, '/workflows', 'POST', { name: `Playground errors ${runId}`, visibility: 'company' })
-  const draft = await api(page, token, `/workflows/${workflow.id}/draft`)
+  const draft = await api(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
   const definition = draft.definition
   definition.start.inputs = { type: 'object', properties: { question: { type: 'string', title: '' } }, required: ['question'], additionalProperties: false }
   const exit = definition.nodes.find((node: { type: string }) => node.type === 'exit')
@@ -30,9 +31,9 @@ test('publishes untitled chat fields and explains blocked parameter and session 
   exit.parameters.outputs = { result: { kind: 'reference', selector: { namespace: 'inputs', run: { kind: 'current' }, item: { kind: 'current' }, path: ['question'] }, missingPolicy: { kind: 'error' } } }
   definition.end.outputs = { result: { schema: { type: 'string', title: '  ' }, required: true, sensitive: false } }
   definition.connections = [{ id: 'start-exit', sourceNodeId: '__start__', sourceHandle: 'main', targetNodeId: exit.id, targetHandle: 'main', order: 0 }]
-  await api(page, token, `/workflows/${workflow.id}/draft`, 'PUT', { expectedRevision: draft.revision, definition })
-  const latest = await api(page, token, `/workflows/${workflow.id}/draft`)
-  const version = await api(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftRevision: latest.revision })
+  await api(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`, 'PUT', { expectedRevision: draft.revision, definition, editorDocument: { ...draft.editorDocument, edges: [{ edgeId: 'start-exit' }] } })
+  const latest = await api(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
+  const version = await api(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftId: await fixtureDraftId(page, workflow.id),  draftRevision: latest.revision })
   const environments = await api(page, token, '/environments')
   const environmentId = environments.find((item: { code: string }) => item.code === 'development').id
   await api(page, token, `/workflows/${workflow.id}/deployments`, 'POST', { environmentId, workflowVersionId: version.id })

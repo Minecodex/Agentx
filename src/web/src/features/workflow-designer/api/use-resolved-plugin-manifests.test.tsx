@@ -42,12 +42,12 @@ it('resolves the current graph and invalidates downstream contracts when upstrea
     return { nodes: Object.fromEntries(['a', 'b'].map(id => [id, { status: 'complete', outputSchema: { properties: { [field]: { type: 'number' } } } }])) }
   })
   const initial = document()
-  const { result, rerender } = renderHook(({ value }) => useResolvedPluginManifests('workflow', value, manifests), {
+  const { result, rerender } = renderHook(({ value }) => useResolvedPluginManifests('workflow', 'draft', value, manifests), {
     initialProps: { value: initial }, wrapper: setup(),
   })
   await waitFor(() => expect(result.current.resolved.get('b')?.outputSchema).toEqual({ properties: { first: { type: 'number' } } }))
   const request = vi.mocked(apiRequest).mock.calls[0]
-  expect(request[0]).toBe('/workflows/workflow/draft/resolve-plugins')
+  expect(request[0]).toBe('/workflows/workflow/drafts/draft/resolve-plugins')
   expect(JSON.parse(request[1]!.body as string).definition.start).toEqual(initial.start)
   const changed = structuredClone(initial)
   changed.nodes[0].data.parameters = { field: 'second' }
@@ -62,7 +62,7 @@ it('does not apply late responses from an older graph', async () => {
   vi.mocked(apiRequest).mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve }))
     .mockResolvedValue({ nodes: { b: { status: 'complete', outputSchema: { title: 'current' } } } })
   const initial = document()
-  const { result, rerender } = renderHook(({ value }) => useResolvedPluginManifests('workflow', value, manifests), {
+  const { result, rerender } = renderHook(({ value }) => useResolvedPluginManifests('workflow', 'draft', value, manifests), {
     initialProps: { value: initial }, wrapper: setup(),
   })
   await waitFor(() => expect(apiRequest).toHaveBeenCalledTimes(1))
@@ -77,7 +77,7 @@ it('does not apply late responses from an older graph', async () => {
 it('keeps node contracts available while the shared end contract is edited', async () => {
   vi.mocked(apiRequest).mockResolvedValue({ nodes: { b: { status: 'complete', outputSchema: { title: 'resolved' } } } })
   const initial = document()
-  const { result, rerender } = renderHook(({ value }) => useResolvedPluginManifests('workflow', value, manifests), {
+  const { result, rerender } = renderHook(({ value }) => useResolvedPluginManifests('workflow', 'draft', value, manifests), {
     initialProps: { value: initial }, wrapper: setup(),
   })
   await waitFor(() => expect(result.current.resolved.has('b')).toBe(true))

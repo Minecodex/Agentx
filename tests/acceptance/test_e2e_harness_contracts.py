@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,6 +11,190 @@ import yaml
 from tests.e2e import support
 from tests.e2e.conftest import _must_remain_available_during_scale_down
 from tests.e2e.support import run
+
+
+@pytest.mark.parametrize("fail_inside", [False, True])
+def test_local_sandbox_tls_forward_is_scoped_and_always_stopped(monkeypatch, tmp_path, fail_inside):
+    from tests.e2e import conftest as harness
+
+    port = harness._free_port()
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        yaml.safe_dump(
+            {
+                "global": {
+                    "network": {
+                        "egressGateway": {
+                            "sandboxAccess": {
+                                "mode": "nodePort",
+                                "endpoint": "https://host.docker.internal:31429",
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    )
+    service = {
+        "kind": "Service",
+        "metadata": {"name": "agentx-egress-sandbox", "namespace": "isolated"},
+        "spec": {"ports": [{"port": port}]},
+    }
+    calls = []
+
+    class Forward:
+        def __init__(self, command, *, stdout_path, stderr_path):
+            calls.append(tuple(command))
+            stdout_path.write_text(f"Forwarding from 0.0.0.0:{port} -> 3129\n")
+            self.process = SimpleNamespace(poll=lambda: None)
+
+        def stop(self):
+            calls.append("stopped")
+
+    monkeypatch.setattr(harness, "RestartingPortForward", Forward)
+    context = {"dependencies_namespace": "isolated", "artifact_dir": str(tmp_path)}
+    try:
+        with harness._local_sandbox_proxy(values, yaml.safe_dump(service), context):
+            if fail_inside:
+                raise RuntimeError("test failed")
+    except RuntimeError as error:
+        assert fail_inside and str(error) == "test failed"
+    assert calls == [
+        (
+            "kubectl",
+            "-n",
+            "isolated",
+            "port-forward",
+            "--address=0.0.0.0",
+            "service/agentx-egress-sandbox",
+            f"{port}:{port}",
+        ),
+        "stopped",
+    ]
+
+
+def test_remote_sandbox_gateway_does_not_open_a_local_listener(monkeypatch, tmp_path):
+    from tests.e2e import conftest as harness
+
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        yaml.safe_dump(
+            {
+                "global": {
+                    "network": {
+                        "egressGateway": {
+                            "sandboxAccess": {
+                                "mode": "nodePort",
+                                "endpoint": "https://sandbox-node.example.test:31429",
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setattr(harness, "RestartingPortForward", lambda *_a, **_kw: pytest.fail("unexpected listener"))
+    with harness._local_sandbox_proxy(values, "", {}):
+        pass
+
+
+@pytest.mark.parametrize("shared", [False, True])
+def test_shared_resource_auth_refreshes_only_live_test_identities(monkeypatch, shared):
+    from tests.e2e.product import conftest as product
+
+    token = SimpleNamespace(value="old-access-token")
+    provider = SimpleNamespace(headers={"Authorization": "Bearer old-access-token"})
+    boundary = SimpleNamespace(headers={"Authorization": "Bearer old-access-token"})
+    values = {
+        "service_urls": {"web": "http://control.invalid"},
+        "live_application": {"token": token},
+        "live_providers": {"control": provider},
+        "boundary_state": {"token": token, "control": boundary, "mcpKey": "unchanged-provider-secret"},
+    }
+    requested = []
+
+    def fixture(name):
+        requested.append(name)
+        return values[name]
+
+    class Client:
+        def __init__(self, **kwargs):
+            assert kwargs["base_url"] == "http://control.invalid"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+    monkeypatch.setattr(product.httpx, "Client", Client)
+    monkeypatch.setattr(product, "_access_token", lambda _control: ("new-access-token", {}))
+    names = ["live_application", "live_providers", "boundary_state"] if shared else []
+    product._refresh_shared_auth(SimpleNamespace(fixturenames=names, getfixturevalue=fixture))
+    if shared:
+        assert token.value == "new-access-token"
+        assert provider.headers["Authorization"] == boundary.headers["Authorization"] == "Bearer new-access-token"
+    else:
+        assert token.value == "old-access-token" and requested == []
+    assert values["boundary_state"]["mcpKey"] == "unchanged-provider-secret"
+
+
+@pytest.mark.parametrize("scale_fails", [False, True])
+def test_development_restore_preserves_running_pod_images_and_rolls_back_scale_failure(monkeypatch, scale_fails):
+    from tests.e2e import conftest as harness
+
+    configured = "docker.io/acme/provider@sha256:" + "a" * 64
+    running = configured.removeprefix("docker.io/")
+    deployment = {
+        "metadata": {"name": "provider"},
+        "spec": {
+            "replicas": 1,
+            "selector": {"matchLabels": {"app": "provider"}},
+            "template": {"spec": {"containers": [{"name": "provider", "image": configured}]}},
+        },
+    }
+    state = {"image": running, "replicas": 1}
+    commands = []
+
+    def fake_run(command, **_kwargs):
+        command = tuple(str(part) for part in command)
+        commands.append(command)
+        payload = {}
+        if command[3:5] == ("get", "deployment"):
+            payload = {"items": [deployment]}
+        elif command[3:5] == ("get", "pods"):
+            payload = {
+                "items": [
+                    {
+                        "metadata": {"name": "provider-pod"},
+                        "spec": {"containers": [{"name": "provider", "image": state["image"]}]},
+                    }
+                ]
+            }
+        elif command[3] == "scale":
+            state["replicas"] = int(command[-1].split("=")[1])
+            state["image"] = configured
+            if state["replicas"] == 0 and scale_fails:
+                raise RuntimeError("scale transport failed")
+        elif command[3:5] == ("patch", "pod"):
+            patch = json.loads(command[-1])
+            assert patch[0] == {"op": "test", "path": "/spec/containers/0/image", "value": configured}
+            state["image"] = patch[1]["value"]
+        elif command[3:5] == ("rollout", "status"):
+            assert state == {"image": running, "replicas": 1}
+        return SimpleNamespace(returncode=0, json=lambda: payload)
+
+    monkeypatch.setattr(harness, "run", fake_run)
+    monkeypatch.setattr(harness, "deployment_config", lambda _values: {"namespaces": {"control": "source"}})
+    if scale_fails:
+        with pytest.raises(RuntimeError, match="scale transport failed"):
+            harness._scale_development(Path("fixture-values"), True)
+    else:
+        snapshot = harness._scale_development(Path("fixture-values"), True)
+        harness._restore_development(snapshot)
+    assert state == {"image": running, "replicas": 1}
+    assert deployment["spec"]["template"]["spec"]["containers"][0]["image"] == configured
+    assert any(command[3:5] == ("patch", "pod") for command in commands)
 
 
 @pytest.mark.parametrize("scale_error", [False, True])
@@ -167,7 +352,8 @@ def test_lightrag_tokenizer_cache_is_pinned_and_separate_from_the_runtime_pod() 
 def test_local_image_build_includes_the_runtime_node_fixture() -> None:
     xtask = Path("tools/xtask/src/main.rs").read_text(encoding="utf-8")
     assert '== Some("local")' in xtask
-    assert 'for fixture in ["echo-node", "echo-mcp"]' in xtask
+    assert 'for fixture in ["echo-node", "echo-mcp", "mem0-server"]' in xtask
+    assert '"deploy/docker/mem0.Dockerfile"' in xtask
     assert "selected.push(fixture.to_owned())" in xtask
 
     rendered = run(("kubectl", "kustomize", "deploy/kustomize/e2e-fixtures/runtime-providers"), timeout=120).stdout

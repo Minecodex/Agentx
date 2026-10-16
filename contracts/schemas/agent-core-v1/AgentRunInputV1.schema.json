@@ -90,7 +90,8 @@
     },
     "ExternalContextOriginV1": {
       "enum": [
-        "skill"
+        "skill",
+        "studio_document"
       ],
       "type": "string"
     },
@@ -322,6 +323,7 @@
     "ToolOriginV1": {
       "enum": [
         "core",
+        "platform",
         "mcp",
         "skill",
         "knowledge",

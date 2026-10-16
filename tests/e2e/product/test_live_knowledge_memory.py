@@ -10,22 +10,33 @@ import time
 import httpx
 import pytest
 
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
 from tests.e2e.product.live_text_support import post
 from tests.e2e.product.test_live_text_acceptance import message, session, terminal
 from tests.e2e.product.test_model_streaming import _grant_model_to_workflow, _stream_workflow
 from tests.e2e.product.test_provider_integration import _publish_application_deployment
-from tests.e2e.runtime.test_agent_attachments import _control_mysql, _runtime_mysql
+from tests.e2e.runtime.test_agent_attachments import _access_token, _control_mysql, _runtime_mysql
 from tools.scripts.release.evidence import write_report
 
 pytestmark = [pytest.mark.cluster, pytest.mark.product]
 
 
 @pytest.fixture(scope="module")
-def live_indexed_document(live_providers, installed_agentx, run_id):
+def live_indexed_document(live_providers, installed_agentx, run_id, request):
     control = live_providers["control"]
+    # This module fixture can first be requested midway through a module,
+    # before function-scoped auth refresh runs on its requesting test.
+    token, _ = _access_token(control)
+    control.headers["Authorization"] = f"Bearer {token}"
     path = f"/api/v1/knowledge/resources/{live_providers['ragId']}"
     marker = f"sapphire-orbit-{run_id}"
-    content = f"水星计划由蓝桥团队负责。水星计划唯一发布代号是 {marker}。正式上线日期为2026年11月5日。负责人是林晓。"
+    # Removing a platform source record intentionally retains the external
+    # index. Each module needs its own source content so LightRAG does not
+    # reject a second upload as a duplicate of that retained document.
+    content = (
+        f"水星计划由蓝桥团队负责。水星计划唯一发布代号是 {marker}。正式上线日期为2026年11月5日。负责人是林晓。"
+        f"索引验收批次：{request.module.__name__}。"
+    )
     uploaded = control.post(
         f"{path}/documents", files={"file": ("p7-live-document.md", content.encode(), "text/markdown")}
     )
@@ -65,7 +76,7 @@ def live_indexed_document(live_providers, installed_agentx, run_id):
             "marker": marker,
             "documents": retrieval.json()["documents"],
             "realCpuEmbedding": True,
-            "realLlmExtraction": "kimi/k3",
+            "realLlmExtraction": live_providers["modelName"],
         },
     )
     return {"documentId": document["id"], "marker": marker}
@@ -76,11 +87,14 @@ def test_lightrag_indexes_and_retrieves_actual_document(live_indexed_document):
 
 
 @pytest.fixture(scope="module")
-def live_agent_application(live_providers, live_application, installed_agentx, service_urls, run_id):
+def live_agent_application(live_providers, live_application, installed_agentx, service_urls, run_id, request):
     model_app = live_application
     control = live_providers["control"]
     headers = dict(control.headers)
-    workflow = _stream_workflow(control, headers, f"P7 real Agent {run_id}", model_app["modelId"])
+    label = f"P7 real Agent {run_id}"
+    if request.module.__name__.endswith("test_live_memory_pipeline"):
+        label += " pipeline"
+    workflow = _stream_workflow(control, headers, label, model_app["modelId"])
     _grant_model_to_workflow(control, headers, model_app["modelAlias"], workflow, model_app["credentialId"])
     identity = control.get(f"/api/v1/workflows/{workflow}").json()["serviceIdentityId"]
     for kind, resource, operation in (
@@ -99,12 +113,12 @@ def live_agent_application(live_providers, live_application, installed_agentx, s
                 "operation": operation,
             },
         )
-    draft = control.get(f"/api/v1/workflows/{workflow}/draft").json()
+    draft = control.get(f"/api/v1/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}").json()
     node = next(node for node in draft["definition"]["nodes"] if node["type"] == "model")
     reference = node["parameters"]["userQuestion"]
     node["type"] = "agent"
     node["typeVersion"] = 2
-    node["name"] = "Real Kimi Agent"
+    node["name"] = "Real model Agent"
     node["settings"] = {"timeoutMs": 180000}
     draft["definition"]["settings"]["timeoutMs"] = 300000
     node["resourceReferences"][0]["bindingRole"] = "model"
@@ -149,12 +163,22 @@ def live_agent_application(live_providers, live_application, installed_agentx, s
         ]
     )
     saved = control.put(
-        f"/api/v1/workflows/{workflow}/draft",
-        json={"expectedRevision": draft["revision"], "definition": draft["definition"]},
+        f"/api/v1/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}",
+        json={
+            "editorDocument": fixture_draft(control, workflow, None)["editorDocument"],
+            "expectedRevision": draft["revision"],
+            "definition": draft["definition"],
+        },
     )
     assert saved.status_code in (200, 204), saved.text
-    revision = control.get(f"/api/v1/workflows/{workflow}/draft").json()["revision"]
-    version = post(control, f"/workflows/{workflow}/versions", {"draftRevision": revision})
+    revision = control.get(f"/api/v1/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}").json()[
+        "revision"
+    ]
+    version = post(
+        control,
+        f"/workflows/{workflow}/versions",
+        {"draftId": fixture_draft(control, workflow, None)["id"], "draftRevision": revision},
+    )
     environment = next(item for item in control.get("/api/v1/environments").json() if item["code"] == "development")
     post(
         control,
@@ -167,7 +191,7 @@ def live_agent_application(live_providers, live_application, installed_agentx, s
         {
             "workflowId": workflow,
             "name": f"P7 real Agent App {run_id}",
-            "slug": f"p7-agent-{run_id}",
+            "slug": f"p7-agent-{workflow}",
             "visibility": "company",
         },
     )
@@ -382,9 +406,9 @@ def test_debug_agent_rejects_missing_application_session_before_memory_access(
 ):
     control = live_providers["control"]
     workflow = live_agent_application["workflowId"]
-    draft = control.get(f"/api/v1/workflows/{workflow}/draft").json()
+    draft = control.get(f"/api/v1/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}").json()
     response = control.post(
-        f"/api/v1/workflows/{workflow}/debug-executions",
+        f"/api/v1/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}/debug-executions",
         headers={"Idempotency-Key": f"live-subject-refusal-{time.time_ns()}"},
         json={
             "expectedRevision": draft["revision"],

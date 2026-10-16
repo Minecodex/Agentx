@@ -807,6 +807,7 @@ pub fn validate_definition(definition: &WorkflowDefinition) -> Vec<DefinitionIss
                 node,
                 &definition.end.outputs,
                 &definition.end.error.outputs,
+                &definition.connections,
                 &mut issues,
             );
         }
@@ -991,12 +992,12 @@ fn validate_agent_node(index: usize, node: &WorkflowNode, issues: &mut Vec<Defin
         }
     }
 
-    if model_count != 1 {
+    if model_count > 1 {
         issue(
             issues,
-            "AGENT_MODEL_REQUIRED",
+            "AGENT_RESOURCE_SLOT_INVALID",
             &format!("{node_path}.resourceReferences"),
-            "Agent requires exactly one inspector Model reference",
+            "Agent accepts at most one inspector Model reference",
         );
     }
     if workspace_sandbox_count > 1 || long_term_memory_count > 1 {
@@ -1014,17 +1015,21 @@ fn validate_exit_node(
     node: &WorkflowNode,
     success_contract: &BTreeMap<String, WorkflowOutput>,
     error_contract: &BTreeMap<String, WorkflowOutput>,
+    connections: &[WorkflowConnection],
     issues: &mut Vec<DefinitionIssue>,
 ) {
     let node_path = format!("nodes[{index}]");
-    let Some(parameters) = ExitParameters::parse(&node.parameters) else {
-        issue(
-            issues,
-            "EXIT_PARAMETERS_INVALID",
-            &format!("{node_path}.parameters"),
-            "Exit node parameters must be an ExitParameters object",
-        );
-        return;
+    let parameters = match serde_json::from_value::<ExitParameters>(node.parameters.clone()) {
+        Ok(parameters) => parameters,
+        Err(error) => {
+            issue(
+                issues,
+                "EXIT_PARAMETERS_INVALID",
+                &format!("{node_path}.parameters"),
+                &format!("Exit node {} parameters are invalid: {error}", node.id),
+            );
+            return;
+        }
     };
     validate_exit_mappings(
         issues,
@@ -1032,6 +1037,9 @@ fn validate_exit_node(
         "outputs",
         &parameters.outputs,
         success_contract,
+        connections
+            .iter()
+            .any(|edge| edge.target_node_id == node.id && edge.target_handle == "main"),
     );
     validate_exit_mappings(
         issues,
@@ -1039,6 +1047,9 @@ fn validate_exit_node(
         "errorOutputs",
         &parameters.error_outputs,
         error_contract,
+        connections
+            .iter()
+            .any(|edge| edge.target_node_id == node.id && edge.target_handle == "error"),
     );
 }
 
@@ -1048,6 +1059,7 @@ fn validate_exit_mappings(
     group: &str,
     mappings: &BTreeMap<String, InputBinding>,
     contract: &BTreeMap<String, WorkflowOutput>,
+    connected: bool,
 ) {
     for name in mappings.keys() {
         if !contract.contains_key(name) {
@@ -1060,12 +1072,12 @@ fn validate_exit_mappings(
         }
     }
     for (name, output) in contract {
-        if output.required && !mappings.contains_key(name) {
+        if connected && output.required && !mappings.contains_key(name) {
             issue(
                 issues,
                 "EXIT_REQUIRED_MAPPING_MISSING",
                 &format!("{node_path}.parameters.{group}.{name}"),
-                "Every exit node must map each required contract field",
+                "Connected exit inputs must map each required contract field",
             );
         }
     }
@@ -1236,7 +1248,14 @@ pub fn validate_editor_document(
 fn is_resource_node(node_type: &str) -> bool {
     matches!(
         node_type,
-        "model" | "mcp_tool" | "skill" | "rag" | "memory" | "agent" | "code"
+        "model"
+            | "mcp_tool"
+            | "skill"
+            | "rag"
+            | "memory"
+            | "agent"
+            | "code"
+            | "knowledge_retrieval"
     )
 }
 
@@ -1254,6 +1273,11 @@ fn reference_matches_node(node_type: &str, reference: &ResourceReference) -> boo
         "skill" => {
             reference.resource_type == ResourceType::Skill
                 && reference.operation == ResourceOperation::Use
+        }
+        "knowledge_retrieval" => {
+            reference.resource_type == ResourceType::Rag
+                && reference.operation == ResourceOperation::Read
+                && reference.binding_role.is_none()
         }
         "rag" => {
             reference.resource_type == ResourceType::Rag
@@ -1296,40 +1320,8 @@ fn issue(issues: &mut Vec<DefinitionIssue>, code: &str, path: &str, message: &st
 }
 
 pub fn canonical_content_hash(value: &Value) -> Result<String, serde_json::Error> {
-    let canonical = canonicalize(value);
-    let bytes = serde_json::to_vec(&canonical)?;
+    let bytes = serde_jcs::to_vec(value)?;
     Ok(format!("sha256:v1:{:x}", Sha256::digest(bytes)))
-}
-
-fn canonicalize(value: &Value) -> Value {
-    match value {
-        Value::Array(values) => Value::Array(values.iter().map(canonicalize).collect()),
-        Value::Object(values) => Value::Object(
-            values
-                .iter()
-                .map(|(key, value)| (key.clone(), canonicalize(value)))
-                .collect::<BTreeMap<_, _>>()
-                .into_iter()
-                .collect(),
-        ),
-        Value::Number(number) => canonicalize_number(number),
-        other => other.clone(),
-    }
-}
-
-fn canonicalize_number(number: &serde_json::Number) -> Value {
-    const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
-
-    let Some(value) = number.as_f64() else {
-        return Value::Number(number.clone());
-    };
-    if number.is_f64()
-        && value.fract() == 0.0
-        && (-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&value)
-    {
-        return Value::Number((value as i64).into());
-    }
-    Value::Number(number.clone())
 }
 
 #[cfg(test)]
@@ -1366,6 +1358,17 @@ mod tests {
     }
 
     #[test]
+    fn canonical_hash_survives_repeated_fractional_layout_json_round_trips() {
+        let mut value =
+            json!({"x": 209.66666666666666_f64, "y": 0.1_f64, "zoom": 0.3333333333333333_f64});
+        let expected = canonical_content_hash(&value).unwrap();
+        for _ in 0..8 {
+            value = serde_json::from_str(&serde_json::to_string(&value).unwrap()).unwrap();
+            assert_eq!(canonical_content_hash(&value).unwrap(), expected);
+        }
+    }
+
+    #[test]
     fn empty_definition_is_valid() {
         let definition = WorkflowDefinition::empty();
         assert!(validate_definition(&definition).is_empty());
@@ -1392,7 +1395,7 @@ mod tests {
     }
 
     #[test]
-    fn agent_definition_requires_internal_model_and_validates_inspector_references() {
+    fn agent_draft_allows_missing_model_and_validates_existing_inspector_references() {
         let model = json!({
             "bindingRole":"model",
             "resourceType":"model",
@@ -1404,10 +1407,11 @@ mod tests {
         assert!(validate_definition(&valid).is_empty());
 
         let missing_model = agent_definition(json!([]));
+        assert!(validate_definition(&missing_model).is_empty());
         assert!(
-            validate_definition(&missing_model)
+            validate_definition(&agent_definition(json!([model.clone(), model])))
                 .iter()
-                .any(|issue| issue.code == "AGENT_MODEL_REQUIRED")
+                .any(|issue| issue.code == "AGENT_RESOURCE_SLOT_INVALID")
         );
 
         let wrong_model_role = agent_definition(json!([{

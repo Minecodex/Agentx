@@ -38,6 +38,25 @@ describe('useExecutionEvents', () => {
       '/api/v1/executions/execution-1/events?after=4&limit=200',
     ])
   })
+  it('keeps failed execution events visible when the detail refresh fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).includes('/events?')
+      ? json({ items: [event(1, 'node.failed', 'failed'), event(2, 'execution.failed', 'failed')], nextCursor: 2 })
+      : new Response(JSON.stringify({ code: 'RUNTIME_QUERY_UNAVAILABLE', message: 'Query unavailable' }), { status: 503, headers: { 'Content-Type': 'application/json' } })))
+    const { result } = renderHook(() => useExecutionEvents('execution-1'))
+    await waitFor(() => expect(result.current.events).toHaveLength(2))
+    expect(result.current.running).toBe(false)
+    expect(result.current.error).toBeTruthy()
+  })
+
+  it('records a terminal status even when the events endpoint is unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).includes('/events?')
+      ? new Response('{}', { status: 503, headers: { 'Content-Type': 'application/json' } })
+      : json({ id: 'execution-1', status: 'failed' })))
+    const { result } = renderHook(() => useExecutionEvents('execution-1'))
+    await waitFor(() => expect(result.current.error).toBeTruthy())
+    expect(result.current.running).toBe(false)
+  })
+
 })
 
 function events(from: number, to: number, status: string) {

@@ -12,6 +12,7 @@ import httpx
 import pytest
 import yaml
 
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
 from tests.e2e.product.live_text_support import Secret, post
 from tests.e2e.product.next_batch_support import get, publish_application
 from tests.e2e.product.test_model_streaming import _grant_model_to_workflow, _stream_workflow
@@ -112,7 +113,7 @@ def model_workflow(state, model, suffix, *, timeout_ms=None):
     control = state["control"]
     workflow = _stream_workflow(control, dict(control.headers), f"Boundary {suffix} {state['runId']}", model["id"])
     _grant_model_to_workflow(control, dict(control.headers), model["alias"], workflow, model["credential"]["id"])
-    draft = get(control, f"/workflows/{workflow}/draft")
+    draft = get(control, f"/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}")
     node = next(n for n in draft["definition"]["nodes"] if n["type"] == "model")
     node["resourceReferences"][0]["resourceVersionId"] = model["deploymentId"]
     if timeout_ms:
@@ -122,20 +123,32 @@ def model_workflow(state, model, suffix, *, timeout_ms=None):
 
 
 def save_version(control, workflow, definition):
-    revision = get(control, f"/workflows/{workflow}/draft")["revision"]
+    revision = get(control, f"/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}")["revision"]
     response = control.put(
-        f"/api/v1/workflows/{workflow}/draft", json={"expectedRevision": revision, "definition": definition}
+        f"/api/v1/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}",
+        json={
+            "editorDocument": fixture_draft(control, workflow, None)["editorDocument"],
+            "expectedRevision": revision,
+            "definition": definition,
+        },
     )
     assert response.status_code == 200, response.text
     return post(
         control,
         f"/workflows/{workflow}/versions",
-        {"draftRevision": get(control, f"/workflows/{workflow}/draft")["revision"]},
+        {
+            "draftId": fixture_draft(control, workflow, None)["id"],
+            "draftRevision": get(control, f"/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}")[
+                "revision"
+            ],
+        },
     )
 
 
 def agent_definition(control, workflow, model, tool=None, skill=None):
-    definition = copy.deepcopy(get(control, f"/workflows/{workflow}/draft")["definition"])
+    definition = copy.deepcopy(
+        get(control, f"/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}")["definition"]
+    )
     node = next(n for n in definition["nodes"] if n["type"] == "model")
     question = node["parameters"]["userQuestion"]
     node["type"] = "agent"
@@ -166,9 +179,9 @@ def agent_definition(control, workflow, model, tool=None, skill=None):
 
 def start_execution(state, workflow, input_value=None):
     control = state["control"]
-    draft = get(control, f"/workflows/{workflow}/draft")
+    draft = get(control, f"/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}")
     response = control.post(
-        f"/api/v1/workflows/{workflow}/debug-executions",
+        f"/api/v1/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}/debug-executions",
         json={
             "expectedRevision": draft["revision"],
             "mode": "full",

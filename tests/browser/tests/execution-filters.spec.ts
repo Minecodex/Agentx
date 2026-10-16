@@ -1,3 +1,4 @@
+import { fixtureDraftId } from '../draft-fixtures'
 import { expect, type APIResponse, type Page, test } from '@playwright/test'
 import { createHmac } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
@@ -97,8 +98,8 @@ test('execution records use authoritative multidimensional filters, Cursor pages
     })
     expect(response.status(), await response.text()).toBe(202)
   }
-  const draft = await json<{ revision: number }>(await page.request.get(`/api/v1/workflows/${context.workflowId}/draft`, { headers }))
-  const debug = await page.request.post(`/api/v1/workflows/${context.workflowId}/debug-executions`, {
+  const draft = await json<{ revision: number }>(await page.request.get(`/api/v1/workflows/${context.workflowId}/drafts/${await fixtureDraftId(page, context.workflowId)}`, { headers }))
+  const debug = await page.request.post(`/api/v1/workflows/${context.workflowId}/drafts/${await fixtureDraftId(page, context.workflowId)}/debug-executions`, {
     headers,
     data: {
       expectedRevision: draft.revision,

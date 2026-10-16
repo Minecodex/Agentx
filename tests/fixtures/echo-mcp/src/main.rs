@@ -1,3 +1,5 @@
+mod knowledge;
+mod studio_builder;
 use std::{env, net::SocketAddr};
 
 use axum::{
@@ -112,6 +114,8 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/embeddings", post(embeddings))
+        .route("/query/data", post(knowledge::lightrag))
+        .route("/api/v1/retrieval", post(knowledge::ragflow))
         .route("/v1/plan5/items", post(plan5_items))
         .route("/v1/plan5/delay", get(plan5_delay))
         .route("/v1/plan5/binary", get(plan5_binary))
@@ -331,6 +335,9 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
         )
             .into_response();
     }
+    if request.get("model").and_then(Value::as_str) == Some("echo-studio-builder") {
+        return studio_builder::respond(&request).await;
+    }
     if request.get("model").and_then(Value::as_str) == Some("echo-unavailable") {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -375,10 +382,17 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    let agent_purpose = request
-        .pointer("/metadata/agentPurpose")
-        .and_then(Value::as_str)
-        .unwrap_or("agent_turn");
+    // Both Core hosts send the ordinary OpenAI message contract. Compaction
+    // is an explicit summary instruction, not private provider metadata.
+    let compaction = messages.last().is_some_and(|message| {
+        message.get("role").and_then(Value::as_str) == Some("user")
+            && message
+                .get("content")
+                .and_then(Value::as_str)
+                .is_some_and(|text| {
+                    text.starts_with("Summarize the conversation as state for the next agent turn.")
+                })
+    });
     let p3_overflow_requested = messages.iter().any(|message| {
         message
             .get("content")
@@ -391,7 +405,7 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
             .and_then(Value::as_str)
             .is_some_and(|content| content.contains("P3_OVERFLOW_COMPACTED"))
     });
-    if agent_purpose == "agent_turn" && p3_overflow_requested && !p3_overflow_compacted {
+    if !compaction && p3_overflow_requested && !p3_overflow_compacted {
         return (
             StatusCode::BAD_REQUEST,
             AxumJson(json!({"error":{"code":"context_length_exceeded","message":"maximum context length exceeded by P3 fixture"}})),
@@ -517,9 +531,9 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
             return "{\"passed\":\"invalid\",\"score\":2,\"reason\":42}".into();
         }
         structured_content.unwrap_or_else(|| {
-            if agent_purpose == "compaction" && p3_overflow_requested {
+            if compaction && p3_overflow_requested {
                 "P3_OVERFLOW_COMPACTED".into()
-            } else if agent_purpose == "compaction" {
+            } else if compaction {
                 "P3_THRESHOLD_COMPACTED".into()
             } else if kakj_identity {
                 "你好，我叫 kakj。".into()
@@ -530,7 +544,12 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
             }
         })
     });
-    let usage = json!({"prompt_tokens": 24 + tool_messages, "completion_tokens": if tool_call.is_some() { 12 } else { 9 }, "total_tokens": 45 + tool_messages});
+    let mut usage = json!({"prompt_tokens": 24 + tool_messages, "completion_tokens": if tool_call.is_some() { 12 } else { 9 }, "total_tokens": 45 + tool_messages});
+    if large_trace_response {
+        // Usage extensions survive the real streaming transport while staying
+        // out of the node's public text/output contract.
+        usage["fixture_trace_payload"] = Value::String("trace-artifact-marker|".repeat(1_024));
+    }
     if request
         .get("stream")
         .and_then(Value::as_bool)
@@ -611,16 +630,13 @@ async fn chat_completions(headers: HeaderMap, AxumJson(request): AxumJson<Value>
     if let Some(call) = tool_call {
         message["tool_calls"] = json!([call]);
     }
-    let mut response = json!({
+    let response = json!({
         "id":"m5-completion",
         "object":"chat.completion",
         "model":request.get("model").cloned().unwrap_or_else(||json!("echo-model")),
         "choices":[{"index":0,"message":message,"finish_reason":finish_reason}],
         "usage":usage
     });
-    if large_trace_response {
-        response["fixture_trace_payload"] = Value::String("trace-artifact-marker|".repeat(1_024));
-    }
     AxumJson(response).into_response()
 }
 
@@ -822,7 +838,7 @@ mod tests {
         assert!(body.len() > 16 * 1024);
         let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(
-            value["fixture_trace_payload"]
+            value["usage"]["fixture_trace_payload"]
                 .as_str()
                 .is_some_and(|payload| payload.contains("trace-artifact-marker"))
         );
@@ -830,6 +846,75 @@ mod tests {
             value.pointer("/choices/0/message/content"),
             Some(&json!("你好，我叫 kakj。"))
         );
+    }
+
+    #[tokio::test]
+    async fn overflow_fixture_accepts_core_summary_without_private_metadata() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer m5-model-secret"),
+        );
+        let mut messages = vec![json!({"role":"system","content":"P3_CONTEXT_OVERFLOW"})];
+        let rejected = chat_completions(headers.clone(), Json(json!({"messages":messages}))).await;
+        assert_eq!(rejected.status(), axum::http::StatusCode::BAD_REQUEST);
+        messages.push(json!({"role":"user","content":"Summarize the conversation as state for the next agent turn. Preserve user goals."}));
+        let summarized =
+            chat_completions(headers.clone(), Json(json!({"messages":messages}))).await;
+        assert_eq!(summarized.status(), axum::http::StatusCode::OK);
+        let body = axum::body::to_bytes(summarized.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            payload.pointer("/choices/0/message/content"),
+            Some(&json!("P3_OVERFLOW_COMPACTED"))
+        );
+        let resumed = chat_completions(
+            headers,
+            Json(json!({"messages":[
+                {"role":"system","content":"P3_CONTEXT_OVERFLOW"},
+                {"role":"system","content":"P3_OVERFLOW_COMPACTED"},
+                {"role":"user","content":"Continue the task."}
+            ]})),
+        )
+        .await;
+        assert_eq!(resumed.status(), axum::http::StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn large_trace_fixture_keeps_its_payload_in_streaming_usage() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer m5-model-secret"),
+        );
+        let response = chat_completions(
+            headers,
+            Json(json!({
+                "stream":true,
+                "messages":[{"role":"system","content":"你叫 kakj\nTRACE_LARGE_RESPONSE"}]
+            })),
+        )
+        .await;
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = std::str::from_utf8(&body).unwrap();
+        let usage = body
+            .lines()
+            .filter_map(|line| line.strip_prefix("data: "))
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .find_map(|frame| frame.get("usage").cloned())
+            .unwrap();
+        assert!(body.len() > 16 * 1024);
+        assert!(
+            usage["fixture_trace_payload"]
+                .as_str()
+                .unwrap()
+                .contains("trace-artifact-marker")
+        );
+        assert!(body.contains("你好，我叫 kakj。"));
     }
 
     #[tokio::test]

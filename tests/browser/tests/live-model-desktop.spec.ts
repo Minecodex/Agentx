@@ -1,3 +1,4 @@
+import { fixtureDraftId } from '../draft-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { useRuntimePortForward } from './playground-helpers'
@@ -15,14 +16,14 @@ async function login(page: Page) {
 
 async function openConversation(page: Page) {
   const appId = process.env.AGENTX_E2E_LIVE_APP_ID
-  if (!appId) throw new Error('Real Kimi application is required')
+  if (!appId) throw new Error('Real model application is required')
   await login(page)
   await page.goto(`/playground?applicationId=${appId}&mode=conversation`)
   await page.getByRole('button', { name: /新建会话/ }).click()
   await expect(page.locator('textarea')).toBeEnabled()
 }
 
-test('real Kimi text appears incrementally and survives a browser refresh', async ({ page }, testInfo) => {
+test('real model text appears incrementally and survives a browser refresh', async ({ page }, testInfo) => {
   await openConversation(page)
   const question = `UI水星蓝桥-${Date.now()}。请分15条说明如何设计可靠的工作流系统,每条约30字。回答以UI水星蓝桥开头。`
   await page.locator('textarea').fill(question)
@@ -53,9 +54,9 @@ test('real Kimi text appears incrementally and survives a browser refresh', asyn
   await page.screenshot({ path: testInfo.outputPath('real-model-trace.png'), fullPage: true })
 })
 
-test('stop cancels a real Kimi generation after text has arrived', async ({ page }, testInfo) => {
+test('stop cancels a real model generation after text has arrived', async ({ page }, testInfo) => {
   await openConversation(page)
-  await page.locator('textarea').fill('请写5000字中文工作流设计教程,从第一章开始。')
+  await page.locator('textarea').fill('先输出开始,再分60条介绍工作流引擎设计,每条约30字,逐条输出。')
   await page.getByRole('button', { name: '发送', exact: true }).click()
   await expect(page.locator('span.animate-pulse')).toBeVisible({ timeout: 120_000 })
   const cancelled = page.waitForResponse((response) => response.url().endsWith('/cancel') && response.request().method() === 'POST')
@@ -70,7 +71,7 @@ test('real V1/V2 Judge reports show missing cases and open Judge Trace', async (
   await login(page)
   const baseline = process.env.AGENTX_E2E_COMPARE_BASELINE
   const candidate = process.env.AGENTX_E2E_COMPARE_CANDIDATE
-  if (!baseline || !candidate) throw new Error('Real Kimi Judge reports are required')
+  if (!baseline || !candidate) throw new Error('Real model Judge reports are required')
   await page.goto(`/evaluations/${baseline}?tab=compare&runIds=${baseline},${candidate}`)
   await expect(page.getByText('已对齐 2 / 4 个用例')).toBeVisible()
   await expect(page.getByText('baseline_only', { exact: true })).toBeVisible()
@@ -86,10 +87,10 @@ test('real V1/V2 Judge reports show missing cases and open Judge Trace', async (
   await page.screenshot({ path: testInfo.outputPath('real-judge-trace.png'), fullPage: true })
 })
 
-test('Judge profile saves the actual authorized Kimi model', async ({ page }, testInfo) => {
+test('Judge profile saves the actual authorized model', async ({ page }, testInfo) => {
   await login(page)
   const alias = process.env.AGENTX_E2E_JUDGE_MODEL_ALIAS
-  if (!alias) throw new Error('Real Kimi model alias is required')
+  if (!alias) throw new Error('Real model model alias is required')
   await page.goto('/evaluations?tab=profiles')
   await page.getByRole('tab', { name: '评测方案', exact: true }).click()
   await page.getByRole('button', { name: '新建评测方案', exact: true }).click()
@@ -98,8 +99,8 @@ test('Judge profile saves the actual authorized Kimi model', async ({ page }, te
   await page.getByRole('option', { name: 'LLM Judge', exact: true }).click()
   await dialog.getByRole('combobox', { name: '评估模型' }).click()
   await page.getByRole('option', { name: alias, exact: true }).click()
-  await dialog.getByRole('textbox', { name: '名称', exact: true }).fill(`Real Kimi UI Judge ${Date.now()}`)
-  await dialog.getByRole('textbox', { name: '规则名称', exact: true }).fill('Kimi Judge')
+  await dialog.getByRole('textbox', { name: '名称', exact: true }).fill(`Real model UI Judge ${Date.now()}`)
+  await dialog.getByRole('textbox', { name: '规则名称', exact: true }).fill('model Judge')
   await dialog.getByPlaceholder('Evaluate whether the actual output matches… {{actualOutput}} {{expectedOutput}}').fill('Compare {{actualOutput}} with {{expectedOutput}} and return passed, score and reason.')
   const saved = page.waitForResponse((response) => response.url().endsWith('/evaluation-profiles') && response.request().method() === 'POST')
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
@@ -108,14 +109,14 @@ test('Judge profile saves the actual authorized Kimi model', async ({ page }, te
   await page.screenshot({ path: testInfo.outputPath('real-judge-profile-saved.png'), fullPage: true })
 })
 
-test('Studio run panel displays real Kimi model deltas and final execution', async ({ page }, testInfo) => {
+test('Studio run panel displays real model deltas and final execution', async ({ page }, testInfo) => {
   const token = await login(page)
   const appId = process.env.AGENTX_E2E_LIVE_APP_ID
-  if (!appId) throw new Error('Real Kimi application is required')
+  if (!appId) throw new Error('Real model application is required')
   const app = await page.request.get(`/api/v1/applications/${appId}`, { headers: { Authorization: `Bearer ${token}` } })
   expect(app.ok()).toBe(true)
   const workflowId = ((await app.json()) as { workflowId: string }).workflowId
-  await page.goto(`/workflows/${workflowId}/editor`)
+  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   const accepted = page.waitForResponse((response) => response.url().endsWith('/debug-executions') && response.request().method() === 'POST')
   await page.locator('header').getByRole('button', { name: '运行', exact: true }).click()

@@ -380,8 +380,12 @@ fn build_evaluation_package(
             workflow: agentx_runtime_contracts::ExecutionWorkflowSnapshotV1 {
                 id: id(WORKFLOW)?,
                 name: "V2-04 Evaluation Workflow".into(),
-                version_id: package_id,
-                version_number: 1,
+                source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version {
+                    version_id: package_id,
+                    version_number: 1,
+                },
+                version_id: Some(package_id),
+                version_number: Some(1),
                 owner_department: None,
             },
             origin: agentx_runtime_contracts::ExecutionOriginV1::system(None),
@@ -516,9 +520,10 @@ async fn seed_fixture_secrets(tenant: Uuid) -> Result<()> {
     let endpoint = env::var("AGENTX_CONTROL_VAULT_ENDPOINT")?;
     let mount = env::var("AGENTX_CONTROL_VAULT_MOUNT").unwrap_or_else(|_| "secret".into());
     let token = env::var("AGENTX_CONTROL_VAULT_TOKEN")?;
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()?;
+    let client =
+        agentx_service_kit::reqwest_client_builder_with_ca("AGENTX_CONTROL_VAULT_TLS_CA_PATH")?
+            .timeout(std::time::Duration::from_secs(30))
+            .build()?;
     for (name, value) in [
         ("model", "m5-model-secret"),
         ("rag", "agentx-v2-04-rag-key"),
@@ -935,10 +940,7 @@ async fn seed_workflows(
             .bind(workflow_id).bind(tenant).bind(name).bind(user).bind(department).execute(&mut **tx).await?;
         sqlx::query("INSERT INTO workflow_service_identities(id,tenant_id,workflow_id,status,version) VALUES(?,?,?,'active',1) ON DUPLICATE KEY UPDATE status='active',version=1")
             .bind(identity_id).bind(tenant).bind(workflow_id).execute(&mut **tx).await?;
-        let draft_value = serde_json::to_value(draft)?;
-        let draft_hash = agentx_runtime_contracts::content_hash(draft)?;
-        sqlx::query("INSERT INTO workflow_drafts(id,tenant_id,workflow_id,schema_version,revision,definition_json,content_hash,updated_by) VALUES(?,?,?,'8.0',1,?,?,?) ON DUPLICATE KEY UPDATE revision=1,definition_json=VALUES(definition_json),content_hash=VALUES(content_hash),updated_by=VALUES(updated_by)")
-            .bind(Uuid::now_v7()).bind(tenant).bind(workflow_id).bind(draft_value).bind(draft_hash.as_str()).bind(user).execute(&mut **tx).await?;
+        seed_draft(tx, tenant, workflow_id, draft, user).await?;
     }
     sqlx::query("INSERT INTO workflow_service_identities(id,tenant_id,workflow_id,status,version) VALUES(?,?,?,'active',?) ON DUPLICATE KEY UPDATE status='active',version=VALUES(version)")
         .bind(id(IDENTITY)?).bind(tenant).bind(workflow).bind(admission_epoch).execute(&mut **tx).await?;
@@ -984,8 +986,27 @@ async fn seed_workflows(
         } else {
             1_u64
         };
-        sqlx::query("INSERT INTO workflow_versions(id,tenant_id,workflow_id,version_number,source_revision,schema_version,definition_json,content_hash,created_by) VALUES(?,?,?, ?,1,'8.0',?,?,?) ON DUPLICATE KEY UPDATE id=id")
-            .bind(version_id).bind(tenant).bind(workflow_id).bind(version_number).bind(value).bind(hash).bind(user).execute(&mut **tx).await?;
+        let parsed = serde_json::from_value(value.clone())?;
+        let (draft_id, revision_id, revision) =
+            seed_draft(tx, tenant, workflow_id, &parsed, user).await?;
+        let editor = serde_json::to_value(agentx_domain::EditorDocument::default())?;
+        let editor_hash = agentx_domain::canonical_content_hash(&editor)?;
+        let registry = agentx_runtime::NodeRegistry::m5_defaults();
+        let manifests = parsed
+            .nodes
+            .iter()
+            .filter_map(|node| {
+                registry
+                    .resolve_definition_manifest(
+                        &node.node_type,
+                        node.type_version,
+                        &node.parameters,
+                    )
+                    .map(|manifest| (node.id.clone(), manifest.clone()))
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+        sqlx::query("INSERT INTO workflow_versions(id,tenant_id,workflow_id,version_number,source_draft_id,source_revision_id,source_revision,schema_version,definition_json,node_manifests_json,editor_json,content_hash,editor_hash,created_by) VALUES(?,?,?,?,?,?,?,'8.0',?,?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id")
+            .bind(version_id).bind(tenant).bind(workflow_id).bind(version_number).bind(draft_id).bind(revision_id).bind(revision).bind(value).bind(serde_json::to_value(manifests)?).bind(editor).bind(hash).bind(editor_hash).bind(user).execute(&mut **tx).await?;
     }
     let deployment_sequence = sqlx::query_scalar::<_, u64>(
         "SELECT CAST(COALESCE((SELECT sequence_number FROM workflow_deployments WHERE id=?),(SELECT COALESCE(MAX(sequence_number),0)+1 FROM workflow_deployments WHERE tenant_id=? AND workflow_id=? AND environment_id=?)) AS UNSIGNED)",
@@ -1113,6 +1134,45 @@ async fn seed_runtime_identity_admission(
         .bind(request_hash.as_str()).bind(format!("service-identity-admission:{identity}:{admission_epoch}"))
         .execute(&mut **tx).await?;
     Ok(())
+}
+
+async fn seed_draft(
+    tx: &mut Transaction<'_, MySql>,
+    tenant: Uuid,
+    workflow: Uuid,
+    definition: &WorkflowDefinition,
+    user: Uuid,
+) -> Result<(Uuid, Uuid, u64)> {
+    let draft = agentx_runtime_contracts::deterministic_uuid(workflow, b"fixture-draft");
+    let editor = serde_json::to_value(agentx_domain::EditorDocument::default())?;
+    let editor_hash = agentx_domain::canonical_content_hash(&editor)?;
+    let empty = serde_json::to_value(WorkflowDefinition::empty())?;
+    let initial = agentx_domain::canonical_content_hash(&empty)?;
+    sqlx::query("INSERT INTO workflow_drafts(id,tenant_id,workflow_id,schema_version,revision,definition_json,editor_json,content_hash,editor_hash,created_by,updated_by) VALUES(?,?,?,'8.0',0,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id").bind(draft).bind(tenant).bind(workflow).bind(&empty).bind(&editor).bind(&initial).bind(&editor_hash).bind(user).bind(user).execute(&mut **tx).await?;
+    let zero = agentx_runtime_contracts::deterministic_uuid(draft, b"revision:0");
+    sqlx::query("INSERT INTO workflow_draft_revisions(id,tenant_id,workflow_id,draft_id,revision,schema_version,definition_json,editor_json,content_hash,editor_hash,created_by) VALUES(?,?,?,?,0,'8.0',?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id").bind(zero).bind(tenant).bind(workflow).bind(draft).bind(empty).bind(&editor).bind(initial).bind(&editor_hash).bind(user).execute(&mut **tx).await?;
+    let value = serde_json::to_value(definition)?;
+    let hash = agentx_domain::canonical_content_hash(&value)?;
+    let row = sqlx::query(
+        "SELECT revision,content_hash FROM workflow_drafts WHERE tenant_id=? AND id=? FOR UPDATE",
+    )
+    .bind(tenant)
+    .bind(draft)
+    .fetch_one(&mut **tx)
+    .await?;
+    let current: u64 = row.try_get("revision")?;
+    let revision = if row.try_get::<String, _>("content_hash")? == hash {
+        current
+    } else {
+        current + 1
+    };
+    let revision_id = agentx_runtime_contracts::deterministic_uuid(
+        draft,
+        format!("revision:{revision}").as_bytes(),
+    );
+    sqlx::query("INSERT INTO workflow_draft_revisions(id,tenant_id,workflow_id,draft_id,revision,schema_version,definition_json,editor_json,content_hash,editor_hash,created_by) VALUES(?,?,?,?,?,'8.0',?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id").bind(revision_id).bind(tenant).bind(workflow).bind(draft).bind(revision).bind(&value).bind(&editor).bind(&hash).bind(&editor_hash).bind(user).execute(&mut **tx).await?;
+    sqlx::query("UPDATE workflow_drafts SET revision=?,definition_json=?,content_hash=?,updated_by=? WHERE tenant_id=? AND id=?").bind(revision).bind(value).bind(hash).bind(user).bind(tenant).bind(draft).execute(&mut **tx).await?;
+    Ok((draft, revision_id, revision))
 }
 
 #[cfg(test)]

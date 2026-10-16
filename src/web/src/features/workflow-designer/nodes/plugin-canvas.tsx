@@ -1,3 +1,4 @@
+import { useDesignOnly } from "../model/design-effects"
 import * as React from 'react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -10,11 +11,13 @@ import { Select } from '../../../shared/ui/select'
 import type { NodeManifest } from '../model/types'
 
 export function PluginCanvas({ manifest, parameters }: { manifest: NodeManifest; parameters: Record<string, unknown> }) {
+  const designOnly = useDesignOnly()
   const { i18n } = useTranslation()
   const { resolvedTheme } = useTheme()
   const [Canvas, setCanvas] = useState<React.ComponentType<{ parameters: Record<string, unknown> }>>()
   useEffect(() => {
     let active = true
+    if (designOnly) return () => { active = false }
     const source = manifest.plugin?.uiSource
     if (!source) return () => { active = false }
     const removeStyles = installPluginStyles(manifest.plugin?.uiStyles, manifest.plugin?.bundleDigest ?? manifest.nodeType)
@@ -23,6 +26,7 @@ export function PluginCanvas({ manifest, parameters }: { manifest: NodeManifest;
       if (active) setCanvas(() => ui.Canvas)
     }).catch(() => undefined)
     return () => { active = false; removeStyles() }
-  }, [i18n.language, manifest.nodeType, manifest.version, manifest.plugin?.bundleDigest, manifest.plugin?.uiSource, manifest.plugin?.uiStyles, manifest.plugin?.uiAssets, resolvedTheme])
+  }, [designOnly, i18n.language, manifest.nodeType, manifest.version, manifest.plugin?.bundleDigest, manifest.plugin?.uiSource, manifest.plugin?.uiStyles, manifest.plugin?.uiAssets, resolvedTheme])
+  if (designOnly) return null
   return Canvas ? <PluginUiBoundary fallback={null}><div className="min-h-0 px-3 pb-2 text-[10px]"><Canvas parameters={parameters} /></div></PluginUiBoundary> : null
 }

@@ -11,6 +11,7 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 import httpx
 import pytest
 
+from tests.e2e.draft_fixtures import fixture_draft_id
 from tests.e2e.support import run
 
 
@@ -123,7 +124,9 @@ def _start_fault(client: httpx.Client, token: str, mode: str, installed_agentx: 
     )
     created.raise_for_status()
     workflow_id = created.json()["id"]
-    draft = client.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers).json()
+    draft = client.get(
+        f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(client, workflow_id, headers)}", headers=headers
+    ).json()
     definition = draft["definition"]
     definition["nodes"] = [
         {
@@ -163,15 +166,15 @@ def _start_fault(client: httpx.Client, token: str, mode: str, installed_agentx: 
     editor["nodeLayouts"] = [{"nodeId": "fault", "x": 320, "y": 200}, *editor.get("nodeLayouts", [])]
     editor["edges"] = [{"edgeId": "start-fault"}, {"edgeId": "fault-exit"}]
     saved = client.put(
-        f"/api/v1/workflows/{workflow_id}/draft",
+        f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(client, workflow_id, {**headers, 'Idempotency-Key': str(time.time_ns())})}",
         headers={**headers, "Idempotency-Key": str(time.time_ns())},
         json={"expectedRevision": draft["revision"], "definition": definition, "editorDocument": editor},
     )
-    saved.raise_for_status()
+    assert saved.status_code == 200, saved.text
     saved_revision = saved.json()["revision"]
     _wait_admission_delivery(installed_agentx)
     started = client.post(
-        f"/api/v1/workflows/{workflow_id}/debug-executions",
+        f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(client, workflow_id, headers)}/debug-executions",
         headers=headers,
         json={
             "expectedRevision": saved_revision,

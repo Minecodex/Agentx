@@ -8,6 +8,7 @@ import time
 
 import pytest
 
+from tests.e2e.draft_fixtures import fixture_draft_id
 from tests.e2e.product.live_text_support import post
 from tests.e2e.product.next_batch_support import authenticated, create_user, get, review
 from tests.e2e.product.remaining_support import (
@@ -154,7 +155,10 @@ def workflow_request(state, resource, suffix):
         ]
         body = {
             **resource,
-            "sourceRevision": get(editor, f"/workflows/{workflow}/draft")["revision"],
+            "sourceDraftId": fixture_draft_id(editor, workflow, None),
+            "sourceRevision": get(editor, f"/workflows/{workflow}/drafts/{fixture_draft_id(editor, workflow, None)}")[
+                "revision"
+            ],
             "message": "Verify the complete dependency package",
         }
         request = post(editor, f"/workflows/{workflow}/resource-grant-requests", body)

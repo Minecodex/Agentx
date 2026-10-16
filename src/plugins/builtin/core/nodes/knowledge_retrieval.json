@@ -1,0 +1,341 @@
+{
+  "protocolVersion": "3.0",
+  "nodeType": "knowledge_retrieval",
+  "version": 1,
+  "displayName": "Knowledge Retrieval",
+  "description": "Retrieve document chunks and existing attachment sources from an authorized knowledge resource.",
+  "category": "ai",
+  "keywords": [
+    "knowledge",
+    "retrieval",
+    "rag"
+  ],
+  "localizations": {
+    "en-US": {
+      "displayName": "Knowledge Retrieval",
+      "description": "Retrieve document chunks and existing attachment sources.",
+      "keywords": [
+        "knowledge",
+        "retrieval",
+        "知识库",
+        "检索"
+      ],
+      "inputPortLabels": {
+        "main": "Input"
+      },
+      "outputPortLabels": {
+        "main": "Output",
+        "error": "Error"
+      },
+      "parameterLabels": {
+        "query": "Query",
+        "topK": "Top K"
+      }
+    },
+    "zh-CN": {
+      "displayName": "知识检索",
+      "description": "检索知识片段、文档来源和已有附件引用。",
+      "keywords": [
+        "knowledge",
+        "retrieval",
+        "知识库",
+        "检索"
+      ],
+      "inputPortLabels": {
+        "main": "输入"
+      },
+      "outputPortLabels": {
+        "main": "输出",
+        "error": "错误"
+      },
+      "parameterLabels": {
+        "query": "查询内容",
+        "topK": "返回片段数量"
+      }
+    }
+  },
+  "iconKey": "book-open",
+  "executionStyle": "action",
+  "capability": "rag",
+  "readiness": "any",
+  "inputPorts": [
+    {
+      "name": "main",
+      "kind": "main",
+      "required": true,
+      "variadic": false
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "main",
+      "kind": "main",
+      "required": false,
+      "variadic": false
+    },
+    {
+      "name": "error",
+      "kind": "error",
+      "required": false,
+      "variadic": false
+    }
+  ],
+  "bindingSlots": [],
+  "parameterSchema": {
+    "type": "object",
+    "required": [
+      "query"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "type": "string",
+        "x-agentx-binding": {
+          "acceptedCardinality": [
+            "single"
+          ],
+          "acceptedKinds": [
+            "literal",
+            "reference",
+            "template"
+          ],
+          "allowedNamespaces": [
+            "inputs",
+            "outputs",
+            "contexts",
+            "execution",
+            "item",
+            "loop"
+          ],
+          "missingPolicies": [
+            "error",
+            "null",
+            "omit"
+          ],
+          "recursive": false
+        },
+        "minLength": 1
+      },
+      "topK": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "default": 5
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "text",
+      "documents",
+      "files"
+    ],
+    "properties": {
+      "text": {
+        "type": "string"
+      },
+      "documents": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "knowledgeResourceId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "documentId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "chunkId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "title": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "uri": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "content": {
+              "type": "string"
+            },
+            "score": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "metadata": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "knowledgeResourceId",
+            "documentId",
+            "chunkId",
+            "title",
+            "uri",
+            "content",
+            "score",
+            "metadata"
+          ]
+        }
+      },
+      "files": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "knowledgeResourceId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "documentId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "referenceId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "uri": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "contentType": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "knowledgeResourceId",
+            "documentId",
+            "referenceId",
+            "uri",
+            "name",
+            "contentType"
+          ]
+        },
+        "description": "External attachment source references, not platform Artifacts or downloaded originals."
+      }
+    }
+  },
+  "outputPortSchemas": {
+    "error": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "details": {
+          "type": "object"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nodeExecutionId": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "sourceNodeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable",
+        "details",
+        "sourceNodeId",
+        "nodeExecutionId"
+      ],
+      "type": "object"
+    }
+  },
+  "outputCardinality": {
+    "error": "many",
+    "main": "exactly_one"
+  },
+  "selectorCapabilities": {
+    "namespaces": [
+      "inputs",
+      "outputs",
+      "contexts"
+    ],
+    "supportsCurrent": true,
+    "supportsFirstLast": true,
+    "supportsAll": true,
+    "supportsRunSelection": true
+  },
+  "contextReadCapability": true,
+  "contextWriteCapability": true,
+  "artifactOutputSchema": {
+    "items": {
+      "type": "object"
+    },
+    "type": "array"
+  },
+  "uiSchema": {
+    "fields": {
+      "query": {
+        "control": "template"
+      },
+      "topK": {
+        "control": "number"
+      }
+    },
+    "resourceSelectors": [
+      {
+        "resourceType": "rag",
+        "operation": "read",
+        "required": true
+      }
+    ],
+    "canvas": {
+      "role": "default"
+    }
+  },
+  "providers": [],
+  "credentials": [],
+  "defaultTimeoutMs": 300000,
+  "retryPolicy": {
+    "retryable": false,
+    "maxAttempts": 0,
+    "initialBackoffMs": 0,
+    "maxBackoffMs": 0
+  },
+  "sandboxRequired": false,
+  "supportsMock": false,
+  "sideEffectLevel": "none"
+}

@@ -460,12 +460,16 @@ impl Projector {
         let Some(control_run_id) = control_run_id else {
             return Ok(());
         };
-        sqlx::query("DELETE FROM retention_items WHERE tenant_id=? AND retention_run_id=? AND projection_generation=?")
+        sqlx::query("DELETE FROM retention_items WHERE tenant_id=? AND retention_run_id=? AND projection_generation=? AND data_type<>'studio_builder_session'")
             .bind(tenant_id).bind(control_run_id).bind(generation).execute(&mut **tx).await?;
         for item in items {
             sqlx::query("INSERT INTO retention_items(id,tenant_id,retention_run_id,data_type,target_id,status,projection_generation,source_event_cursor,projection_deleted,reason,attempt_count) VALUES(?,?,?,?,?,?,?,?,FALSE,?,?) ON DUPLICATE KEY UPDATE retention_run_id=VALUES(retention_run_id),data_type=VALUES(data_type),target_id=VALUES(target_id),status=VALUES(status),projection_generation=VALUES(projection_generation),source_event_cursor=VALUES(source_event_cursor),projection_deleted=FALSE,reason=VALUES(reason),attempt_count=VALUES(attempt_count)")
                 .bind(item.id).bind(tenant_id).bind(control_run_id).bind(&item.data_type).bind(&item.target_id).bind(&item.status).bind(generation).bind(cursor).bind(&item.reason).bind(item.attempt_count).execute(&mut **tx).await?;
         }
+        sqlx::query("UPDATE retention_items SET projection_generation=?,source_event_cursor=?,projection_deleted=FALSE WHERE tenant_id=? AND retention_run_id=? AND data_type='studio_builder_session'")
+            .bind(generation).bind(cursor).bind(tenant_id).bind(control_run_id).execute(&mut **tx).await?;
+        sqlx::query("UPDATE retention_runs SET candidate_count=candidate_count+(SELECT COUNT(*) FROM retention_items WHERE tenant_id=? AND retention_run_id=? AND data_type='studio_builder_session'),deleted_count=deleted_count+(SELECT COUNT(*) FROM retention_items WHERE tenant_id=? AND retention_run_id=? AND data_type='studio_builder_session' AND status='deleted') WHERE tenant_id=? AND id=?")
+            .bind(tenant_id).bind(control_run_id).bind(tenant_id).bind(control_run_id).bind(tenant_id).bind(control_run_id).execute(&mut **tx).await?;
         Ok(())
     }
 

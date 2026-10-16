@@ -127,6 +127,7 @@ const translations = {
     "unknown": "未知"
   },
   "retentionDataType": {
+    "studio_builder_session": "AI 创作历史",
     "artifact": "Artifact 文件",
     "trace": "执行 Trace",
     "application_message": "应用消息",
@@ -140,6 +141,7 @@ const translations = {
     "pending": "等待中"
   },
   "retentionReasons": {
+    "settled_design_history": "已结束的创作超过保存期限",
     "expired": "已超过保存期限", "referenced": "仍被引用", "legal_hold": "处于保留状态", "deletion_failed": "清理失败"
   }
 } as const

@@ -33,9 +33,10 @@ Agentx 是一个采用 n8n 式画布交互、但使用 Agentx 原生 Workflow/No
 | [planv2/README.md](planv2/README.md) | 控制面、执行面与可观测面分离的破坏性重构计划；V2-08A 本地功能闭环与 V1 删除已完成，生产容量、安全、恢复和发布认证仍在 08B |
 | [plan3/README.md](plan3/README.md) | 参考 earendil-works/pi 行为实现的 Agentx 原生内核、内置模型、OpenSandbox 四工具、会话压缩与外挂能力重构计划 |
 | [plan4/README.md](plan4/README.md) | Application 渠道入站与双模式接入的历史计划；当前出站回复契约与验收见 [plan7](plan7/01-channel-outbound-reply.md) |
-| [plan5/README.md](plan5/README.md) | 已完成的Workflow节点体系重构：Dify式配置与调试流程、Definition 8.0、13类节点、Agent附件、Loop容器、Approval/Exit/集成执行闭环及完整Kubernetes门禁；[implementation-plan.md](plan5/implementation-plan.md) 保存M0–M6 + F1–F8完成清单与证据 |
+| [plan5/README.md](plan5/README.md) | 已完成的Workflow节点体系重构：Dify式配置与调试流程、Definition 8.0、原 13 类节点、Agent 附件（当前新增独立知识检索见 plan8）、Loop容器、Approval/Exit/集成执行闭环及完整Kubernetes门禁；[implementation-plan.md](plan5/implementation-plan.md) 保存M0–M6 + F1–F8完成清单与证据 |
 | [plan6/README.md](plan6/README.md) | 画布插件：动态 React UI、TypeScript/Node.js、权威动态契约、调用隔离、文件流和 Trace；SDK/RPC 2 的最新修复与验证范围见 [P6-11](plan6/evidence/p6-11-runtime-boundaries.md) |
 | [plan7/README.md](plan7/README.md) | 产品最后一公里与生产收口（对比 n8n/Dify 后立项）：IM 渠道出站回复闭环、LLM 流式与多模态透传、评测与 Insights 补全、P0 生产认证收口、知识库管理面 |
+| [plan8/README.md](plan8/README.md) | 多草稿画布与 AI 编辑已完成，26+3 场景、完整非压测回归及失败项复测已关闭（容量压测暂缓）：共享 Agent Core、手动/AI 编辑事务、版本派生、租户模型设置、七工具和静态校验；运行、版本创建和部署由用户 UI 操作 |
 | [planv2/evidence/egress-gateway.md](planv2/evidence/egress-gateway.md) | SaaS 受控公网出口、真实模型、密钥轮换、稳定性、滚动升级和生产 CNI 未关闭门禁证据 |
 | [plan/m2-task-list.md](plan/m2-task-list.md) | M2 Workflow 控制面与资源中心的详细实施批次和任务清单 |
 | [plan/m2.1-resource-redesign.md](plan/m2.1-resource-redesign.md) | M2.1 MCP、Skill Workspace、Kubernetes Addon 与全局 E2E 重构任务 |

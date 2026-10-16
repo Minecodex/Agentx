@@ -11,6 +11,7 @@ import { Button } from '../../shared/ui/button'
 import { Input } from '../../shared/ui/input'
 import { Select } from '../../shared/ui/select'
 import { JsonBlock, TraceSemanticValue } from './trace-semantic-value'
+import { useDesignOnly } from '../workflow-designer/model/design-effects'
 
 export type ContentKind = TraceContent['kind']
 
@@ -30,6 +31,7 @@ export function TraceContents({ contents, executionId, advanced = false, onDownl
 type PluginTraceEnvelope = { nodeType?: string; typeVersion?: number; bundleDigest?: string; contentType?: string; contentVersion?: number; data?: unknown }
 
 function PluginTraceValue({ value, executionId }: { value: unknown; executionId?: string }) {
+  const designOnly = useDesignOnly()
   const { i18n, t } = useTranslation()
   const { resolvedTheme } = useTheme()
   const envelope = (value ?? {}) as PluginTraceEnvelope
@@ -40,6 +42,7 @@ function PluginTraceValue({ value, executionId }: { value: unknown; executionId?
     let removeStyles: () => void = () => undefined
     setRenderer(undefined)
     setFallback(false)
+    if (designOnly) return () => { active = false }
     if (!envelope.nodeType || !envelope.typeVersion || !envelope.bundleDigest || !envelope.contentType) {
       setFallback(true)
       return () => { active = false }
@@ -59,10 +62,10 @@ function PluginTraceValue({ value, executionId }: { value: unknown; executionId?
         if (active) { setRenderer(() => renderer); setFallback(!renderer) } else removeStyles()
       }).catch(() => { if (active) setFallback(true) })
     return () => { active = false; removeStyles() }
-  }, [envelope.bundleDigest, envelope.contentType, envelope.contentVersion, envelope.nodeType, envelope.typeVersion, executionId, i18n.language, resolvedTheme])
+  }, [designOnly, envelope.bundleDigest, envelope.contentType, envelope.contentVersion, envelope.nodeType, envelope.typeVersion, executionId, i18n.language, resolvedTheme])
   return <div className="space-y-2">
     {fallback && <p className="text-[10px] text-muted-foreground">{t('trace.pluginRendererUnavailable')}</p>}
-    {Renderer ? <PluginUiBoundary><Renderer value={envelope.data} /></PluginUiBoundary> : <TraceSemanticValue value={envelope.data ?? value} />}
+    {!designOnly && Renderer ? <PluginUiBoundary><Renderer value={envelope.data} /></PluginUiBoundary> : <TraceSemanticValue value={envelope.data ?? value} />}
   </div>
 }
 

@@ -9,6 +9,7 @@ from contextlib import contextmanager
 import httpx
 import pytest
 
+from tests.e2e.draft_fixtures import fixture_draft_id
 from tests.e2e.product.live_text_support import Secret, post
 from tests.e2e.product.test_provider_integration import _publish_application_deployment
 
@@ -45,7 +46,7 @@ def create_user(control, username, department, role):
 
 
 def request_resource(client, workflow, model):
-    draft = get(client, f"/workflows/{workflow}/draft")
+    draft = get(client, f"/workflows/{workflow}/drafts/{fixture_draft_id(client, workflow, None)}")
     return post(
         client,
         f"/workflows/{workflow}/resource-grant-requests",
@@ -56,6 +57,7 @@ def request_resource(client, workflow, model):
             "operation": "use",
             "sourceNodeId": None,
             "sourceRevision": draft["revision"],
+            "sourceDraftId": fixture_draft_id(client, workflow, None),
             "message": "P7 next: cross-department model and credential package",
         },
     )
@@ -104,7 +106,7 @@ def publish_application(control, workflow, version, slug):
 
 
 @pytest.fixture(scope="module")
-def approval_resources(live_application, live_kimi_secret, service_urls, run_id):
+def approval_resources(live_application, existing_model, existing_model_secret, service_urls, run_id):
     app = live_application
     with authenticated(service_urls["web"], app["token"]) as control:
         me = get(control, "/auth/me")
@@ -118,9 +120,9 @@ def approval_resources(live_application, live_kimi_secret, service_urls, run_id)
             control,
             "/credentials",
             {
-                "name": f"P7 approval Kimi {run_id}",
+                "name": f"P7 approval GLM {run_id}",
                 "credentialType": "bearer",
-                "secret": live_kimi_secret.value,
+                "secret": existing_model_secret.value,
                 "ownerDepartmentId": secret_department["id"],
             },
         )
@@ -129,13 +131,25 @@ def approval_resources(live_application, live_kimi_secret, service_urls, run_id)
             "/models/aliases",
             {
                 "connectionName": f"P7 approval model {run_id}",
-                "providerType": "openai_compatible",
-                "endpoint": "https://api.kimi.com/coding/v1",
+                **{
+                    key: existing_model[key]
+                    for key in (
+                        "providerType",
+                        "endpoint",
+                        "modelName",
+                        "defaultParameters",
+                        "maxInputTokens",
+                        "maxOutputTokens",
+                    )
+                },
                 "credentialId": credential["id"],
                 "ownerDepartmentId": model_department["id"],
                 "alias": f"p7-approval-{run_id}",
-                "modelName": "k3",
-                "price": {"currency": "USD", "inputPerMillion": "0", "outputPerMillion": "0"},
+                "price": {
+                    "currency": existing_model["currency"],
+                    "inputPerMillion": existing_model["inputPrice"],
+                    "outputPerMillion": existing_model["outputPrice"],
+                },
             },
         )
         role = post(
@@ -179,7 +193,11 @@ def approval_resources(live_application, live_kimi_secret, service_urls, run_id)
 
 
 def model_definition(control, source_workflow, model):
-    definition = copy.deepcopy(get(control, f"/workflows/{source_workflow}/draft")["definition"])
+    definition = copy.deepcopy(
+        get(control, f"/workflows/{source_workflow}/drafts/{fixture_draft_id(control, source_workflow, None)}")[
+            "definition"
+        ]
+    )
     node = next(node for node in definition["nodes"] if node["type"] == "model")
     node["parameters"]["prompt"] = {
         "kind": "template",

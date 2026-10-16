@@ -295,7 +295,8 @@ async fn prepare_bundle_inner(
         if let agentx_runtime_contracts::RuntimeResourceConfigurationV1::Composite {
             workflow, ..
         } = &resource.configuration
-            && let Some(snapshot) = composites.get(&workflow.version_id)
+            && let Some(version_id) = workflow.version_id
+            && let Some(snapshot) = composites.get(&version_id)
         {
             crate::composite::persist(
                 &mut tx,
@@ -457,9 +458,12 @@ async fn apply_admission_inner(
         }
         AdmissionTargetV1::RuntimeUser { state: user } => {
             ensure_tenant(tenant_id, user.tenant_id)?;
+            // Bundle barriers and user changes have independent epoch domains.
+            // A large bundle epoch must neither block a new user token version
+            // nor let an older user snapshot restore revoked access.
             let role_assignments = serde_json::to_value(&user.role_assignments)
                 .map_err(|error| RuntimeError::Internal(error.into()))?;
-            sqlx::query("INSERT INTO runtime_user_admission(tenant_id,user_id,user_name,department_id,department_name,token_version,status,tenant_query_enabled,role_assignments_json,admission_epoch) VALUES(?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE user_name=IF(admission_epoch<=VALUES(admission_epoch),VALUES(user_name),user_name),department_id=IF(admission_epoch<=VALUES(admission_epoch),VALUES(department_id),department_id),department_name=IF(admission_epoch<=VALUES(admission_epoch),VALUES(department_name),department_name),token_version=IF(admission_epoch<=VALUES(admission_epoch),VALUES(token_version),token_version),status=IF(admission_epoch<=VALUES(admission_epoch),VALUES(status),status),tenant_query_enabled=IF(admission_epoch<=VALUES(admission_epoch),VALUES(tenant_query_enabled),tenant_query_enabled),role_assignments_json=IF(admission_epoch<=VALUES(admission_epoch),VALUES(role_assignments_json),role_assignments_json),admission_epoch=GREATEST(admission_epoch,VALUES(admission_epoch))")
+            sqlx::query("INSERT INTO runtime_user_admission(tenant_id,user_id,user_name,department_id,department_name,token_version,status,tenant_query_enabled,role_assignments_json,admission_epoch) VALUES(?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE user_name=IF(token_version<=VALUES(token_version),VALUES(user_name),user_name),department_id=IF(token_version<=VALUES(token_version),VALUES(department_id),department_id),department_name=IF(token_version<=VALUES(token_version),VALUES(department_name),department_name),token_version=IF(token_version<=VALUES(token_version),VALUES(token_version),token_version),status=IF(token_version<=VALUES(token_version),VALUES(status),status),tenant_query_enabled=IF(token_version<=VALUES(token_version),VALUES(tenant_query_enabled),tenant_query_enabled),role_assignments_json=IF(token_version<=VALUES(token_version),VALUES(role_assignments_json),role_assignments_json),admission_epoch=GREATEST(admission_epoch,VALUES(admission_epoch))")
                 .bind(user.tenant_id).bind(user.user_id).bind(&user.user_name).bind(user.department_id).bind(&user.department_name).bind(user.token_version).bind(if user.enabled{"active"}else{"disabled"}).bind(user.tenant_query_enabled).bind(role_assignments).bind(request.admission_epoch).execute(&mut *tx).await?;
         }
         AdmissionTargetV1::RuntimeUserApplicationGrant { state: grant } => {

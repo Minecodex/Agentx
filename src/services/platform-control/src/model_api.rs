@@ -327,7 +327,7 @@ async fn update_model(
     )
     .await?;
     insert_price(&mut tx, &actor, deployment, 1, &input.price).await?;
-    let changed=sqlx::query("UPDATE model_aliases SET alias=?,status=?,deployment_id=?,version=version+1 WHERE tenant_id=? AND id=? AND version=?").bind(validate_alias(&input.alias)?).bind(input.status).bind(deployment).bind(actor.tenant_id).bind(id).bind(input.expected_alias_version).execute(&mut *tx).await.map_err(map_alias_error)?;
+    let changed=sqlx::query("UPDATE model_aliases SET alias=?,status=?,deployment_id=?,version=version+1 WHERE tenant_id=? AND id=? AND version=?").bind(validate_alias(&input.alias)?).bind(&input.status).bind(deployment).bind(actor.tenant_id).bind(id).bind(input.expected_alias_version).execute(&mut *tx).await.map_err(map_alias_error)?;
     if changed.rows_affected() != 1 {
         return Err(ApiError::conflict(
             "MODEL_VERSION_CONFLICT",
@@ -336,6 +336,14 @@ async fn update_model(
     }
     insert_history(&mut tx, &actor, id, Some(previous), deployment).await?;
     tx.commit().await?;
+    if input.status == "disabled" {
+        crate::studio_builder_api::revoke_runs(
+            &state,
+            actor.tenant_id,
+            crate::studio_builder_api::DesignRevocation::Model(id, input.expected_alias_version),
+        )
+        .await?;
+    }
     Ok(Json(load_model(&state, actor.tenant_id, id).await?))
 }
 
@@ -442,6 +450,16 @@ async fn delete_model(
 ) -> ApiResult<StatusCode> {
     actor.require("model:manage")?;
     require_visible(&state, &actor, id).await?;
+    let mut tx =
+        crate::workflow_revision_resources::begin_delete(&state.pool, actor.tenant_id, "model", id)
+            .await?;
+    let builder_reference: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenant_settings WHERE tenant_id=? AND studio_builder_model_alias_id=?) OR EXISTS(SELECT 1 FROM studio_builder_runs WHERE tenant_id=? AND model_alias_id=? AND status IN ('queued','running','waiting','outcome_unknown'))").bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
+    if builder_reference {
+        return Err(ApiError::conflict(
+            "RESOURCE_REFERENCED",
+            "Clear the canvas AI model setting before deleting this resource",
+        ));
+    }
     let references:i64=sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM workflow_draft_resources WHERE tenant_id=? AND resource_type='model' AND resource_id=?)+(SELECT COUNT(*) FROM workflow_version_resources WHERE tenant_id=? AND resource_type='model' AND resource_id=?)").bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
     if references != 0 {
         return Err(ApiError::conflict(
@@ -456,7 +474,7 @@ async fn delete_model(
     .bind(id)
     .fetch_all(&state.pool)
     .await?;
-    let mut tx = state.pool.begin().await?;
+
     sqlx::query("DELETE FROM model_alias_deployment_history WHERE tenant_id=? AND alias_id=?")
         .bind(actor.tenant_id)
         .bind(id)

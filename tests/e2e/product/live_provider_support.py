@@ -1,7 +1,8 @@
-"""LightRAG and Mem0 using the real Kimi LLM and shared CPU embeddings."""
+"""LightRAG and Mem0 using the configured real LLM and shared CPU embeddings."""
 
 from __future__ import annotations
 
+import json
 import secrets
 from collections.abc import Iterator
 
@@ -16,7 +17,8 @@ from tests.e2e.support import ROOT, redact, run
 def live_providers(
     cpu_embedding_service,
     cpu_memory_service,
-    live_kimi_secret,
+    existing_model,
+    existing_model_secret,
     live_application,
     service_urls,
     installed_agentx,
@@ -48,8 +50,9 @@ def live_providers(
         if name == "agentx-lightrag-config":
             document["data"].update(
                 {
-                    "LLM_BINDING_HOST": "https://api.kimi.com/coding/v1",
-                    "LLM_MODEL": "k3",
+                    "LLM_BINDING_HOST": existing_model["endpoint"],
+                    "LLM_MODEL": existing_model["modelName"],
+                    "OPENAI_LLM_EXTRA_BODY": json.dumps({**existing_model["defaultParameters"], "stream": False}),
                     "EMBEDDING_BINDING_HOST": model_url,
                     "EMBEDDING_MODEL": "BAAI/bge-small-zh-v1.5",
                     "EMBEDDING_DIM": "512",
@@ -61,7 +64,7 @@ def live_providers(
             document.pop("data", None)
             document["stringData"] = {
                 "LIGHTRAG_API_KEY": key,
-                "LLM_BINDING_API_KEY": live_kimi_secret.value,
+                "LLM_BINDING_API_KEY": existing_model_secret.value,
                 "EMBEDDING_BINDING_API_KEY": cpu_embedding_service["apiKey"],
             }
     documents.append(
@@ -126,13 +129,17 @@ def live_providers(
             "/configure",
             json={
                 "llm": {
-                    "provider": "openai",
+                    "provider": "openai_structured",
                     "config": {
-                        "model": "k3",
-                        "api_key": live_kimi_secret.value,
-                        "openai_base_url": "https://api.kimi.com/coding/v1",
+                        "model": existing_model["modelName"],
+                        "api_key": existing_model_secret.value,
+                        "openai_base_url": existing_model["endpoint"],
                         "temperature": 1,
                         "top_p": 0.95,
+                        # Mem0 defaults to 2,000 tokens, which can be exhausted
+                        # by reasoning before the extracted JSON is emitted.
+                        "max_tokens": min(8192, existing_model["maxOutputTokens"]),
+                        "reasoning_effort": existing_model["defaultParameters"].get("reasoning_effort"),
                     },
                 },
                 "embedder": {
@@ -150,13 +157,19 @@ def live_providers(
                 },
             },
         )
-        assert configured.status_code == 200, configured.text.replace(live_kimi_secret.value, "<redacted>")
+        assert configured.status_code == 200, configured.text.replace(existing_model_secret.value, "<redacted>")
         registered = memory.post(
             "/auth/register",
             json={"name": "P7 Test Admin", "email": "p7-admin@example.com", "password": secrets.token_urlsafe(24)},
         )
         assert registered.status_code == 200, registered.text
-        memory_token = registered.json()["access_token"]
+        issued_key = memory.post(
+            "/api-keys",
+            headers={"Authorization": f"Bearer {registered.json()['access_token']}"},
+            json={"label": f"Agentx integration {run_id}"},
+        )
+        assert issued_key.status_code == 201, "Mem0 integration API key creation failed"
+        memory_key = Secret(issued_key.json()["key"])
         import httpx
 
         with httpx.Client(
@@ -191,7 +204,7 @@ def live_providers(
                 {
                     "name": f"P7 live knowledge {run_id}",
                     "connectionId": rag_connection["id"],
-                    "externalResourceId": f"p7_live_{run_id}",
+                    "externalResourceId": f"p7_live_{run_id.replace('-', '_')}",
                     "ownerDepartmentId": app["departmentId"],
                 },
             )
@@ -199,9 +212,9 @@ def live_providers(
                 control,
                 "/credentials",
                 {
-                    "name": f"P7 Mem0 JWT {run_id}",
-                    "credentialType": "bearer",
-                    "secret": memory_token,
+                    "name": f"P7 Mem0 API key {run_id}",
+                    "credentialType": "api_key",
+                    "secret": memory_key.value,
                     "ownerDepartmentId": app["departmentId"],
                 },
             )
@@ -223,7 +236,7 @@ def live_providers(
                 {
                     "name": f"P7 live memory {run_id}",
                     "connectionId": memory_connection["id"],
-                    "externalNamespace": f"p7_memory_{run_id}",
+                    "externalNamespace": f"p7_memory_{run_id.replace('-', '_')}",
                     "accessMode": "read_write",
                     "ownerDepartmentId": app["departmentId"],
                 },
@@ -238,12 +251,13 @@ def live_providers(
                 "ragUrl": f"http://lightrag.{namespace}.svc:9621",
                 "ragKey": Secret(key),
                 "directory": directory,
+                "modelName": existing_model["modelName"],
             }
     finally:
         for name in ("lightrag", "mem0"):
             logs = run(("kubectl", "-n", namespace, "logs", f"deployment/{name}", "--tail=150"), check=False)
             (directory / f"{name}.log").write_text(
                 redact(logs.stdout + logs.stderr)
-                .replace(live_kimi_secret.value, "<redacted>")
+                .replace(existing_model_secret.value, "<redacted>")
                 .replace(key, "<redacted>")
             )

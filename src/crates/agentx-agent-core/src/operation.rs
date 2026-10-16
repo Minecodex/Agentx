@@ -18,6 +18,7 @@ pub enum OperationKindV1 {
 pub enum OperationPhaseV1 {
     IntentPersisted,
     EffectStarted,
+    Pending { token: String },
     EffectCompleted { result: Value },
     SettledSuccess { result: Value },
     SettledFailure { error: String },
@@ -44,6 +45,7 @@ pub struct OperationRecordV1 {
 #[serde(tag = "status", content = "result", rename_all = "snake_case")]
 pub enum EffectObservationV1 {
     NotStarted,
+    Pending(String),
     Confirmed(Value),
     Unknown,
 }
@@ -57,6 +59,7 @@ pub enum RecoveryDecisionV1 {
     RetryWithSameId,
     ResumeAfterSettlement,
     PauseUnknownOutcome,
+    ResumePending,
 }
 
 pub fn recovery_decision_for(
@@ -76,14 +79,17 @@ pub fn recovery_decision(
         OperationPhaseV1::SettledSuccess { .. } | OperationPhaseV1::SettledFailure { .. } => {
             RecoveryDecisionV1::ResumeAfterSettlement
         }
+        OperationPhaseV1::Pending { .. } => RecoveryDecisionV1::ResumePending,
         OperationPhaseV1::UnknownOutcome { .. } => RecoveryDecisionV1::PauseUnknownOutcome,
         OperationPhaseV1::IntentPersisted => match observation {
+            EffectObservationV1::Pending(_) => RecoveryDecisionV1::ResumePending,
             EffectObservationV1::NotStarted => RecoveryDecisionV1::ExecuteWithSameId,
             EffectObservationV1::Confirmed(_) => RecoveryDecisionV1::SettleObservedEffect,
             EffectObservationV1::Unknown => RecoveryDecisionV1::PauseUnknownOutcome,
         },
         OperationPhaseV1::EffectStarted | OperationPhaseV1::EffectCompleted { .. } => {
             match observation {
+                EffectObservationV1::Pending(_) => RecoveryDecisionV1::ResumePending,
                 EffectObservationV1::Confirmed(_) => RecoveryDecisionV1::SettleObservedEffect,
                 EffectObservationV1::NotStarted
                     if matches!(operation.replay_policy, ReplayPolicyV1::Safe) =>

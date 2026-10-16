@@ -1,0 +1,1067 @@
+{
+  "$defs": {
+    "AgentMessageV1": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/ModelContentV1",
+          "description": "Multimodal content (plan7 P7-B): plain text stays a bare JSON string\n(untagged, Text first) so existing session state deserializes without\nmigration; image/audio parts use the array form."
+        },
+        "isError": {
+          "default": false,
+          "type": "boolean"
+        },
+        "messageId": {
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/MessageRole"
+        },
+        "toolCallId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "toolCalls": {
+          "items": {
+            "$ref": "#/$defs/ToolCallV1"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "messageId",
+        "role",
+        "content"
+      ],
+      "type": "object"
+    },
+    "EffectContextV1": {
+      "additionalProperties": false,
+      "properties": {
+        "deadlineAtMillis": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "effectId": {
+          "type": "string"
+        },
+        "fencingToken": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "idempotencyKey": {
+          "type": "string"
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "runId",
+        "operationId",
+        "effectId",
+        "idempotencyKey",
+        "fencingToken",
+        "deadlineAtMillis"
+      ],
+      "type": "object"
+    },
+    "ExecutionDepartmentSnapshotV1": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "ExecutionWorkflowSnapshotV1": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ownerDepartment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExecutionDepartmentSnapshotV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/WorkflowDesignSourceV1"
+        },
+        "versionId": {
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "versionNumber": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "source"
+      ],
+      "type": "object"
+    },
+    "ImageUrlV1": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
+    "InputAudioV1": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "data",
+        "format"
+      ],
+      "type": "object"
+    },
+    "MessageRole": {
+      "enum": [
+        "user",
+        "assistant",
+        "tool_result",
+        "external_context"
+      ],
+      "type": "string"
+    },
+    "ModelContentPartV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "const": "text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "image_url": {
+              "$ref": "#/$defs/ImageUrlV1"
+            },
+            "type": {
+              "const": "image_url",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "image_url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "input_audio": {
+              "$ref": "#/$defs/InputAudioV1"
+            },
+            "type": {
+              "const": "input_audio",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "input_audio"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ModelContentV1": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/ModelContentPartV1"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "One multimodal content part of a model message (plan7 P7-B). `Text` is\nthe untagged default so pure-text state and requests stay plain strings."
+    },
+    "ModelPurposeV1": {
+      "enum": [
+        "agent_turn",
+        "compaction"
+      ],
+      "type": "string"
+    },
+    "ModelRequestV1": {
+      "additionalProperties": false,
+      "properties": {
+        "messages": {
+          "items": {
+            "$ref": "#/$defs/AgentMessageV1"
+          },
+          "type": "array"
+        },
+        "modelReference": {
+          "type": "string"
+        },
+        "purpose": {
+          "$ref": "#/$defs/ModelPurposeV1"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/$defs/ToolDefinitionV1"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "purpose",
+        "modelReference",
+        "messages",
+        "tools"
+      ],
+      "type": "object"
+    },
+    "ReplayPolicyV1": {
+      "enum": [
+        "safe",
+        "never",
+        "idempotency_required",
+        "ledger_dependent"
+      ],
+      "type": "string"
+    },
+    "RuntimeEnvironmentCredentialReferenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "credential": {
+          "$ref": "#/$defs/VaultSecretReferenceV1"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "credential"
+      ],
+      "type": "object"
+    },
+    "RuntimeMcpSandboxReferenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "resourceId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "resourceVersionId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "resourceId",
+        "resourceVersionId"
+      ],
+      "type": "object"
+    },
+    "RuntimeMcpTransportV2": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "endpoint": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "streamable_http",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "endpoint"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "endpoint": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "sse",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "endpoint"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "args": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "command": {
+              "type": "string"
+            },
+            "environmentCredentialRefs": {
+              "items": {
+                "$ref": "#/$defs/RuntimeEnvironmentCredentialReferenceV1"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "stdio",
+              "type": "string"
+            },
+            "runtimeSandbox": {
+              "$ref": "#/$defs/RuntimeMcpSandboxReferenceV1"
+            }
+          },
+          "required": [
+            "kind",
+            "command",
+            "args",
+            "environmentCredentialRefs",
+            "runtimeSandbox"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RuntimeModelPriceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "currency": {
+          "type": "string"
+        },
+        "inputPerMillion": {
+          "type": "string"
+        },
+        "outputPerMillion": {
+          "type": "string"
+        },
+        "versionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "versionId",
+        "currency",
+        "inputPerMillion",
+        "outputPerMillion"
+      ],
+      "type": "object"
+    },
+    "RuntimeResourceBindingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "configuration": {
+          "$ref": "#/$defs/RuntimeResourceConfigurationV1"
+        },
+        "contentHash": {
+          "type": "string"
+        },
+        "objectIds": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "resourceId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "resourceKind": {
+          "$ref": "#/$defs/RuntimeResourceKindV1"
+        },
+        "resourceVersion": {
+          "type": "string"
+        },
+        "stateEpoch": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resourceKind",
+        "resourceId",
+        "resourceVersion",
+        "stateEpoch",
+        "contentHash",
+        "configuration",
+        "objectIds"
+      ],
+      "type": "object"
+    },
+    "RuntimeResourceConfigurationV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "capabilities": {
+              "default": [],
+              "description": "Modalities the deployment accepts as native model input\n(plan7 P7-B); absent means text-only so old bundles stay valid.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "contextWindow": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "credential": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/VaultSecretReferenceV1"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "endpoint": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "model",
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "price": {
+              "$ref": "#/$defs/RuntimeModelPriceV1"
+            },
+            "provider": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "provider",
+            "endpoint",
+            "model",
+            "contextWindow",
+            "price"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "credential": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/VaultSecretReferenceV1"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "inputSchema": true,
+            "inputSchemaHash": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "mcp",
+              "type": "string"
+            },
+            "outputSchema": true,
+            "serverId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "serverVersionId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "sideEffect": {
+              "type": "string"
+            },
+            "timeoutSeconds": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "toolName": {
+              "type": "string"
+            },
+            "toolVersion": {
+              "type": "string"
+            },
+            "transport": {
+              "$ref": "#/$defs/RuntimeMcpTransportV2"
+            }
+          },
+          "required": [
+            "kind",
+            "serverId",
+            "serverVersionId",
+            "transport",
+            "toolName",
+            "toolVersion",
+            "inputSchemaHash",
+            "inputSchema",
+            "sideEffect",
+            "timeoutSeconds"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "credential": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/VaultSecretReferenceV1"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "endpoint": {
+              "type": "string"
+            },
+            "indexVersion": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "rag",
+              "type": "string"
+            },
+            "namespace": {
+              "type": "string"
+            },
+            "provider": {
+              "default": "lightrag",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "endpoint",
+            "namespace",
+            "indexVersion"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "accessMode": {
+              "type": "string"
+            },
+            "credential": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/VaultSecretReferenceV1"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "endpoint": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "memory",
+              "type": "string"
+            },
+            "memoryVersion": {
+              "type": "string"
+            },
+            "namespace": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "endpoint",
+            "namespace",
+            "memoryVersion",
+            "accessMode"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "dependencies": {
+              "items": {
+                "$ref": "#/$defs/RuntimeSkillDependencyV2"
+              },
+              "type": "array"
+            },
+            "dependencyObjectIds": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "entrypointContentHash": {
+              "type": "string"
+            },
+            "entrypointObjectId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "kind": {
+              "const": "skill",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "entrypointObjectId",
+            "entrypointContentHash",
+            "dependencyObjectIds",
+            "dependencies"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "allowedOperations": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
+            },
+            "credentialType": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "credential",
+              "type": "string"
+            },
+            "secret": {
+              "$ref": "#/$defs/VaultSecretReferenceV1"
+            }
+          },
+          "required": [
+            "kind",
+            "credentialType",
+            "secret",
+            "allowedOperations"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "cpuMillis": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "diskBytes": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "egressMode": {
+              "$ref": "#/$defs/SandboxEgressModeV1"
+            },
+            "image": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "sandbox_profile",
+              "type": "string"
+            },
+            "maximumTtlSeconds": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "memoryBytes": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "pidLimit": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "provider": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "provider",
+            "image",
+            "cpuMillis",
+            "memoryBytes",
+            "diskBytes",
+            "pidLimit",
+            "egressMode",
+            "maximumTtlSeconds"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "definitionObjectId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "irObjectId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "kind": {
+              "const": "composite",
+              "type": "string"
+            },
+            "workflow": {
+              "$ref": "#/$defs/ExecutionWorkflowSnapshotV1"
+            }
+          },
+          "required": [
+            "kind",
+            "workflow",
+            "definitionObjectId",
+            "irObjectId"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RuntimeResourceKindV1": {
+      "enum": [
+        "model",
+        "mcp",
+        "rag",
+        "memory",
+        "skill",
+        "credential",
+        "sandbox_profile",
+        "composite"
+      ],
+      "type": "string"
+    },
+    "RuntimeSkillDependencyV2": {
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "type": "string"
+        },
+        "resourceId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "resourceType": {
+          "type": "string"
+        },
+        "resourceVersionId": {
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "resourceType",
+        "resourceId",
+        "operation"
+      ],
+      "type": "object"
+    },
+    "SandboxEgressModeV1": {
+      "enum": [
+        "none",
+        "tcp_proxy"
+      ],
+      "type": "string"
+    },
+    "StudioBuilderTargetV1": {
+      "additionalProperties": false,
+      "properties": {
+        "draftId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "runId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "sessionId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "tenantId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "userId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "workflowId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenantId",
+        "workflowId",
+        "draftId",
+        "sessionId",
+        "runId",
+        "userId"
+      ],
+      "type": "object"
+    },
+    "ToolCallV1": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": true,
+        "callId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "callId",
+        "name",
+        "arguments"
+      ],
+      "type": "object"
+    },
+    "ToolDefinitionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "inputSchema": true,
+        "name": {
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/ToolOriginV1"
+        },
+        "replayPolicy": {
+          "$ref": "#/$defs/ReplayPolicyV1"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "inputSchema",
+        "origin",
+        "replayPolicy"
+      ],
+      "type": "object"
+    },
+    "ToolOriginV1": {
+      "enum": [
+        "core",
+        "platform",
+        "mcp",
+        "skill",
+        "knowledge",
+        "memory"
+      ],
+      "type": "string"
+    },
+    "VaultSecretReferenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "mount": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "version": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "mount",
+        "path",
+        "key",
+        "version"
+      ],
+      "type": "object"
+    },
+    "WorkflowDesignSourceV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "draftId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "kind": {
+              "const": "draft_revision",
+              "type": "string"
+            },
+            "revision": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "revisionId": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "draftId",
+            "revisionId",
+            "revision"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "version",
+              "type": "string"
+            },
+            "versionId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "versionNumber": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "versionId",
+            "versionNumber"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "binding": {
+      "$ref": "#/$defs/RuntimeResourceBindingV1"
+    },
+    "context": {
+      "$ref": "#/$defs/EffectContextV1"
+    },
+    "parameters": true,
+    "protocolVersion": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "request": {
+      "$ref": "#/$defs/ModelRequestV1"
+    },
+    "target": {
+      "$ref": "#/$defs/StudioBuilderTargetV1"
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "target",
+    "binding",
+    "parameters",
+    "context",
+    "request"
+  ],
+  "title": "DesignModelEffectRequestV1",
+  "type": "object"
+}

@@ -400,7 +400,7 @@ pub(crate) async fn invoke_design_operation(
     method: &str,
     mut parameters: Value,
 ) -> Result<Value, String> {
-    if !matches!(method, "node.resolveDefinition" | "node.invokeProvider") {
+    if method != "node.invokeProvider" {
         return Err(format!("Unsupported plugin design method '{method}'"));
     }
     let node = std::env::var("AGENTX_NODE_EXECUTABLE").unwrap_or_else(|_| "node".into());

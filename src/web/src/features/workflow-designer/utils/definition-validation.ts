@@ -38,8 +38,8 @@ export function definitionIssues(document: StudioDocument): StudioIssue[] {
   if (!exitNodes.length) issues.push(workflowIssue("EXIT_REQUIRED", "nodes", "At least one end node is required."));
   for (const node of exitNodes) {
     const parameters = node.parameters as { outputs?: Record<string, InputBinding>; errorOutputs?: Record<string, InputBinding> };
-    validateExitMappings(node.id, parameters.outputs ?? {}, definition.end.outputs, "outputs", issues);
-    validateExitMappings(node.id, parameters.errorOutputs ?? {}, definition.end.error.outputs, "errorOutputs", issues);
+    validateExitMappings(node.id, parameters.outputs ?? {}, definition.end.outputs, "outputs", issues, definition.connections.some(edge => edge.targetNodeId === node.id && edge.targetHandle === "main"));
+    validateExitMappings(node.id, parameters.errorOutputs ?? {}, definition.end.error.outputs, "errorOutputs", issues, definition.connections.some(edge => edge.targetNodeId === node.id && edge.targetHandle === "error"));
   }
 
   const ids = new Set<string>();
@@ -73,7 +73,7 @@ export function definitionIssues(document: StudioDocument): StudioIssue[] {
       const modelReferences = node.resourceReferences.filter((reference) => reference.bindingRole === "model" && reference.resourceType === "model");
       const sandboxReferences = node.resourceReferences.filter((reference) => reference.bindingRole === "workspace_sandbox" && reference.resourceType === "sandbox_profile");
       const memoryReferences = node.resourceReferences.filter((reference) => reference.bindingRole === "long_term_memory");
-      if (modelReferences.length !== 1) issues.push(nodeIssue("AGENT_MODEL_REQUIRED", "resourceReferences.model", "Agent requires exactly one internal Model reference."));
+      if (modelReferences.length > 1) issues.push(nodeIssue("AGENT_RESOURCE_SLOT_INVALID", "resourceReferences.model", "Agent accepts at most one internal Model reference."));
       if (sandboxReferences.length > 1 || memoryReferences.length > 1) issues.push(nodeIssue("AGENT_RESOURCE_SLOT_INVALID", "resourceReferences", "Agent accepts at most one Workspace Sandbox and one Long-term Memory attachment."));
       for (const reference of node.resourceReferences) {
         const versionPinned = reference.resourceType !== "rag" && reference.resourceType !== "memory";
@@ -93,13 +93,13 @@ function validateOutputs(outputs: StudioDocument["end"]["outputs"], path: string
   }
 }
 
-function validateExitMappings(nodeId: string, mappings: Record<string, InputBinding>, contract: StudioDocument["end"]["outputs"], group: string, issues: StudioIssue[]) {
+function validateExitMappings(nodeId: string, mappings: Record<string, InputBinding>, contract: StudioDocument["end"]["outputs"], group: string, issues: StudioIssue[], connected: boolean) {
   for (const [name, value] of Object.entries(mappings)) {
     if (!(name in contract)) issues.push({ code: "EXIT_MAPPING_KEY_UNKNOWN", nodeId, fieldPath: `parameters.${group}.${name}`, message: "End node mappings must reference fields declared in the global output contract." });
     if (isInputBindingEmpty(value)) issues.push({ code: "END_OUTPUT_BINDING_REQUIRED", nodeId, fieldPath: `parameters.${group}.${name}`, message: "End output bindings are required." });
   }
   for (const [name, output] of Object.entries(contract)) {
-    if (output.required && !(name in mappings)) issues.push({ code: "EXIT_REQUIRED_MAPPING_MISSING", nodeId, fieldPath: `parameters.${group}.${name}`, message: "Every end node must map each required output field." });
+    if (connected && output.required && !(name in mappings)) issues.push({ code: "EXIT_REQUIRED_MAPPING_MISSING", nodeId, fieldPath: `parameters.${group}.${name}`, message: "Connected end inputs must map each required output field." });
   }
 }
 
@@ -132,6 +132,7 @@ function validateConnections(connections: DefinitionConnection[], nodeIds: Set<s
 }
 
 function referenceMatchesNode(nodeType: string, reference: ResourceReference) {
+  if (nodeType === "knowledge_retrieval") return reference.resourceType === "rag" && reference.operation === "read" && !reference.bindingRole;
   if (nodeType === "model") return reference.resourceType === "model" && reference.operation === "use";
   if (nodeType === "code") return reference.resourceType === "sandbox_profile" && reference.operation === "use";
   if (nodeType === "declarative_http") return reference.bindingRole === "credential" && reference.resourceType === "credential" && reference.operation === "use";
@@ -146,7 +147,7 @@ function referenceMatchesNode(nodeType: string, reference: ResourceReference) {
 }
 
 function isResourceNode(nodeType: string) {
-  return ["model", "agent", "code", "declarative_http"].includes(nodeType);
+  return ["model", "agent", "code", "declarative_http", "knowledge_retrieval"].includes(nodeType);
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

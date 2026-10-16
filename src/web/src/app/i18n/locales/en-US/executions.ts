@@ -1,4 +1,5 @@
 const translations = {
+  "draftRevision": "Draft {{draft}} · r{{revision}}",
   "trace": "View trace",
   "mainViews": { "trace": "Trace", "recovery": "Recovery" },
   "cost": "Cost",
@@ -57,7 +58,6 @@ const translations = {
   ,"sideEffectSubmitted": "Side-effect decision submitted"
   ,"backToList": "Back to executions"
   ,"executionId": "Execution {{id}}"
-  ,"workflowVersion": "Version {{version}}"
   ,"durationLabel": "Duration"
   ,"triggerLabel": "Trigger"
   ,"refresh": "Refresh execution"

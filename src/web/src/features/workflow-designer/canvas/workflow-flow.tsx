@@ -8,8 +8,8 @@ import type { CanvasNode, ConnectionInteractionState, EditorDocument, NodeManife
 import { StudioEdgeComponent } from '../edges/studio-edge'
 import { canvasBranchPorts } from '../nodes/manifest-node'
 import { canvasNodeMetrics, canvasNodeRole } from '../nodes/node-appearance'
-import { canvasZoomTier, syncCanvasRenderState } from '../store/canvas-render-store'
-import { useEditorStore } from '../store/editor-store'
+import { canvasZoomTier, useCanvasRenderStoreApi } from '../store/canvas-render-store'
+import { useEditorStore, useEditorStoreApi } from '../store/editor-store'
 import { localizedNodeLabel } from '../model/manifest-localization'
 import { inspectConnection, isIterationEndId, isIterationChipId, iterationChipId, iterationEndId, normalizeIterationChip } from '../utils/connections'
 import { createGraphIndex, IncrementalGraphIndex, occupiedHandlesByNodeId, portKey } from '../utils/graph-index'
@@ -45,6 +45,7 @@ export type WorkflowFlowHandle = {
 const EDGE_TYPES = { studio: StudioEdgeComponent }
 
 export const WorkflowFlow = forwardRef<WorkflowFlowHandle, FlowProps>(function WorkflowFlow({ manifests, runtimeStatuses, readOnly = false, onDropAction, onNodeOpen, onBoundaryOpen, onPaneClear, onQuickAdd }, ref) {
+  const storeApi = useEditorStoreApi()
   const { t, i18n } = useTranslation()
   const instance = useRef<ReactFlowInstance<CanvasNode, StudioEdge>>()
   const [connectionState, setConnectionState] = useState<ConnectionInteractionState>({ status: 'idle' })
@@ -88,7 +89,7 @@ export const WorkflowFlow = forwardRef<WorkflowFlowHandle, FlowProps>(function W
   const flowEdges = useMemo(() => materializeRuntimeEdges(proxyEdges(edges, collapsedByMember), runtimeStatuses, renderedEdgeCache.current), [collapsedByMember, edges, runtimeStatuses])
   const groupViewMap = useMemo(() => new Map(groupViews.map((view) => [view.id, view])), [groupViews])
   const graphIndexController = useRef(new IncrementalGraphIndex())
-  const graphIndex = useMemo(() => graphIndexController.current.sync(useEditorStore.getState().nodes, useEditorStore.getState().edges, manifests), [editor.graphRevision, manifests])
+  const graphIndex = useMemo(() => graphIndexController.current.sync(storeApi.getState().nodes, storeApi.getState().edges, manifests), [editor.graphRevision, manifests])
   const occupiedHandlesCache = useRef<{ graphRevision: number; value: Map<string, string> }>()
   if (occupiedHandlesCache.current?.graphRevision !== editor.graphRevision) occupiedHandlesCache.current = { graphRevision: editor.graphRevision, value: occupiedHandlesByNodeId(graphIndex) }
   const occupiedHandles = occupiedHandlesCache.current.value
@@ -97,12 +98,13 @@ export const WorkflowFlow = forwardRef<WorkflowFlowHandle, FlowProps>(function W
     if (!active && current.status === 'source-hover' && current.nodeId === nodeId && current.handleId === handleId) return { status: 'idle' }
     return current
   }), [])
-  useLayoutEffect(() => syncCanvasRenderState({
+  const canvasRenderStore = useCanvasRenderStoreApi()
+  useLayoutEffect(() => canvasRenderStore.setState({
     manifests, runtimeStatuses, bindingSummaries: graphIndex.bindingSummaryByNodeId, occupiedHandlesByNodeId: occupiedHandles,
     zoomTier: canvasZoomTier(viewport.zoom),
     onQuickAdd,
     onSourceHover,
-  }), [editor.graphRevision, graphIndex, manifests, occupiedHandles, onQuickAdd, onSourceHover, runtimeStatuses, viewport.zoom])
+  }), [canvasRenderStore, editor.graphRevision, graphIndex, manifests, occupiedHandles, onQuickAdd, onSourceHover, runtimeStatuses, viewport.zoom])
   useImperativeHandle(ref, () => ({
     getViewportCenter: () => {
       const flow = instance.current
@@ -195,13 +197,13 @@ export const WorkflowFlow = forwardRef<WorkflowFlowHandle, FlowProps>(function W
     const manifest = manifests.get(`${value.nodeType}@${value.version}`)
     if (!manifest) return
     // Dropping into a container bounding box claims membership; loops never nest.
-    const store = useEditorStore.getState()
+    const store = storeApi.getState()
     const parentId = manifest.nodeType === 'loop_over_items' ? undefined : findDropContainer(store.nodes, position)
     const parent = parentId ? store.nodes.find((node) => node.id === parentId) : undefined
     onDropAction(manifest, parent ? { x: position.x - parent.position.x, y: position.y - parent.position.y } : position, parentId)
   }
   const releaseEscapedChildren = useCallback((dragged: CanvasNode[]) => {
-    const store = useEditorStore.getState()
+    const store = storeApi.getState()
     for (const node of dragged) {
       if (!node.parentId) continue
       const container = store.nodes.find((candidate) => candidate.id === node.parentId)
@@ -232,7 +234,7 @@ export const WorkflowFlow = forwardRef<WorkflowFlowHandle, FlowProps>(function W
   }
   return <div className="relative min-w-0 flex-1 bg-canvas" data-connection-state={connectionState.status} data-testid="workflow-canvas" onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy' }} onDrop={onDrop}>
     <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-3 rounded-md border border-border bg-surface/90 px-2.5 py-1.5 text-[9px] text-muted-foreground shadow-sm backdrop-blur"><LegendDot className="bg-primary" label={t('studio.ports.flow')} /><LegendDot className="bg-danger" label={t('studio.ports.error')} /><LegendDot className="bg-warning" label={t('studio.ports.resource')} /></div>
-    <ReactFlow<CanvasNode, StudioEdge> ariaLabelConfig={ariaLabelConfig} connectionRadius={60} defaultViewport={viewport} edges={flowEdges} edgeTypes={EDGE_TYPES} edgesReconnectable={!readOnly} fitViewOptions={{ maxZoom: 1, padding: 0.2 }} nodes={flowNodes} nodesConnectable={!readOnly} nodesDraggable={!readOnly} nodeTypes={CANVAS_NODE_TYPES} onConnect={onConnect} onConnectEnd={() => { setConnectionState({ status: 'cancelled' }); window.requestAnimationFrame(() => setConnectionState({ status: 'idle' })) }} onConnectStart={(_, params) => setConnectionState({ status: 'connecting', nodeId: params.nodeId ?? '', handleId: params.handleId ?? undefined })} onEdgesChange={readOnly ? undefined : onEdgesChange} onInit={(value) => { instance.current = value }} onMoveEnd={(_, next) => setViewport(next)} onNodeClick={(_, node) => { if (node.data.editorKind === 'boundary') { select(undefined); onBoundaryOpen?.(node.data.boundary) } else { select(node.id); if (node.data.editorKind === 'action' || node.data.editorKind === 'exit' || node.data.editorKind === 'loop-container') onNodeOpen?.(node.id) } }} onNodeDragStart={readOnly ? undefined : onNodeDragStart} onNodeDragStop={readOnly ? undefined : onNodeDragStop} onNodesChange={readOnly ? undefined : onNodesChange} onPaneClick={() => { select(undefined); onPaneClear?.() }} onReconnect={readOnly ? undefined : onReconnect} onReconnectEnd={() => editor.clearEdgeReconnectRequest()} isValidConnection={valid} multiSelectionKeyCode="Shift" onlyRenderVisibleElements={nodes.length >= LARGE_GRAPH_RENDER_THRESHOLD} proOptions={{ hideAttribution: true }} selectionOnDrag={!readOnly}>
+    <ReactFlow<CanvasNode, StudioEdge> ariaLabelConfig={ariaLabelConfig} connectionRadius={60} defaultViewport={viewport} edges={flowEdges} edgeTypes={EDGE_TYPES} edgesReconnectable={!readOnly} fitViewOptions={{ maxZoom: 1, padding: 0.2 }} nodes={flowNodes} nodesConnectable={!readOnly} nodesDraggable={!readOnly} nodeTypes={CANVAS_NODE_TYPES} onConnect={onConnect} onConnectEnd={() => { setConnectionState({ status: 'cancelled' }); window.requestAnimationFrame(() => setConnectionState({ status: 'idle' })) }} onConnectStart={(_, params) => setConnectionState({ status: 'connecting', nodeId: params.nodeId ?? '', handleId: params.handleId ?? undefined })} onEdgesChange={readOnly ? undefined : onEdgesChange} onInit={(value) => { instance.current = value }} onMoveEnd={(_, next) => { if (readOnly) canvasRenderStore.setState({zoomTier:canvasZoomTier(next.zoom)}); else setViewport(next) }} onNodeClick={(_, node) => { if (node.data.editorKind === 'boundary') { select(undefined); onBoundaryOpen?.(node.data.boundary) } else { select(node.id); if (node.data.editorKind === 'action' || node.data.editorKind === 'exit' || node.data.editorKind === 'loop-container') onNodeOpen?.(node.id) } }} onNodeDragStart={readOnly ? undefined : onNodeDragStart} onNodeDragStop={readOnly ? undefined : onNodeDragStop} onNodesChange={readOnly ? undefined : onNodesChange} onPaneClick={() => { select(undefined); onPaneClear?.() }} onReconnect={readOnly ? undefined : onReconnect} onReconnectEnd={() => editor.clearEdgeReconnectRequest()} isValidConnection={valid} multiSelectionKeyCode="Shift" onlyRenderVisibleElements={nodes.length >= LARGE_GRAPH_RENDER_THRESHOLD} proOptions={{ hideAttribution: true }} selectionOnDrag={!readOnly}>
       <Background color="var(--ui-canvas-dot)" gap={22} size={1} variant={BackgroundVariant.Dots} />
       <Controls aria-label={t('studio.canvasA11y.controls')} className="!border-border !bg-surface !shadow-md" />
       {nodes.length < LARGE_GRAPH_MINIMAP_THRESHOLD && <MiniMap ariaLabel={t('studio.canvasA11y.minimap')} className="!border !border-border !bg-surface" maskColor="color-mix(in srgb, var(--ui-background) 70%, transparent)" pannable zoomable />}
@@ -425,6 +427,10 @@ function projectCanvasNode(node: StudioNode, edges: StudioEdge[], manifests: Map
       type: 'loop-container' as const,
       position: node.position,
       selected: node.selected,
+      measured: node.measured,
+      dragging: node.dragging,
+      width,
+      height,
       style: { width, height, zIndex: 0 },
       initialWidth: width,
       initialHeight: height,
@@ -494,7 +500,7 @@ function edgeRuntimeStatus(source?: string, target?: string) {
   return undefined
 }
 
-function annotationNode(annotation: EditorDocument['annotations'][number], editor: Pick<ReturnType<typeof useEditorStore.getState>, 'updateAnnotation' | 'removeAnnotation' | 'beginEdit' | 'commitEdit' | 'updateAnnotationFrame'>): CanvasNode {
+function annotationNode(annotation: EditorDocument['annotations'][number], editor: Pick<import("../store/editor-store").EditorState, 'updateAnnotation' | 'removeAnnotation' | 'beginEdit' | 'commitEdit' | 'updateAnnotationFrame'>): CanvasNode {
   return {
     id: `annotation:${annotation.id}`,
     type: 'annotation',
@@ -512,7 +518,7 @@ function annotationNode(annotation: EditorDocument['annotations'][number], edito
   }
 }
 
-function groupNode(view: GroupView, editor: Pick<ReturnType<typeof useEditorStore.getState>, 'toggleGroup' | 'removeGroup'>): CanvasNode {
+function groupNode(view: GroupView, editor: Pick<import("../store/editor-store").EditorState, 'toggleGroup' | 'removeGroup'>): CanvasNode {
   return {
     id: view.id,
     type: 'group',

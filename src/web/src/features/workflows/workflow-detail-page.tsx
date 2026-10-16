@@ -1,8 +1,10 @@
+import type { WorkflowDraft } from "../../shared/api/types"
+import { WorkflowDraftsCard } from "./workflow-drafts-card"
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Archive, GitBranch, Plus, Rocket, ShieldCheck, UsersRound } from 'lucide-react'
 import { useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 
 import { useAuth } from '../../app/providers/auth-provider'
 import { apiRequest, jsonBody } from '../../shared/api/client'
@@ -34,11 +36,14 @@ export function WorkflowDetailPage() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [memberOpen, setMemberOpen] = useState(false)
   const workflow = useQuery({ queryKey: ['workflow', workflowId], queryFn: () => apiRequest<Workflow>(`/workflows/${workflowId}`) })
+  const [selectedDraftId, setSelectedDraftId] = useState('')
+  const drafts = useQuery({queryKey:['workflow-drafts',workflowId],queryFn:() => apiRequest<WorkflowDraft[]>(`/workflows/${workflowId}/drafts`)})
+  const selectedDraft = drafts.data?.find(d => d.id === selectedDraftId && d.status === 'active')
   const versions = useQuery({ queryKey: ['workflow-versions', workflowId], queryFn: () => apiRequest<WorkflowVersion[]>(`/workflows/${workflowId}/versions`) })
   const deployments = useQuery({ queryKey: ['workflow-deployments', workflowId], queryFn: () => apiRequest<WorkflowDeployment[]>(`/workflows/${workflowId}/deployments`) })
   const environments = useQuery({ queryKey: ['environments'], queryFn: () => apiRequest<WorkflowEnvironment[]>('/environments') })
   const members = useQuery({ queryKey: ['workflow-members', workflowId], queryFn: () => apiRequest<WorkflowMember[]>(`/workflows/${workflowId}/members`) })
-  const validation = useQuery({ queryKey: ['workflow-validation', workflowId], queryFn: () => apiRequest<ResourceValidation>(`/workflows/${workflowId}/resource-validation`) })
+  const validation = useQuery({ enabled: Boolean(selectedDraft), queryKey: ['workflow-validation', workflowId, selectedDraftId], queryFn: () => apiRequest<ResourceValidation>(`/workflows/${workflowId}/drafts/${selectedDraftId}/resource-validation`) })
   const users = useQuery({ queryKey: ['users', 'workflow-member'], queryFn: () => apiRequest<PageResponse<User>>('/users?pageSize=100') })
   const invalidate = () => Promise.all([
     queryClient.invalidateQueries({ queryKey: ['workflow', workflowId] }),
@@ -47,7 +52,7 @@ export function WorkflowDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['workflow-members', workflowId] }),
     queryClient.invalidateQueries({ queryKey: ['workflow-validation', workflowId] }),
   ])
-  const createVersionRequest = () => apiRequest<WorkflowVersion>(`/workflows/${workflowId}/versions`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: jsonBody({ draftRevision: workflow.data?.draftRevision ?? 0 }) })
+  const createVersionRequest = () => { if (!selectedDraft) throw new Error(t("workflows.selectDraft")); return apiRequest<WorkflowVersion>(`/workflows/${workflowId}/versions`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: jsonBody({ draftId:selectedDraft.id, draftRevision:selectedDraft.revision }) }) }
   const createVersion = useMutation({ mutationFn: createVersionRequest, onSuccess: async (version) => { await invalidate(); showToast(t('workflows.versionSaved', { version: version.versionNumber })) }, onError: (error: Error) => showToast(error.message) })
   const runVersion = useMutation({
     mutationFn: (versionId: string) => apiRequest<ExecutionCommandResponse>(`/workflow-versions/${versionId}/executions`, { method: 'POST', body: jsonBody({ input: {}, idempotencyKey: crypto.randomUUID() }) }),
@@ -66,8 +71,7 @@ export function WorkflowDetailPage() {
   const environmentItems = (environments.data ?? []).filter((item) => item.status === 'active')
   const primaryEnvironment = environmentItems.find((item) => item.code.toLowerCase() === 'development') ?? environmentItems[0]
   const primaryDeployment = primaryEnvironment ? deploymentItems.find((item) => item.environmentId === primaryEnvironment.id && item.status === 'active') : undefined
-  const latestVersion = versionItems[0]
-  const dirty = !latestVersion || latestVersion.sourceRevision !== value.draftRevision
+  const dirty = Boolean(selectedDraft && !versionItems.some(v => v.sourceDraftId === selectedDraft.id && v.sourceRevision === selectedDraft.revision))
   const canPublish = auth.hasPermission('workflow:publish') && value.status === 'active'
   const openPublish = (defaults: PublishDefaults = {}) => { setPublishDefaults(defaults); setPublishOpen(true) }
   const submitPublish = async (input: WorkflowPublishInput, setStage: Dispatch<SetStateAction<WorkflowPublishStage>>) => {
@@ -91,12 +95,13 @@ export function WorkflowDetailPage() {
   ]
 
   return <PageContainer>
-    <PageHeader action={<div className="flex flex-wrap justify-end gap-2"><Button asChild variant="secondary"><Link to={`/workflows/${workflowId}/editor`}><GitBranch className="size-4" />{t('workflows.openEditor')}</Link></Button>{auth.hasPermission('workflow:publish') && <Button disabled={!canPublish || environments.isLoading || environmentItems.length === 0} onClick={() => openPublish({ environmentId: primaryEnvironment?.id })}><Rocket className="size-4" />{t('workflows.publishToEnvironment')}</Button>}</div>} description={value.description ?? t('workflows.description')} title={value.name} />
+    <PageHeader action={<div className="flex flex-wrap justify-end gap-2"><Button variant="secondary" disabled={!selectedDraft} onClick={() => { if (selectedDraft) navigate(`/workflows/${workflowId}/drafts/${selectedDraft.id}/editor`) }}><GitBranch className="size-4" />{t('workflows.openEditor')}</Button>{auth.hasPermission('workflow:publish') && <Button disabled={!canPublish || environments.isLoading || environmentItems.length === 0} onClick={() => openPublish({ environmentId: primaryEnvironment?.id })}><Rocket className="size-4" />{t('workflows.publishToEnvironment')}</Button>}</div>} description={value.description ?? t('workflows.description')} title={value.name} />
     <div className="mt-5 flex flex-wrap items-center gap-3 text-xs"><StatusBadge status={value.status === 'active' ? 'active' : 'inactive'} /><span>{localizedValue(t, 'workflows.visibilities', value.visibility)}</span><span className="text-muted-foreground">{t('workflows.owner', { owner: value.ownerName })}</span>{dirty && <Badge tone="warning">{t('workflows.unpublishedChanges')}</Badge>}</div>
     <WorkflowReleaseOverview deployments={deploymentItems} primaryDeployment={primaryDeployment} primaryEnvironment={primaryEnvironment} versions={versionItems} workflow={value} />
 
     <div className="mt-5 grid items-start gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,.7fr)]">
       <div className="grid gap-5">
+        <WorkflowDraftsCard workflowId={workflowId} drafts={drafts.data ?? []} versions={versionItems} canEdit={value.canEdit && value.status === "active"} selectedId={selectedDraftId} onSelect={setSelectedDraftId} />
         <ResourceValidationCard validation={validation.data} />
         <WorkflowVersionsCard canCreate={canPublish} canRun={auth.hasPermission('execution:run')} creating={createVersion.isPending} deployments={deploymentItems} draftDirty={dirty} onCreate={() => createVersion.mutate()} onPublish={(versionId) => openPublish({ environmentId: primaryEnvironment?.id, versionId })} onRun={(versionId) => runVersion.mutate(versionId)} running={runVersion.isPending} versions={versionItems} />
       </div>
@@ -107,7 +112,7 @@ export function WorkflowDetailPage() {
       </div>
     </div>
 
-    <WorkflowPublishDialog defaultEnvironmentId={publishDefaults.environmentId} defaultVersionId={publishDefaults.versionId} deployments={deploymentItems} dirty={dirty} draftRevision={value.draftRevision} environments={environmentItems} onClose={() => setPublishOpen(false)} onSubmit={submitPublish} open={publishOpen} versions={versionItems} />
+    <WorkflowPublishDialog defaultEnvironmentId={publishDefaults.environmentId} defaultVersionId={publishDefaults.versionId} deployments={deploymentItems} dirty={dirty} draftRevision={selectedDraft?.revision ?? 0} environments={environmentItems} onClose={() => setPublishOpen(false)} onSubmit={submitPublish} open={publishOpen} versions={versionItems} />
     <WorkflowReleaseHistoryDialog canRollback={canPublish} deployments={deploymentItems} onClose={() => setHistoryOpen(false)} onRollback={(deployment) => rollback.mutate(deployment)} open={historyOpen} rollingBack={rollback.isPending} />
     {memberOpen && <EntityFormDialog cancelLabel={t('common.cancel')} fields={memberFields} onClose={() => setMemberOpen(false)} onSubmit={addMember} open submitLabel={t('common.save')} title={t('workflows.addMember')} />}
   </PageContainer>

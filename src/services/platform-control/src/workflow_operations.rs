@@ -22,11 +22,14 @@ use crate::{
 
 pub fn routes() -> Router<ControlApiState> {
     Router::new()
-        .route("/api/v1/workflows/{id}/export", get(export_workflow))
+        .route(
+            "/api/v1/workflows/{id}/drafts/{draft_id}/export",
+            get(export_workflow),
+        )
         .route("/api/v1/workflows/import", post(import_workflow))
         .route("/api/v1/workflows/{id}/run", post(run_workflow))
         .route(
-            "/api/v1/workflows/{id}/debug-executions",
+            "/api/v1/workflows/{id}/drafts/{draft_id}/debug-executions",
             post(debug_execution),
         )
         .route(
@@ -74,10 +77,11 @@ struct ImportRequest {
 async fn export_workflow(
     State(state): State<ControlApiState>,
     actor: Actor,
-    Path(id): Path<Uuid>,
+    Path((id, draft_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<Value>> {
     actor.require("workflow:view")?;
-    let row=sqlx::query("SELECT w.name,d.definition_json,d.editor_json FROM workflows w JOIN workflow_drafts d ON d.tenant_id=w.tenant_id AND d.workflow_id=w.id WHERE w.tenant_id=? AND w.id=?").bind(actor.tenant_id).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Workflow"))?;
+    crate::workflow_api::require_workflow_access(&state, &actor, id, false).await?;
+    let row=sqlx::query("SELECT w.name,d.definition_json,d.editor_json FROM workflows w JOIN workflow_drafts d ON d.tenant_id=w.tenant_id AND d.workflow_id=w.id WHERE w.tenant_id=? AND w.id=? AND d.id=?").bind(actor.tenant_id).bind(id).bind(draft_id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Workflow"))?;
     let definition: Value = row.try_get("definition_json")?;
     let editor: Value = row
         .try_get::<Option<Value>, _>("editor_json")?
@@ -182,7 +186,23 @@ async fn import_workflow(
         true,
     )
     .await?;
-    sqlx::query("INSERT INTO workflow_drafts(id,tenant_id,workflow_id,schema_version,revision,definition_json,editor_json,content_hash,editor_hash,updated_by) VALUES(?,?,?,'8.0',0,?,?,?,?,?)").bind(draft).bind(actor.tenant_id).bind(workflow).bind(definition).bind(editor).bind(&definition_hash).bind(editor_hash).bind(actor.user_id).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO workflow_drafts(id,tenant_id,workflow_id,schema_version,revision,definition_json,editor_json,content_hash,editor_hash,updated_by,created_by) VALUES(?,?,?,'8.0',0,?,?,?,?,?,?)").bind(draft).bind(actor.tenant_id).bind(workflow).bind(definition).bind(editor).bind(&definition_hash).bind(editor_hash).bind(actor.user_id).bind(actor.user_id).execute(&mut *tx).await?;
+    crate::workflow_drafts::record_initial_revision(&mut tx, &actor, workflow, draft).await?;
+    let parsed = serde_json::from_value(
+        sqlx::query_scalar::<_, Value>("SELECT definition_json FROM workflow_drafts WHERE id=?")
+            .bind(draft)
+            .fetch_one(&mut *tx)
+            .await?,
+    )
+    .map_err(ApiError::internal)?;
+    crate::workflow_resources::replace_draft_resources(
+        &mut tx,
+        actor.tenant_id,
+        workflow,
+        draft,
+        &parsed,
+    )
+    .await?;
     tx.commit().await?;
     Ok((
         StatusCode::CREATED,
@@ -197,6 +217,7 @@ async fn run_workflow(
     Json(input): Json<RunRequest>,
 ) -> ApiResult<(StatusCode, Json<Value>)> {
     actor.require("execution:run")?;
+    crate::workflow_api::require_workflow_access(&state, &actor, id, false).await?;
     let version:Uuid=sqlx::query_scalar("SELECT id FROM workflow_versions WHERE tenant_id=? AND workflow_id=? ORDER BY version_number DESC LIMIT 1").bind(actor.tenant_id).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::unprocessable("WORKFLOW_VERSION_REQUIRED","Publish a Workflow Version before running"))?;
     invoke_version(&state, &actor, version, input.input, input.idempotency_key).await
 }
@@ -239,10 +260,11 @@ async fn invoke_version(
 async fn debug_execution(
     State(state): State<ControlApiState>,
     actor: Actor,
-    Path(id): Path<Uuid>,
+    Path((id, draft_id)): Path<(Uuid, Uuid)>,
     Json(input): Json<DebugRequest>,
 ) -> ApiResult<(StatusCode, Json<Value>)> {
     actor.require("execution:run")?;
+    crate::workflow_api::require_workflow_access(&state, &actor, id, true).await?;
     let runtime_mode = runtime_debug_mode(&input.mode)?;
     let target_node_id = (runtime_mode != agentx_runtime_contracts::PartialExecutionModeV1::Whole)
         .then(|| input.target_node_id.clone())
@@ -265,20 +287,6 @@ async fn debug_execution(
             "This debug mode requires an explicit input source",
         ));
     }
-    let revision: u64 = sqlx::query_scalar(
-        "SELECT revision FROM workflow_drafts WHERE tenant_id=? AND workflow_id=?",
-    )
-    .bind(actor.tenant_id)
-    .bind(id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| ApiError::not_found("Workflow draft"))?;
-    if revision != input.expected_revision {
-        return Err(ApiError::conflict(
-            "WORKFLOW_REVISION_CONFLICT",
-            "Workflow draft changed",
-        ));
-    }
     let context = input
         .context
         .as_object()
@@ -286,8 +294,14 @@ async fn debug_execution(
         .unwrap_or_default()
         .into_iter()
         .collect();
-    let node_parameters =
-        load_debug_overlays(&state.pool, actor.tenant_id, id, &input.overlay_ids).await?;
+    let node_parameters = load_debug_overlays(
+        &state.pool,
+        actor.tenant_id,
+        id,
+        draft_id,
+        &input.overlay_ids,
+    )
+    .await?;
     let input_source = (!input.input_source.is_null()
         && input
             .input_source
@@ -314,6 +328,8 @@ async fn debug_execution(
         actor,
         Path(id),
         Json(crate::work_packages::StartDebugRunRequest {
+            draft_id,
+            revision: input.expected_revision,
             idempotency_key: input
                 .idempotency_key
                 .unwrap_or_else(|| Uuid::now_v7().to_string()),
@@ -337,6 +353,7 @@ async fn load_debug_overlays(
     pool: &sqlx::MySqlPool,
     tenant_id: Uuid,
     workflow_id: Uuid,
+    draft_id: Uuid,
     overlay_ids: &[Uuid],
 ) -> ApiResult<BTreeMap<String, Value>> {
     let mut overlays = BTreeMap::new();
@@ -349,10 +366,11 @@ async fn load_debug_overlays(
             ));
         }
         let row = sqlx::query(
-            "SELECT node_id,kind,payload_json,artifact_id,stale FROM workflow_debug_overlays WHERE tenant_id=? AND workflow_id=? AND id=?",
+            "SELECT node_id,kind,payload_json,artifact_id,stale FROM workflow_debug_overlays WHERE tenant_id=? AND workflow_id=? AND draft_id=? AND id=?",
         )
         .bind(tenant_id)
         .bind(workflow_id)
+        .bind(draft_id)
         .bind(overlay_id)
         .fetch_optional(pool)
         .await?

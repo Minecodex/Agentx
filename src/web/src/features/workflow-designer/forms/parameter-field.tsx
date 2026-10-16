@@ -91,6 +91,7 @@ export function ParameterField({
   if (control === "select")
     return field(
       <Select
+        aria-label={label}
         className="w-full"
         onValueChange={onChange}
         options={(ui.options ?? schema.enum ?? []).map((item) =>
@@ -102,6 +103,7 @@ export function ParameterField({
   if (control === "provider_options")
     return field(
       <Select
+        aria-label={label}
         className="w-full"
         onValueChange={onChange}
         options={providerOptions}
@@ -126,6 +128,7 @@ export function ParameterField({
   if (control === "number")
     return field(
       <Input
+        aria-label={label}
         max={schema.maximum}
         min={schema.minimum}
         onChange={(event) =>
@@ -197,7 +200,7 @@ export function ParameterField({
   if (control === "buttons_editor")
     return field(<ButtonsEditorControl onChange={onChange} value={value} />);
   void workflowId;
-  return field(<Input onChange={(event) => onChange(event.target.value)} value={value === undefined || value === null ? "" : String(value)} />);
+  return field(<Input aria-label={label} onChange={(event) => onChange(event.target.value)} value={value === undefined || value === null ? "" : String(value)} />);
 }
 
 function CodeControl({

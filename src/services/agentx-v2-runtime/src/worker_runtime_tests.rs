@@ -521,6 +521,7 @@ fn every_studio_manifest_parameter_has_an_explicit_runtime_consumer() {
             ],
         ),
         ("sub_workflow", &["workflowVersionId", "inputs"]),
+        ("knowledge_retrieval", &["query", "topK"]),
         (
             "declarative_http",
             &[
@@ -592,5 +593,62 @@ fn every_studio_manifest_parameter_has_an_explicit_runtime_consumer() {
             "{} parameter ownership drifted",
             manifest.node_type
         );
+    }
+}
+
+#[test]
+fn valid_empty_provider_results_remain_successful() {
+    let results = [
+        super::output::tool_execution_output(WorkerExecution::succeeded(
+            json!({"content":[],"isError":false}),
+        )),
+        super::output::memory_execution_output(WorkerExecution::succeeded(json!({"results":[]}))),
+        super::output::rag_execution_output(WorkerExecution::succeeded(
+            json!({"documents":[],"text":""}),
+        )),
+        openai_execution_output(
+            WorkerExecution::succeeded(
+                json!({"choices":[{"message":{"role":"assistant","content":""},"finish_reason":"stop"}]}),
+            ),
+            &json!({}),
+        ),
+        sandbox_execution_output(
+            WorkerExecution::succeeded(
+                json!({"output":{"stdout":"","stderr":"","exitCode":0,"structuredOutput":{},"files":[]}}),
+            ),
+            &json!({"outputSchema":{"type":"object"}}),
+        ),
+        super::output::finalize_retrieval_response(
+            "lightrag",
+            WorkerExecution::succeeded(
+                json!({"status":"failure","data":{},"metadata":{"failure_reason":"no_results"}}),
+            ),
+        ),
+    ];
+    for result in results {
+        assert_eq!(
+            result.status,
+            WorkerResultStatusV1::Succeeded,
+            "{:?}",
+            result.error_code
+        );
+        assert!(result.error_code.is_none());
+    }
+}
+
+#[test]
+fn empty_result_normalization_preserves_real_failures() {
+    for normalize in [
+        super::output::tool_execution_output,
+        super::output::memory_execution_output,
+        super::output::rag_execution_output,
+    ] {
+        let result = normalize(WorkerExecution::failed(
+            "PROVIDER_UNAVAILABLE",
+            "connection refused",
+            false,
+        ));
+        assert_eq!(result.status, WorkerResultStatusV1::Failed);
+        assert_eq!(result.error_code.as_deref(), Some("PROVIDER_UNAVAILABLE"));
     }
 }

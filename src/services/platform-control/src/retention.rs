@@ -165,6 +165,18 @@ async fn publish(publisher: &Publisher, claim: &RetentionClaim) -> Result<()> {
         enabled &= row.try_get::<bool, _>("enabled")?;
     }
     anyhow::ensure!(!days.is_empty(), "Retention Run has no versioned policy");
+    if enabled {
+        if let Some(days) = days.get(&RuntimeRetentionDataTypeV1::Trace) {
+            crate::studio_builder_retention::collect(
+                &publisher.pool,
+                claim.tenant_id,
+                claim.id,
+                *days,
+                claim.dry_run,
+            )
+            .await?;
+        }
+    }
     let target = AdmissionTargetV1::RetentionPolicy {
         state: RuntimeRetentionPolicyV1 {
             tenant_id: claim.tenant_id,

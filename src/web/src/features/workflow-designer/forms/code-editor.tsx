@@ -5,6 +5,7 @@ import type { OnMount } from '@monaco-editor/react'
 import { Textarea } from '../../../shared/ui/textarea'
 
 const Monaco = lazy(async () => {
+  await import('./monaco-workers')
   const [reactMonaco, monaco] = await Promise.all([import('@monaco-editor/react'), import('monaco-editor')])
   reactMonaco.loader.config({ monaco })
   return { default: reactMonaco.default }

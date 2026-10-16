@@ -342,3 +342,7 @@ Workflow、Environment、Application、Credential、Model Alias、MCP Server、S
 用户输入型唯一字段采用统一写入协议：按领域规则规范化，按唯一索引真实作用域前置查询，并保留数据库约束处理并发竞态。前置检查和数据库兜底返回相同的稳定领域错误码、HTTP 409 与 `fieldErrors`，客户端不得展示 SQL 错误。幂等键、版本号、内容 Hash 和执行序号等内部约束仍由业务流程显式处理；未登记的唯一冲突返回 `INTERNAL_ERROR`，日志只记录索引、数据库错误码和 requestId，不记录冲突值。
 
 Dataset 导入先检查文件内重复，再在事务中检查现有 Case，并用 `details.caseKey/line` 定位。Artifact 写入必须位于可执行的业务前检之后；后续事务失败立即补偿对象和配额，补偿失败由 Retention 兜底。
+
+## 租户画布 AI 模型
+
+模型列表支持设置、清除及当前模型标记。`tenant_settings` 保存 Alias ID、授权 Credential ID，复用修订号并发控制。配置同时要求 model:manage、company:manage、resource:grant；该授权仅用于设计态调用，不向 Workflow Service Identity 自动写资源 Grant。编辑者可使用租户配置，画布没有模型选择器。配置变化影响新 Run；禁用或撤销阻断后续效果，Alias 改用其他凭据需重新设置。

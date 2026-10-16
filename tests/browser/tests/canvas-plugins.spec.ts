@@ -1,4 +1,6 @@
+import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
 import { connect, login } from '../support/canvas-plugin'
+import { showEdgeToolbar } from './workflow-studio-editor-helpers'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -55,7 +57,7 @@ async function configureExitReference(page: Page) {
   await panel.getByRole('button', { name: /^(关闭|Close)$/ }).first().click()
 }
 
-test('imports a TypeScript canvas plugin and opens its React panel', async ({ page }, testInfo) => {
+test('imports a TypeScript canvas plugin and edits its static platform controls', async ({ page }, testInfo) => {
   const token = await login(page)
   const packagePath = resolve(import.meta.dirname, '../../../src/plugins/templates/canvas-plugin/dist/acme-json-mapper.agentx-plugin')
   const packageBytes = await readFile(packagePath)
@@ -92,6 +94,7 @@ test('imports a TypeScript canvas plugin and opens its React panel', async ({ pa
     await dialog.getByRole('button', { name: '确认导入' }).click()
     await expect(dialog).toBeHidden()
   }
+  await page.getByRole('searchbox', { name: '搜索插件' }).fill('acme/json-mapper')
   await expect(page.getByText('JSON Mapper', { exact: true }).first()).toBeVisible()
   const managementShot = testInfo.outputPath('canvas-plugins-light-zh.png')
   await page.screenshot({ path: managementShot, fullPage: true })
@@ -116,20 +119,20 @@ test('imports a TypeScript canvas plugin and opens its React panel', async ({ pa
 
   const validationWorkflowResponse = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}` }, data: { name: `Plugin validation ${Date.now()}`, visibility: 'company' } })
   const validationWorkflow = await validationWorkflowResponse.json() as { id: string }
-  const validationDraft = await api<{ revision: number; definition: { nodes: Array<Record<string, unknown>>; [key: string]: unknown }; editorDocument: { nodeLayouts?: unknown[]; [key: string]: unknown } }>(page, token, `/workflows/${validationWorkflow.id}/draft`)
+  const validationDraft = await api<{ revision: number; definition: { nodes: Array<Record<string, unknown>>; [key: string]: unknown }; editorDocument: { nodeLayouts?: unknown[]; [key: string]: unknown } }>(page, token, `/workflows/${validationWorkflow.id}/drafts/${await fixtureDraftId(page, validationWorkflow.id)}`)
   const incompleteNode = { id: 'dynamic', key: 'dynamic', type: 'acme.json_mapper', typeVersion: 1, name: 'Dynamic', disabled: false, protected: false, parameters: { label: '', includeMetadata: false, largeTrace: false }, contextWrites: [], resourceReferences: [], settings: {} }
   const validationDefinition = { ...validationDraft.definition, nodes: [incompleteNode, ...validationDraft.definition.nodes], connections: [{ id: 'dynamic-start', sourceNodeId: '__start__', sourceHandle: 'main', targetNodeId: 'dynamic', targetHandle: 'main', order: 0 }, { id: 'dynamic-end', sourceNodeId: 'dynamic', sourceHandle: 'main', targetNodeId: 'exit', targetHandle: 'main', order: 0 }] }
   const validationEditor = { ...validationDraft.editorDocument, nodeLayouts: [{ nodeId: 'dynamic', x: 320, y: 200 }, ...(validationDraft.editorDocument.nodeLayouts ?? [])], edges: [{ edgeId: 'dynamic-start' }, { edgeId: 'dynamic-end' }] }
-  const incompleteSave = await page.request.put(`/api/v1/workflows/${validationWorkflow.id}/draft`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: validationDraft.revision, definition: validationDefinition, editorDocument: validationEditor } })
+  const incompleteSave = await page.request.put(`/api/v1/workflows/${validationWorkflow.id}/drafts/${await fixtureDraftId(page, validationWorkflow.id)}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: validationDraft.revision, definition: validationDefinition, editorDocument: validationEditor } })
   expect(incompleteSave.ok(), await incompleteSave.text()).toBeTruthy()
   const incompleteRevision = ((await incompleteSave.json()) as { revision: number }).revision
-  const blockedVersion = await page.request.post(`/api/v1/workflows/${validationWorkflow.id}/versions`, { headers: { Authorization: `Bearer ${token}` }, data: { draftRevision: incompleteRevision } })
+  const blockedVersion = await page.request.post(`/api/v1/workflows/${validationWorkflow.id}/versions`, { headers: { Authorization: `Bearer ${token}` }, data: { draftId: await fixtureDraftId(page, validationWorkflow.id),  draftRevision: incompleteRevision } })
   expect(blockedVersion.status()).toBe(422)
   expect((await blockedVersion.json()).code).toBe('PLUGIN_DEFINITION_NOT_READY')
   incompleteNode.parameters.label = '__invalid__'
-  const invalidSave = await page.request.put(`/api/v1/workflows/${validationWorkflow.id}/draft`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: incompleteRevision, definition: validationDefinition, editorDocument: validationEditor } })
+  const invalidSave = await page.request.put(`/api/v1/workflows/${validationWorkflow.id}/drafts/${await fixtureDraftId(page, validationWorkflow.id)}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: incompleteRevision, definition: validationDefinition, editorDocument: validationEditor } })
   expect(invalidSave.status()).toBe(422)
-  expect((await api<{ revision: number }>(page, token, `/workflows/${validationWorkflow.id}/draft`)).revision).toBe(incompleteRevision)
+  expect((await api<{ revision: number }>(page, token, `/workflows/${validationWorkflow.id}/drafts/${await fixtureDraftId(page, validationWorkflow.id)}`)).revision).toBe(incompleteRevision)
 
   const response = await page.request.post('/api/v1/workflows', {
     headers: { Authorization: `Bearer ${token}` },
@@ -137,26 +140,21 @@ test('imports a TypeScript canvas plugin and opens its React panel', async ({ pa
   })
   expect(response.ok(), await response.text()).toBeTruthy()
   const workflow = (await response.json()) as { id: string }
-  await page.goto(`/workflows/${workflow.id}/editor`)
-  const draft = await api<{ definition: { connections: Array<{ id: string }> } }>(page, token, `/workflows/${workflow.id}/draft`)
+  await page.goto(`/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}/editor`)
+  const draft = await api<{ definition: { connections: Array<{ id: string }> } }>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
   const initialEdge = page.locator(`.react-flow__edge[data-testid="rf__edge-${draft.definition.connections[0].id}"]`)
   const edgeToolbar = page.locator(`.studio-edge-toolbar[data-edge-id="${draft.definition.connections[0].id}"]`)
-  await initialEdge.click({ force: true })
-  await expect(edgeToolbar).toHaveCSS('opacity', '1')
+  await showEdgeToolbar(initialEdge, edgeToolbar)
   await edgeToolbar.getByRole('button', { name: '删除连线' }).click()
   await expect(page.locator('.react-flow__edge')).toHaveCount(0)
   await page.getByRole('textbox', { name: '搜索节点' }).fill('JSON Mapper')
   await page.getByTestId('palette-action-acme.json_mapper').first().click()
   const inspector = page.getByTestId('node-details-view')
-  await expect(inspector.getByText('Label', { exact: true })).toBeVisible()
+  await expect(inspector.getByLabel('Label', { exact: true })).toBeVisible()
   await inspector.getByLabel('Label').fill('customer')
-  await inspector.getByLabel('Search provider').fill('slow')
-  await inspector.getByRole('button', { name: 'Search', exact: true }).click()
-  await inspector.getByLabel('Search provider').fill('cus')
-  await inspector.getByRole('button', { name: 'Search', exact: true }).click()
-  await expect(inspector.getByTestId('plugin-provider-results')).toHaveText('Customer')
+  await expect(inspector.getByLabel('Search provider')).toHaveCount(0)
   await inspector.getByLabel('Metadata output').check()
-  const pluginNode = page.locator('.react-flow__node-manifest').filter({ hasText: 'Label: customer' })
+  const pluginNode = page.locator('.react-flow__node-manifest').filter({ hasText: 'JSON Mapper' })
   await expect(pluginNode).toBeVisible()
   await expect(pluginNode.locator('.react-flow__handle.source[data-handleid="metadata"]')).toBeVisible()
   await page.getByRole('button', { name: '撤销' }).click()
@@ -164,7 +162,7 @@ test('imports a TypeScript canvas plugin and opens its React panel', async ({ pa
   await page.getByRole('button', { name: '重做' }).click()
   await expect(pluginNode.locator('.react-flow__handle.source[data-handleid="metadata"]')).toBeVisible()
   await pluginNode.click()
-  await expect(inspector.getByText('Label', { exact: true })).toBeVisible()
+  await expect(inspector.getByLabel('Label', { exact: true })).toBeVisible()
   await inspector.getByLabel('Large trace artifact').check()
   await inspector.getByRole('button', { name: '关闭', exact: true }).first().click()
   await page.getByRole('button', { name: '适应画布', exact: true }).click({ force: true })
@@ -174,15 +172,15 @@ test('imports a TypeScript canvas plugin and opens its React panel', async ({ pa
   const save = page.locator('header').getByRole('button', { name: '保存', exact: true })
   let savedRevision = 0
   if (await save.isEnabled()) {
-    const saved = page.waitForResponse((value) => value.url().endsWith(`/api/v1/workflows/${workflow.id}/draft`) && value.request().method() === 'PUT')
+    const saved = page.waitForResponse((value) => value.url().endsWith(`/api/v1/workflows/${workflow.id}/drafts/${fixtureDraftIdKnown(workflow.id)}`) && value.request().method() === 'PUT')
     await save.click()
     const savedResponse = await saved
     expect(savedResponse.ok()).toBeTruthy()
     savedRevision = ((await savedResponse.json()) as { revision: number }).revision
   }
   await expect(page.locator('header').getByText(/修订号 \d+ · 已保存/)).toBeVisible()
-  if (!savedRevision) savedRevision = (await api<{ revision: number }>(page, token, `/workflows/${workflow.id}/draft`)).revision
-  const workflowVersionResponse = await page.request.post(`/api/v1/workflows/${workflow.id}/versions`, { headers: { Authorization: `Bearer ${token}` }, data: { draftRevision: savedRevision } })
+  if (!savedRevision) savedRevision = (await api<{ revision: number }>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)).revision
+  const workflowVersionResponse = await page.request.post(`/api/v1/workflows/${workflow.id}/versions`, { headers: { Authorization: `Bearer ${token}` }, data: { draftId: await fixtureDraftId(page, workflow.id),  draftRevision: savedRevision } })
   expect(workflowVersionResponse.ok(), await workflowVersionResponse.text()).toBeTruthy()
   const workflowVersion = await workflowVersionResponse.json() as { id: string }
   const environment = (await api<Array<{ id: string; code: string }>>(page, token, '/environments')).find((item) => item.code === 'development')!
@@ -218,10 +216,10 @@ test('imports a TypeScript canvas plugin and opens its React panel', async ({ pa
   expect(completed.output?.mapped).toBe(1)
   const nodes = await api<{ items: Array<{ nodeType: string; status: string }> }>(page, token, `/executions/${executionId}/nodes`)
   expect(nodes.items).toContainEqual(expect.objectContaining({ nodeType: 'acme.json_mapper', status: 'succeeded' }))
-  const runtimeRail = page.getByTestId('runtime-rail')
-  const expand = runtimeRail.getByRole('button', { name: '展开执行轨道' })
-  if (await expand.isVisible().catch(() => false)) await expand.click()
-  await runtimeRail.getByRole('tab', { name: 'Trace', exact: true }).click()
+  // Executable trace renderers belong to the user-opened execution detail,
+  // outside the editor's static-only binding.
+  await page.goto(`/executions/${executionId}`)
+  const runtimeRail = page.getByTestId('trace-workspace')
   await runtimeRail.getByRole('tab', { name: '高级瀑布' }).click()
   const pluginSpan = runtimeRail.getByRole('row').filter({ hasText: 'Map items' }).first()
   await expect(pluginSpan).toBeVisible({ timeout: 30_000 }); await pluginSpan.click()
@@ -241,14 +239,14 @@ test('imports a TypeScript canvas plugin and opens its React panel', async ({ pa
   const parentWorkflowResponse = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}` }, data: { name: `Plugin sub-workflow ${Date.now()}`, visibility: 'company' } })
   expect(parentWorkflowResponse.status()).toBe(201)
   const parentWorkflow = await parentWorkflowResponse.json() as { id: string }
-  const parentDraft = await api<{ revision: number; definition: { nodes: unknown[]; connections: unknown[]; [key: string]: unknown }; editorDocument: { nodeLayouts?: unknown[]; [key: string]: unknown } }>(page, token, `/workflows/${parentWorkflow.id}/draft`)
+  const parentDraft = await api<{ revision: number; definition: { nodes: unknown[]; connections: unknown[]; [key: string]: unknown }; editorDocument: { nodeLayouts?: unknown[]; [key: string]: unknown } }>(page, token, `/workflows/${parentWorkflow.id}/drafts/${await fixtureDraftId(page, parentWorkflow.id)}`)
   const childNode = { id: 'plugin-child', key: 'plugin_child', type: 'sub_workflow', typeVersion: 1, name: 'Plugin child', disabled: false, protected: false, parameters: { workflowVersionId: workflowVersion.id, inputs: { kind: 'object', fields: {} } }, contextWrites: [], resourceReferences: [], settings: {} }
   const parentDefinition = { ...parentDraft.definition, nodes: [childNode, ...parentDraft.definition.nodes], connections: [{ id: 'parent-start', sourceNodeId: '__start__', sourceHandle: 'main', targetNodeId: 'plugin-child', targetHandle: 'main', order: 0 }, { id: 'parent-end', sourceNodeId: 'plugin-child', sourceHandle: 'main', targetNodeId: 'exit', targetHandle: 'main', order: 0 }] }
   const parentEditor = { ...parentDraft.editorDocument, nodeLayouts: [{ nodeId: 'plugin-child', x: 320, y: 200 }, ...(parentDraft.editorDocument.nodeLayouts ?? [])], edges: [{ edgeId: 'parent-start' }, { edgeId: 'parent-end' }] }
-  const parentSave = await page.request.put(`/api/v1/workflows/${parentWorkflow.id}/draft`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: parentDraft.revision, definition: parentDefinition, editorDocument: parentEditor } })
+  const parentSave = await page.request.put(`/api/v1/workflows/${parentWorkflow.id}/drafts/${await fixtureDraftId(page, parentWorkflow.id)}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: parentDraft.revision, definition: parentDefinition, editorDocument: parentEditor } })
   expect(parentSave.ok(), await parentSave.text()).toBeTruthy()
   const parentRevision = ((await parentSave.json()) as { revision: number }).revision
-  const parentDebug = await page.request.post(`/api/v1/workflows/${parentWorkflow.id}/debug-executions`, { headers: { Authorization: `Bearer ${token}` }, data: { expectedRevision: parentRevision, idempotencyKey: crypto.randomUUID(), input: {}, context: {}, mode: 'full', targetNodeId: null, inputSource: {}, overlayIds: [], sideEffectDecisions: {} } })
+  const parentDebug = await page.request.post(`/api/v1/workflows/${parentWorkflow.id}/drafts/${await fixtureDraftId(page, parentWorkflow.id)}/debug-executions`, { headers: { Authorization: `Bearer ${token}` }, data: { expectedRevision: parentRevision, idempotencyKey: crypto.randomUUID(), input: {}, context: {}, mode: 'full', targetNodeId: null, inputSource: {}, overlayIds: [], sideEffectDecisions: {} } })
   expect(parentDebug.status(), await parentDebug.text()).toBe(202)
   const parentExecutionId = ((await parentDebug.json()) as { executionId: string }).executionId
   await expect.poll(async () => (await api<{ status: string }>(page, token, `/executions/${parentExecutionId}`)).status, { timeout: 120_000 }).toBe('succeeded')
@@ -299,14 +297,14 @@ test('imports a TypeScript canvas plugin and opens its React panel', async ({ pa
   const designerWorkflowResponse = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${designerToken}` }, data: { name: `Designer plugin ${Date.now()}`, visibility: 'company' } })
   expect(designerWorkflowResponse.status()).toBe(201)
   const designerWorkflow = await designerWorkflowResponse.json() as { id: string }
-  const designerDraft = await api<{ revision: number; definition: { nodes: unknown[]; connections: unknown[]; [key: string]: unknown }; editorDocument: { nodeLayouts?: unknown[]; [key: string]: unknown } }>(page, designerToken!, `/workflows/${designerWorkflow.id}/draft`)
+  const designerDraft = await api<{ revision: number; definition: { nodes: unknown[]; connections: unknown[]; [key: string]: unknown }; editorDocument: { nodeLayouts?: unknown[]; [key: string]: unknown } }>(page, designerToken!, `/workflows/${designerWorkflow.id}/drafts/${await fixtureDraftId(page, designerWorkflow.id)}`)
   const designerNode = { id: 'designer-plugin', key: 'designer_plugin', type: 'acme.json_mapper', typeVersion: 1, name: 'Designer Plugin', disabled: false, protected: false, parameters: { label: 'designer', includeMetadata: false, largeTrace: false }, contextWrites: [], resourceReferences: [], settings: {} }
   const designerDefinition = { ...designerDraft.definition, nodes: [designerNode, ...designerDraft.definition.nodes], connections: [{ id: 'designer-start', sourceNodeId: '__start__', sourceHandle: 'main', targetNodeId: 'designer-plugin', targetHandle: 'main', order: 0 }, { id: 'designer-end', sourceNodeId: 'designer-plugin', sourceHandle: 'main', targetNodeId: 'exit', targetHandle: 'main', order: 0 }] }
   const designerEditor = { ...designerDraft.editorDocument, nodeLayouts: [{ nodeId: 'designer-plugin', x: 320, y: 200 }, ...(designerDraft.editorDocument.nodeLayouts ?? [])], edges: [{ edgeId: 'designer-start' }, { edgeId: 'designer-end' }] }
-  const designerSave = await page.request.put(`/api/v1/workflows/${designerWorkflow.id}/draft`, { headers: { Authorization: `Bearer ${designerToken}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: designerDraft.revision, definition: designerDefinition, editorDocument: designerEditor } })
+  const designerSave = await page.request.put(`/api/v1/workflows/${designerWorkflow.id}/drafts/${await fixtureDraftId(page, designerWorkflow.id)}`, { headers: { Authorization: `Bearer ${designerToken}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: designerDraft.revision, definition: designerDefinition, editorDocument: designerEditor } })
   expect(designerSave.ok(), await designerSave.text()).toBeTruthy()
   const designerRevision = ((await designerSave.json()) as { revision: number }).revision
-  const designerDebug = await page.request.post(`/api/v1/workflows/${designerWorkflow.id}/debug-executions`, { headers: { Authorization: `Bearer ${designerToken}` }, data: { expectedRevision: designerRevision, idempotencyKey: crypto.randomUUID(), input: {}, context: {}, mode: 'full', targetNodeId: null, inputSource: {}, overlayIds: [], sideEffectDecisions: {} } })
+  const designerDebug = await page.request.post(`/api/v1/workflows/${designerWorkflow.id}/drafts/${await fixtureDraftId(page, designerWorkflow.id)}/debug-executions`, { headers: { Authorization: `Bearer ${designerToken}` }, data: { expectedRevision: designerRevision, idempotencyKey: crypto.randomUUID(), input: {}, context: {}, mode: 'full', targetNodeId: null, inputSource: {}, overlayIds: [], sideEffectDecisions: {} } })
   expect(designerDebug.status(), await designerDebug.text()).toBe(202)
   const designerRun = (await designerDebug.json()) as { debugRunId: string; executionId: string }
   await expect.poll(async () => {
@@ -330,7 +328,7 @@ test('imports a TypeScript canvas plugin and opens its React panel', async ({ pa
   const blockedRepublish = await page.request.post(`/api/v1/applications/${application.id}/deployments`, { headers: { Authorization: `Bearer ${token}` }, data: { workflowVersionId: workflowVersion.id, environmentId: environment.id, sessionVersionPolicy: 'pinned' } })
   expect(blockedRepublish.status()).toBe(409)
   expect((await blockedRepublish.json()).code).toBe('PLUGIN_VERSION_DISABLED')
-  const blockedDebug = await page.request.post(`/api/v1/workflows/${workflow.id}/debug-executions`, { headers: { Authorization: `Bearer ${token}` }, data: { expectedRevision: savedRevision, idempotencyKey: crypto.randomUUID(), input: {}, context: {}, mode: 'full', targetNodeId: null, inputSource: {}, overlayIds: [], sideEffectDecisions: {} } })
+  const blockedDebug = await page.request.post(`/api/v1/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}/debug-executions`, { headers: { Authorization: `Bearer ${token}` }, data: { expectedRevision: savedRevision, idempotencyKey: crypto.randomUUID(), input: {}, context: {}, mode: 'full', targetNodeId: null, inputSource: {}, overlayIds: [], sideEffectDecisions: {} } })
   expect(blockedDebug.status()).toBe(409)
   expect((await blockedDebug.json()).code).toBe('PLUGIN_VERSION_DISABLED')
   const catalog = await api<{ items: Array<{ nodeType: string; version: number }> }>(page, token, '/node-definitions?pageSize=100')
@@ -407,12 +405,12 @@ test('imports a TypeScript canvas plugin and opens its React panel', async ({ pa
   }
   const raceWorkflowResponse = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}` }, data: { name: `Plugin delete race ${Date.now()}`, visibility: 'company' } })
   const raceWorkflow = await raceWorkflowResponse.json() as { id: string }
-  const raceDraft = await api<{ revision: number; definition: { nodes: unknown[]; connections: unknown[]; [key: string]: unknown }; editorDocument: { nodeLayouts: unknown[]; edges: unknown[]; [key: string]: unknown } }>(page, token, `/workflows/${raceWorkflow.id}/draft`)
+  const raceDraft = await api<{ revision: number; definition: { nodes: unknown[]; connections: unknown[]; [key: string]: unknown }; editorDocument: { nodeLayouts: unknown[]; edges: unknown[]; [key: string]: unknown } }>(page, token, `/workflows/${raceWorkflow.id}/drafts/${await fixtureDraftId(page, raceWorkflow.id)}`)
   const raceNode = { id: 'race', key: 'race', type: 'acme.race', typeVersion: 1, name: 'Race Plugin', disabled: false, protected: false, parameters: { label: 'race', includeMetadata: false }, contextWrites: [], resourceReferences: [], settings: {} }
   const raceDefinition = { ...raceDraft.definition, nodes: [raceNode, ...raceDraft.definition.nodes], connections: [{ id: 'race-start', sourceNodeId: '__start__', sourceHandle: 'main', targetNodeId: 'race', targetHandle: 'main', order: 0 }, { id: 'race-exit', sourceNodeId: 'race', sourceHandle: 'main', targetNodeId: 'exit', targetHandle: 'main', order: 0 }] }
   const raceEditor = { ...raceDraft.editorDocument, nodeLayouts: [{ nodeId: 'race', x: 340, y: 220 }, ...raceDraft.editorDocument.nodeLayouts], edges: [{ edgeId: 'race-start' }, { edgeId: 'race-exit' }] }
   const [raceSave, raceDelete] = await Promise.all([
-    page.request.put(`/api/v1/workflows/${raceWorkflow.id}/draft`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: raceDraft.revision, definition: raceDefinition, editorDocument: raceEditor } }),
+    page.request.put(`/api/v1/workflows/${raceWorkflow.id}/drafts/${await fixtureDraftId(page, raceWorkflow.id)}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: raceDraft.revision, definition: raceDefinition, editorDocument: raceEditor } }),
     page.request.delete(`/api/v1/canvas-plugins/${racePlugin.id}/versions/${racePlugin.versions[0].id}`, { headers: { Authorization: `Bearer ${token}` } }),
   ])
   expect([raceSave.ok(), raceDelete.ok()].filter(Boolean)).toHaveLength(1)
@@ -455,11 +453,11 @@ test('imports a TypeScript canvas plugin and opens its React panel', async ({ pa
   }
   expect(withV2.versions.map((item) => item.packageVersion)).toEqual(expect.arrayContaining(['1.0.0', '2.0.0']))
   expect(withV2.versions.find((item) => item.id === withV2.defaultVersionId)?.packageVersion).toBe('2.0.0')
-  const unchangedDraft = await api<{ definition: { nodes: Array<{ type: string; typeVersion: number }> } }>(page, token, `/workflows/${workflow.id}/draft`)
+  const unchangedDraft = await api<{ definition: { nodes: Array<{ type: string; typeVersion: number }> } }>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
   expect(unchangedDraft.definition.nodes.find((node) => node.type === 'acme.json_mapper')?.typeVersion).toBe(1)
 
-  await page.goto(`/workflows/${workflow.id}/editor`)
-  const versionedNode = page.locator('.react-flow__node-manifest').filter({ hasText: 'Label: customer' })
+  await page.goto(`/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}/editor`)
+  const versionedNode = page.locator('.react-flow__node-manifest').filter({ hasText: 'JSON Mapper' })
   await versionedNode.click()
   const versionField = page.getByTestId('node-details-view').locator('[data-field-path="typeVersion"]')
   await expect(versionField).toBeVisible()
@@ -470,10 +468,10 @@ test('imports a TypeScript canvas plugin and opens its React panel', async ({ pa
   await impact.getByRole('button', { name: '确认切换' }).click()
   const versionSave = page.locator('header').getByRole('button', { name: '保存', exact: true })
   await expect(versionSave).toBeEnabled()
-  const versionSaved = page.waitForResponse((value) => value.url().endsWith(`/api/v1/workflows/${workflow.id}/draft`) && value.request().method() === 'PUT')
+  const versionSaved = page.waitForResponse((value) => value.url().endsWith(`/api/v1/workflows/${workflow.id}/drafts/${fixtureDraftIdKnown(workflow.id)}`) && value.request().method() === 'PUT')
   await versionSave.click()
   expect((await versionSaved).ok()).toBeTruthy()
-  const switchedDraft = await api<{ definition: { nodes: Array<{ type: string; typeVersion: number; parameters: { label?: string } }> } }>(page, token, `/workflows/${workflow.id}/draft`)
+  const switchedDraft = await api<{ definition: { nodes: Array<{ type: string; typeVersion: number; parameters: { label?: string } }> } }>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
   expect(switchedDraft.definition.nodes.find((node) => node.type === 'acme.json_mapper')).toMatchObject({ typeVersion: 2, parameters: { label: 'customer' } })
   const v2ExecutionResponse = page.waitForResponse((value) => value.url().includes('/debug-executions') && value.request().method() === 'POST')
   await page.locator('header').getByRole('button', { name: '运行', exact: true }).click()
@@ -488,14 +486,14 @@ test('imports a TypeScript canvas plugin and opens its React panel', async ({ pa
   const secondWorkflowResponse = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}` }, data: { name: `Plugin v2 workflow ${Date.now()}`, visibility: 'company' } })
   expect(secondWorkflowResponse.status()).toBe(201)
   const secondWorkflow = await secondWorkflowResponse.json() as { id: string }
-  const secondDraft = await api<{ revision: number; definition: { nodes: unknown[]; connections: unknown[]; [key: string]: unknown }; editorDocument: { nodeLayouts?: unknown[]; [key: string]: unknown } }>(page, token, `/workflows/${secondWorkflow.id}/draft`)
+  const secondDraft = await api<{ revision: number; definition: { nodes: unknown[]; connections: unknown[]; [key: string]: unknown }; editorDocument: { nodeLayouts?: unknown[]; [key: string]: unknown } }>(page, token, `/workflows/${secondWorkflow.id}/drafts/${await fixtureDraftId(page, secondWorkflow.id)}`)
   const secondNode = { id: 'plugin-v2', key: 'plugin_v2', type: 'acme.json_mapper', typeVersion: 2, name: 'Plugin v2', disabled: false, protected: false, parameters: { label: 'second', includeMetadata: false, largeTrace: false }, contextWrites: [], resourceReferences: [], settings: {} }
   const secondDefinition = { ...secondDraft.definition, nodes: [secondNode, ...secondDraft.definition.nodes], connections: [{ id: 'second-start', sourceNodeId: '__start__', sourceHandle: 'main', targetNodeId: 'plugin-v2', targetHandle: 'main', order: 0 }, { id: 'second-end', sourceNodeId: 'plugin-v2', sourceHandle: 'main', targetNodeId: 'exit', targetHandle: 'main', order: 0 }] }
   const secondEditor = { ...secondDraft.editorDocument, nodeLayouts: [{ nodeId: 'plugin-v2', x: 320, y: 200 }, ...(secondDraft.editorDocument.nodeLayouts ?? [])], edges: [{ edgeId: 'second-start' }, { edgeId: 'second-end' }] }
-  const secondSave = await page.request.put(`/api/v1/workflows/${secondWorkflow.id}/draft`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: secondDraft.revision, definition: secondDefinition, editorDocument: secondEditor } })
+  const secondSave = await page.request.put(`/api/v1/workflows/${secondWorkflow.id}/drafts/${await fixtureDraftId(page, secondWorkflow.id)}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: secondDraft.revision, definition: secondDefinition, editorDocument: secondEditor } })
   expect(secondSave.ok(), await secondSave.text()).toBeTruthy()
   const secondRevision = ((await secondSave.json()) as { revision: number }).revision
-  const secondDebug = await page.request.post(`/api/v1/workflows/${secondWorkflow.id}/debug-executions`, { headers: { Authorization: `Bearer ${token}` }, data: { expectedRevision: secondRevision, idempotencyKey: crypto.randomUUID(), input: {}, context: {}, mode: 'full', targetNodeId: null, inputSource: {}, overlayIds: [], sideEffectDecisions: {} } })
+  const secondDebug = await page.request.post(`/api/v1/workflows/${secondWorkflow.id}/drafts/${await fixtureDraftId(page, secondWorkflow.id)}/debug-executions`, { headers: { Authorization: `Bearer ${token}` }, data: { expectedRevision: secondRevision, idempotencyKey: crypto.randomUUID(), input: {}, context: {}, mode: 'full', targetNodeId: null, inputSource: {}, overlayIds: [], sideEffectDecisions: {} } })
   expect(secondDebug.status(), await secondDebug.text()).toBe(202)
   const secondExecutionId = ((await secondDebug.json()) as { executionId: string }).executionId
   await expect.poll(async () => (await api<{ status: string }>(page, token, `/executions/${secondExecutionId}`)).status, { timeout: 120_000 }).toBe('succeeded')

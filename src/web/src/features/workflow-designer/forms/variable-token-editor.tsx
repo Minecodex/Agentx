@@ -331,7 +331,7 @@ function fallbackSelectorLabel(selector: ValueSelector) {
   const source = selector.namespace === "outputs"
     ? selector.sourceNodeId?.slice(0, 8) ?? "output"
     : selector.namespace;
-  return [source, selector.port, ...selector.path].filter(Boolean).join(" / ");
+  return [source, selector.port, ...(selector.path ?? [])].filter(Boolean).join(" / ");
 }
 
 const STRUCTURAL_LABELS = ["current", "first", "last", "all()", "runs"];

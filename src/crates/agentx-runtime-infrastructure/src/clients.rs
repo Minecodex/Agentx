@@ -2,17 +2,35 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
 use object_store::{Certificate, ClientOptions, ObjectStore, aws::AmazonS3Builder};
-use redis::aio::ConnectionManager;
+use redis::{
+    aio::{ConnectionManager, ConnectionManagerConfig},
+    io::tcp::{TcpSettings, socket2::TcpKeepalive},
+};
 use secrecy::ExposeSecret;
 
 use crate::{RuntimeObjectStorageSettings, RuntimeRedisSettings};
 
 pub async fn connect_runtime_redis(settings: &RuntimeRedisSettings) -> Result<ConnectionManager> {
     let client = runtime_redis_client(settings)?;
-    tokio::time::timeout(Duration::from_secs(5), ConnectionManager::new(client))
-        .await
-        .context("timed out connecting to Runtime Redis")?
-        .context("failed to connect to Runtime Redis")
+    let tcp = TcpSettings::default().set_keepalive(
+        TcpKeepalive::new()
+            .with_time(Duration::from_secs(5))
+            .with_interval(Duration::from_secs(1)),
+    );
+    // A removed Kubernetes endpoint can leave an established TCP connection
+    // blackholed. Let the SDK observe the transport failure and reconnect.
+    #[cfg(any(target_os = "android", target_os = "fuchsia", target_os = "linux"))]
+    let tcp = tcp.set_user_timeout(Duration::from_secs(10));
+    let config = ConnectionManagerConfig::new()
+        .set_connection_timeout(Duration::from_secs(5))
+        .set_tcp_settings(tcp);
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        ConnectionManager::new_with_config(client, config),
+    )
+    .await
+    .context("timed out connecting to Runtime Redis")?
+    .context("failed to connect to Runtime Redis")
 }
 
 pub fn runtime_redis_client(settings: &RuntimeRedisSettings) -> Result<redis::Client> {

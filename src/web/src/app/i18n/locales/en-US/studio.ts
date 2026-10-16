@@ -1,4 +1,41 @@
 const translations = {
+  "builder": {
+    "recoveryUnavailable": "Local recovery could not be saved. Save the current edits before continuing AI creation.",
+    "scope": "Edit scope", "canvasScope": "Current canvas", "nodesScope": "Selected nodes only",
+    "staticPassed": "Static checks passed; the workflow has not been executed.",
+    "staticStale": "The canvas changed. This static validation result is outdated.",
+    "staticIssues": "Static checks found issues. Select an issue to locate it.",
+    "modelReasons": {
+      "unconfigured": "An administrator has not configured a canvas AI model.",
+      "model_disabled": "The canvas AI model is disabled. Ask an administrator to check the Models list.",
+      "deployment_disabled": "The selected model deployment is unavailable.",
+      "credential_disabled": "The model credential is disabled or unavailable.",
+      "credential_changed": "The model credential changed. An administrator must set the canvas AI model again."
+    },
+    "ack": {"applied": "Applied one edit transaction", "stale": "Canvas changed; stale command was not applied", "read_only": "Read-only canvas; command was not applied", "rejected": "Edit validation failed"},
+  "title": "AI creation",
+  "model": "Creation model: {{model}}",
+  "unconfigured": "An administrator must configure the canvas AI model in the model list.",
+  "unavailable": "Canvas AI model is unavailable. Ask an administrator to check the model, credential and authorization.",
+  "staticOnly": "AI edits and statically validates. Use UI buttons to run, test, create versions and publish.",
+  "pendingSave": "Canvas changes awaiting save",
+  "saved": "Canvas saved",
+  "inspectSelected": "Share current execution with AI",
+  "working": "Working…",
+  "prompt": "Describe workflow requirements",
+  "placeholder": "Describe the workflow to create or changes to this canvas…",
+  "stop": "Stop",
+  "send": "Send",
+  "answer": "Answer design question",
+  "editBatch": "Prepared a batch affecting {{count}} nodes",
+  "usage": "Input {{input}} / Output {{output}} tokens · {{currency}} {{cost}}",
+  "status": {
+    "completed": "Creation complete. Check static results and test manually.",
+    "failed": "Creation stopped. Check the error.",
+    "cancelled": "Stopped. Applied changes remain on the canvas.",
+    "outcome_unknown": "Model outcome is unknown. Review before starting another run."
+  }
+},
   "details": {
     "parameters": "Parameters",
     "input": "Input",
@@ -129,6 +166,7 @@ const translations = {
     ,"confirmRequest": "Submit request"
   },
   "panels": {
+    "knowledge": {"resource": "Knowledge base", "retrieval": "Retrieval settings", "outputHint": "Returns text chunks, document provenance and existing attachment references. Source references are not platform files; originals are not downloaded. No matches return empty results."},
     "model": {
       "model": "Model",
       "modelDescription": "Pick an authorized model resource; its capability decides outputs and usage.",
@@ -422,6 +460,7 @@ const translations = {
       "REQUIRED_PARAMETER_MISSING": "Field \"{{field}}\" is required.",
       "RESOURCE_REQUIRED": "Select a {{resourceType}} resource.",
       "AI_BINDING_REQUIRED": "Select the required {{slot}} attachment in the node panel.",
+      "AGENT_RESOURCE_SLOT_INVALID": "Check Agent attachment slots and versions. Model, workspace sandbox, and long-term memory each accept one resource.",
       "ERROR_POLICY_MISMATCH": "Error connections require the \"Send to Error output\" policy.",
       "CROSS_WORKFLOW_PASTE_REJECTED": "These nodes cannot be pasted until their configuration issues are fixed.",
       "INVALID_WORKFLOW_DEFINITION": "The workflow definition is invalid.",
@@ -466,6 +505,7 @@ const translations = {
     }
   },
   "toasts": {
+    "savedSnapshot": "Submitted revision saved; the canvas has newer changes.",
     "saved": "Draft saved",
     "overlaySaved": "Debug overlay saved",
     "overlayRemoved": "Debug overlay removed",

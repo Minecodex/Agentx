@@ -86,3 +86,7 @@ Runtime 不主动调用 Control。Runtime 当前状态只来自 Runtime MySQL；
 Run `20260818-final4` 已验证三域空库部署、151/151 公共 API、产品闭环、控制面离线、Runtime MySQL Fail Closed、Redis 空库重建、ClickHouse 独立终态、50 并发 Execution、200 Attempt、100 SSE 和 30 分钟稳定运行，详见 [V2-08A 证据](planv2/evidence/v2-08.md)。
 
 以下不是当前完成事实：正式 100/500/1000 Execution 与两小时容量门禁、生产 TLS/PITR/RPO/RTO、gVisor/Kata、Role 级 ServiceAccount/Secret 隔离、Cosign/Attestation 和多租户攻击矩阵。它们保留在 V2-08B，V2 总计划因此仍为 `in_progress`。
+
+## Studio Builder 的服务映射
+
+Control 的 studio_builder_* 模块注入同一个 agentx-agent-core，拥有设计会话、编辑回执、租户模型授权和对象权限。Runtime Gateway 仅接受绑定来源的设计模型 Effect，复用 Vault/Egress/价格与 Quota；Sandbox Manager 使用 sandbox_design_leases 承载无资源、无网络的契约解析，同一 Workflow 静态解析批次可复用短期容器，每个节点使用新进程；批次关闭或租约超时立即清理。Workflow Worker 继续消费不可变业务快照，不读 Control 草稿、不承担 Builder 编辑任务。

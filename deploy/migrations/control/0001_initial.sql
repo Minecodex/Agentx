@@ -1024,6 +1024,7 @@ CREATE TABLE resource_grant_requests (
     operation_key VARCHAR(32) NOT NULL,
     source_node_id VARCHAR(128) NULL,
     source_revision BIGINT UNSIGNED NULL,
+    source_draft_id BINARY(16) NULL,
     request_message VARCHAR(1000) NULL,
     dependency_hash VARCHAR(80) NOT NULL,
     open_dedupe_key VARCHAR(80) NULL,
@@ -1300,6 +1301,8 @@ CREATE TABLE skills (
 
 CREATE TABLE tenant_settings (
     tenant_id BINARY(16) NOT NULL,
+    studio_builder_model_alias_id BINARY(16) NULL,
+    studio_builder_credential_id BINARY(16) NULL,
     locale VARCHAR(16) NOT NULL,
     timezone VARCHAR(64) NOT NULL,
     version BIGINT UNSIGNED NOT NULL DEFAULT 1,
@@ -1382,6 +1385,7 @@ CREATE TABLE users (
 
 CREATE TABLE workflow_debug_overlays (
     id BINARY(16) NOT NULL,
+    draft_id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
     workflow_id BINARY(16) NOT NULL,
     node_id VARCHAR(128) NOT NULL,
@@ -1394,7 +1398,7 @@ CREATE TABLE workflow_debug_overlays (
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
-    UNIQUE KEY uq_workflow_debug_overlay_node (tenant_id, workflow_id, node_id),
+    UNIQUE KEY uq_workflow_debug_overlay_node (tenant_id, draft_id, node_id),
     KEY idx_workflow_debug_overlay_workflow (tenant_id, workflow_id, updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -1448,6 +1452,8 @@ CREATE TABLE workflow_draft_resources (
     KEY idx_workflow_draft_resources_workflow (tenant_id, workflow_id, node_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- Hash-bearing authoring documents and Builder protocol payloads use lossless
+-- JSON text: MySQL native JSON can round fractional numbers during conversion.
 CREATE TABLE workflow_draft_revisions (
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
@@ -1455,28 +1461,33 @@ CREATE TABLE workflow_draft_revisions (
     draft_id BINARY(16) NOT NULL,
     revision BIGINT UNSIGNED NOT NULL,
     schema_version VARCHAR(32) NOT NULL,
-    definition_json JSON NOT NULL,
+    definition_json LONGTEXT NOT NULL CHECK (JSON_VALID(definition_json)),
+    resource_snapshot_json JSON NOT NULL DEFAULT (JSON_ARRAY()),
     content_hash VARCHAR(80) NOT NULL,
     created_by BINARY(16) NOT NULL,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
-    UNIQUE KEY uq_workflow_draft_revision (tenant_id, workflow_id, revision),
+    UNIQUE KEY uq_workflow_draft_revision (tenant_id, draft_id, revision),
     KEY idx_workflow_revisions_time (tenant_id, workflow_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE workflow_drafts (
     id BINARY(16) NOT NULL,
+    name VARCHAR(160) NOT NULL DEFAULT 'Draft',
+    base_version_id BINARY(16) NULL,
+    status ENUM('active','archived') NOT NULL DEFAULT 'active',
+    created_by BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
     workflow_id BINARY(16) NOT NULL,
     schema_version VARCHAR(32) NOT NULL,
     revision BIGINT UNSIGNED NOT NULL DEFAULT 0,
-    definition_json JSON NOT NULL,
+    definition_json LONGTEXT NOT NULL CHECK (JSON_VALID(definition_json)),
     content_hash VARCHAR(80) NOT NULL,
     updated_by BINARY(16) NOT NULL,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
-    UNIQUE KEY uq_workflow_draft (tenant_id, workflow_id)
+    KEY idx_workflow_drafts (tenant_id, workflow_id, status, updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE workflow_environments (
@@ -1535,18 +1546,23 @@ CREATE TABLE workflow_version_resources (
 
 CREATE TABLE workflow_versions (
     id BINARY(16) NOT NULL,
+    source_draft_id BINARY(16) NOT NULL,
+    source_revision_id BINARY(16) NOT NULL,
+    base_version_id BINARY(16) NULL,
     tenant_id BINARY(16) NOT NULL,
     workflow_id BINARY(16) NOT NULL,
     version_number BIGINT UNSIGNED NOT NULL,
     source_revision BIGINT UNSIGNED NOT NULL,
     schema_version VARCHAR(32) NOT NULL,
-    definition_json JSON NOT NULL,
+    definition_json LONGTEXT NOT NULL CHECK (JSON_VALID(definition_json)),
+    node_manifests_json JSON NOT NULL DEFAULT (JSON_OBJECT()),
     content_hash VARCHAR(80) NOT NULL,
     created_by BINARY(16) NOT NULL,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
     UNIQUE KEY uq_workflow_version_number (tenant_id, workflow_id, version_number),
-    UNIQUE KEY uq_workflow_version_content (tenant_id, workflow_id, source_revision, content_hash)
+    UNIQUE KEY uq_version_identity (tenant_id, workflow_id, id),
+    UNIQUE KEY uq_workflow_version_content (tenant_id, source_draft_id, source_revision, content_hash)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE workflows (
@@ -1573,5 +1589,112 @@ ALTER TABLE users
     ADD UNIQUE KEY uq_users_tenant_id (tenant_id, id),
     ADD CONSTRAINT fk_users_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id);
 ALTER TABLE workflows
+    ADD UNIQUE KEY uq_workflows_tenant_id (tenant_id, id),
     ADD CONSTRAINT fk_workflows_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     ADD CONSTRAINT fk_workflows_owner_user FOREIGN KEY (tenant_id, owner_user_id) REFERENCES users(tenant_id, id);
+
+ALTER TABLE workflow_drafts
+    ADD UNIQUE KEY uq_draft_identity (tenant_id, workflow_id, id),
+    ADD CONSTRAINT fk_draft_workflow FOREIGN KEY (tenant_id, workflow_id) REFERENCES workflows(tenant_id, id);
+ALTER TABLE workflow_draft_revisions
+    ADD UNIQUE KEY uq_revision_source (tenant_id, workflow_id, draft_id, id, revision),
+    ADD CONSTRAINT fk_revision_draft FOREIGN KEY (tenant_id, workflow_id, draft_id) REFERENCES workflow_drafts(tenant_id, workflow_id, id);
+ALTER TABLE workflow_versions
+    ADD CONSTRAINT fk_version_draft FOREIGN KEY (tenant_id, workflow_id, source_draft_id) REFERENCES workflow_drafts(tenant_id, workflow_id, id),
+    ADD CONSTRAINT fk_version_revision FOREIGN KEY (tenant_id, workflow_id, source_draft_id, source_revision_id, source_revision) REFERENCES workflow_draft_revisions(tenant_id, workflow_id, draft_id, id, revision),
+    ADD CONSTRAINT fk_version_base FOREIGN KEY (tenant_id, workflow_id, base_version_id) REFERENCES workflow_versions(tenant_id, workflow_id, id);
+ALTER TABLE workflow_drafts
+    ADD CONSTRAINT fk_draft_base_version FOREIGN KEY (tenant_id, workflow_id, base_version_id) REFERENCES workflow_versions(tenant_id, workflow_id, id);
+
+CREATE TABLE studio_builder_sessions (
+    id BINARY(16) NOT NULL,
+    tenant_id BINARY(16) NOT NULL,
+    workflow_id BINARY(16) NOT NULL,
+    draft_id BINARY(16) NOT NULL,
+    user_id BINARY(16) NOT NULL,
+    editor_instance_id BINARY(16) NOT NULL,
+    snapshot_json LONGTEXT NOT NULL CHECK (JSON_VALID(snapshot_json)),
+    state_json LONGTEXT NOT NULL CHECK (JSON_VALID(state_json)),
+    state_version BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_studio_builder_binding (tenant_id,draft_id,user_id,editor_instance_id),
+    KEY idx_studio_builder_workflow (tenant_id,workflow_id,draft_id),
+    CONSTRAINT fk_builder_session_draft FOREIGN KEY(tenant_id,workflow_id,draft_id) REFERENCES workflow_drafts(tenant_id,workflow_id,id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE studio_builder_runs (
+    id BINARY(16) NOT NULL,
+    tenant_id BINARY(16) NOT NULL,
+    session_id BINARY(16) NOT NULL,
+    token_version BIGINT UNSIGNED NOT NULL,
+    prompt MEDIUMTEXT NOT NULL,
+    edit_scope_json JSON NOT NULL,
+    model_alias_id BINARY(16) NOT NULL,
+    model_alias_version BIGINT UNSIGNED NOT NULL,
+    credential_id BINARY(16) NULL,
+    credential_version BIGINT UNSIGNED NULL,
+    setting_version BIGINT UNSIGNED NOT NULL,
+    model_binding_json JSON NOT NULL,
+    model_parameters_json JSON NOT NULL,
+    status ENUM('queued','running','waiting','completed','failed','cancelled','outcome_unknown') NOT NULL DEFAULT 'queued',
+    open_session_id BINARY(16) GENERATED ALWAYS AS (IF(status IN ('queued','running','waiting'),session_id,NULL)) STORED,
+    lease_owner BINARY(16) NULL,
+    lease_until TIMESTAMP(6) NULL,
+    fencing_token BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    available_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    deadline_at TIMESTAMP(6) NOT NULL,
+    delta_cursors_json JSON NOT NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    completed_at TIMESTAMP(6) NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_studio_builder_open_run (open_session_id),
+    KEY idx_studio_builder_pending (status,available_at,lease_until),
+    -- session_id is also the input of a stored generated column. MySQL forbids
+    -- cascading that base column; settled runs are explicitly deleted first.
+    CONSTRAINT fk_builder_run_session FOREIGN KEY(session_id) REFERENCES studio_builder_sessions(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE studio_builder_entries (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    tenant_id BINARY(16) NOT NULL,
+    session_id BINARY(16) NOT NULL,
+    run_id BINARY(16) NULL,
+    event_key VARCHAR(255) NOT NULL,
+    payload_json LONGTEXT NOT NULL CHECK (JSON_VALID(payload_json)),
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_studio_builder_event (session_id,event_key),
+    KEY idx_studio_builder_cursor (tenant_id,session_id,id),
+    CONSTRAINT fk_builder_entry_session FOREIGN KEY(session_id) REFERENCES studio_builder_sessions(id) ON DELETE CASCADE,
+    CONSTRAINT fk_builder_entry_run FOREIGN KEY(run_id) REFERENCES studio_builder_runs(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE studio_builder_effects (
+    id BINARY(16) NOT NULL,
+    tenant_id BINARY(16) NOT NULL,
+    session_id BINARY(16) NOT NULL,
+    run_id BINARY(16) NOT NULL,
+    effect_key VARCHAR(192) NOT NULL,
+    tool_name VARCHAR(64) NOT NULL,
+    request_hash VARCHAR(80) NOT NULL,
+    input_json LONGTEXT NOT NULL CHECK (JSON_VALID(input_json)),
+    command_json LONGTEXT NULL CHECK (JSON_VALID(command_json)),
+    acknowledgement_json LONGTEXT NULL CHECK (JSON_VALID(acknowledgement_json)),
+    result_json LONGTEXT NULL CHECK (JSON_VALID(result_json)),
+    status ENUM('pending','settled','cancelled') NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_studio_builder_effect (tenant_id,run_id,effect_key),
+    KEY idx_studio_builder_effect_session (tenant_id,session_id,status),
+    CONSTRAINT fk_builder_effect_run FOREIGN KEY(run_id) REFERENCES studio_builder_runs(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+ALTER TABLE studio_builder_effects
+    ADD KEY idx_builder_effect_order (tenant_id,run_id,created_at,id);
+
+ALTER TABLE tenant_settings
+    ADD CONSTRAINT fk_studio_builder_model FOREIGN KEY (studio_builder_model_alias_id) REFERENCES model_aliases(id),
+    ADD CONSTRAINT fk_studio_builder_credential FOREIGN KEY (studio_builder_credential_id) REFERENCES credentials(id);

@@ -311,8 +311,9 @@ async fn composite_child_uses_immutable_runtime_snapshot_and_merges_on_success(f
         workflow: agentx_runtime_contracts::ExecutionWorkflowSnapshotV1 {
             id: Uuid::now_v7(),
             name: "Composite Child".into(),
-            version_id: child_version_id,
-            version_number: 3,
+            source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version { version_id: child_version_id, version_number: 3 },
+            version_id: Some(child_version_id),
+            version_number: Some(3),
             owner_department: None,
         },
         definition_object_id: child_version_id,
@@ -341,7 +342,7 @@ async fn composite_child_uses_immutable_runtime_snapshot_and_merges_on_success(f
     )
     .unwrap();
     source.spec = agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Debug {
-        draft_revision: 1,
+        source: agentx_runtime_contracts::WorkflowDesignSourceV1::DraftRevision { draft_id: uuid::Uuid::now_v7(), revision_id: uuid::Uuid::now_v7(), revision: 1 },
         debug_plan: agentx_runtime_contracts::RuntimeDebugPlanV1::whole(&compiled),
     };
     source.objects = vec![definition_object, ir_object];

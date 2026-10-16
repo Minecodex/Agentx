@@ -1,3 +1,4 @@
+import { fixtureDraftId } from '../draft-fixtures'
 import { expect, type APIResponse, type Page, test } from '@playwright/test'
 
 const password = 'agentx-e2e-admin-password'
@@ -97,8 +98,8 @@ async function createWorkflow(page: Page, token: string, name: string, definitio
     description: 'Workflow 5.0 Kubernetes closure',
     visibility: 'company',
   })
-  const draft = await request<Draft>(page, token, `/workflows/${workflow.id}/draft`)
-  const saved = await request<Draft>(page, token, `/workflows/${workflow.id}/draft`, 'PUT', {
+  const draft = await request<Draft>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
+  const saved = await request<Draft>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`, 'PUT', {
     expectedRevision: draft.revision,
     definition,
     editorDocument: {
@@ -107,13 +108,13 @@ async function createWorkflow(page: Page, token: string, name: string, definitio
       edges: definition.connections.map((value) => ({ edgeId: value.id })),
     },
   })
-  const version = await request<Version>(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftRevision: saved.revision })
+  const version = await request<Version>(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftId: await fixtureDraftId(page, workflow.id),  draftRevision: saved.revision })
   return { workflow, version, draft: saved }
 }
 
 async function reviseWorkflow(page: Page, token: string, workflowId: string, definition: Definition) {
-  const draft = await request<Draft>(page, token, `/workflows/${workflowId}/draft`)
-  const saved = await request<Draft>(page, token, `/workflows/${workflowId}/draft`, 'PUT', {
+  const draft = await request<Draft>(page, token, `/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}`)
+  const saved = await request<Draft>(page, token, `/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}`, 'PUT', {
     expectedRevision: draft.revision,
     definition,
     editorDocument: {
@@ -122,7 +123,7 @@ async function reviseWorkflow(page: Page, token: string, workflowId: string, def
       edges: definition.connections.map((value) => ({ edgeId: value.id })),
     },
   })
-  return request<Version>(page, token, `/workflows/${workflowId}/versions`, 'POST', { draftRevision: saved.revision })
+  return request<Version>(page, token, `/workflows/${workflowId}/versions`, 'POST', { draftId: await fixtureDraftId(page, workflowId),  draftRevision: saved.revision })
 }
 
 async function deployApplication(page: Page, token: string, workflow: Workflow, version: Version, environmentId: string, slug: string) {
@@ -316,14 +317,14 @@ test('Workflow 5.0 closes Composite, Context, Package, Multipart and cancellatio
     expect.objectContaining({ artifactId: expect.stringMatching(/^[0-9a-f-]{36}$/), fileName: 'question.txt', contentType: 'text/plain' }),
   ])
 
-  const exported = await request<Record<string, unknown>>(page, token, `/workflows/${parent.workflow.id}/export`)
+  const exported = await request<Record<string, unknown>>(page, token, `/workflows/${parent.workflow.id}/drafts/${await fixtureDraftId(page, parent.workflow.id)}/export`)
   const imported = await request<{ workflowId: string }>(page, token, '/workflows/import', 'POST', {
     name: `W4 Imported ${suffix}`,
     description: 'Cross-project package contract',
     visibility: 'company',
     package: exported,
   })
-  const importedDraft = await request<Draft>(page, token, `/workflows/${imported.workflowId}/draft`)
+  const importedDraft = await request<Draft>(page, token, `/workflows/${imported.workflowId}/drafts/${await fixtureDraftId(page, imported.workflowId)}`)
   expect(importedDraft.definition.schemaVersion).toBe('8.0')
   expect(importedDraft.definition.nodes[0].type).toBe('sub_workflow')
 
@@ -340,8 +341,8 @@ test('Workflow 5.0 closes Composite, Context, Package, Multipart and cancellatio
     { id: 'parent-end', sourceNodeId: 'parent', sourceHandle: 'main', targetNodeId: 'exit', targetHandle: 'main', order: 0 },
   ]
   recursiveDefinition.end.outputs = {}
-  const recursiveDraft = await request<Draft>(page, token, `/workflows/${child.workflow.id}/draft`)
-  const recursiveSave = await page.request.put(`/api/v1/workflows/${child.workflow.id}/draft`, {
+  const recursiveDraft = await request<Draft>(page, token, `/workflows/${child.workflow.id}/drafts/${await fixtureDraftId(page, child.workflow.id)}`)
+  const recursiveSave = await page.request.put(`/api/v1/workflows/${child.workflow.id}/drafts/${await fixtureDraftId(page, child.workflow.id)}`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {
       expectedRevision: recursiveDraft.revision,

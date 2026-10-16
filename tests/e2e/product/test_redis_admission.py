@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 
 import httpx
 import pytest
@@ -18,6 +19,16 @@ from tests.e2e.support import run
 pytestmark = [pytest.mark.cluster, pytest.mark.product]
 STREAM = "agentx:v2:tasks:v1:model"
 GROUP = "agentx:v2:workers:v1"
+
+
+def invocation_count(context, application_id):
+    application = uuid.UUID(application_id)
+    return int(
+        _runtime_mysql(
+            context,
+            f"SELECT COUNT(*) FROM application_invocations WHERE application_id=UUID_TO_BIN('{application}');",  # noqa: S608 -- UUID is validated
+        )
+    )
 
 
 def scale(context, workload, replicas):
@@ -109,7 +120,7 @@ def test_redis_real_watermark_rejects_new_api_and_chat_preserves_replay(boundary
             redis_command(context, "XGROUP", "CREATE", STREAM, GROUP, "0-0", "MKSTREAM") if not redis_command(
                 context, "EXISTS", STREAM
             ) else None
-            baseline = int(_runtime_mysql(context, "SELECT COUNT(*) FROM application_invocations;"))
+            baseline = invocation_count(context, app["applicationId"])
             inserted = redis_command(
                 context,
                 "EVAL",
@@ -132,7 +143,7 @@ def test_redis_real_watermark_rejects_new_api_and_chat_preserves_replay(boundary
                 and int(r.headers["retry-after"]) > 0
                 for r in responses
             ), [(r.status_code, r.text) for r in responses]
-            assert int(_runtime_mysql(context, "SELECT COUNT(*) FROM application_invocations;")) == baseline
+            assert invocation_count(context, app["applicationId"]) == baseline
             replay = gateway.post(chat_path, headers={"Idempotency-Key": "redis-chat-replay"}, json=chat_body)
             assert replay.status_code == 202 and replay.json()["id"] == accepted.json()["id"], replay.text
             # Pending is work too; it must not disappear from the overload
@@ -147,6 +158,10 @@ def test_redis_real_watermark_rejects_new_api_and_chat_preserves_replay(boundary
             )
             redis_command(context, "XACK", STREAM, GROUP, *inserted)
             redis_command(context, "XDEL", STREAM, *inserted)
+            # Other applications can enqueue real scheduled work while the
+            # Worker is stopped. Resume it before requiring the shared queue
+            # to drain; remove only the synthetic entries owned by this test.
+            scale(context, "deployment/workflow-worker", 1)
             metric(boundary_gateway_metrics, "agentx_redis_task_unread_items", lambda value: value == 0)
             metric(boundary_gateway_metrics, "agentx_redis_task_pending_items", lambda value: value == 0)
             recovered = gateway.post(chat_path, headers={"Idempotency-Key": "redis-recovered-chat"}, json=chat_body)
@@ -178,7 +193,7 @@ def test_redis_unavailable_refuses_and_recovers_without_accepting_work(boundary_
     with httpx.Client(
         base_url=state["urls"]["runtime"], headers={"Authorization": f"Bearer {key.value}"}, timeout=20
     ) as gateway:
-        baseline = int(_runtime_mysql(context, "SELECT COUNT(*) FROM application_invocations;"))
+        baseline = invocation_count(context, app["applicationId"])
         scale(context, "statefulset/runtime-redis", 0)
         try:
             refused = gateway.post(
@@ -188,7 +203,7 @@ def test_redis_unavailable_refuses_and_recovers_without_accepting_work(boundary_
             )
             assert refused.status_code == 503 and refused.json()["code"] == "RUNTIME_STORAGE_UNAVAILABLE", refused.text
             metric(boundary_gateway_metrics, "agentx_redis_admission_available", lambda value: value == 0)
-            assert int(_runtime_mysql(context, "SELECT COUNT(*) FROM application_invocations;")) == baseline
+            assert invocation_count(context, app["applicationId"]) == baseline
         finally:
             scale(context, "statefulset/runtime-redis", 1)
         metric(boundary_gateway_metrics, "agentx_redis_admission_available", lambda value: value == 1)

@@ -25,19 +25,17 @@ pub(super) async fn dependency_hash(
         // Knowledge document changes do not revise resource configuration.
         let revision = match item.resource_type.as_str() {
             "rag" | "memory" => {
-                let table = if item.resource_type == "rag" {
-                    "rag_resources"
+                let query = if item.resource_type == "rag" {
+                    "SELECT version FROM rag_resources WHERE tenant_id=? AND id=?"
                 } else {
-                    "memory_namespaces"
+                    "SELECT version FROM memory_namespaces WHERE tenant_id=? AND id=?"
                 };
                 json!(
-                    sqlx::query_scalar::<_, u64>(&format!(
-                        "SELECT version FROM {table} WHERE tenant_id=? AND id=?"
-                    ))
-                    .bind(tenant)
-                    .bind(item.resource_id)
-                    .fetch_one(&state.pool)
-                    .await?
+                    sqlx::query_scalar::<_, u64>(query)
+                        .bind(tenant)
+                        .bind(item.resource_id)
+                        .fetch_one(&state.pool)
+                        .await?
                 )
             }
             _ => json!(row.try_get::<OffsetDateTime, _>("updated_at")?),
@@ -101,8 +99,26 @@ pub(super) async fn is_current(
         return Ok(false);
     }
     if let Some(workflow) = request.try_get::<Option<Uuid>, _>("workflow_id")? {
-        let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflows w JOIN workflow_service_identities si ON si.tenant_id=w.tenant_id AND si.workflow_id=w.id JOIN workflow_drafts d ON d.tenant_id=w.tenant_id AND d.workflow_id=w.id WHERE w.tenant_id=? AND w.id=? AND w.status='active' AND si.status='active' AND (? IS NULL OR d.revision=?))")
-            .bind(tenant).bind(workflow).bind(request.try_get::<Option<u64>,_>("source_revision")?)
+        let token_version: u64 =
+            sqlx::query_scalar("SELECT token_version FROM users WHERE tenant_id=? AND id=?")
+                .bind(tenant)
+                .bind(requester)
+                .fetch_one(&mut **tx)
+                .await?;
+        let Ok(requester_actor) =
+            crate::control_api::reload_actor(state, tenant, requester, token_version).await
+        else {
+            return Ok(false);
+        };
+        if crate::workflow_api::require_workflow_access(state, &requester_actor, workflow, true)
+            .await
+            .is_err()
+        {
+            return Ok(false);
+        }
+
+        let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflows w JOIN workflow_service_identities si ON si.tenant_id=w.tenant_id AND si.workflow_id=w.id JOIN workflow_drafts d ON d.tenant_id=w.tenant_id AND d.workflow_id=w.id WHERE w.tenant_id=? AND w.id=? AND w.status='active' AND si.status='active' AND (? IS NULL OR (d.id=? AND d.revision=? AND d.status='active')))")
+            .bind(tenant).bind(workflow).bind(request.try_get::<Option<Uuid>,_>("source_draft_id")?).bind(request.try_get::<Option<Uuid>,_>("source_draft_id")?)
             .bind(request.try_get::<Option<u64>,_>("source_revision")?).fetch_one(&mut **tx).await?;
         if !valid {
             return Ok(false);
@@ -121,24 +137,24 @@ pub(super) async fn is_current(
             required_by: row.try_get("required_by_resource_id")?,
             owner_department_id: row.try_get("owner_department_id")?,
         };
-        let table = match item.resource_type.as_str() {
-            "credential" => "credentials",
-            "model" => "model_aliases",
-            "mcp_server" => "mcp_servers",
-            "mcp_tool" => "mcp_tools",
-            "skill" => "skills",
-            "rag" => "rag_resources",
-            "memory" => "memory_namespaces",
-            "sandbox_profile" => "sandbox_profiles",
+        let query = match item.resource_type.as_str() {
+            "credential" => "SELECT id FROM credentials WHERE tenant_id=? AND id=? FOR SHARE",
+            "model" => "SELECT id FROM model_aliases WHERE tenant_id=? AND id=? FOR SHARE",
+            "mcp_server" => "SELECT id FROM mcp_servers WHERE tenant_id=? AND id=? FOR SHARE",
+            "mcp_tool" => "SELECT id FROM mcp_tools WHERE tenant_id=? AND id=? FOR SHARE",
+            "skill" => "SELECT id FROM skills WHERE tenant_id=? AND id=? FOR SHARE",
+            "rag" => "SELECT id FROM rag_resources WHERE tenant_id=? AND id=? FOR SHARE",
+            "memory" => "SELECT id FROM memory_namespaces WHERE tenant_id=? AND id=? FOR SHARE",
+            "sandbox_profile" => {
+                "SELECT id FROM sandbox_profiles WHERE tenant_id=? AND id=? FOR SHARE"
+            }
             _ => return Ok(false),
         };
-        let exists = sqlx::query(&format!(
-            "SELECT id FROM {table} WHERE tenant_id=? AND id=? FOR SHARE"
-        ))
-        .bind(tenant)
-        .bind(item.resource_id)
-        .fetch_optional(&mut **tx)
-        .await?;
+        let exists = sqlx::query(query)
+            .bind(tenant)
+            .bind(item.resource_id)
+            .fetch_optional(&mut **tx)
+            .await?;
         if exists.is_none() {
             return Ok(false);
         }

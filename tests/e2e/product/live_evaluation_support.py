@@ -1,4 +1,4 @@
-"""Real Kimi Judge execution and report fixtures shared by API and UI tests."""
+"""Real model Judge execution and report fixtures shared by API and UI tests."""
 
 import json
 import time
@@ -74,7 +74,7 @@ def live_comparison(installed_agentx, service_urls, live_application, run_id):
             control,
             "/evaluation-profiles",
             {
-                "name": f"P7 real Kimi Judge {run_id}",
+                "name": f"P7 real model Judge {run_id}",
                 "visibility": "company",
                 "aggregation": "all",
                 "passThreshold": "1",
@@ -89,7 +89,7 @@ def live_comparison(installed_agentx, service_urls, live_application, run_id):
                     },
                     {
                         "key": "judge",
-                        "name": "Kimi Judge",
+                        "name": "Real model Judge",
                         "evaluatorType": "llm_judge",
                         "configuration": {
                             "modelId": app["modelId"],
@@ -115,7 +115,7 @@ def live_comparison(installed_agentx, service_urls, live_application, run_id):
         assert absent["statusByRun"][1] is None, absent
         write_report(
             installed_agentx,
-            "product/live-kimi-evaluation.json",
+            "product/live-model-evaluation.json",
             {
                 "status": "passed",
                 "baselineId": baseline,

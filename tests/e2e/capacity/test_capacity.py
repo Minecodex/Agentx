@@ -101,8 +101,20 @@ def test_frozen_capacity_matrix(installed_agentx, service_urls, streaming_applic
         and info["architecture"] == "arm64"
         and info["kubeletVersion"] == "v1.36.1"
     )
-    if not smoke:
-        assert baseline_verified, "capacity certification hardware differs from the frozen baseline"
+    if not smoke and not baseline_verified:
+        write_report(
+            context,
+            "capacity/capacity-report.json",
+            {
+                "status": "failed",
+                "mode": "certification",
+                "baselineVerified": False,
+                "failureReason": "capacity certification hardware differs from the frozen baseline",
+                "environment": {"capacity": capacity, "nodeInfo": info},
+                "matrix": [],
+            },
+        )
+        pytest.fail(f"capacity certification hardware differs from the frozen baseline: {capacity}, {info}")
     collector = CapacityCollector(context)
     collector.start()
     matrix = []

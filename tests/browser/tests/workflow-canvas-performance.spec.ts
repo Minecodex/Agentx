@@ -1,3 +1,4 @@
+import { fixtureDraftId } from '../draft-fixtures'
 import { expect, type APIResponse, type Page, test } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { readFile } from 'node:fs/promises'
@@ -54,29 +55,32 @@ function syntheticDraft(base: Draft, nodeCount: number, nodeType: string, typeVe
 
 async function benchmark(page: Page, token: string, nodeCount: number, nodeType: string, typeVersion: number, parameters: Record<string, unknown>): Promise<Metric> {
   const workflow = await createWorkflow(page, token, nodeCount)
-  const base = await request<Draft>(page, token, `/workflows/${workflow.id}/draft`)
+  const draftId = await fixtureDraftId(page, workflow.id)
+  const base = await request<Draft>(page, token, `/workflows/${workflow.id}/drafts/${draftId}`)
   const draft = syntheticDraft(base, nodeCount, nodeType, typeVersion, parameters)
-  await page.route(`**/api/v1/workflows/${workflow.id}/draft`, async (route) => {
+  await page.route(`**/api/v1/workflows/${workflow.id}/drafts/${draftId}`, async (route) => {
     if (route.request().method() === 'GET') await route.fulfill({ json: draft })
     else await route.fulfill({ json: { ...draft, revision: base.revision + 1, updatedAt: new Date().toISOString() } })
   })
 
   const started = Date.now()
-  await page.goto(`/workflows/${workflow.id}/editor`)
+  await page.goto(`/workflows/${workflow.id}/drafts/${draftId}/editor`)
   const canvas = page.getByTestId('workflow-canvas')
   await expect(canvas).toBeVisible()
   const firstNode = page.getByTestId('studio-node-perf-0')
   await expect(firstNode).toBeVisible()
+  await firstNode.click({ trial: true })
+  const firstInteractiveMs = Date.now() - started
+  expect(firstInteractiveMs).toBeLessThanOrEqual(3_000)
   if (nodeType === 'acme.json_mapper' && nodeCount === 100) {
     for (let index = 0; index < 5; index += 1) {
       await firstNode.click()
       await expect(page.getByTestId('node-details-view')).toBeVisible()
       await page.getByTestId('node-details-view').getByRole('button', { name: /^(关闭|Close)$/ }).first().click()
     }
-    await expect(page.locator('style[data-agentx-plugin]')).toHaveCount(1)
+    // Design-only canvases render schema controls and never load plugin UI/CSS.
+    await expect(page.locator('style[data-agentx-plugin]')).toHaveCount(0)
   }
-  const firstInteractiveMs = Date.now() - started
-  expect(firstInteractiveMs).toBeLessThanOrEqual(3_000)
   await expect(page.locator('.react-flow__minimap')).toHaveCount(nodeCount >= 300 ? 0 : 1)
   await page.waitForTimeout(750)
 
@@ -130,7 +134,7 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
   else expect(metric.renderedNodes).toBe(nodeCount)
   expect(metric.medianFps).toBeGreaterThanOrEqual(nodeCount <= 500 ? 50 : 30)
   expect(metric.p95InputDelayMs).toBeLessThanOrEqual(nodeCount <= 500 ? 50 : 100)
-  await page.unroute(`**/api/v1/workflows/${workflow.id}/draft`)
+  await page.unroute(`**/api/v1/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
   return metric
 }
 

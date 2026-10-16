@@ -240,6 +240,7 @@ impl CompactionStrategy {
 #[serde(rename_all = "snake_case")]
 pub enum ExternalContextOriginV1 {
     Skill,
+    StudioDocument,
 }
 
 /// An immutable, provenance-carrying context fragment resolved by the Worker

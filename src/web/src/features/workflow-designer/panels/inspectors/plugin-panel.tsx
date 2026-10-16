@@ -1,3 +1,4 @@
+import { useDesignOnly } from "../../model/design-effects"
 import * as React from 'react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -9,10 +10,11 @@ import { installPluginStyles, loadPluginUi, PluginUiBoundary, type PluginPanelCo
 import { SmartInput, asInputBinding } from '../../forms/binding-inputs'
 import { Button } from '../../../../shared/ui/button'
 import { Select } from '../../../../shared/ui/select'
-import { PanelField, type ActionPanelProps } from './panel-shell'
+import { PanelField, ParameterControl, type ActionPanelProps } from './panel-shell'
 import { resolveNodeDefinition } from '../../api/studio-api'
 
 export function PluginPanel({ data, manifest, fieldErrors, providerOptions, referenceCatalog, resources, onChange, readOnly = false }: ActionPanelProps) {
+  const designOnly = useDesignOnly()
   const { i18n } = useTranslation()
   const { resolvedTheme } = useTheme()
   const [Panel, setPanel] = useState<React.ComponentType<PluginPanelComponentProps>>()
@@ -25,6 +27,7 @@ export function PluginPanel({ data, manifest, fieldErrors, providerOptions, refe
   resourceReferencesRef.current = data.resourceReferences
   useEffect(() => {
     let active = true
+    if (designOnly) return () => { active = false }
     const source = manifest.plugin?.uiSource
     if (!source) { setError('Plugin UI source is missing'); return () => { active = false } }
     const removeStyles = installPluginStyles(manifest.plugin?.uiStyles, manifest.plugin?.bundleDigest ?? manifest.nodeType)
@@ -58,7 +61,8 @@ export function PluginPanel({ data, manifest, fieldErrors, providerOptions, refe
       })
       .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : String(reason)) })
     return () => { active = false; removeStyles() }
-  }, [i18n.language, manifest.nodeType, manifest.plugin?.bundleDigest, manifest.plugin?.uiSource, manifest.plugin?.uiStyles, manifest.version, resolvedTheme])
+  }, [designOnly, i18n.language, manifest.nodeType, manifest.plugin?.bundleDigest, manifest.plugin?.uiSource, manifest.plugin?.uiStyles, manifest.version, resolvedTheme])
+  if (designOnly) return <div className="space-y-3">{Object.keys(manifest.parameterSchema.properties ?? {}).map(name => <ParameterControl key={name} name={name} panel={{data,manifest,fieldErrors,providerOptions,referenceCatalog,resources,onChange,readOnly}} />)}</div>
   if (error) return <div className="rounded-md border border-danger/30 bg-danger/5 p-3 text-xs text-danger" role="alert">{error}</div>
   if (!Panel) return <div className="p-3 text-xs text-muted-foreground">Loading plugin UI…</div>
   return <PluginUiBoundary><Panel fieldErrors={fieldErrors} parameters={data.parameters} providerOptions={providerOptions} readOnly={readOnly} referenceCatalog={referenceCatalog} resources={resources} updateParameters={(patch) => { if (!readOnly) onChange({ parameters: patch }) }} /></PluginUiBoundary>

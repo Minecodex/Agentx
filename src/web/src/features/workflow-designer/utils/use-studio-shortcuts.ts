@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 import type { StudioEdge, StudioNode } from '../model/types'
-import { useEditorStore } from '../store/editor-store'
+import { useEditorStoreApi } from '../store/editor-store'
 import { cloneStudioFragment, readStudioClipboard, writeStudioClipboard } from './studio-clipboard'
 
 type ShortcutOptions = {
@@ -13,13 +13,14 @@ type ShortcutOptions = {
 }
 
 export function useStudioShortcuts(options: ShortcutOptions = {}) {
+  const storeApi = useEditorStoreApi()
   const optionsRef = useRef(options)
   optionsRef.current = options
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isEditable(event.target)) return
-      const state = useEditorStore.getState()
+      const state = storeApi.getState()
       const command = event.ctrlKey || event.metaKey
       if (event.key === 'Escape') {
         optionsRef.current.onEscape?.()
@@ -55,7 +56,7 @@ export function useStudioShortcuts(options: ShortcutOptions = {}) {
         if (clipboard.sourceWorkflowId && current.workflowId && clipboard.sourceWorkflowId !== current.workflowId && current.revalidatePaste) {
           void current.revalidatePaste(nodes, edges).then((messages) => {
             if (messages.length) current.onPasteRejected?.(messages)
-            else useEditorStore.getState().paste(nodes, edges)
+            else storeApi.getState().paste(nodes, edges)
           }).catch((error: Error) => current.onPasteRejected?.([error.message]))
         } else state.paste(nodes, edges)
         return
@@ -71,7 +72,7 @@ export function useStudioShortcuts(options: ShortcutOptions = {}) {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [storeApi])
 }
 
 function isEditable(target: EventTarget | null) {

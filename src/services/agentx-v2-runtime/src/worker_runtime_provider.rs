@@ -444,7 +444,7 @@ async fn response(
     })
 }
 
-async fn reqwest_response(
+pub(super) async fn reqwest_response(
     result: Result<reqwest::Response, reqwest::Error>,
 ) -> Result<WorkerProviderResponse, WorkerProviderError> {
     let response = result.map_err(|error| WorkerProviderError::Request {

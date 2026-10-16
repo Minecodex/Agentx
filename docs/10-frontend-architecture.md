@@ -20,7 +20,7 @@
 
 Tailwind 是唯一的视觉样式体系，不再引入 Ant Design 或另一套完整组件库。Radix UI 只提供无障碍行为和交互原语，最终视觉由 Agentx Token 和 Tailwind Class 决定。
 
-plan6 增加受审核画布插件UI。`plugin-ui-loader.ts`按不可变摘要动态导入编译后的React ESM并引用计数加载CSS；宿主只暴露同一个React运行时和公共`Field/Input/Button/Select/SmartInput`。配置Panel、Canvas内容、Result和Trace renderer都由Error Boundary隔离，卸载最后一个挂载点时清理样式。`node-panel-registry.tsx`是内置与插件面板的统一入口，Palette仍只展示启用版本；打开引用停用版本的Draft时按精确`nodeType/typeVersion`补取冻结Manifest，不把它重新加入Palette。
+plan6 引入受审核插件 UI。plan8 为保证画布编辑和静态校验不触发业务 Effect，设计画布统一使用 Manifest 驱动的平台参数控件，不挂载插件自定义 Panel、Canvas、Result 或 Trace UI，也不调用通用 Provider。历史执行详情仍支持插件 Trace renderer：`plugin-ui-loader.ts`按不可变摘要动态导入编译后的 React ESM、引用计数加载 CSS，并通过 Error Boundary 隔离；最后一个挂载点卸载后清理样式。`node-panel-registry.tsx`统一选择内置面板和插件静态面板。Palette 只展示启用版本；打开引用停用版本的 Draft 时，按精确 `nodeType/typeVersion`补取冻结 Manifest，不重新加入 Palette。
 
 ## 2. 企业工作台
 
@@ -148,9 +148,9 @@ Agentx 自己实现：
 
 以下Studio规格是[plan5](plan5/README.md)冻结并实现的桌面端边界；业务、视觉和性能验收结果以实施计划记录的命令与证据为准。
 
-Studio 采用 Dify 式节点配置流程与 n8n 式紧凑桌面画布：左侧为 264px 常驻且可收起的节点栏，中央为无限 Canvas，单击节点后打开 384px 全高 Node Details，底部为可折叠的全局 Execution Rail。可创建节点、端口、字段和能力来自 Node Manifest/有效契约；前端仅为冻结的13类节点维护专用业务布局，并以静态门禁和Registry对账，不能另写一份长期漂移的节点目录。Feature 内任何文件不得超过 2000 行。
+Studio 采用 Dify 式节点配置流程与 n8n 式紧凑桌面画布：左侧为 264px 常驻且可收起的节点栏，中央为无限 Canvas，单击节点后打开 384px 全高 Node Details，底部为可折叠的全局 Execution Rail。可创建节点、端口、字段和能力来自 Node Manifest/有效契约；前端为 Registry 的 14 类公开 Action 维护专用业务布局（含独立知识检索），并以静态门禁和Registry对账，不能另写一份长期漂移的节点目录。Feature 内任何文件不得超过 2000 行。
 
-画布视觉为 Dify 式 240px 横向白卡（plan5 重设计）：头部为 24px 彩色图标方块（六组分类色：起始 `#155EEF`、AI `#6366F1`、逻辑 `#06B6D4`、转换 `#3B82F6`、集成 `#8B5CF6`、输出 `#F59E0B`）+ 标题 + 运行状态；节点体承载 0–3 行配置摘要，`if`/`approval` 按参数渲染分支行且每行右侧独立连接点（`case:{id}` / `decision:{id}`），`merge` 左侧堆叠多个输入行。连接点为左入右出的 3×10px 竖条，Error 端口红色常驻。角色枚举已随 `error_handler` 删除收敛。AI 附件不再是画布节点：工具/技能/知识/记忆收进 Agent 节点的内嵌槽位（节点体附件徽标行 + Inspector 槽位管理，`resourceReferences[].bindingRole`），`loop_over_items` 使用 React Flow 父子容器（`parentId` + `extent` + NodeResizer + 迭代开始 chip）；chip与派生入口线仅属于视图，不进入Definition。便签和分组仍是仅编辑态派生节点；节点面板常驻左侧（可收起），保留端口兼容过滤、多输入选择和拖拽添加。缩放降级（full/compact/minimal）随新卡片结构重写。
+画布视觉为 Dify 式 240px 横向白卡（plan5 重设计）：头部为 24px 彩色图标方块（六组分类色：起始 `#155EEF`、AI `#6366F1`、逻辑 `#06B6D4`、转换 `#3B82F6`、集成 `#8B5CF6`、输出 `#F59E0B`）+ 标题 + 运行状态；节点体承载 0–3 行配置摘要，`if`/`approval` 按参数渲染分支行且每行右侧独立连接点（`case:{id}` / `decision:{id}`），`merge` 左侧堆叠多个输入行。连接点为左入右出的 3×10px 竖条，Error 端口红色常驻。角色枚举已随 `error_handler` 删除收敛。工具/技能/知识/记忆可作为 Agent 节点的内嵌槽位（节点体附件徽标行 + Inspector 槽位管理，`resourceReferences[].bindingRole`）；独立知识检索由 `knowledge_retrieval` Action 提供，查询内容、Top K 和单个 RAG 资源使用共享表单/资源选择器，输出文本、来源和已有附件引用，见 [plan8 增量设计](plan8/08-resource-completion-and-knowledge.md)。`loop_over_items` 使用 React Flow 父子容器（`parentId` + `extent` + NodeResizer + 迭代开始 chip）；chip与派生入口线仅属于视图，不进入Definition。便签和分组仍是仅编辑态派生节点；节点面板常驻左侧（可收起），保留端口兼容过滤、多输入选择和拖拽添加。缩放降级（full/compact/minimal）随新卡片结构重写。
 
 连接交互使用独立状态机维护source hover、connecting、compatible、incompatible、occupied、committed和cancelled；合法性通过增量GraphIndex校验方向、类型、基数、自连接、重复边和动态Handle。非variadic输入已占用时以一个历史事务替换旧边；存在多个兼容输入时必须显式选择端口。普通执行边使用实线箭头，Error边使用危险色虚线箭头；AI资源直接写入`resourceReferences`，不再绘制Binding边。反向主连接使用固定底部间距、水平偏移和圆角路由。Edge Hover/选中工具栏只提供插入和删除，重新连接通过React Flow边端点拖拽完成。
 
@@ -291,3 +291,9 @@ Dialog 打开后分页加载删除影响。无引用时显示不可撤销确认�
 ## 16. 表单字段错误
 
 共享表单和非共享业务表单统一解析 `ApiClientError.detail.fieldErrors`。字段错误显示在对应控件下，设置 `aria-invalid`/`aria-describedby`，失败后聚焦首个错误字段；编辑时只清除当前字段错误。已知错误码使用本地化文案，未知安全 4xx 使用服务端公开 message，5xx 使用通用文案并显示 requestId。
+
+## plan8 编辑器实例与 AI
+
+每个草稿或只读版本画布独立创建 Editor Store 和 Canvas Render Store。Query、Overlay、资源申请及 Recovery 携带 Draft 身份；Recovery 同时绑定租户和用户。手动操作与 AI 命令共用 commit/history，一批 AI 命令一个 Undo。完整 localDocumentRevision 和 JCS hash 防止过期覆盖；保存响应只在提交序号仍为当前时清 dirty。
+
+Builder Panel 展示租户模型状态、流式消息、问题、批次、静态报告、使用量和停止操作。ACK 先持久化本地 Recovery，重连通过服务端回执和本地已应用证明去重。历史版本禁用写操作和 AI，静态报告在当前 hash 改变后显示过期。设计编辑器使用平台静态参数控件，不挂载会自动执行 Effect 的自定义插件 UI/通用 Provider。

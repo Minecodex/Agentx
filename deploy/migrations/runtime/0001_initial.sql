@@ -1010,9 +1010,12 @@ CREATE TABLE retention_runs (
 CREATE TABLE runtime_calls (
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
-    execution_id BINARY(16) NOT NULL,
-    node_execution_id BINARY(16) NOT NULL,
-    attempt_id BINARY(16) NOT NULL,
+    source_kind ENUM('workflow','studio_builder') NOT NULL DEFAULT 'workflow',
+    studio_target_json JSON NULL,
+    studio_model_binding_json JSON NULL,
+    execution_id BINARY(16) NULL,
+    node_execution_id BINARY(16) NULL,
+    attempt_id BINARY(16) NULL,
     agent_run_id BINARY(16) NULL,
     iteration_index INT UNSIGNED NOT NULL DEFAULT 0,
     call_index INT UNSIGNED NOT NULL,
@@ -1039,6 +1042,10 @@ CREATE TABLE runtime_calls (
     started_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     ended_at TIMESTAMP(6) NULL,
     PRIMARY KEY (id),
+    CONSTRAINT ck_runtime_call_source CHECK (
+        (source_kind='workflow' AND execution_id IS NOT NULL AND node_execution_id IS NOT NULL AND attempt_id IS NOT NULL AND studio_target_json IS NULL)
+        OR (source_kind='studio_builder' AND execution_id IS NULL AND node_execution_id IS NULL AND attempt_id IS NULL AND agent_run_id IS NULL AND studio_target_json IS NOT NULL)
+    ),
     UNIQUE KEY uq_runtime_call_idempotency (tenant_id, idempotency_key),
     KEY idx_runtime_call_node (tenant_id, node_execution_id, iteration_index, call_index),
     KEY idx_runtime_call_execution (tenant_id, execution_id),
@@ -1371,4 +1378,30 @@ CREATE TABLE service_identity_projection (
     updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (identity_id),
     KEY idx_service_identity_workflow (tenant_id, workflow_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE studio_model_deltas (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    tenant_id BINARY(16) NOT NULL,
+    call_id BINARY(16) NOT NULL,
+    text MEDIUMTEXT NOT NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    KEY idx_studio_model_deltas (tenant_id, call_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE sandbox_design_leases (
+    operation_id BINARY(16) NOT NULL,
+    session_id BINARY(16) NULL,
+    tenant_id BINARY(16) NOT NULL,
+    fingerprint VARCHAR(80) NOT NULL,
+    owner BINARY(16) NOT NULL,
+    sandbox_id VARCHAR(255) NULL,
+    status ENUM('creating','executing','idle','completed','failed','cleanup_pending') NOT NULL,
+    result_json JSON NULL,
+    lease_until TIMESTAMP(6) NOT NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (operation_id),
+    KEY idx_sandbox_design_session (tenant_id, session_id, status),
+    KEY idx_sandbox_design_recovery (status,lease_until)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

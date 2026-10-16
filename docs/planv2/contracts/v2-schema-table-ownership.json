@@ -11,40 +11,40 @@
     "owning_task": "V2P-002"
   },
   {
-    "table": "bundle_object_copies",
-    "plane": "control",
-    "authoritative_writer": "platform-control publisher",
+    "table": "application_chat_mappings",
+    "plane": "runtime",
+    "authoritative_writer": "runtime-gateway chat mapping command handler",
     "allowed_readers": [
-      "platform-control publisher",
-      "platform-control API"
+      "runtime-gateway invocation API",
+      "workflow-runtime"
     ],
-    "cross_plane_contract": "RuntimeObjectUploadMetadataV1 and RuntimeObjectUploadReceiptV1",
-    "retention_and_delete_rule": "retain with the publish attempt and immutable bundle audit record",
-    "owning_task": "V2P-007"
+    "cross_plane_contract": "ApplyChatMappingRequestV1 and ChatMappingV1",
+    "retention_and_delete_rule": "retain the latest monotonic mapping version with its published Bundle and Deployment",
+    "owning_task": "V2C-007"
   },
   {
-    "table": "execution_spec_bundles",
+    "table": "application_playground_configs",
     "plane": "control",
-    "authoritative_writer": "platform-control bundle builder",
+    "authoritative_writer": "platform-control application playground use cases",
     "allowed_readers": [
-      "platform-control publisher",
-      "platform-control API"
+      "platform-control API",
+      "platform-control publisher"
     ],
-    "cross_plane_contract": "ExecutionSpecBundleV2",
-    "retention_and_delete_rule": "immutable; retain while deployments or publish attempts reference the bundle",
-    "owning_task": "V2P-001"
+    "cross_plane_contract": "ApplyChatMappingRequestV1 and ApplyChatMappingReceiptV1",
+    "retention_and_delete_rule": "retain the latest monotonic mapping revision with the Application Deployment",
+    "owning_task": "V2C-007"
   },
   {
-    "table": "publish_attempts",
+    "table": "application_runtime_trigger_revisions",
     "plane": "control",
-    "authoritative_writer": "platform-control deployment and publisher use cases",
+    "authoritative_writer": "platform-control application trigger use cases",
     "allowed_readers": [
-      "platform-control publisher",
+      "platform-control bundle builder",
       "platform-control API"
     ],
-    "cross_plane_contract": "versioned Runtime publish Internal API receipts",
-    "retention_and_delete_rule": "retain terminal attempts for audit and idempotent retry diagnosis",
-    "owning_task": "V2P-002"
+    "cross_plane_contract": "RuntimeTriggerSpecV1 in ExecutionSpecBundleV2",
+    "retention_and_delete_rule": "immutable revision; retain with every Deployment that captured the manifest hash",
+    "owning_task": "V2G-004"
   },
   {
     "table": "bundle_gc_items",
@@ -69,6 +69,18 @@
     "cross_plane_contract": "none; Runtime-local maintenance state",
     "retention_and_delete_rule": "retain completed run summaries for GC audit",
     "owning_task": "V2P-009"
+  },
+  {
+    "table": "bundle_object_copies",
+    "plane": "control",
+    "authoritative_writer": "platform-control publisher",
+    "allowed_readers": [
+      "platform-control publisher",
+      "platform-control API"
+    ],
+    "cross_plane_contract": "RuntimeObjectUploadMetadataV1 and RuntimeObjectUploadReceiptV1",
+    "retention_and_delete_rule": "retain with the publish attempt and immutable bundle audit record",
+    "owning_task": "V2P-007"
   },
   {
     "table": "bundle_objects",
@@ -110,6 +122,171 @@
     "owning_task": "V2P-009"
   },
   {
+    "table": "delivery_dead_letters",
+    "plane": "runtime",
+    "authoritative_writer": "runtime delivery loop dead letter migration",
+    "allowed_readers": [
+      "runtime query API for control BFF deliveries"
+    ],
+    "cross_plane_contract": "dead letter archive of DeliveryOutboxV1 records",
+    "retention_and_delete_rule": "retained for manual replay; purged with the application retention sweep",
+    "owning_task": "plan7 P7-A"
+  },
+  {
+    "table": "delivery_outbox",
+    "plane": "runtime",
+    "authoritative_writer": "runtime delivery loop and execution terminal settlement",
+    "allowed_readers": [
+      "runtime query API for control BFF deliveries"
+    ],
+    "cross_plane_contract": "DeliveryOutboxV1 delivery record and status machine",
+    "retention_and_delete_rule": "deleted with the application invocation lifecycle retention",
+    "owning_task": "plan7 P7-A"
+  },
+  {
+    "table": "execution_children",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-runtime composite coordinator",
+    "allowed_readers": [
+      "workflow-runtime",
+      "runtime query"
+    ],
+    "cross_plane_contract": "typed Composite execution events",
+    "retention_and_delete_rule": "retain with both parent and child Execution lineage",
+    "owning_task": "V2R-013"
+  },
+  {
+    "table": "execution_fork_requests",
+    "plane": "control",
+    "authoritative_writer": "platform-control execution governance use case",
+    "allowed_readers": [
+      "platform-control API",
+      "platform-control projector"
+    ],
+    "cross_plane_contract": "ExecutionCommandV1::Fork and ApplyReceiptV1",
+    "retention_and_delete_rule": "retain request and terminal receipt for audit",
+    "owning_task": "V2R-011"
+  },
+  {
+    "table": "execution_forks",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-runtime fork command handler",
+    "allowed_readers": [
+      "workflow-runtime",
+      "runtime query",
+      "runtime retention"
+    ],
+    "cross_plane_contract": "ExecutionCommandV1::Fork and runtime fork event",
+    "retention_and_delete_rule": "retain source checkpoint and Bundle references while the fork exists",
+    "owning_task": "V2R-011"
+  },
+  {
+    "table": "execution_model_deltas",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-worker durable model delta sink",
+    "allowed_readers": [
+      "runtime-gateway scoped execution query API",
+      "workflow-runtime retention sweeper"
+    ],
+    "cross_plane_contract": "Execution model-deltas API, independent cursor and QueryScopeTicketV1",
+    "retention_and_delete_rule": "deleted with the owning workflow execution by Runtime retention; no ClickHouse or Trace projection",
+    "owning_task": "plan7 P7-B"
+  },
+  {
+    "table": "execution_runtime_state",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-runtime coordinator",
+    "allowed_readers": [
+      "workflow-runtime coordinator",
+      "workflow-runtime recovery"
+    ],
+    "cross_plane_contract": "none; Runtime current-state authority",
+    "retention_and_delete_rule": "retain with Execution and delete only through Runtime retention",
+    "owning_task": "V2R-001/V2R-005"
+  },
+  {
+    "table": "execution_spec_bundles",
+    "plane": "control",
+    "authoritative_writer": "platform-control bundle builder",
+    "allowed_readers": [
+      "platform-control publisher",
+      "platform-control API"
+    ],
+    "cross_plane_contract": "ExecutionSpecBundleV2",
+    "retention_and_delete_rule": "immutable; retain while deployments or publish attempts reference the bundle",
+    "owning_task": "V2P-001"
+  },
+  {
+    "table": "integration_event_log",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-runtime integration event sequencer",
+    "allowed_readers": [
+      "runtime event export",
+      "runtime governance snapshot export"
+    ],
+    "cross_plane_contract": "RuntimeIntegrationEventEnvelopeV1",
+    "retention_and_delete_rule": "retain at least seven days and advance the published retention floor before deletion",
+    "owning_task": "V2Q-002"
+  },
+  {
+    "table": "integration_event_sequence",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-runtime integration event sequencer",
+    "allowed_readers": [
+      "runtime event export",
+      "runtime doctor"
+    ],
+    "cross_plane_contract": "RuntimeEventExportResponseV1 retention floor",
+    "retention_and_delete_rule": "retain the singleton cursor and monotonic floor permanently",
+    "owning_task": "V2Q-002"
+  },
+  {
+    "table": "knowledge_documents",
+    "plane": "control",
+    "authoritative_writer": "platform-control knowledge document use cases",
+    "allowed_readers": [
+      "platform-control publisher snapshot projection"
+    ],
+    "cross_plane_contract": "knowledge document upload and indexing status",
+    "retention_and_delete_rule": "deleted with the rag resource retention sweep; artifacts unregister references",
+    "owning_task": "plan7 P7-E"
+  },
+  {
+    "table": "observability_consumer_health",
+    "plane": "observability",
+    "authoritative_writer": "observability trace consumer",
+    "allowed_readers": [
+      "observability health",
+      "observability doctor"
+    ],
+    "cross_plane_contract": "consumer health and degraded state",
+    "retention_and_delete_rule": "retain the latest row per consumer identity",
+    "owning_task": "V2Q-005"
+  },
+  {
+    "table": "projection_rebuild_items",
+    "plane": "control",
+    "authoritative_writer": "platform-control projector",
+    "allowed_readers": [
+      "platform-control projector"
+    ],
+    "cross_plane_contract": "RuntimeGovernanceSnapshotItemV1",
+    "retention_and_delete_rule": "delete shadow rows only after atomic generation switch or abandoned rebuild cleanup",
+    "owning_task": "V2Q-002/V2Q-007"
+  },
+  {
+    "table": "publish_attempts",
+    "plane": "control",
+    "authoritative_writer": "platform-control deployment and publisher use cases",
+    "allowed_readers": [
+      "platform-control publisher",
+      "platform-control API"
+    ],
+    "cross_plane_contract": "versioned Runtime publish Internal API receipts",
+    "retention_and_delete_rule": "retain terminal attempts for audit and idempotent retry diagnosis",
+    "owning_task": "V2P-002"
+  },
+  {
     "table": "publish_receipts",
     "plane": "runtime",
     "authoritative_writer": "runtime-gateway publish Internal API",
@@ -121,6 +298,29 @@
     "cross_plane_contract": "ApplyReceiptV1, PublishReceiptV1 and RuntimeObjectUploadReceiptV1",
     "retention_and_delete_rule": "retain at least 14 days and never delete before its idempotency window closes",
     "owning_task": "V2P-003"
+  },
+  {
+    "table": "rag_retrieval_tests",
+    "plane": "control",
+    "authoritative_writer": "platform-control hit-testing use case",
+    "allowed_readers": [
+      "platform-control knowledge detail"
+    ],
+    "cross_plane_contract": "retrieval test history receipts",
+    "retention_and_delete_rule": "retained for the latest 100 tests per resource",
+    "owning_task": "plan7 P7-E"
+  },
+  {
+    "table": "runtime_composite_snapshots",
+    "plane": "runtime",
+    "authoritative_writer": "runtime-gateway Bundle and Work Package prepare",
+    "allowed_readers": [
+      "workflow-runtime composite coordinator",
+      "runtime retention"
+    ],
+    "cross_plane_contract": "RuntimeResourceBindingV1::Composite and immutable object closure",
+    "retention_and_delete_rule": "retain with the owning Bundle or Work Package and its child Execution references",
+    "owning_task": "V2R-013/V2R-015"
   },
   {
     "table": "runtime_objects",
@@ -137,112 +337,6 @@
     "owning_task": "V2P-007"
   },
   {
-    "table": "application_runtime_trigger_revisions",
-    "plane": "control",
-    "authoritative_writer": "platform-control application trigger use cases",
-    "allowed_readers": [
-      "platform-control bundle builder",
-      "platform-control API"
-    ],
-    "cross_plane_contract": "RuntimeTriggerSpecV1 in ExecutionSpecBundleV2",
-    "retention_and_delete_rule": "immutable revision; retain with every Deployment that captured the manifest hash",
-    "owning_task": "V2G-004"
-  },
-  {
-    "table": "application_playground_configs",
-    "plane": "control",
-    "authoritative_writer": "platform-control application playground use cases",
-    "allowed_readers": [
-      "platform-control API",
-      "platform-control publisher"
-    ],
-    "cross_plane_contract": "ApplyChatMappingRequestV1 and ApplyChatMappingReceiptV1",
-    "retention_and_delete_rule": "retain the latest monotonic mapping revision with the Application Deployment",
-    "owning_task": "V2C-007"
-  },
-  {
-    "table": "runtime_user_admission",
-    "plane": "runtime",
-    "authoritative_writer": "runtime-gateway admission command handler",
-    "allowed_readers": [
-      "runtime-gateway authentication"
-    ],
-    "cross_plane_contract": "RuntimeUserAdmissionV1",
-    "retention_and_delete_rule": "retain latest monotonic token version and admission epoch",
-    "owning_task": "V2G-001"
-  },
-  {
-    "table": "application_chat_mappings",
-    "plane": "runtime",
-    "authoritative_writer": "runtime-gateway chat mapping command handler",
-    "allowed_readers": [
-      "runtime-gateway invocation API",
-      "workflow-runtime"
-    ],
-    "cross_plane_contract": "ApplyChatMappingRequestV1 and ChatMappingV1",
-    "retention_and_delete_rule": "retain the latest monotonic mapping version with its published Bundle and Deployment",
-    "owning_task": "V2C-007"
-  },
-  {
-    "table": "runtime_user_application_grants",
-    "plane": "runtime",
-    "authoritative_writer": "runtime-gateway admission command handler",
-    "allowed_readers": [
-      "runtime-gateway authentication"
-    ],
-    "cross_plane_contract": "RuntimeUserApplicationGrantV1",
-    "retention_and_delete_rule": "retain latest monotonic grant version and revocation fact",
-    "owning_task": "V2G-001"
-  },
-  {
-    "table": "runtime_trigger_operations",
-    "plane": "runtime",
-    "authoritative_writer": "workflow-runtime trigger role",
-    "allowed_readers": [
-      "workflow-runtime trigger role",
-      "runtime doctor"
-    ],
-    "cross_plane_contract": "RuntimeTriggerSpecV1 and Runtime Command",
-    "retention_and_delete_rule": "retain operation responses through the 14 day idempotency window",
-    "owning_task": "V2G-004"
-  },
-  {
-    "table": "runtime_work_package_publications",
-    "plane": "control",
-    "authoritative_writer": "platform-control debug and evaluation orchestrators",
-    "allowed_readers": [
-      "platform-control API",
-      "platform-control projector"
-    ],
-    "cross_plane_contract": "RuntimeWorkPackageV1 and Work Package receipts",
-    "retention_and_delete_rule": "retain immutable package and terminal receipts through the governance retention window",
-    "owning_task": "V2R-012/V2R-014"
-  },
-  {
-    "table": "workflow_debug_runs",
-    "plane": "control",
-    "authoritative_writer": "platform-control debug orchestrator and projector",
-    "allowed_readers": [
-      "platform-control API",
-      "platform-control projector"
-    ],
-    "cross_plane_contract": "RuntimeWorkPackageV1 and DebugChanged event",
-    "retention_and_delete_rule": "expire package after one hour and retain the terminal governance receipt",
-    "owning_task": "V2R-014"
-  },
-  {
-    "table": "execution_fork_requests",
-    "plane": "control",
-    "authoritative_writer": "platform-control execution governance use case",
-    "allowed_readers": [
-      "platform-control API",
-      "platform-control projector"
-    ],
-    "cross_plane_contract": "ExecutionCommandV1::Fork and ApplyReceiptV1",
-    "retention_and_delete_rule": "retain request and terminal receipt for audit",
-    "owning_task": "V2R-011"
-  },
-  {
     "table": "runtime_projection_cursors",
     "plane": "control",
     "authoritative_writer": "platform-control projector",
@@ -255,16 +349,52 @@
     "owning_task": "V2R-012/V2Q-002"
   },
   {
-    "table": "execution_runtime_state",
-    "plane": "runtime",
-    "authoritative_writer": "workflow-runtime coordinator",
+    "table": "runtime_projection_status",
+    "plane": "control",
+    "authoritative_writer": "platform-control projector",
     "allowed_readers": [
-      "workflow-runtime coordinator",
-      "workflow-runtime recovery"
+      "platform-control API",
+      "control doctor"
     ],
-    "cross_plane_contract": "none; Runtime current-state authority",
-    "retention_and_delete_rule": "retain with Execution and delete only through Runtime retention",
-    "owning_task": "V2R-001/V2R-005"
+    "cross_plane_contract": "ProjectionStatusV1",
+    "retention_and_delete_rule": "retain the active and building generation metadata for the lifetime of the projection",
+    "owning_task": "V2Q-002/V2Q-007"
+  },
+  {
+    "table": "runtime_query_receipts",
+    "plane": "runtime",
+    "authoritative_writer": "runtime-gateway query authorization",
+    "allowed_readers": [
+      "runtime-gateway query API",
+      "runtime audit"
+    ],
+    "cross_plane_contract": "DelegationClaimsV1 jti and request hash",
+    "retention_and_delete_rule": "retain fourteen days for replay prevention and query audit",
+    "owning_task": "V2Q-004"
+  },
+  {
+    "table": "runtime_query_snapshot_items",
+    "plane": "runtime",
+    "authoritative_writer": "runtime-gateway query API",
+    "allowed_readers": [
+      "runtime-gateway query API",
+      "runtime retention"
+    ],
+    "cross_plane_contract": "ExecutionSearchPageV1 and InvocationSearchPageV1",
+    "retention_and_delete_rule": "delete with the parent query snapshot after fifteen minutes",
+    "owning_task": "V2Q-003"
+  },
+  {
+    "table": "runtime_query_snapshots",
+    "plane": "runtime",
+    "authoritative_writer": "runtime-gateway query API",
+    "allowed_readers": [
+      "runtime-gateway query API",
+      "runtime retention"
+    ],
+    "cross_plane_contract": "opaque Runtime Query cursor",
+    "retention_and_delete_rule": "expire after fifteen minutes and remove with its snapshot items",
+    "owning_task": "V2Q-003"
   },
   {
     "table": "runtime_resource_bindings",
@@ -291,82 +421,6 @@
     "owning_task": "V2R-002/V2R-003"
   },
   {
-    "table": "runtime_composite_snapshots",
-    "plane": "runtime",
-    "authoritative_writer": "runtime-gateway Bundle and Work Package prepare",
-    "allowed_readers": [
-      "workflow-runtime composite coordinator",
-      "runtime retention"
-    ],
-    "cross_plane_contract": "RuntimeResourceBindingV1::Composite and immutable object closure",
-    "retention_and_delete_rule": "retain with the owning Bundle or Work Package and its child Execution references",
-    "owning_task": "V2R-013/V2R-015"
-  },
-  {
-    "table": "runtime_work_packages",
-    "plane": "runtime",
-    "authoritative_writer": "runtime-gateway Work Package API and workflow-runtime",
-    "allowed_readers": [
-      "runtime-gateway",
-      "workflow-runtime",
-      "workflow-worker",
-      "runtime retention"
-    ],
-    "cross_plane_contract": "RuntimeWorkPackageV1 and Work Package receipts",
-    "retention_and_delete_rule": "expire unopened packages by TTL; retain running packages through terminal references",
-    "owning_task": "V2R-012/V2R-014"
-  },
-  {
-    "table": "runtime_work_package_objects",
-    "plane": "runtime",
-    "authoritative_writer": "runtime-gateway Work Package prepare",
-    "allowed_readers": [
-      "workflow-runtime",
-      "workflow-worker",
-      "runtime retention"
-    ],
-    "cross_plane_contract": "RuntimeWorkPackageV1 object closure",
-    "retention_and_delete_rule": "live package references block object deletion",
-    "owning_task": "V2R-012/V2R-014/V2R-015"
-  },
-  {
-    "table": "execution_children",
-    "plane": "runtime",
-    "authoritative_writer": "workflow-runtime composite coordinator",
-    "allowed_readers": [
-      "workflow-runtime",
-      "runtime query"
-    ],
-    "cross_plane_contract": "typed Composite execution events",
-    "retention_and_delete_rule": "retain with both parent and child Execution lineage",
-    "owning_task": "V2R-013"
-  },
-  {
-    "table": "execution_forks",
-    "plane": "runtime",
-    "authoritative_writer": "workflow-runtime fork command handler",
-    "allowed_readers": [
-      "workflow-runtime",
-      "runtime query",
-      "runtime retention"
-    ],
-    "cross_plane_contract": "ExecutionCommandV1::Fork and runtime fork event",
-    "retention_and_delete_rule": "retain source checkpoint and Bundle references while the fork exists",
-    "owning_task": "V2R-011"
-  },
-  {
-    "table": "worker_result_receipts",
-    "plane": "runtime",
-    "authoritative_writer": "workflow-runtime worker result handler",
-    "allowed_readers": [
-      "workflow-runtime",
-      "workflow-worker recovery"
-    ],
-    "cross_plane_contract": "WorkerResultV1",
-    "retention_and_delete_rule": "retain through the Attempt idempotency and audit window",
-    "owning_task": "V2R-006/V2R-007"
-  },
-  {
     "table": "runtime_retention_holds",
     "plane": "runtime",
     "authoritative_writer": "runtime-gateway admission and workflow-runtime retention",
@@ -391,87 +445,38 @@
     "owning_task": "V2R-004/V2R-007/V2R-015"
   },
   {
-    "table": "runtime_projection_status",
-    "plane": "control",
-    "authoritative_writer": "platform-control projector",
-    "allowed_readers": [
-      "platform-control API",
-      "control doctor"
-    ],
-    "cross_plane_contract": "ProjectionStatusV1",
-    "retention_and_delete_rule": "retain the active and building generation metadata for the lifetime of the projection",
-    "owning_task": "V2Q-002/V2Q-007"
-  },
-  {
-    "table": "projection_rebuild_items",
-    "plane": "control",
-    "authoritative_writer": "platform-control projector",
-    "allowed_readers": [
-      "platform-control projector"
-    ],
-    "cross_plane_contract": "RuntimeGovernanceSnapshotItemV1",
-    "retention_and_delete_rule": "delete shadow rows only after atomic generation switch or abandoned rebuild cleanup",
-    "owning_task": "V2Q-002/V2Q-007"
-  },
-  {
-    "table": "runtime_query_snapshots",
+    "table": "runtime_trigger_operations",
     "plane": "runtime",
-    "authoritative_writer": "runtime-gateway query API",
+    "authoritative_writer": "workflow-runtime trigger role",
     "allowed_readers": [
-      "runtime-gateway query API",
-      "runtime retention"
-    ],
-    "cross_plane_contract": "opaque Runtime Query cursor",
-    "retention_and_delete_rule": "expire after fifteen minutes and remove with its snapshot items",
-    "owning_task": "V2Q-003"
-  },
-  {
-    "table": "runtime_query_snapshot_items",
-    "plane": "runtime",
-    "authoritative_writer": "runtime-gateway query API",
-    "allowed_readers": [
-      "runtime-gateway query API",
-      "runtime retention"
-    ],
-    "cross_plane_contract": "ExecutionSearchPageV1 and InvocationSearchPageV1",
-    "retention_and_delete_rule": "delete with the parent query snapshot after fifteen minutes",
-    "owning_task": "V2Q-003"
-  },
-  {
-    "table": "runtime_query_receipts",
-    "plane": "runtime",
-    "authoritative_writer": "runtime-gateway query authorization",
-    "allowed_readers": [
-      "runtime-gateway query API",
-      "runtime audit"
-    ],
-    "cross_plane_contract": "DelegationClaimsV1 jti and request hash",
-    "retention_and_delete_rule": "retain fourteen days for replay prevention and query audit",
-    "owning_task": "V2Q-004"
-  },
-  {
-    "table": "integration_event_sequence",
-    "plane": "runtime",
-    "authoritative_writer": "workflow-runtime integration event sequencer",
-    "allowed_readers": [
-      "runtime event export",
+      "workflow-runtime trigger role",
       "runtime doctor"
     ],
-    "cross_plane_contract": "RuntimeEventExportResponseV1 retention floor",
-    "retention_and_delete_rule": "retain the singleton cursor and monotonic floor permanently",
-    "owning_task": "V2Q-002"
+    "cross_plane_contract": "RuntimeTriggerSpecV1 and Runtime Command",
+    "retention_and_delete_rule": "retain operation responses through the 14 day idempotency window",
+    "owning_task": "V2G-004"
   },
   {
-    "table": "integration_event_log",
+    "table": "runtime_user_admission",
     "plane": "runtime",
-    "authoritative_writer": "workflow-runtime integration event sequencer",
+    "authoritative_writer": "runtime-gateway admission command handler",
     "allowed_readers": [
-      "runtime event export",
-      "runtime governance snapshot export"
+      "runtime-gateway authentication"
     ],
-    "cross_plane_contract": "RuntimeIntegrationEventEnvelopeV1",
-    "retention_and_delete_rule": "retain at least seven days and advance the published retention floor before deletion",
-    "owning_task": "V2Q-002"
+    "cross_plane_contract": "RuntimeUserAdmissionV1",
+    "retention_and_delete_rule": "retain latest monotonic token version and admission epoch",
+    "owning_task": "V2G-001"
+  },
+  {
+    "table": "runtime_user_application_grants",
+    "plane": "runtime",
+    "authoritative_writer": "runtime-gateway admission command handler",
+    "allowed_readers": [
+      "runtime-gateway authentication"
+    ],
+    "cross_plane_contract": "RuntimeUserApplicationGrantV1",
+    "retention_and_delete_rule": "retain latest monotonic grant version and revocation fact",
+    "owning_task": "V2G-001"
   },
   {
     "table": "runtime_user_workflow_grants",
@@ -485,37 +490,115 @@
     "owning_task": "V2Q-003/V2Q-004"
   },
   {
-    "table": "delivery_outbox",
+    "table": "runtime_work_package_objects",
     "plane": "runtime",
-    "authoritative_writer": "runtime delivery loop and execution terminal settlement",
+    "authoritative_writer": "runtime-gateway Work Package prepare",
     "allowed_readers": [
-      "runtime query API for control BFF deliveries"
+      "workflow-runtime",
+      "workflow-worker",
+      "runtime retention"
     ],
-    "cross_plane_contract": "DeliveryOutboxV1 delivery record and status machine",
-    "retention_and_delete_rule": "deleted with the application invocation lifecycle retention",
-    "owning_task": "plan7 P7-A"
+    "cross_plane_contract": "RuntimeWorkPackageV1 object closure",
+    "retention_and_delete_rule": "live package references block object deletion",
+    "owning_task": "V2R-012/V2R-014/V2R-015"
   },
   {
-    "table": "delivery_dead_letters",
-    "plane": "runtime",
-    "authoritative_writer": "runtime delivery loop dead letter migration",
+    "table": "runtime_work_package_publications",
+    "plane": "control",
+    "authoritative_writer": "platform-control debug and evaluation orchestrators",
     "allowed_readers": [
-      "runtime query API for control BFF deliveries"
+      "platform-control API",
+      "platform-control projector"
     ],
-    "cross_plane_contract": "dead letter archive of DeliveryOutboxV1 records",
-    "retention_and_delete_rule": "retained for manual replay; purged with the application retention sweep",
-    "owning_task": "plan7 P7-A"
+    "cross_plane_contract": "RuntimeWorkPackageV1 and Work Package receipts",
+    "retention_and_delete_rule": "retain immutable package and terminal receipts through the governance retention window",
+    "owning_task": "V2R-012/V2R-014"
   },
   {
-    "table": "workflow_trace_events",
-    "plane": "observability",
-    "authoritative_writer": "observability trace consumer",
+    "table": "runtime_work_packages",
+    "plane": "runtime",
+    "authoritative_writer": "runtime-gateway Work Package API and workflow-runtime",
     "allowed_readers": [
-      "observability query"
+      "runtime-gateway",
+      "workflow-runtime",
+      "workflow-worker",
+      "runtime retention"
     ],
-    "cross_plane_contract": "TraceEventEnvelopeV1",
-    "retention_and_delete_rule": "retain for the configured trace TTL and query by event id plus content hash",
-    "owning_task": "V2Q-005/V2Q-006"
+    "cross_plane_contract": "RuntimeWorkPackageV1 and Work Package receipts",
+    "retention_and_delete_rule": "expire unopened packages by TTL; retain running packages through terminal references",
+    "owning_task": "V2R-012/V2R-014"
+  },
+  {
+    "table": "sandbox_design_leases",
+    "plane": "runtime",
+    "authoritative_writer": "sandbox-manager resolve-only Host",
+    "allowed_readers": [
+      "sandbox-manager resolve-only Host"
+    ],
+    "cross_plane_contract": "PluginDesignOperationRequestV1",
+    "retention_and_delete_rule": "Retain unresolved effects; purge settled design history after tenant retention window; delete draft/session-owned history only with owning workflow deletion. Provider sandbox TTL and lease reconciliation terminate all instances.",
+    "owning_task": "P8-Builder",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
+  },
+  {
+    "table": "studio_builder_effects",
+    "plane": "control",
+    "authoritative_writer": "platform-control Studio Builder Host",
+    "allowed_readers": [
+      "platform-control Studio Builder Host"
+    ],
+    "cross_plane_contract": "DesignModelEffectRequestV1 / DesignModelReceiptV1 / StudioEditorAcknowledgementV1",
+    "retention_and_delete_rule": "Retain unresolved effects; purge settled design history after tenant retention window; delete draft/session-owned history only with owning workflow deletion. Provider sandbox TTL and lease reconciliation terminate all instances.",
+    "owning_task": "P8-Builder",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "studio_builder_entries",
+    "plane": "control",
+    "authoritative_writer": "platform-control Studio Builder Host",
+    "allowed_readers": [
+      "platform-control Studio Builder Host"
+    ],
+    "cross_plane_contract": "DesignModelEffectRequestV1 / DesignModelReceiptV1 / StudioEditorAcknowledgementV1",
+    "retention_and_delete_rule": "Retain unresolved effects; purge settled design history after tenant retention window; delete draft/session-owned history only with owning workflow deletion. Provider sandbox TTL and lease reconciliation terminate all instances.",
+    "owning_task": "P8-Builder",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "studio_builder_runs",
+    "plane": "control",
+    "authoritative_writer": "platform-control Studio Builder Host",
+    "allowed_readers": [
+      "platform-control Studio Builder Host"
+    ],
+    "cross_plane_contract": "DesignModelEffectRequestV1 / DesignModelReceiptV1 / StudioEditorAcknowledgementV1",
+    "retention_and_delete_rule": "Retain unresolved effects; purge settled design history after tenant retention window; delete draft/session-owned history only with owning workflow deletion. Provider sandbox TTL and lease reconciliation terminate all instances.",
+    "owning_task": "P8-Builder",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "studio_builder_sessions",
+    "plane": "control",
+    "authoritative_writer": "platform-control Studio Builder Host",
+    "allowed_readers": [
+      "platform-control Studio Builder Host"
+    ],
+    "cross_plane_contract": "DesignModelEffectRequestV1 / DesignModelReceiptV1 / StudioEditorAcknowledgementV1",
+    "retention_and_delete_rule": "Retain unresolved effects; purge settled design history after tenant retention window; delete draft/session-owned history only with owning workflow deletion. Provider sandbox TTL and lease reconciliation terminate all instances.",
+    "owning_task": "P8-Builder",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "studio_model_deltas",
+    "plane": "runtime",
+    "authoritative_writer": "runtime-gateway design model Host",
+    "allowed_readers": [
+      "runtime-gateway design model Host"
+    ],
+    "cross_plane_contract": "DesignModelReceiptV1",
+    "retention_and_delete_rule": "Retain unresolved effects; purge settled design history after tenant retention window; delete draft/session-owned history only with owning workflow deletion. Provider sandbox TTL and lease reconciliation terminate all instances.",
+    "owning_task": "P8-Builder",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
   },
   {
     "table": "trace_ingest_conflicts",
@@ -530,49 +613,38 @@
     "owning_task": "V2Q-005"
   },
   {
-    "table": "observability_consumer_health",
+    "table": "worker_result_receipts",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-runtime worker result handler",
+    "allowed_readers": [
+      "workflow-runtime",
+      "workflow-worker recovery"
+    ],
+    "cross_plane_contract": "WorkerResultV1",
+    "retention_and_delete_rule": "retain through the Attempt idempotency and audit window",
+    "owning_task": "V2R-006/V2R-007"
+  },
+  {
+    "table": "workflow_debug_runs",
+    "plane": "control",
+    "authoritative_writer": "platform-control debug orchestrator and projector",
+    "allowed_readers": [
+      "platform-control API",
+      "platform-control projector"
+    ],
+    "cross_plane_contract": "RuntimeWorkPackageV1 and DebugChanged event",
+    "retention_and_delete_rule": "expire package after one hour and retain the terminal governance receipt",
+    "owning_task": "V2R-014"
+  },
+  {
+    "table": "workflow_trace_events",
     "plane": "observability",
     "authoritative_writer": "observability trace consumer",
     "allowed_readers": [
-      "observability health",
-      "observability doctor"
+      "observability query"
     ],
-    "cross_plane_contract": "consumer health and degraded state",
-    "retention_and_delete_rule": "retain the latest row per consumer identity",
-    "owning_task": "V2Q-005"
-  },
-  {
-    "table": "knowledge_documents",
-    "plane": "control",
-    "authoritative_writer": "platform-control knowledge document use cases",
-    "allowed_readers": [
-      "platform-control publisher snapshot projection"
-    ],
-    "cross_plane_contract": "knowledge document upload and indexing status",
-    "retention_and_delete_rule": "deleted with the rag resource retention sweep; artifacts unregister references",
-    "owning_task": "plan7 P7-E"
-  },
-  {
-    "table": "rag_retrieval_tests",
-    "plane": "control",
-    "authoritative_writer": "platform-control hit-testing use case",
-    "allowed_readers": [
-      "platform-control knowledge detail"
-    ],
-    "cross_plane_contract": "retrieval test history receipts",
-    "retention_and_delete_rule": "retained for the latest 100 tests per resource",
-    "owning_task": "plan7 P7-E"
-  },
-  {
-    "table": "execution_model_deltas",
-    "plane": "runtime",
-    "authoritative_writer": "workflow-worker durable model delta sink",
-    "allowed_readers": [
-      "runtime-gateway scoped execution query API",
-      "workflow-runtime retention sweeper"
-    ],
-    "cross_plane_contract": "Execution model-deltas API, independent cursor and QueryScopeTicketV1",
-    "retention_and_delete_rule": "deleted with the owning workflow execution by Runtime retention; no ClickHouse or Trace projection",
-    "owning_task": "plan7 P7-B"
+    "cross_plane_contract": "TraceEventEnvelopeV1",
+    "retention_and_delete_rule": "retain for the configured trace TTL and query by event id plus content hash",
+    "owning_task": "V2Q-005/V2Q-006"
   }
 ]

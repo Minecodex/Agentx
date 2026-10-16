@@ -4,13 +4,14 @@
 from __future__ import annotations
 
 import time
-from itertools import pairwise
 from typing import Any
 
 import httpx
 
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
 from tests.e2e.product.test_channel_delivery import _development_environment_id, _publish_application
 from tests.e2e.runtime.test_agent_attachments import _access_token, _runtime_mysql
+from tests.e2e.workflow_fixtures import set_chain_definition
 
 
 def create_caller_keys(control, application_id, count=100):
@@ -34,71 +35,28 @@ def capacity_application(context: dict[str, str], control_url: str, nodes: int) 
         )
         assert created.status_code == 201, f"{created.status_code}: {created.text}"
         workflow_id = created.json()["id"]
-        draft = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers).json()
+        draft = control.get(
+            f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}", headers=headers
+        ).json()
         definition = draft["definition"]
-        definition["start"]["inputs"] = {
-            "type": "object",
-            "properties": {"message": {"type": "string"}},
-            "required": ["message"],
-            "additionalProperties": False,
-        }
-        exit_node = next(node for node in definition["nodes"] if node["type"] == "exit")
-        exit_node["parameters"]["outputs"] = {
-            "answer": {
-                "kind": "reference",
-                "selector": {
-                    "namespace": "inputs",
-                    "run": {"kind": "current"},
-                    "item": {"kind": "current"},
-                    "path": ["message"],
-                },
-                "missingPolicy": {"kind": "error"},
-            }
-        }
-        definition["end"] = {
-            "completion": "first_return",
-            "outputs": {"answer": {"schema": {"type": "string"}, "required": True, "sensitive": False}},
-            "error": {"outputs": {}},
-        }
-        chain = []
-        for index in range(nodes - 1):
-            node_id = f"capacity_{index}"
-            chain.append(node_id)
-            definition["nodes"].append(
-                {
-                    "id": node_id,
-                    "key": node_id,
-                    "type": "set",
-                    "typeVersion": 1,
-                    "name": node_id,
-                    "disabled": False,
-                    "parameters": {"values": {"kind": "object", "fields": {}}, "keepOnlySet": False},
-                    "settings": {},
-                    "contextWrites": [],
-                    "resourceReferences": [],
-                }
-            )
-        chain = ["__start__", *chain, exit_node["id"]]
-        definition["connections"] = [
-            {
-                "id": f"capacity-edge-{index}",
-                "sourceNodeId": source,
-                "sourceHandle": "main",
-                "targetNodeId": target,
-                "targetHandle": "main",
-                "order": 0,
-            }
-            for index, (source, target) in enumerate(pairwise(chain))
-        ]
+        definition = set_chain_definition(definition, nodes)
         saved = control.put(
-            f"/api/v1/workflows/{workflow_id}/draft",
+            f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}",
             headers=headers,
-            json={"expectedRevision": draft["revision"], "definition": definition},
+            json={
+                "editorDocument": fixture_draft(control, workflow_id, headers)["editorDocument"],
+                "expectedRevision": draft["revision"],
+                "definition": definition,
+            },
         )
         assert saved.status_code == 200, saved.text
-        latest = control.get(f"/api/v1/workflows/{workflow_id}/draft", headers=headers).json()
+        latest = control.get(
+            f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}", headers=headers
+        ).json()
         version = control.post(
-            f"/api/v1/workflows/{workflow_id}/versions", headers=headers, json={"draftRevision": latest["revision"]}
+            f"/api/v1/workflows/{workflow_id}/versions",
+            headers=headers,
+            json={"draftId": fixture_draft(control, workflow_id, headers)["id"], "draftRevision": latest["revision"]},
         )
         version.raise_for_status()
         workflow = {"workflowId": workflow_id, "versionId": version.json()["id"]}

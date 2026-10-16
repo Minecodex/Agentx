@@ -26,3 +26,17 @@ test('Set and List resolve their output contracts inside the TypeScript package'
   const list = await resolveDefinition({ input: { kind: 'literal', value: [{ id: 1 }] } }, upstream, { nodeType: 'list' })
   assert.equal(list.outputSchema.properties.items.type, 'array')
 })
+
+
+test('List empty input and no matching rows are successful empty results', async () => {
+  for (const input of [[], [{ id: 1 }]]) {
+    const result = await execute({ execution: execution('list'), inputs: {}, parameters: { input }, perItemParameters: input.map(() => ({ filter: { conditions: [{ condition: false }] } })) })
+    assert.equal(result.status, 'completed')
+    assert.deepEqual(result.outputs.main[0].json.items, [])
+  }
+})
+
+test('Set accepts no incoming items without raising a node error', async () => {
+  const result = await execute({ execution: execution('set'), inputs: { main: [] }, parameters: { values: {} }, perItemParameters: [] })
+  assert.equal(result.status, 'completed')
+})

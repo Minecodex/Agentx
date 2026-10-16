@@ -22,6 +22,7 @@ LightRAG 的 `EMBEDDING_DIM`、Mem0 的 embedder/vector_store 维度必须都设
 
 系统测试通过 `pytest tests/e2e` 准备临时 Namespace、验证真实向量与中文
 语义排序，并在完成后清理。卸载本 Addon 没有持久数据需要保留。
-测试前设置 `AGENTX_E2E_CPU_EMBEDDING_IMAGE` 为镜像完整摘要引用；真实文本、
-知识库和 Agent 记忆测试还需设置 `AGENTX_E2E_LIVE_VAULT_SECRET_REF`，读取
-本机已配置的 Kimi Vault 凭证。测试不会将模型 key 写入文件或浏览器录制。
+测试前设置 `AGENTX_E2E_CPU_EMBEDDING_IMAGE` 为镜像完整摘要引用。真实文本、
+知识库和 Agent 记忆测试与画布创作共用源环境已配置且启用的 `glm-5.3-flash`
+连接、价格和当前 Vault 凭据版本，在临时租户创建隔离资源；不再使用硬编码的
+Kimi endpoint 或额外 Secret Ref。测试不会将模型 key 写入文件或浏览器录制。

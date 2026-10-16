@@ -1,4 +1,12 @@
 const translations = {
+  "builderReset": "重新设置",
+  "builderSet": "设为画布 AI 模型",
+  "builderSelected": "画布 AI 模型",
+  "builderClear": "清除设置",
+  "builderSaved": "画布 AI 模型设置已保存",
+  "builderAuthorization": "授权该模型及关联凭据供租户内有工作流编辑权限的用户进行画布创作",
+  "builderPermission": "需要模型管理、公司管理和资源授权权限",
+
   "create": "新建模型",
   "details": "详情",
   "connectionTest": "测试连接",

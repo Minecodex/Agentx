@@ -23,6 +23,7 @@ from typing import Any
 import httpx
 import pytest
 
+from tests.e2e.capacity.collector import redis_command
 from tests.e2e.product.test_channel_delivery import (
     _access_token,
     _development_environment_id,
@@ -283,20 +284,7 @@ def test_redis_loss_rebuild_keeps_service_alive(
     assert _invoke_and_wait(installed_agentx, service_urls, probe, f"{probe['prefix']}-warmup") == "succeeded"
 
     loss_started = time.time()
-    run(
-        (
-            "kubectl",
-            "-n",
-            installed_agentx["runtime_namespace"],
-            "exec",
-            "statefulset/runtime-redis",
-            "--",
-            "sh",
-            "-ec",
-            'redis-cli --no-auth-warning -a "$REDIS_PASSWORD" FLUSHALL',
-        ),
-        timeout=120,
-    )
+    assert redis_command(installed_agentx, "FLUSHALL") == "OK"
 
     # The gateway stays up and accepts a fresh invocation; the Worker rebuilds
     # its queue consumers and the execution completes from MySQL state.

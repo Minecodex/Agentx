@@ -29,6 +29,13 @@ const catalog: ReferenceCatalog = {
 }
 
 describe('VariableTokenEditor', () => {
+  it('opens a reference with the defaults allowed by the wire contract', () => {
+    const compact = { namespace: 'outputs', sourceNodeId: 'model-node-id', path: ['text'] } satisfies ValueSelector
+    expect(selectorDisplayLabel(compact, catalog)).toBe('Summarizer · text')
+    render(<VariableTokenEditor catalog={catalog} onChange={vi.fn()} value={{ kind: 'template', segments: [{ kind: 'reference', selector: compact }] }} />)
+    expect(screen.getByText('Summarizer · text')).toBeInTheDocument()
+  })
+
   it('derives a readable chip label without persisting display metadata', () => {
     expect(selectorDisplayLabel(selector, catalog)).toBe('Summarizer · text')
     render(<VariableTokenEditor catalog={catalog} onChange={vi.fn()} value={{ kind: 'template', segments: [{ kind: 'reference', selector, missingPolicy: { kind: 'error' } }] }} />)

@@ -27,6 +27,7 @@ struct TableDisposition {
 #[derive(Clone, Debug, Deserialize)]
 struct V2SchemaTableOwnership {
     table: String,
+    schema_file: Option<String>,
     plane: String,
     authoritative_writer: String,
     allowed_readers: Vec<String>,
@@ -279,12 +280,24 @@ fn check_v2_incremental_schemas(
         incremental_migration_table_names(&root.join("deploy/migrations/observability"))?;
     let expected_control = tables
         .values()
-        .filter(|row| row.plane == "control")
+        .filter(|row| {
+            row.plane == "control"
+                && !row
+                    .schema_file
+                    .as_deref()
+                    .is_some_and(|file| file.ends_with("0001_initial.sql"))
+        })
         .map(|row| row.table.clone())
         .collect::<BTreeSet<_>>();
     let expected_runtime = tables
         .values()
-        .filter(|row| row.plane == "runtime")
+        .filter(|row| {
+            row.plane == "runtime"
+                && !row
+                    .schema_file
+                    .as_deref()
+                    .is_some_and(|file| file.ends_with("0001_initial.sql"))
+        })
         .map(|row| row.table.clone())
         .collect::<BTreeSet<_>>();
     let expected_observability = tables
@@ -370,6 +383,21 @@ fn check_v2_initial_schemas(
             if name != "_sqlx_migrations" {
                 expected_runtime.insert(name.to_owned());
             }
+        }
+    }
+    for row in load_v2_tables(root)?.values().filter(|row| {
+        row.schema_file
+            .as_deref()
+            .is_some_and(|file| file.ends_with("0001_initial.sql"))
+    }) {
+        match row.plane.as_str() {
+            "control" => {
+                expected_control.insert(row.table.clone());
+            }
+            "runtime" => {
+                expected_runtime.insert(row.table.clone());
+            }
+            _ => {}
         }
     }
     compare_schema_tables("Control", &control, &expected_control, failures);
@@ -807,7 +835,10 @@ fn check_cargo(root: &Path, policy: &BoundaryPolicy, failures: &mut Vec<String>)
             && dependency_names.iter().any(|dependency| {
                 matches!(*dependency, "sqlx" | "redis" | "clickhouse" | "axum")
                     || dependency.starts_with("agentx-")
-                        && !matches!(*dependency, "agentx-domain" | "agentx-node-protocol")
+                        && !matches!(
+                            *dependency,
+                            "agentx-domain" | "agentx-node-protocol" | "agentx-agent-core"
+                        )
             })
         {
             failures
@@ -1054,7 +1085,7 @@ fn check_runtime_gateway_redis(
         ] {
             if source.contains(token) {
                 failures.push(format!(
-                    "Runtime Gateway Redis boundary violation: {relative_path} uses {token}; only sse_wakeup.rs may access Redis"
+                    "Runtime Gateway Redis boundary violation: {relative_path} uses {token}; only the declared admission, SSE and trace-delivery hosts may access Redis"
                 ));
             }
         }

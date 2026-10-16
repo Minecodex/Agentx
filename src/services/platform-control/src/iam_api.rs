@@ -833,6 +833,19 @@ pub(crate) async fn emit_user_admission(
     user: Uuid,
     enabled: bool,
 ) -> ApiResult<()> {
+    enqueue_user_admission(tx, tenant, user, enabled).await?;
+    crate::runtime_grants::emit_user_application_grants(tx, tenant, user).await?;
+    Ok(())
+}
+
+/// Delivery retries reuse the stored event ID. Reconciliation uses a fresh
+/// command so an old receipt cannot hide a projection lost during recovery.
+pub(crate) async fn enqueue_user_admission(
+    tx: &mut Transaction<'_, MySql>,
+    tenant: Uuid,
+    user: Uuid,
+    enabled: bool,
+) -> ApiResult<()> {
     let token_version: u64 =
         sqlx::query_scalar("SELECT token_version FROM users WHERE tenant_id=? AND id=?")
             .bind(tenant)
@@ -848,9 +861,9 @@ pub(crate) async fn emit_user_admission(
     let hash = agentx_runtime_contracts::content_hash(&payload)
         .map_err(ApiError::internal)?
         .to_string();
+    let event_id = Uuid::now_v7();
     sqlx::query("INSERT INTO outbox(id,tenant_id,event_type,aggregate_type,aggregate_id,payload_json,status,request_hash,idempotency_key) VALUES(?,?,?,?,?,?,'pending',?,?)")
-        .bind(Uuid::now_v7()).bind(tenant).bind("RuntimeUserAdmissionChanged").bind("runtime_user_admission").bind(user.to_string()).bind(payload).bind(hash).bind(format!("user-admission:{user}:{token_version}")).execute(&mut **tx).await?;
-    crate::runtime_grants::emit_user_application_grants(tx, tenant, user).await?;
+        .bind(event_id).bind(tenant).bind("RuntimeUserAdmissionChanged").bind("runtime_user_admission").bind(user.to_string()).bind(payload).bind(hash).bind(format!("user-admission:{user}:{token_version}:{event_id}")).execute(&mut **tx).await?;
     Ok(())
 }
 async fn audit(

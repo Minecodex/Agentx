@@ -43,11 +43,21 @@ async fn trace_batches_are_disjoint_fenced_and_published(pool: &MySqlPool) {
     if second.is_empty() {
         second = claim(pool, Uuid::now_v7()).await.unwrap();
     }
-    assert_eq!(first.len() + second.len(), 151);
     assert!(first.len() <= 100 && second.len() <= 100 && !first.is_empty() && !second.is_empty());
+    // Concurrent SKIP LOCKED scans can both return partial batches. Once
+    // their transactions commit, claim every remaining row without taking
+    // any live lease away from either original relay owner.
+    let mut remainder = Vec::new();
+    while first.len() + second.len() + remainder.len() < 151 {
+        let batch = claim(pool, Uuid::now_v7()).await.unwrap();
+        assert!(!batch.is_empty() && batch.len() <= 100);
+        remainder.extend(batch);
+    }
+    assert_eq!(first.len() + second.len() + remainder.len(), 151);
     let ids: BTreeSet<_> = first
         .iter()
         .chain(&second)
+        .chain(&remainder)
         .map(|row| row.event_id)
         .collect();
     assert_eq!(ids.len(), 151, "relay owners cannot claim the same event");
@@ -71,7 +81,7 @@ async fn trace_batches_are_disjoint_fenced_and_published(pool: &MySqlPool) {
         ),
         "an old batch cannot complete its replacement leases"
     );
-    for claims in [&first, &replacement] {
+    for claims in [&first, &replacement, &remainder].into_iter().filter(|batch| !batch.is_empty()) {
         let stream_ids = publish(&mut redis, claims).await.unwrap();
         assert_eq!(stream_ids.len(), claims.len());
         assert!(matches!(

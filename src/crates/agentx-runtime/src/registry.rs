@@ -281,6 +281,10 @@ fn default_manifests() -> Vec<NodeManifestVersion> {
             "nodes/send_message.json",
             include_str!("../../../plugins/builtin/core/nodes/send_message.json"),
         ),
+        (
+            "nodes/knowledge_retrieval.json",
+            include_str!("../../../plugins/builtin/core/nodes/knowledge_retrieval.json"),
+        ),
     ];
     let data_nodes = [
         (
@@ -688,6 +692,7 @@ mod tests {
                 "if",
                 "list",
                 "loop_over_items",
+                "knowledge_retrieval",
                 "reply_message",
                 "send_message",
                 "merge",

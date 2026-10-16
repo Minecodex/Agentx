@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import re
 import socket
@@ -9,9 +10,12 @@ import threading
 import time
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -25,6 +29,7 @@ from tests.e2e.support import (
     agentxctl,
     deployment_config,
     redact,
+    render,
     run,
     start_process,
 )
@@ -92,11 +97,19 @@ def _must_remain_available_during_scale_down(deployment: dict[str, object]) -> b
     )
 
 
-def _scale_development(values: Path, enabled: bool) -> dict[tuple[str, str], int]:
+@dataclass
+class DevelopmentDeployment:
+    replicas: int
+    selector: str
+    pod_images: dict[str, str]
+    template_images: dict[str, str]
+
+
+def _scale_development(values: Path, enabled: bool) -> dict[tuple[str, str], DevelopmentDeployment]:
     if not enabled:
         return {}
     config = deployment_config(values)
-    replicas: dict[tuple[str, str], int] = {}
+    replicas: dict[tuple[str, str], DevelopmentDeployment] = {}
     for namespace in dict.fromkeys(config["namespaces"].values()):
         result = run(("kubectl", "-n", namespace, "get", "deployment", "-o", "json"), check=False, timeout=60)
         if result.returncode != 0:
@@ -105,23 +118,90 @@ def _scale_development(values: Path, enabled: bool) -> dict[tuple[str, str], int
             if _must_remain_available_during_scale_down(deployment):
                 continue
             name = deployment["metadata"]["name"]
-            replicas[(namespace, name)] = int(deployment.get("spec", {}).get("replicas", 1))
+            spec = deployment["spec"]
+            selector = ",".join(f"{key}={value}" for key, value in spec["selector"]["matchLabels"].items())
+            pods = run(("kubectl", "-n", namespace, "get", "pods", "-l", selector, "-o", "json"), timeout=60).json()[
+                "items"
+            ]
+            active = [pod for pod in pods if not pod["metadata"].get("deletionTimestamp")]
+            templates = {container["name"]: container["image"] for container in spec["template"]["spec"]["containers"]}
+            # Preserve an existing running Pod override without changing the
+            # Deployment template. Scaling otherwise discards that live state.
+            images = {}
+            if len(active) == 1 and int(spec.get("replicas", 1)) == 1:
+                images = {
+                    container["name"]: container["image"]
+                    for container in active[0]["spec"]["containers"]
+                    if container["image"] != templates.get(container["name"])
+                }
+            replicas[(namespace, name)] = DevelopmentDeployment(
+                int(spec.get("replicas", 1)), selector, images, templates
+            )
+    try:
+        for namespace, name in replicas:
             run(("kubectl", "-n", namespace, "scale", f"deployment/{name}", "--replicas=0"), timeout=60)
+    except Exception:
+        _restore_development(replicas)
+        raise
     return replicas
 
 
-def _restore_development(replicas: dict[tuple[str, str], int]) -> None:
+def _restore_development(replicas: dict[tuple[str, str], DevelopmentDeployment]) -> None:
     failures: list[str] = []
-    for (namespace, name), count in replicas.items():
+    for (namespace, name), saved in replicas.items():
         result = run(
-            ("kubectl", "-n", namespace, "scale", f"deployment/{name}", f"--replicas={count}"),
+            ("kubectl", "-n", namespace, "scale", f"deployment/{name}", f"--replicas={saved.replicas}"),
             check=False,
             timeout=60,
         )
         if result.returncode:
             failures.append(f"{namespace}/{name}: scale failed")
-    for (namespace, name), count in replicas.items():
-        if count:
+    for (namespace, name), saved in replicas.items():
+        if saved.replicas:
+            if saved.pod_images:
+                deadline = time.monotonic() + 60
+                while True:
+                    pods = run(
+                        ("kubectl", "-n", namespace, "get", "pods", "-l", saved.selector, "-o", "json"), timeout=60
+                    ).json()["items"]
+                    pods = [pod for pod in pods if not pod["metadata"].get("deletionTimestamp")]
+                    if pods:
+                        for pod in pods:
+                            patch = []
+                            for index, container in enumerate(pod["spec"]["containers"]):
+                                image = saved.pod_images.get(container["name"])
+                                if (
+                                    image
+                                    and image != container["image"]
+                                    and container["image"] == saved.template_images.get(container["name"])
+                                ):
+                                    path = f"/spec/containers/{index}/image"
+                                    patch.extend(
+                                        [
+                                            {"op": "test", "path": path, "value": container["image"]},
+                                            {"op": "replace", "path": path, "value": image},
+                                        ]
+                                    )
+                            if patch:
+                                run(
+                                    (
+                                        "kubectl",
+                                        "-n",
+                                        namespace,
+                                        "patch",
+                                        "pod",
+                                        pod["metadata"]["name"],
+                                        "--type=json",
+                                        "-p",
+                                        json.dumps(patch),
+                                    ),
+                                    timeout=60,
+                                )
+                        break
+                    if time.monotonic() >= deadline:
+                        failures.append(f"{namespace}/{name}: no restored Pod")
+                        break
+                    time.sleep(0.5)
             result = run(
                 ("kubectl", "-n", namespace, "rollout", "status", f"deployment/{name}", "--timeout=300s"),
                 check=False,
@@ -173,6 +253,53 @@ def installed_agentx(
         request,
         scale_development=pytestconfig.getoption("--scale-down-development"),
     )
+
+
+@contextmanager
+def _local_sandbox_proxy(values: Path, rendered: str, context: dict[str, str]) -> Iterator[None]:
+    """Expose the real TLS gateway to Docker Desktop's separate Sandbox network."""
+    access = yaml.safe_load(values.read_text())["global"]["network"]["egressGateway"]["sandboxAccess"]
+    if access["mode"] != "nodePort" or urlparse(access["endpoint"]).hostname != "host.docker.internal":
+        yield
+        return
+    service = next(
+        document
+        for document in yaml.safe_load_all(rendered)
+        if document
+        and document.get("kind") == "Service"
+        and document["metadata"]["name"] == "agentx-egress-sandbox"
+        and document["metadata"]["namespace"] == context["dependencies_namespace"]
+    )
+    port = service["spec"]["ports"][0]["port"]
+    # Fail on an occupied host port rather than talking to another environment.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("0.0.0.0", port))  # noqa: S104 -- Docker Desktop must reach the TLS listener.
+    directory = Path(context["artifact_dir"])
+    log = directory / "port-forward-sandbox-egress.log"
+    forward = RestartingPortForward(
+        (
+            "kubectl",
+            "-n",
+            context["dependencies_namespace"],
+            "port-forward",
+            "--address=0.0.0.0",
+            "service/agentx-egress-sandbox",
+            f"{port}:{port}",
+        ),
+        stdout_path=log,
+        stderr_path=directory / "port-forward-sandbox-egress-error.log",
+    )
+    try:
+        deadline = time.monotonic() + 30
+        while f"Forwarding from 0.0.0.0:{port}" not in log.read_text():
+            if forward.process.poll() is not None or time.monotonic() >= deadline:
+                raise RuntimeError(
+                    "local Sandbox TLS gateway port-forward failed; see port-forward-sandbox-egress logs"
+                )
+            time.sleep(0.1)
+        yield
+    finally:
+        forward.stop()
 
 
 def _installed_environment(
@@ -231,8 +358,9 @@ def _installed_environment(
         identity = write_identity(context, image_refs)
         if not pytestconfig._agentx_evidence_properties:
             pytestconfig._agentx_evidence_properties.update(identity)
-        installation_ready = True
-        yield context
+        with _local_sandbox_proxy(deployment_values, rendered, context):
+            installation_ready = True
+            yield context
     finally:
         failed = not installation_ready or request.session.testsfailed > failures_before
         _timeline(timeline, f"test session completed failed={str(failed).lower()}")
@@ -404,12 +532,30 @@ def e2e_providers(installed_agentx: dict[str, str]) -> dict[str, str]:
     ragflow_enabled = not os.getenv("AGENTX_E2E_RAGFLOW_DISABLE")
     rendered = run(("kubectl", "kustomize", fixture), timeout=120).stdout
     documents = [document for document in yaml.safe_load_all(rendered) if document]
-    images = yaml.safe_load(Path(installed_agentx["values"]).read_text())["global"]["images"]
+    values = yaml.safe_load(Path(installed_agentx["values"]).read_text())
+    images = values["global"]["images"]
     if images["registry"] == "agentx" and not images.get("repositoryPrefix"):
         for document in documents:
             if document["kind"] == "Deployment" and document["metadata"]["name"] in {"echo-mcp", "echo-node"}:
                 document["spec"]["template"]["spec"]["containers"][0]["image"] = (
                     f"agentx/{document['metadata']['name']}:{images['tag']}"
+                )
+    if ragflow_enabled and values["global"]["components"]["objectStorage"]["mode"] == "bundled-minio":
+        # Use the installed platform's MinIO build for the independent RAGFlow
+        # fixture too; its account, Service and PVC remain isolated.
+        dependencies = yaml.safe_load_all(
+            render(installed_agentx["values"], "dependencies", installed_agentx["run_id"])
+        )
+        minio = next(
+            document
+            for document in dependencies
+            if document and document["kind"] == "StatefulSet" and document["metadata"]["name"] == "object-storage"
+        )
+        for document in documents:
+            if document["kind"] == "Deployment" and document["metadata"]["name"] == "ragflow-minio":
+                server = minio["spec"]["template"]["spec"]["containers"][0]
+                document["spec"]["template"]["spec"]["containers"][0].update(
+                    image=server["image"], imagePullPolicy=server["imagePullPolicy"]
                 )
     if not ragflow_enabled:
         documents = [

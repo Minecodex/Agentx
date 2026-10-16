@@ -347,7 +347,7 @@ async fn list_provider_options(
     Ok(Json(ProviderOptionsResponse { items, next_cursor }))
 }
 
-async fn manifests_for_tenant(
+pub(crate) async fn manifests_for_tenant(
     state: &ControlApiState,
     tenant: Uuid,
 ) -> ApiResult<Vec<(NodeManifestVersion, String)>> {

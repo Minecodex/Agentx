@@ -334,3 +334,13 @@ Artifact 元数据在 MySQL，内容在对象存储。引用包含：
 Knowledge Resource 和 Memory Namespace 删除后，只在对应 Connection 不再拥有其他 Resource/Namespace 时清理孤立 Connection。MCP Server 删除前聚合其全部 Tool 的 Draft、Version、Dependency、Grant 和 Runtime 历史引用；Model Revision 只有在不存在其他 Alias、历史或子 Revision 引用时才随 Alias 清理。
 
 用户输入型唯一索引同时承担并发写入的最终保护。Platform API 写入点登记允许映射的索引名，MySQL 1062 按索引精确映射字段错误，未登记索引不得猜测。MCP 配置 Hash 命中当前版本时只更新元数据，命中历史版本时切换指针，全新 Hash 才按历史最大版本号加一；Skill Version 内容 Hash 幂等复用。
+
+## plan8 数据增量
+
+Draft/Revision 按 tenant/workflow/draft 隔离，创建 Draft 时原子写不可变 revision 0。Version 记录 source_draft_id/source_revision_id/source_revision/base_version_id，并保存 node_manifests_json；同 Workflow 的编号由 Workflow 行锁串行分配。复合外键保护来源的归属和修订号，历史版本画布与发布使用冻结的精确 Manifest。
+
+Control 新增 studio_builder_sessions/runs/entries/effects。Session 保存完整 Core State，Run 保存模型/凭据/价格及授权修订，Effect 保存命令、ACK/问题及不可变结果。Cursor 和最近 Effect 查询沿专用有序索引读取，大 JSON 不进入排序缓冲。Revision 的 resource_snapshot_json 和全部 Draft 的引用查询参与删除保护。Runtime 模型账本独立记录 studio_target_json/studio_model_binding_json，CHECK 禁止设计来源写业务身份。
+
+### 画布文档与 Builder 的无损 JSON 持久化
+
+Workflow Draft/Revision/Version 的 definition_json、editor_json，以及 Builder Session 的 snapshot/state、Entry payload、Effect input/command/acknowledgement/result 使用 LONGTEXT + JSON_VALID CHECK。MySQL 8.4 的原生 JSON 数字转换已复现将 209.66666666666666 改成 209.66666666666663，破坏文档 hash 和 ACK 身份；这些列必须保留应用序列化后的数值。HTTP DTO 与 SQLx JSON 编解码不变，SQL JSON_EXTRACT 仍可用于标量查询。基线 DDL 直接更新，不提供旧列兼容或增量迁移。重连按当前文档 hash 和持久化快照身份恢复单调序号，不放宽命令/ACK 校验。

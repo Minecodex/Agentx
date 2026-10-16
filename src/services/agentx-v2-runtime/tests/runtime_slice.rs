@@ -328,3 +328,4 @@ include!("runtime_slice/session_recovery_and_gc.rs");
 include!("runtime_slice/quota_concurrency.rs");
 include!("runtime_slice/incremental_persistence.rs");
 include!("runtime_slice/trace_batches.rs");
+include!("runtime_slice/resolve_sessions.rs");

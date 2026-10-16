@@ -28,6 +28,12 @@ export function ModelsPage() {
   const models = useQuery({ queryKey: ['models'], queryFn: () => apiRequest<PageResponse<Model>>('/models/aliases?pageSize=100') })
   const departments = useQuery({ queryKey: ['departments'], queryFn: () => apiRequest<Department[]>('/departments') })
   const credentials = useQuery({ queryKey: ['credentials', 'options'], queryFn: () => apiRequest<PageResponse<Credential>>('/credentials?pageSize=100&status=active') })
+  const builderSetting = useQuery({ queryKey: ['studio-builder-model-setting', auth.user?.companyId, auth.user?.id], queryFn: () => apiRequest<{version: number; modelAliasId: string | null; modelAlias: string | null; status: string; canManage: boolean}>('/studio-builder/model-setting') })
+  const setBuilderModel = useMutation({
+    mutationFn: (modelAliasId: string | null) => apiRequest('/studio-builder/model-setting', { method: 'PUT', body: jsonBody({ expectedVersion: builderSetting.data?.version, modelAliasId }) }),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['studio-builder-model-setting'] }); showToast(t('models.builderSaved')) },
+    onError: async (error: Error) => { showToast(error.message); await builderSetting.refetch() },
+  })
   const createModel = useMutation({
     mutationFn: async (values: Record<string, string>) => {
       let defaults: unknown = {}
@@ -61,8 +67,8 @@ export function ModelsPage() {
     { accessorKey: 'connectionStatus', header: t('models.connectionStatus'), cell: ({ row }) => <StatusBadge label={localizedValue(t, 'models', row.original.connectionStatus)} status={connectionStatus(row.original.connectionStatus)} /> },
     { accessorKey: 'status', header: t('common.status'), cell: ({ row }) => <StatusBadge label={localizedValue(t, 'common', row.original.status)} status={row.original.status === 'active' ? 'active' : 'inactive'} /> },
     { accessorKey: 'updatedAt', header: t('common.updatedAt'), cell: ({ row }) => formatDateTime(row.original.updatedAt) },
-    { id: 'actions', header: '', cell: ({ row }) => <div className="flex gap-1"><Button asChild size="sm" variant="ghost"><Link to={`/models/${row.original.id}`}>{t('models.details')}</Link></Button><EntityDeleteButton canDelete={auth.hasPermission('model:delete')} deletePath={`/models/aliases/${row.original.id}`} entityId={row.original.id} entityName={row.original.alias} entityType="model" onDeleted={async () => { await queryClient.invalidateQueries({ queryKey: ['models'] }); showToast(t('models.deleted')) }} /></div> },
-  ], [auth, formatDateTime, queryClient, showToast, t])
+    { id: 'actions', header: '', cell: ({ row }) => <div className="flex gap-1"><Button asChild size="sm" variant="ghost"><Link to={`/models/${row.original.id}`}>{t('models.details')}</Link></Button>{builderSetting.data?.modelAliasId === row.original.id ? <><StatusBadge label={t('models.builderSelected')} status={builderSetting.data.status === 'ready' ? 'active' : 'inactive'} />{builderSetting.data.canManage && builderSetting.data.status !== 'ready' && <Button size="sm" variant="ghost" disabled={setBuilderModel.isPending || row.original.status !== 'active'} onClick={() => setBuilderModel.mutate(row.original.id)}>{t('models.builderReset')}</Button>}{builderSetting.data.canManage && <Button size="sm" variant="ghost" disabled={setBuilderModel.isPending} onClick={() => setBuilderModel.mutate(null)}>{t('models.builderClear')}</Button>}</> : <Button size="sm" variant="ghost" disabled={!builderSetting.data?.canManage || !['model:manage','company:manage','resource:grant'].every(auth.hasPermission) || row.original.status !== 'active' || setBuilderModel.isPending} title={builderSetting.data?.canManage ? t('models.builderAuthorization') : t('models.builderPermission')} onClick={() => setBuilderModel.mutate(row.original.id)}>{t('models.builderSet')}</Button>}<EntityDeleteButton canDelete={auth.hasPermission('model:delete')} deletePath={`/models/aliases/${row.original.id}`} entityId={row.original.id} entityName={row.original.alias} entityType="model" onDeleted={async () => { await queryClient.invalidateQueries({ queryKey: ['models'] }); showToast(t('models.deleted')) }} /></div> },
+  ], [auth, builderSetting.data, setBuilderModel, formatDateTime, queryClient, showToast, t])
   const fields: EntityFormField[] = [
     { name: 'connectionName', label: t('models.connectionName'), required: true },
     { name: 'providerType', label: t('models.providerType'), type: 'select', defaultValue: 'openai_compatible', required: true, options: [{ value: 'openai_compatible', label: t('models.openaiCompatible') }] },

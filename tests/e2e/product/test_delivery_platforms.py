@@ -8,6 +8,7 @@ from itertools import pairwise
 import httpx
 import pytest
 
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
 from tests.e2e.product import test_channel_delivery as channels
 from tests.e2e.runtime.test_agent_attachments import _access_token
 from tests.e2e.support import run
@@ -71,7 +72,10 @@ def test_official_protocols_and_loop_delivery_identity(installed_agentx, service
             provider: channels._channel(control, headers, application["id"], provider, mode, config)
             for provider, (mode, config) in configurations.items()
         }
-        draft = control.get(f"/api/v1/workflows/{workflow['workflowId']}/draft", headers=headers).json()
+        draft = control.get(
+            f"/api/v1/workflows/{workflow['workflowId']}/drafts/{fixture_draft_id(control, workflow['workflowId'], headers)}",
+            headers=headers,
+        ).json()
         definition = draft["definition"]
         exit_node = next(node for node in definition["nodes"] if node["type"] == "exit")
         for provider, binding in bindings.items():
@@ -87,7 +91,7 @@ def test_official_protocols_and_loop_delivery_identity(installed_agentx, service
                 "settings": {},
                 "parameters": {
                     "channelId": binding["id"],
-                    "content": f"Official {provider} {run_id}",
+                    "content": {"kind": "literal", "value": f"Official {provider} {run_id}"},
                     "senderId": "e2e-sender",
                     "targetConversationId": "e2e-group",
                 },
@@ -141,16 +145,26 @@ def test_official_protocols_and_loop_delivery_identity(installed_agentx, service
             for index, (source, target) in enumerate(pairwise(chain))
         ]
         saved = control.put(
-            f"/api/v1/workflows/{workflow['workflowId']}/draft",
+            f"/api/v1/workflows/{workflow['workflowId']}/drafts/{fixture_draft_id(control, workflow['workflowId'], headers)}",
             headers=headers,
-            json={"expectedRevision": draft["revision"], "definition": definition},
+            json={
+                "editorDocument": fixture_draft(control, workflow["workflowId"], headers)["editorDocument"],
+                "expectedRevision": draft["revision"],
+                "definition": definition,
+            },
         )
         assert saved.status_code == 200, saved.text
-        latest = control.get(f"/api/v1/workflows/{workflow['workflowId']}/draft", headers=headers).json()
+        latest = control.get(
+            f"/api/v1/workflows/{workflow['workflowId']}/drafts/{fixture_draft_id(control, workflow['workflowId'], headers)}",
+            headers=headers,
+        ).json()
         published = control.post(
             f"/api/v1/workflows/{workflow['workflowId']}/versions",
             headers=headers,
-            json={"draftRevision": latest["revision"]},
+            json={
+                "draftId": fixture_draft(control, workflow["workflowId"], headers)["id"],
+                "draftRevision": latest["revision"],
+            },
         )
         assert published.status_code == 201, published.text
         workflow["versionId"] = published.json()["id"]

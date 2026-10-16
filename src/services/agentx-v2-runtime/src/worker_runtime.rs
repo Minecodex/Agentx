@@ -39,6 +39,8 @@ mod agent_state;
 mod agent_trace;
 #[path = "worker_runtime_builtin.rs"]
 mod builtin;
+#[path = "worker_runtime_knowledge.rs"]
+mod knowledge;
 mod mcp;
 #[path = "worker_runtime_output.rs"]
 pub(crate) mod output;
@@ -47,7 +49,7 @@ pub(crate) mod plugin;
 #[path = "worker_runtime_provider.rs"]
 mod provider;
 #[path = "worker_runtime_stream.rs"]
-mod stream;
+pub(crate) mod stream;
 
 #[cfg(test)]
 use output::system_prompt;
@@ -355,6 +357,9 @@ impl RuntimeWorker {
             NodeCapability::PluginNodejs => plugin::execute(self, claim).await,
             NodeCapability::Agent => self.execute_agent_core(claim).await,
             NodeCapability::Model | NodeCapability::Sandbox => self.execute_resource(claim).await,
+            NodeCapability::Rag if claim.node_type == "knowledge_retrieval" => {
+                self.execute_knowledge_retrieval(claim).await
+            }
             NodeCapability::McpTool
             | NodeCapability::Rag
             | NodeCapability::Memory
@@ -897,7 +902,11 @@ impl RuntimeWorker {
                     RuntimeResourceConfigurationV1::Rag { provider, .. } => provider.clone(),
                     _ => "lightrag".into(),
                 };
-                rag_execution_output(finalize_rag_response(&provider, execution))
+                if claim.node_type == "knowledge_retrieval" {
+                    knowledge::finalize(&provider, execution)
+                } else {
+                    rag_execution_output(finalize_rag_response(&provider, execution))
+                }
             }
             RuntimeResourceKindV1::Memory => memory_execution_output(execution),
             _ => execution,
@@ -1336,17 +1345,9 @@ impl RuntimeWorker {
                     let status = stream.status;
                     let headers = stream.response.headers().clone();
                     if !status.is_success() {
-                        let body = stream
-                            .response
-                            .text()
-                            .await
-                            .unwrap_or_default()
-                            .chars()
-                            .take(400)
-                            .collect::<String>();
-                        return Err(WorkerProviderError::Protocol(format!(
-                            "model stream endpoint returned HTTP {status}: {body}"
-                        )));
+                        // An HTTP rejection is not malformed SSE. Preserve the
+                        // response for the shared provider error/ledger path.
+                        return provider::reqwest_response(Ok(stream.response)).await;
                     }
                     let sink = delta_sink.clone();
                     let mut first_token_seen = false;

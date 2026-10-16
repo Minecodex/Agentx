@@ -11,6 +11,7 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 import pytest
 
+from tests.e2e.product.test_provider_integration import _sandbox_image_digest
 from tests.e2e.support import run, run_playwright
 
 
@@ -145,6 +146,7 @@ def test_product_playwright_suite(
     environment["AGENTX_E2E_STAGE"] = "helm-agentxctl"
     environment["AGENTX_E2E_BASE_URL"] = service_urls["web"]
     environment["AGENTX_E2E_RUNTIME_URL"] = service_urls["runtime"]
+    environment["AGENTX_E2E_SANDBOX_IMAGE"] = _sandbox_image_digest()
     environment["AGENTX_E2E_ECHO_BASE_URL"] = e2e_providers["echo_mcp"]
     environment["AGENTX_E2E_LIGHTRAG_BASE_URL"] = e2e_providers["lightrag"]
     environment["AGENTX_E2E_MEM0_BASE_URL"] = e2e_providers["mem0"]

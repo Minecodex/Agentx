@@ -594,7 +594,7 @@ pub fn build_work_package(
 }
 
 pub fn build_work_package_with_resolved(
-    source: WorkPackageBuildSource,
+    mut source: WorkPackageBuildSource,
     resolved_manifests: &BTreeMap<String, NodeManifestVersion>,
     resolved_dependencies: &ResolvedPluginManifestDependencies,
     key_id: &str,
@@ -606,6 +606,13 @@ pub fn build_work_package_with_resolved(
         .any(|object| !object.has_canonical_key())
     {
         return Err(BuildError::NonCanonicalObject);
+    }
+    if let agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Debug {
+        source: design_source,
+        ..
+    } = &source.spec
+    {
+        source.workflow.bind_source(design_source.clone());
     }
     let registry =
         node_registry_with_plugins(&source.dependency_versions, &source.plugin_manifests)?;
@@ -1202,15 +1209,23 @@ mod tests {
             workflow: agentx_runtime_contracts::ExecutionWorkflowSnapshotV1 {
                 id: Uuid::from_u128(5),
                 name: "Workflow".into(),
-                version_id: package_id,
-                version_number: 7,
+                source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version {
+                    version_id: package_id,
+                    version_number: 7,
+                },
+                version_id: Some(package_id),
+                version_number: Some(7),
                 owner_department: None,
             },
             origin: agentx_runtime_contracts::ExecutionOriginV1::system(None),
             purpose: WorkPackagePurpose::Debug,
             call_purpose: RuntimeCallPurposeV1::Debug,
             spec: agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Debug {
-                draft_revision: 7,
+                source: agentx_runtime_contracts::WorkflowDesignSourceV1::DraftRevision {
+                    draft_id: Uuid::from_u128(31),
+                    revision_id: Uuid::from_u128(32),
+                    revision: 7,
+                },
                 debug_plan: agentx_runtime_contracts::RuntimeDebugPlanV1::whole(&compiled),
             },
             source_revision: "draft:7".into(),

@@ -45,7 +45,9 @@ pub(crate) async fn materialize(
         else {
             continue;
         };
-        let workflow_version_id = workflow.version_id;
+        let workflow_version_id = workflow.version_id.ok_or_else(|| {
+            invalid_object("Composite source must be an immutable Workflow Version")
+        })?;
         if !resource.object_ids.contains(definition_object_id)
             || !resource.object_ids.contains(ir_object_id)
         {

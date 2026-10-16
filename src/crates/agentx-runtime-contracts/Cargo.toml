@@ -6,6 +6,7 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
+agentx-agent-core.workspace = true
 agentx-domain.workspace = true
 agentx-node-protocol.workspace = true
 anyhow.workspace = true

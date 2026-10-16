@@ -259,7 +259,7 @@ pub(super) fn provider_usage_detail(value: &Value) -> (u64, u64, u64) {
     (input, output, cost)
 }
 
-pub(super) fn apply_model_price(
+pub(crate) fn apply_model_price(
     value: &mut Value,
     price: &RuntimeModelPriceV1,
 ) -> Result<(u64, u64, u64), String> {

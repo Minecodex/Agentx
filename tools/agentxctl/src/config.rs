@@ -208,6 +208,16 @@ impl DeploymentConfig {
             Some("nodePort" | "privateLoadBalancer")
         ) {
             let port = deterministic_e2e_node_port(&normalized);
+            let mut endpoint = url::Url::parse(
+                self.string("/global/network/egressGateway/sandboxAccess/endpoint")
+                    .context("Sandbox egress endpoint is required")?,
+            )
+            .context("Sandbox egress endpoint is invalid")?;
+            // The configured host must be reachable from the external Sandbox.
+            // Run isolation changes its port, not the operator's network route.
+            endpoint
+                .set_port(Some(port))
+                .map_err(|()| anyhow!("Sandbox egress endpoint cannot have a port"))?;
             *self
                 .values
                 .pointer_mut("/global/network/egressGateway/sandboxAccess/mode")
@@ -215,7 +225,7 @@ impl DeploymentConfig {
             *self
                 .values
                 .pointer_mut("/global/network/egressGateway/sandboxAccess/endpoint")
-                .unwrap() = format!("https://host.docker.internal:{port}").into();
+                .unwrap() = endpoint.to_string().into();
             *self
                 .values
                 .pointer_mut("/global/network/egressGateway/sandboxAccess/port")
@@ -830,7 +840,7 @@ mod tests {
         );
         assert_eq!(
             config.string("/global/network/egressGateway/sandboxAccess/endpoint"),
-            Some("https://host.docker.internal:30957")
+            Some("https://host.docker.internal:30957/")
         );
         assert_eq!(
             config.u64("/global/network/egressGateway/sandboxAccess/port"),
@@ -852,6 +862,23 @@ mod tests {
             config.string("/global/components/sandbox/endpoint"),
             Some("http://host.docker.internal:18080")
         );
+    }
+
+    #[test]
+    fn run_id_keeps_the_sandbox_reachable_host() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../deploy/values/local.yaml");
+        for host in ["172.18.0.2", "sandbox-node.example.test", "[fd00::2]"] {
+            let mut config = DeploymentConfig::load(&path, None).unwrap();
+            *config
+                .values
+                .pointer_mut("/global/network/egressGateway/sandboxAccess/endpoint")
+                .unwrap() = format!("https://{host}:31429").into();
+            let config = config.scoped(Some("Test_Run")).unwrap();
+            assert_eq!(
+                config.string("/global/network/egressGateway/sandboxAccess/endpoint"),
+                Some(format!("https://{host}:30957/").as_str()),
+            );
+        }
     }
 
     #[test]

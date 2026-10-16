@@ -414,8 +414,8 @@ type ContextWriteDraft = { operation: string; path: string; value: InputBinding 
 function inputBindingSummary(value: InputBinding): string {
   switch (value.kind) {
     case "literal": return typeof value.value === "string" ? value.value : JSON.stringify(value.value);
-    case "reference": return [value.selector.namespace, value.selector.port, ...value.selector.path].filter(Boolean).join(" / ");
-    case "template": return value.segments.map((segment) => segment.kind === "text" ? segment.text : `{{${segment.selector.namespace}.${segment.selector.path.join(".")}}}`).join("");
+    case "reference": return [value.selector.namespace, value.selector.port, ...(value.selector.path ?? [])].filter(Boolean).join(" / ");
+    case "template": return value.segments.map((segment) => segment.kind === "text" ? segment.text : `{{${segment.selector.namespace}.${(segment.selector.path ?? []).join(".")}}}`).join("");
     case "array": return `[${value.items.length}]`;
     case "object": return `{${Object.keys(value.fields).length}}`;
   }

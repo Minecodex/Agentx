@@ -43,7 +43,7 @@ function mergeFieldOptions(catalog?: ReferenceCatalog) {
   const names = new Set<string>(["id"]);
   const visit = (entries: ReferenceEntry[]) => {
     for (const entry of entries) {
-      if (entry.selector?.path.length) names.add(entry.selector.path.map(String).join("."));
+      if (entry.selector?.path?.length) names.add(entry.selector.path.map(String).join("."));
       visit(entry.children);
     }
   };

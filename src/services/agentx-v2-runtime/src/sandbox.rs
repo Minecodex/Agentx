@@ -34,6 +34,8 @@ const SANDBOX_EGRESS_CA_METADATA_FILENAME: &str = "metadata.json";
 
 #[path = "sandbox_process.rs"]
 mod process;
+#[path = "sandbox_resolve.rs"]
+mod resolve;
 #[path = "sandbox_workspace.rs"]
 mod workspace;
 
@@ -78,6 +80,14 @@ pub struct SandboxExecuteResponseV1 {
 
 pub fn router(state: SandboxManagerState) -> Router {
     Router::new()
+        .route(
+            "/internal/runtime/v1/sandboxes:resolve",
+            post(resolve::execute),
+        )
+        .route(
+            "/internal/runtime/v1/sandboxes:close-resolve-session",
+            post(resolve::close_session),
+        )
         .route(
             "/internal/runtime/v1/sandboxes:acquire",
             post(workspace::acquire_workspace),
@@ -734,6 +744,9 @@ async fn complete_lease(
 }
 
 pub async fn reconcile_one(state: &SandboxManagerState) -> RuntimeResult<bool> {
+    if resolve::reconcile_one(state).await? {
+        return Ok(true);
+    }
     if process::reconcile_one(state).await? {
         return Ok(true);
     }
@@ -1090,6 +1103,16 @@ async fn upload_sandbox_ca(
     headers: HeaderMap,
     ca: Vec<u8>,
 ) -> Result<(), ProviderError> {
+    upload_sandbox_file(state, endpoint, headers, SANDBOX_EGRESS_CA_PATH, ca).await
+}
+
+async fn upload_sandbox_file(
+    state: &SandboxManagerState,
+    endpoint: &reqwest::Url,
+    headers: HeaderMap,
+    path: &str,
+    content: Vec<u8>,
+) -> Result<(), ProviderError> {
     let upload_url = endpoint
         .join("files/upload")
         .map_err(|error| ProviderError {
@@ -1097,7 +1120,7 @@ async fn upload_sandbox_ca(
             outcome_unknown: false,
         })?;
     let metadata = serde_json::to_string(&json!({
-        "path":SANDBOX_EGRESS_CA_PATH,
+        "path":path,
         // Execd models Unix permissions as their octal digits (600), not the
         // decimal value of Rust's 0o600 literal (384).
         "mode":SANDBOX_EGRESS_CA_MODE
@@ -1121,8 +1144,8 @@ async fn upload_sandbox_ca(
         )
         .part(
             "file",
-            reqwest::multipart::Part::bytes(ca)
-                .file_name("agentx-egress-ca.pem")
+            reqwest::multipart::Part::bytes(content)
+                .file_name("sandbox-input")
                 .mime_str(SANDBOX_EGRESS_CA_CONTENT_TYPE)
                 .map_err(|error| ProviderError {
                     message: error.to_string(),
@@ -1142,7 +1165,10 @@ async fn upload_sandbox_ca(
         })?;
     if !response.status().is_success() {
         return Err(ProviderError {
-            message: format!("OpenSandbox CA upload returned HTTP {}", response.status()),
+            message: format!(
+                "OpenSandbox file upload returned HTTP {}",
+                response.status()
+            ),
             outcome_unknown: false,
         });
     }

@@ -38,6 +38,22 @@
         {
           "properties": {
             "phase": {
+              "const": "pending",
+              "type": "string"
+            },
+            "token": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "phase",
+            "token"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "phase": {
               "const": "effect_completed",
               "type": "string"
             },

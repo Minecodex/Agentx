@@ -1,0 +1,65 @@
+{
+  "$defs": {
+    "StudioBuilderTargetV1": {
+      "additionalProperties": false,
+      "properties": {
+        "draftId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "runId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "sessionId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "tenantId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "userId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "workflowId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenantId",
+        "workflowId",
+        "draftId",
+        "sessionId",
+        "runId",
+        "userId"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "after": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "effectId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "target": {
+      "$ref": "#/$defs/StudioBuilderTargetV1"
+    }
+  },
+  "required": [
+    "target",
+    "effectId",
+    "after"
+  ],
+  "title": "DesignModelReceiptRequestV1",
+  "type": "object"
+}

@@ -725,7 +725,7 @@ for line in sys.stdin:
     )
 }
 
-async fn provider_execd_endpoint(
+pub(super) async fn provider_execd_endpoint(
     state: &SandboxManagerState,
     sandbox_id: &str,
 ) -> Result<(Url, HeaderMap), ProviderError> {

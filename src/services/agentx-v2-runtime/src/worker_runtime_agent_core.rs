@@ -569,6 +569,7 @@ async fn finish(
             }
             agentx_agent_core::TerminalReasonV1::ToolError => "AGENT_TOOL_ERROR",
             agentx_agent_core::TerminalReasonV1::Completed => "AGENT_CORE_TERMINAL",
+            agentx_agent_core::TerminalReasonV1::Suspended => "AGENT_EFFECT_PENDING",
         };
         if matches!(
             &result.terminal_reason,

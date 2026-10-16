@@ -277,23 +277,88 @@
             }
           ]
         },
+        "source": {
+          "$ref": "#/$defs/WorkflowDesignSourceV1"
+        },
         "versionId": {
           "format": "uuid",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "versionNumber": {
           "format": "uint64",
           "minimum": 0,
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
       "required": [
         "id",
         "name",
-        "versionId",
-        "versionNumber"
+        "source"
       ],
       "type": "object"
+    },
+    "WorkflowDesignSourceV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "draftId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "kind": {
+              "const": "draft_revision",
+              "type": "string"
+            },
+            "revision": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "revisionId": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "draftId",
+            "revisionId",
+            "revision"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "version",
+              "type": "string"
+            },
+            "versionId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "versionNumber": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "versionId",
+            "versionNumber"
+          ],
+          "type": "object"
+        }
+      ]
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

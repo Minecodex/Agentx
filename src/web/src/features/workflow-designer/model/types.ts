@@ -202,9 +202,9 @@ export type ValueSelector = {
   namespace: ValueNamespace;
   sourceNodeId?: string;
   port?: string;
-  run: ValueSelection;
-  item: ValueSelection;
-  path: Array<string | number>;
+  run?: ValueSelection;
+  item?: ValueSelection;
+  path?: Array<string | number>;
 };
 export type MissingValuePolicy =
   | { kind: "error" }
@@ -212,10 +212,10 @@ export type MissingValuePolicy =
   | { kind: "omit" };
 export type InputTemplateSegment =
   | { kind: "text"; text: string }
-  | { kind: "reference"; selector: ValueSelector; missingPolicy: MissingValuePolicy };
+  | { kind: "reference"; selector: ValueSelector; missingPolicy?: MissingValuePolicy };
 export type InputBinding =
   | { kind: "literal"; value: unknown }
-  | { kind: "reference"; selector: ValueSelector; missingPolicy: MissingValuePolicy }
+  | { kind: "reference"; selector: ValueSelector; missingPolicy?: MissingValuePolicy }
   | { kind: "template"; segments: InputTemplateSegment[] }
   | { kind: "array"; items: InputBinding[] }
   | { kind: "object"; fields: Record<string, InputBinding> };
@@ -237,8 +237,8 @@ export type WorkflowSettings = {
   timeoutMs?: number | null;
 };
 export type ContextDefinition = {
-  title?: string;
-  description?: string;
+  title?: string | null;
+  description?: string | null;
   schema: unknown;
   default: unknown;
   mutable: boolean;
@@ -391,7 +391,7 @@ export type ExitNodeData = {
   parameters: ExitParameters;
 };
 export type StudioNodeData = ActionNodeData | ExitNodeData;
-export type StudioNode = Node<StudioNodeData, "manifest" | "exit">;
+export type StudioNode = Node<StudioNodeData, "manifest" | "exit"> & { editorCollapsed?: boolean };
 export type CanvasNodeData =
   | StudioNodeData
   | GroupNodeData
@@ -416,6 +416,7 @@ export type StudioEdgeData = {
   order?: number;
   sourcePortKind?: PortKind;
   runtimeStatus?: string;
+  labelPosition?: number;
 };
 export type StudioEdge = Edge<StudioEdgeData>;
 

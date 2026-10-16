@@ -590,8 +590,12 @@ async fn create_runtime_invocation_tx_inner(
             workflow: agentx_runtime_contracts::ExecutionWorkflowSnapshotV1 {
                 id: spec.workflow_id,
                 name: spec.workflow_name.clone(),
-                version_id: spec.workflow_version_id,
-                version_number: spec.workflow_version_number,
+                source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version {
+                    version_id: spec.workflow_version_id,
+                    version_number: spec.workflow_version_number,
+                },
+                version_id: Some(spec.workflow_version_id),
+                version_number: Some(spec.workflow_version_number),
                 owner_department: spec.workflow_owner_department.clone(),
             },
             trigger_type: caller.caller_type,

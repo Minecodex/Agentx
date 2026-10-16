@@ -4,14 +4,13 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, atomic::Ordering};
 
 use agentx_agent_core::{
-    EffectContextV1, MessageRole, ModelPort, ModelPortError, ModelRequestV1, ModelResponseV1,
-    ToolCallV1, ToolPortError,
+    EffectContextV1, ModelPort, ModelPortError, ModelRequestV1, ModelResponseV1, ToolPortError,
 };
 use agentx_runtime_contracts::{
     AgentAttachmentToolV1, AgentCapabilityAuthorizationEvidenceV1, RuntimeMcpTransportV2,
     RuntimeResourceBindingV1, RuntimeResourceConfigurationV1, VaultSecretReferenceV1,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::agent_attachments::authorize_attachment_projection;
 use super::agent_budget::BudgetCounters;
@@ -235,49 +234,28 @@ impl<'a> ProviderModelPort<'a> {
                 "Agent Model must use the OpenAI-compatible provider contract".into(),
             ));
         }
-        let mut messages = Vec::new();
-        for message in &request.messages {
-            let role = match message.role {
-                MessageRole::User => "user",
-                MessageRole::Assistant => "assistant",
-                MessageRole::ToolResult => "tool",
-                MessageRole::ExternalContext => "system",
-            };
-            let mut value = json!({"role":role,"content":message.content});
-            if let Some(id) = &message.tool_call_id {
-                value["tool_call_id"] = json!(id);
-            }
-            if !message.tool_calls.is_empty() {
-                value["tool_calls"] = json!(message.tool_calls.iter().map(|call| json!({"id":call.call_id,"type":"function","function":{"name":call.name,"arguments":call.arguments.to_string()}})).collect::<Vec<_>>());
-            }
-            messages.push(value);
-        }
+        let mut authorized_request = request.clone();
         let mut tools = Vec::new();
         for tool in &request.tools {
             let authorized = if let Some(descriptor) = self.attachment_tools.get(&tool.name) {
                 self.attachment_authorized(descriptor).map_err(|error| {
                     ModelPortError::Effect(format!(
-                        "attachment authorization refresh failed: {error}"
+                        "Attachment authorization refresh failed: {error}"
                     ))
                 })?
             } else {
                 true
             };
             if authorized {
-                tools.push(json!({"type":"function","function":{"name":tool.name,"description":tool.description,"parameters":tool.input_schema}}));
+                tools.push(tool.clone());
             }
         }
+        authorized_request.tools = tools;
         let call_kind = match request.purpose {
             agentx_agent_core::ModelPurposeV1::AgentTurn => "model",
             agentx_agent_core::ModelPurposeV1::Compaction => "compaction",
         };
-        let mut body = json!({"model":model,"messages":messages,"stream":streaming});
-        if streaming {
-            body["stream_options"] = json!({"include_usage":true});
-        }
-        if !tools.is_empty() {
-            body["tools"] = json!(tools);
-        }
+        let body = crate::agent_model_protocol::request(&authorized_request, model, streaming);
         let call_index = self.call_index;
         self.call_index = self.call_index.saturating_add(1);
         let endpoint = openai_chat_completions_endpoint(endpoint);
@@ -411,50 +389,11 @@ impl<'a> ProviderModelPort<'a> {
                 "AGENT_SESSION_USAGE_UNAVAILABLE: {error}"
             )));
         }
-        let message = payload.pointer("/choices/0/message").ok_or_else(|| {
-            ModelPortError::Effect("Provider response has no assistant message".into())
-        })?;
-        let content = message
-            .get("content")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned();
-        let tool_calls = message
-            .get("tool_calls")
-            .and_then(Value::as_array)
-            .map(|calls| {
-                calls
-                    .iter()
-                    .filter_map(|call| {
-                        let id = call.get("id")?.as_str()?.to_owned();
-                        let function = call.get("function")?;
-                        let name = function.get("name")?.as_str()?.to_owned();
-                        let raw = function
-                            .get("arguments")
-                            .and_then(Value::as_str)
-                            .unwrap_or("{}");
-                        let arguments =
-                            serde_json::from_str(raw).unwrap_or_else(|_| json!({"value":raw}));
-                        Some(ToolCallV1 {
-                            call_id: id,
-                            name,
-                            arguments,
-                        })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        Ok(ModelResponseV1 {
-            message_id: message
-                .get("id")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-                .unwrap_or_else(|| {
-                    format!("assistant:{}:{}", self.claim.task.attempt_id, call_index)
-                }),
-            content,
-            tool_calls,
-        })
+        crate::agent_model_protocol::response(
+            &payload,
+            format!("assistant:{}:{}", self.claim.task.attempt_id, call_index),
+        )
+        .map_err(ModelPortError::Effect)
     }
 }
 

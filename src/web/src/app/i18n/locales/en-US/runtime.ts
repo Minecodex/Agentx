@@ -127,6 +127,7 @@ const translations = {
     "unknown": "Unknown"
   },
   "retentionDataType": {
+    "studio_builder_session": "AI creation history",
     "artifact": "Artifact files",
     "trace": "Execution traces",
     "application_message": "Application messages",
@@ -140,6 +141,7 @@ const translations = {
     "pending": "Pending"
   },
   "retentionReasons": {
+    "settled_design_history": "Settled creation history exceeded retention",
     "expired": "Retention period exceeded", "referenced": "Still referenced", "legal_hold": "Under retention hold", "deletion_failed": "Cleanup failed"
   }
 } as const

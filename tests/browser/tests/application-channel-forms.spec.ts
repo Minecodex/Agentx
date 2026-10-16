@@ -98,6 +98,8 @@ test('channel dialog renders provider-specific fields and stream channels hide t
   await dialog.getByLabel('名称', { exact: true }).fill(`钉钉长连接渠道 ${suffix}`)
   await dialog.getByLabel('Client ID (AppKey)').fill('ding-e2e-client-id')
   await dialog.getByLabel('Client Secret').fill('ding-e2e-client-secret')
+  await dialog.getByRole('combobox', { name: '来源字段', exact: true }).click()
+  await page.getByRole('option', { name: '消息内容', exact: true }).click()
   await dialog.getByRole('button', { name: '保存' }).click()
   await expect(dialog).toHaveCount(0)
 
@@ -106,7 +108,10 @@ test('channel dialog renders provider-specific fields and stream channels hide t
   await expect(channel.getByText(/钉钉 · 长连接 \(Stream\)/)).toBeVisible()
   await expect(page.getByText('连接状态', { exact: true })).toBeVisible()
   await expect(page.getByText('生产接入地址', { exact: true })).toHaveCount(0)
-  await expect(page.getByText(/长连接模式无需公网接入地址/)).toBeVisible()
+  const connection = page.getByRole('group', { name: '连接状态' })
+  await expect(connection.getByText('待发布', { exact: true })).toBeVisible()
+  await expect(connection.getByText('渠道配置尚未发布，长连接还未启动。请创建应用部署，发布成功后系统会自动连接平台。', { exact: true })).toBeVisible()
+  await expect(connection.getByRole('button', { name: '创建部署', exact: true })).toBeVisible()
 
   // Missing required config fields are rejected server-side per the template.
   const rejected = await page.request.fetch(`/api/v1/applications/${application.id}/webhooks`, {

@@ -119,7 +119,7 @@ def _access_token(client: httpx.Client) -> tuple[str, dict[str, Any]]:
         response = client.post(
             "/api/v1/bootstrap",
             json={
-                "companyName": "Agentx P3-04 E2E",
+                "companyName": "Agentx E2E",
                 "adminUsername": ADMIN_USERNAME,
                 "adminDisplayName": "Agentx E2E Admin",
                 "password": ADMIN_PASSWORD,

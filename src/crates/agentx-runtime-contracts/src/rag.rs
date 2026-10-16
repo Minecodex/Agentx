@@ -147,7 +147,25 @@ pub fn rag_query_request(
 /// Structured retrieval does not generate an answer or invent hit scores.
 pub fn finalize_retrieval_value(provider: &str, value: Value) -> Result<Value, RagProtocolError> {
     if provider == RAG_PROVIDER_RAGFLOW {
-        return finalize_rag_value(provider, value);
+        let has_chunks = value.pointer("/data/chunks").is_some_and(Value::is_array);
+        let normalized = finalize_rag_value(provider, value)?;
+        if !has_chunks {
+            return Err(RagProtocolError::new(
+                "PROVIDER_REJECTED",
+                "RAGFlow retrieval omitted chunks",
+            ));
+        }
+        return Ok(normalized);
+    }
+    // LightRAG reports a valid search with zero hits as HTTP 200 / failure,
+    // distinguished from provider failures by this machine-readable reason.
+    if value["status"] == "failure"
+        && value
+            .pointer("/metadata/failure_reason")
+            .and_then(Value::as_str)
+            == Some("no_results")
+    {
+        return Ok(json!({"text":"","documents":[],"citations":[],"recordIds":[]}));
     }
     if value["status"] != "success" {
         return Err(RagProtocolError::new(
@@ -161,7 +179,7 @@ pub fn finalize_retrieval_value(provider: &str, value: Value) -> Result<Value, R
         .ok_or_else(|| {
             RagProtocolError::new("PROVIDER_REJECTED", "LightRAG retrieval omitted chunks")
         })?;
-    let documents = chunks.iter().map(|chunk| json!({"documentId":chunk.get("doc_id").or_else(||chunk.get("file_path")),"chunkId":chunk.get("chunk_id"),"content":chunk.get("content"),"score":chunk.get("score")})).collect::<Vec<_>>();
+    let documents = chunks.iter().map(|chunk| json!({"documentId":chunk.get("doc_id").or_else(||chunk.get("file_path")),"chunkId":chunk.get("chunk_id"),"content":chunk.get("content"),"score":chunk.get("score"),"title":chunk.get("title").or_else(||chunk.get("file_path")),"uri":chunk.get("uri"),"metadata":chunk.get("metadata"),"files":chunk.get("files").or_else(||chunk.get("attachments"))})).collect::<Vec<_>>();
     Ok(
         json!({"text":"","documents":documents,"citations":value.pointer("/data/references"),"recordIds":chunks.iter().filter_map(|chunk|chunk["chunk_id"].as_str()).collect::<Vec<_>>() }),
     )
@@ -259,5 +277,43 @@ mod tests {
         .unwrap();
         assert_eq!(normalized["documents"][0]["id"], json!("c1"));
         assert_eq!(normalized["recordIds"], json!(["c1"]));
+    }
+
+    #[test]
+    fn retrieval_no_hits_succeeds_for_real_provider_envelopes() {
+        for (provider, response) in [
+            (
+                "lightrag",
+                json!({"status":"failure","data":{},"message":"No relevant document chunks found.","metadata":{"mode":"naive","failure_reason":"no_results"}}),
+            ),
+            (
+                "lightrag",
+                json!({"status":"success","data":{"chunks":[],"references":[]}}),
+            ),
+            ("ragflow", json!({"code":0,"data":{"chunks":[]}})),
+        ] {
+            let result = finalize_retrieval_value(provider, response).unwrap();
+            assert_eq!(result["documents"], json!([]));
+            assert_eq!(result["recordIds"], json!([]));
+        }
+    }
+
+    #[test]
+    fn retrieval_does_not_hide_provider_or_protocol_failures() {
+        for (provider, response) in [
+            (
+                "lightrag",
+                json!({"status":"failure","metadata":{"failure_reason":"embedding_failed"}}),
+            ),
+            (
+                "lightrag",
+                json!({"status":"failure","message":"No relevant document chunks found."}),
+            ),
+            ("lightrag", json!({"status":"success","data":{}})),
+            ("ragflow", json!({"code":102,"message":"no such dataset"})),
+            ("ragflow", json!({"code":0,"data":{}})),
+        ] {
+            assert!(finalize_retrieval_value(provider, response).is_err());
+        }
     }
 }
