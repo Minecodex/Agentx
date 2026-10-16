@@ -61,6 +61,7 @@ import {
 import { buildReferenceCatalog } from "./forms/reference-picker/reference-path";
 import { useEditorStore, useEditorStoreApi, EditorStoreProvider } from "./store/editor-store";
 import { layoutStudioDocument } from "./utils/layout";
+import { createDefinitionSelector } from "./store/definition-selector";
 import { useStudioShortcuts } from "./utils/use-studio-shortcuts";
 import { configurationIssues } from "./utils/configuration";
 import { definitionIssues } from "./utils/definition-validation";
@@ -83,6 +84,10 @@ type StudioValidationIssue = {
   fieldPath?: string | null;
   values?: Record<string, string>;
 };
+
+function combineFrozenManifests(results: Array<{ data?: { manifest: NodeManifest } }>) {
+  return results.flatMap((result) => result.data ? [result.data.manifest] : []);
+}
 
 export function WorkflowCanvas() {
   const { workflowId, draftId, versionId } = useParams();
@@ -162,12 +167,13 @@ export function WorkflowCanvasEditor() {
       .filter((key) => !available.has(key)))]
       .map((key) => { const separator = key.lastIndexOf("@"); return { nodeType: key.slice(0, separator), version: Number(key.slice(separator + 1)) }; });
   }, [catalog.data, draft.data?.definition]);
-  const frozenManifestQueries = useQueries({
+  const documentManifests = useQueries({
     queries: missingManifestKeys.map(({ nodeType, version }) => ({
       queryKey: ["node-definition-frozen", nodeType, version],
       queryFn: () => loadNodeDefinition(nodeType, version),
       staleTime: Infinity,
     })),
+    combine: combineFrozenManifests,
   });
   const versions = useQuery({
     queryKey: ["workflow-versions", workflowId],
@@ -197,21 +203,10 @@ export function WorkflowCanvasEditor() {
     await queryClient.invalidateQueries({ queryKey: ["studio-resource-options", workflowId] });
     showToast(t("studio.toasts.resourceAuthorized"));
   }, [queryClient, showToast, t, workflowId]);
-  const requestResource = useCallback(async (option: ResourceOption, context?: ResourceRequestContext) => {
-    await apiRequest(`/workflows/${workflowId}/resource-grant-requests`, {
-      method: "POST",
-      headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: jsonBody({ resourceType: option.resourceType ?? "model", resourceId: option.value, resourceVersionId: option.versionId ?? null, operation: option.operation ?? "use", sourceNodeId: context?.sourceNodeId, sourceRevision: draft.data?.revision, sourceDraftId: draftId, message: context?.message }),
-    });
-    await queryClient.invalidateQueries({ queryKey: ["studio-resource-options", workflowId] });
-    showToast(t("studio.toasts.resourceRequested"));
-  }, [draft.data?.revision, draftId, queryClient, showToast, t, workflowId]);
   const manifests = useMemo(
     () => (catalog.data ?? []).map((item) => item.manifest),
     [catalog.data],
   );
-  const selectDocumentManifests = useShallow((queries: typeof frozenManifestQueries) => queries.flatMap((query) => query.data ? [query.data.manifest] : []));
-  const documentManifests = selectDocumentManifests(frozenManifestQueries);
   const subworkflowOptions = useProviderOptions(
     manifests.find((manifest) => manifest.nodeType === "sub_workflow"),
   );
@@ -231,12 +226,8 @@ export function WorkflowCanvasEditor() {
     },
     [documentManifests, manifests, subworkflowOptions.workflowVersionId],
   );
-  // Contract resolution ignores selection and layout. Keep its graph stable
-  // while dragging so a position change cannot rebuild every node contract.
-  const contractNodes = useEditorStore(useShallow((state) => state.nodes.flatMap((node) => [node.id, node.data])));
-  const contractEdges = useEditorStore(useShallow((state) => state.edges.flatMap((edge) => [edge.id, edge.source, edge.target, edge.sourceHandle, edge.targetHandle, edge.data])));
-  const contractBoundary = useEditorStore(useShallow((state) => ({ start: state.start, end: state.end, settings: state.settings })));
-  const resolvingDocument = useMemo(() => studioDocument(storeApi.getState()), [contractNodes, contractEdges, contractBoundary, storeApi]);
+  const definitionSelector = useMemo(createDefinitionSelector, []);
+  const resolvingDocument = useEditorStore(definitionSelector);
   const pluginDefinitions = useResolvedPluginManifests(
     workflowId,
     draftId,
@@ -272,9 +263,8 @@ export function WorkflowCanvasEditor() {
       setEnd: state.setEnd,
     })),
   );
-  const selected = useEditorStore((state) =>
-    state.nodes.find((node) => node.id === state.selectedId),
-  );
+  const selectedId = useEditorStore((state) => state.selectedId);
+  const selected = resolvingDocument.nodes.find((node) => node.id === selectedId);
   const dirty = useEditorStore((state) => state.dirty);
   const readOnly = Boolean(versionId) || draft.data?.status === "archived" || workflow.data?.canEdit === false || workflow.data?.status === "archived";
   useEffect(() => {storeApi.setState({readOnly});}, [readOnly, storeApi]);
@@ -287,7 +277,7 @@ export function WorkflowCanvasEditor() {
       ).length,
   );
   const edgeInsertRequest = useEditorStore((state) => state.edgeInsertRequest);
-  const canvasNodes = useEditorStore(useShallow((state) => state.nodes));
+  const canvasNodes = resolvingDocument.nodes;
   const exitNodes = useMemo(
     () =>
       canvasNodes
@@ -451,6 +441,7 @@ export function WorkflowCanvasEditor() {
     return () => window.removeEventListener("beforeunload", beforeUnload);
   }, []);
 
+  const saveInFlight = useRef<ReturnType<typeof saveDraft> | undefined>(undefined);
   const saveMutation = useMutation({
     mutationFn: ({
       expectedRevision,
@@ -511,20 +502,60 @@ export function WorkflowCanvasEditor() {
       } else showToast(error.message);
     },
   });
+  const persistDocument = useCallback((input: Parameters<typeof saveMutation.mutateAsync>[0]) => {
+    if (saveInFlight.current) return saveInFlight.current;
+    const pending = saveMutation.mutateAsync(input);
+    saveInFlight.current = pending;
+    const clear = () => {
+      if (saveInFlight.current === pending) saveInFlight.current = undefined;
+    };
+    void pending.then(clear, clear);
+    return pending;
+  }, [saveMutation]);
   const saveDocument = useCallback(
     (showValidation = true) => {
-      if (readOnly || saveMutation.isPending) return;
+      if (readOnly || saveInFlight.current || saveMutation.isPending) return;
       const document = studioDocument(storeApi.getState());
       const structuralIssues = definitionIssues(document);
       if (structuralIssues.length) {
         if (showValidation) setIssues(structuralIssues);
         return;
       }
-      saveMutation.mutate({ expectedRevision: revision, document, localRevision: storeApi.getState().localDocumentRevision });
+      void persistDocument({ expectedRevision: revision, document, localRevision: storeApi.getState().localDocumentRevision }).catch(() => undefined);
     },
-    [revision, saveMutation],
+    [persistDocument, readOnly, revision, saveMutation, storeApi],
   );
   const saveNow = useCallback(() => saveDocument(), [saveDocument]);
+
+  const requestResource = useCallback(async (option: ResourceOption, context?: ResourceRequestContext) => {
+    // A request is reviewed against a saved revision. Serialize with any
+    // autosave, then persist edits made while that earlier save was pending.
+    if (saveInFlight.current) await saveInFlight.current;
+    let sourceRevision: number | undefined = queryClient.getQueryData<WorkflowDraft>(["workflow-document", workflowId, draftId])?.revision ?? revision;
+    while (storeApi.getState().dirty) {
+      const document = studioDocument(storeApi.getState());
+      // An incomplete Agent may need this resource before it can be saved.
+      // Such requests use the existing subject/package scope, without
+      // claiming an earlier saved draft as their source.
+      if (definitionIssues(document).length) {
+        sourceRevision = undefined;
+        break;
+      }
+      const saved = await persistDocument({
+        expectedRevision: sourceRevision,
+        localRevision: storeApi.getState().localDocumentRevision,
+        document,
+      });
+      sourceRevision = saved.revision;
+    }
+    await apiRequest(`/workflows/${workflowId}/resource-grant-requests`, {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: jsonBody({ resourceType: option.resourceType ?? "model", resourceId: option.value, resourceVersionId: option.versionId ?? null, operation: option.operation ?? "use", sourceNodeId: context?.sourceNodeId, sourceRevision, sourceDraftId: sourceRevision === undefined ? undefined : draftId, message: context?.message }),
+    });
+    await queryClient.invalidateQueries({ queryKey: ["studio-resource-options", workflowId] });
+    showToast(t("studio.toasts.resourceRequested"));
+  }, [draftId, persistDocument, queryClient, revision, showToast, storeApi, t, workflowId]);
 
   useEffect(() => {
     let timer: number | undefined;
@@ -874,13 +905,14 @@ export function WorkflowCanvasEditor() {
   };
   const overwriteServer = async () => {
     const local = studioDocument(storeApi.getState());
+    const localRevision = storeApi.getState().localDocumentRevision;
     const result = await draft.refetch();
     if (result.data)
-      saveMutation.mutate({
-        localRevision: storeApi.getState().localDocumentRevision,
+      void persistDocument({
+        localRevision,
         expectedRevision: result.data.revision,
         document: local,
-      });
+      }).catch(() => undefined);
     setConflictOpen(false);
   };
   const locateIssue = (issue: StudioValidationIssue) => {

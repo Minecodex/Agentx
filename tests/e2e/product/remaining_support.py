@@ -16,41 +16,66 @@ from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
 from tests.e2e.product.live_text_support import Secret, post
 from tests.e2e.product.next_batch_support import get, publish_application
 from tests.e2e.product.test_model_streaming import _grant_model_to_workflow, _stream_workflow
+from tests.e2e.product.user_auth import UserTokenAuth
 from tests.e2e.runtime.test_agent_attachments import _access_token
 from tests.e2e.support import ROOT, RestartingPortForward, run
 
 
-@pytest.fixture(scope="session")
-def boundary_state(installed_agentx, service_urls, run_id):
-    namespace = installed_agentx["dependencies_namespace"]
-    rendered = run(("kubectl", "kustomize", ROOT / "deploy/kustomize/e2e-fixtures/runtime-providers")).stdout
-    documents = [d for d in yaml.safe_load_all(rendered) if d and d["metadata"]["name"] in {"echo-mcp", "echo-node"}]
-    config = yaml.safe_load((ROOT / installed_agentx["values"]).read_text())
-    images = config["global"]["images"]
-    key = secrets.token_urlsafe(24)
-    documents.append(
-        {"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "boundary-mcp-auth"}, "stringData": {"token": key}}
+def boundary_echo_documents(rendered, image):
+    """Own a separate authenticated Echo service without changing shared providers."""
+    documents = copy.deepcopy(
+        [
+            item
+            for item in rendered
+            if item and item["metadata"]["name"] == "echo-mcp" and item["kind"] in {"Service", "Deployment"}
+        ]
     )
     for document in documents:
-        if document["kind"] == "Deployment" and document["metadata"]["name"] == "echo-mcp":
-            container = document["spec"]["template"]["spec"]["containers"][0]
-            container["image"] = f"{images['registry']}/echo-mcp:{images['tag']}"
+        document["metadata"]["name"] = "boundary-echo-mcp"
+        if document["kind"] == "Service":
+            document["spec"]["selector"]["app.kubernetes.io/name"] = "boundary-echo-mcp"
+        else:
+            document["spec"]["selector"]["matchLabels"]["app.kubernetes.io/name"] = "boundary-echo-mcp"
+            pod = document["spec"]["template"]
+            pod["metadata"]["labels"]["app.kubernetes.io/name"] = "boundary-echo-mcp"
+            container = pod["spec"]["containers"][0]
+            container["image"] = image
             container.setdefault("env", []).append(
                 {
                     "name": "AGENTX_FIXTURE_MCP_AUTH_TOKEN",
                     "valueFrom": {"secretKeyRef": {"name": "boundary-mcp-auth", "key": "token"}},
                 }
             )
+    return documents
+
+
+@pytest.fixture(scope="session")
+def boundary_state(installed_agentx, service_urls, run_id):
+    namespace = installed_agentx["dependencies_namespace"]
+    rendered = run(("kubectl", "kustomize", ROOT / "deploy/kustomize/e2e-fixtures/runtime-providers")).stdout
+    config = yaml.safe_load((ROOT / installed_agentx["values"]).read_text())
+    images = config["global"]["images"]
+    documents = boundary_echo_documents(
+        list(yaml.safe_load_all(rendered)), f"{images['registry']}/echo-mcp:{images['tag']}"
+    )
+    key = secrets.token_urlsafe(24)
+    documents.append(
+        {"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "boundary-mcp-auth"}, "stringData": {"token": key}}
+    )
     run(("kubectl", "-n", namespace, "apply", "-f", "-"), input_text=yaml.safe_dump_all(documents))
-    run(("kubectl", "-n", namespace, "rollout", "status", "deployment/echo-mcp", "--timeout=300s"), timeout=330)
+    run(
+        ("kubectl", "-n", namespace, "rollout", "status", "deployment/boundary-echo-mcp", "--timeout=300s"), timeout=330
+    )
     with httpx.Client(base_url=service_urls["web"], timeout=60) as control:
         token, me = _access_token(control)
-        control.headers["Authorization"] = f"Bearer {token}"
+        token = Secret(token)
+        control.auth = UserTokenAuth(service_urls["web"], token)
+        control.headers["Authorization"] = f"Bearer {token.value}"
         yield {
             "control": control,
             "me": me,
-            "token": Secret(token),
-            "echo": f"http://echo-mcp.{namespace}.svc:8090",
+            "token": token,
+            "echo": f"http://boundary-echo-mcp.{namespace}.svc:8090",
             "mcpKey": Secret(key),
             "context": installed_agentx,
             "urls": service_urls,
@@ -307,6 +332,7 @@ def boundary_gateway_metrics(installed_agentx):
         ),
         stdout_path=directory / "boundary-metrics.log",
         stderr_path=directory / "boundary-metrics-error.log",
+        health_url=f"http://127.0.0.1:{port}/metrics",
     )
     try:
         url = f"http://127.0.0.1:{port}"

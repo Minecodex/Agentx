@@ -306,6 +306,11 @@ class CapacityCollector(threading.Thread):
     def sample(self) -> dict[str, Any]:
         pods = self.pod_metrics()
         status = self.mysql_status()
+        deadlock_file = self.directory / "mysql-deadlock-status.txt"
+        if status["Innodb_deadlocks"] > self.baseline["Innodb_deadlocks"] and not deadlock_file.exists():
+            deadlock_file.write_text(
+                redact(_runtime_mysql(self.context, "SHOW ENGINE INNODB STATUS;")), encoding="utf-8"
+            )
         if status["Innodb_row_lock_time_max"] > self.last_lock_max:
             prepared = json.loads(
                 _runtime_mysql(

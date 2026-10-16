@@ -40,54 +40,77 @@ def studio_provider(installed_agentx: dict[str, str]) -> str:
     return f"http://echo-mcp.{namespace}.svc:8090/v1"
 
 
+def _model(client, department_id, run_id, mode, secret, endpoint, name, price, parameters=None):
+    credential = post(
+        client,
+        "/credentials",
+        {
+            "name": f"P8 {mode} {run_id}",
+            "credentialType": "bearer",
+            "secret": secret,
+            "ownerDepartmentId": department_id,
+        },
+    )
+    alias = f"p8-{mode}-{run_id}"
+    model = post(
+        client,
+        "/models/aliases",
+        {
+            "connectionName": alias,
+            "alias": alias,
+            "providerType": "openai_compatible",
+            "endpoint": endpoint,
+            "credentialId": credential["id"],
+            "ownerDepartmentId": department_id,
+            "modelName": name,
+            "price": price,
+            **(parameters or {}),
+        },
+    )
+    return {"id": model["id"], "alias": alias, "credentialId": credential["id"]}
+
+
 @pytest.fixture(scope="session")
-def studio_models(installed_agentx, service_urls, run_id, studio_provider, existing_model, existing_model_secret):
+def studio_models(service_urls, run_id, studio_provider):
     with httpx.Client(base_url=service_urls["web"], timeout=60, trust_env=False) as client:
         token, me = _access_token(client)
         client.headers.update({"Authorization": f"Bearer {token}"})
-        result = {}
-        for mode, secret, endpoint, name in [
-            ("fixture", "m5-model-secret", studio_provider, "echo-studio-builder"),
-            ("alternate", "m5-model-secret", studio_provider, "echo-studio-builder"),
-            (
-                "live",
-                existing_model_secret.value,
-                existing_model["endpoint"],
-                existing_model["modelName"],
-            ),
-        ]:
-            credential = post(
+        return {
+            mode: _model(
                 client,
-                "/credentials",
-                {
-                    "name": f"P8 {mode} {run_id}",
-                    "credentialType": "bearer",
-                    "secret": secret,
-                    "ownerDepartmentId": me["departmentId"],
-                },
+                me["departmentId"],
+                run_id,
+                mode,
+                "m5-model-secret",
+                studio_provider,
+                "echo-studio-builder",
+                {"currency": "USD", "inputPerMillion": "1", "outputPerMillion": "2"},
             )
-            alias = f"p8-{mode}-{run_id}"
-            payload = {
-                "connectionName": alias,
-                "alias": alias,
-                "providerType": "openai_compatible",
-                "endpoint": endpoint,
-                "credentialId": credential["id"],
-                "ownerDepartmentId": me["departmentId"],
-                "modelName": name,
-                "price": {
-                    "currency": existing_model["currency"],
-                    "inputPerMillion": existing_model["inputPrice"],
-                    "outputPerMillion": existing_model["outputPrice"],
-                },
-            }
-            if mode == "live":
-                payload.update(
-                    {key: existing_model[key] for key in ["defaultParameters", "maxInputTokens", "maxOutputTokens"]}
-                )
-            model = post(client, "/models/aliases", payload)
-            result[mode] = {"id": model["id"], "alias": alias, "credentialId": credential["id"]}
-        yield result
+            for mode in ("fixture", "alternate")
+        }
+
+
+@pytest.fixture(scope="session")
+def studio_live_models(service_urls, run_id, studio_models, existing_model, existing_model_secret):
+    with httpx.Client(base_url=service_urls["web"], timeout=60, trust_env=False) as client:
+        token, me = _access_token(client)
+        client.headers.update({"Authorization": f"Bearer {token}"})
+        live = _model(
+            client,
+            me["departmentId"],
+            run_id,
+            "live",
+            existing_model_secret.value,
+            existing_model["endpoint"],
+            existing_model["modelName"],
+            {
+                "currency": existing_model["currency"],
+                "inputPerMillion": existing_model["inputPrice"],
+                "outputPerMillion": existing_model["outputPrice"],
+            },
+            {key: existing_model[key] for key in ("defaultParameters", "maxInputTokens", "maxOutputTokens")},
+        )
+        return {**studio_models, "live": live}
 
 
 @pytest.fixture(scope="session")

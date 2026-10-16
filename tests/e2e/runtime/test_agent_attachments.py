@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 import pytest
 
-from tests.e2e.support import redact, run
+from tests.e2e.support import MYSQL_ROOT_CLIENT, redact, run
 
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "agentx-e2e-admin-password"  # noqa: S105 -- isolated E2E company
@@ -29,8 +29,7 @@ def _runtime_mysql(installed_agentx: dict[str, str], query: str) -> str:
             "--",
             "sh",
             "-ec",
-            'MYSQL_PWD="$(cat /run/secrets/agentx/root-password)" mysql --ssl-mode=DISABLED '
-            '--batch --skip-column-names -uroot agentx_runtime -e "$1"',
+            f'{MYSQL_ROOT_CLIENT} --batch --skip-column-names -uroot agentx_runtime -e "$1"',
             "agentx-p3-04-query",
             query,
         ),
@@ -50,8 +49,7 @@ def _control_mysql(installed_agentx: dict[str, str], query: str) -> str:
             "--",
             "sh",
             "-ec",
-            'MYSQL_PWD="$(cat /run/secrets/agentx/root-password)" mysql --ssl-mode=DISABLED '
-            '--batch --skip-column-names -uroot agentx_control -e "$1"',
+            f'{MYSQL_ROOT_CLIENT} --batch --skip-column-names -uroot agentx_control -e "$1"',
             "agentx-p3-05-query",
             query,
         ),
@@ -397,12 +395,28 @@ def test_agent_attachments_follow_the_published_workflow_main_chain(
         assert agent["status"] == "succeeded", agent
         assert "skill_context=true" in json.dumps(agent["output"])
 
-        details = client.get(f"/api/v1/executions/{execution_id}/runtime-details", headers=headers)
-        details.raise_for_status()
-        calls = details.json()["calls"]
+        # Execution completion and the Control call projection are separate
+        # durable streams. Wait for all expected call terminal records, while
+        # keeping failed attempts visible and subject to the same assertion.
+        deadline = time.monotonic() + 30
+        while True:
+            details = client.get(f"/api/v1/executions/{execution_id}/runtime-details", headers=headers)
+            details.raise_for_status()
+            calls = details.json()["calls"]
+            if len(calls) >= 3 and all(call["status"] not in {"queued", "pending", "running"} for call in calls):
+                break
+            assert time.monotonic() < deadline, [
+                {key: call.get(key) for key in ("callKind", "status", "errorCode", "errorMessage", "callId")}
+                for call in calls
+            ]
+            time.sleep(0.2)
         assert sum(call["callKind"] == "model" for call in calls) == 2
         assert sum(call["callKind"] == "mcp_tool" for call in calls) == 1
-        assert all(call["status"] == "succeeded" for call in calls)
+        assert all(call["status"] == "succeeded" for call in calls), [
+            {key: call.get(key) for key in ("callKind", "status", "errorCode", "errorMessage", "callId")}
+            for call in calls
+            if call["status"] != "succeeded"
+        ]
 
         registry_json = _runtime_mysql(
             installed_agentx,

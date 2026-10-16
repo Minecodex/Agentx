@@ -19,16 +19,13 @@ from tests.e2e.product.test_live_knowledge_memory import (
     _ask,
 )
 from tests.e2e.product.test_live_knowledge_memory import (
-    live_agent_application as live_agent_application,
-)
-from tests.e2e.product.test_live_knowledge_memory import (
     live_indexed_document as live_indexed_document,
 )
 from tests.e2e.product.test_provider_integration import _publish_application_deployment, _sandbox_image_digest
 from tests.e2e.runtime.test_agent_attachments import _runtime_mysql
 from tools.scripts.release.evidence import write_report
 
-pytestmark = [pytest.mark.cluster, pytest.mark.product]
+pytestmark = [pytest.mark.cluster, pytest.mark.product, pytest.mark.live_model]
 
 TOOL_INSTRUCTION = (
     "你是工具调用验收智能体。用户指定 memory_write 时,必须先发出真实 memory_write 函数调用,"
@@ -85,7 +82,15 @@ def _memory_results(context, execution):
         context,
         f"SELECT response_json FROM runtime_calls WHERE execution_id=UUID_TO_BIN('{execution['executionId']}') AND call_kind='memory' AND status='succeeded' ORDER BY ended_at DESC LIMIT 1;",
     )
-    assert result, "Expected a real successful Mem0 call"
+    if not result:
+        ledger = _runtime_mysql(
+            context,
+            "SELECT JSON_ARRAYAGG(JSON_OBJECT('kind',call_kind,'status',status,'code',error_code,'message',error_message)) "
+            f"FROM runtime_calls WHERE execution_id=UUID_TO_BIN('{execution['executionId']}');",
+        )
+        raise AssertionError(
+            f"Expected a real successful Mem0 call; execution={execution['executionId']}; ledger={ledger}"
+        )
     return json.loads(result)["results"]
 
 

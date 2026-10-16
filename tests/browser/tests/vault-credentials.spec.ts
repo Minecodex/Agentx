@@ -4,7 +4,13 @@ test('creates and rotates a Bearer credential through the UI with Vault TLS stor
   await page.goto('/login')
   await page.getByLabel('用户名').fill('admin')
   await page.getByLabel('密码').fill('agentx-e2e-admin-password')
+  const loggedIn = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/api/v1/auth/login'))
   await page.getByRole('button', { name: '登录', exact: true }).click()
+  const access = await (await loggedIn).json() as { accessToken: string }
+  const departments = await page.request.get('/api/v1/departments', { headers: { Authorization: `Bearer ${access.accessToken}` } })
+  expect(departments.ok()).toBeTruthy()
+  const root = ((await departments.json()) as Array<{ name: string; isRoot: boolean }>).find(item => item.isRoot)
+  expect(root).toBeDefined()
   await expect(page).toHaveURL(/\/$/)
   await page.getByRole('link', { name: '凭证', exact: true }).click()
   await page.getByRole('button', { name: '新建凭证', exact: true }).click()
@@ -15,7 +21,7 @@ test('creates and rotates a Bearer credential through the UI with Vault TLS stor
   await page.getByRole('option', { name: 'Bearer Token', exact: true }).click()
   await form.getByLabel('密钥内容').fill('agentx-e2e-vault-placeholder-v1')
   await form.getByRole('combobox', { name: '所属部门' }).click()
-  await page.getByRole('option', { name: 'Agentx E2E', exact: true }).click()
+  await page.getByRole('option', { name: root!.name, exact: true }).click()
   const created = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith('/api/v1/credentials'))
   await form.getByRole('button', { name: '保存', exact: true }).click()
   const response = await created

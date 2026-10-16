@@ -185,6 +185,8 @@ HTTP保留method/url/query/headers/body和认证契约。URL、query、header及
 
 ### 5.8 Model与Code
 
+2026-10-11 保存与资源申请修订：自动保存只确认本次发送的持久化快照，保存期间继续编辑时仍保留未保存状态。资源申请与已有保存串行，并绑定最新已保存修订；未完成的 Agent 如果需要授权才能保存，使用既有 Workflow 主体/资源包申请范围，不把更早的草稿修订声明为来源。后台资源包、请求者与已声明来源修订的失效校验保留。
+
 模型结构化输出需要参数Schema、受支持的Provider原生请求配置、冻结输出契约与结果校验；不解析普通文本兜底，不支持此能力的模型给出明确配置错误。
 
 Code复用Monaco与OpenSandbox，命名输入使用InputBinding映射。用户填写JSON5对象`outputExample`，Compiler确定性推导冻结Schema，Runtime只接受对象根结果并校验；下游Picker直接展示业务字段和完整对象，stdout/stderr/exitCode/files归诊断分组。网络策略使用显式目标与端口段，Sandbox只连接Egress Gateway，HTTP与任意TCP分别使用标准代理变量和HTTP CONNECT，不增加Agentx SDK。

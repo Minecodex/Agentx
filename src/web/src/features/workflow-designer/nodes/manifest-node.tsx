@@ -94,7 +94,7 @@ export const ManifestNode = memo(function ManifestNode({ id, data, selected }: N
     {manifest?.outputPorts.map((port, index) => branchPortNames.has(port.name) ? null : <PortHandle addLabel={t('studio.ports.addAfter', { label: localized?.outputPortLabel(port.name) ?? port.name })} id={port.name} key={`out-${port.name}`} kind={port.kind} label={localized?.outputPortLabel(port.name) ?? port.name} onHover={onSourceHover ? (active) => onSourceHover(id, port.name, active) : undefined} onQuickAdd={!data.disabled && onQuickAdd && (!occupiedHandles.has(port.name) || port.variadic) ? () => onQuickAdd(id, port.name) : undefined} placement={portPlacement('output', port.kind, port.name, index, manifest.outputPorts)} type="source" />)}
     {data.disabled && <AlertTriangle className="absolute -right-2 -top-2 z-30 size-5 rounded-full bg-surface p-0.5 text-warning" />}
   </div>
-})
+}, (previous, next) => previous.id === next.id && previous.data === next.data && previous.selected === next.selected)
 
 const EMPTY_BINDINGS: NodeBindingSummary[] = []
 

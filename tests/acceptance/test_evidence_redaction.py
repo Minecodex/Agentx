@@ -1,8 +1,10 @@
+import json
 import zipfile
 from types import SimpleNamespace
 from xml.etree import ElementTree
 
 import pytest
+import yaml
 
 from tests.e2e.conftest import pytest_runtest_makereport
 from tests.e2e.support import redact, redact_browser_artifacts
@@ -30,6 +32,32 @@ def test_evidence_redacts_vault_and_provider_credentials() -> None:
 def test_large_scheme_like_tool_results_do_not_trigger_quadratic_redaction() -> None:
     content = "tool output: " + "alpha-beta.v1" * 30_000
     assert redact(content) == content
+
+
+def test_redaction_preserves_kubernetes_secret_references_and_yaml_structure() -> None:
+    document = """automountServiceAccountToken: false
+volumes:
+  - name: mysql-secrets
+    secret:
+      defaultMode: 420
+      secretName: agentx-control-secrets
+      items:
+        - key: AGENTX_CONTROL_MYSQL_PASSWORD
+          path: app-password
+password: isolated-password
+"""
+    sanitized = redact(document)
+    parsed = yaml.safe_load(sanitized)
+    assert parsed["automountServiceAccountToken"] is False
+    assert parsed["volumes"] == yaml.safe_load(document)["volumes"]
+    assert parsed["password"] == "<redacted>"  # noqa: S105 -- verifies the redaction marker
+    assert "isolated-password" not in sanitized
+
+
+def test_redaction_preserves_json_with_escaped_credentials_and_object_values() -> None:
+    document = {"secret": {"secretName": "mysql-secrets"}, "password": 'isolated-"password\\value}', "token": "abc"}
+    sanitized = redact(json.dumps(document))
+    assert json.loads(sanitized) == {"secret": document["secret"], "password": "<redacted>", "token": "<redacted>"}
 
 
 def test_failed_junit_and_diagnostics_are_redacted_without_hiding_failure(tmp_path) -> None:

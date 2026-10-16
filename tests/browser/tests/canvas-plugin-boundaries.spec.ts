@@ -2,6 +2,7 @@ import { fixtureDraftId } from '../draft-fixtures'
 import { expect, test } from '@playwright/test'
 
 import { connect, login } from '../support/canvas-plugin'
+import { showEdgeToolbar } from './workflow-studio-editor-helpers'
 
 test('propagates dynamic contracts across a plugin chain and preserves them after save and reopen', async ({ page }, testInfo) => {
   const token = await login(page)
@@ -20,8 +21,11 @@ test('propagates dynamic contracts across a plugin chain and preserves them afte
   const draft = await draftResponse.json() as { definition: { connections: Array<{ id: string }> } }
   await page.goto(`/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}/editor`)
   const initialId = draft.definition.connections[0].id
-  await page.locator(`.react-flow__edge[data-testid="rf__edge-${initialId}"]`).click({ force: true })
-  await page.locator(`.studio-edge-toolbar[data-edge-id="${initialId}"]`).getByRole('button', { name: '删除连线' }).click()
+  const initialEdge = page.locator(`.react-flow__edge[data-testid="rf__edge-${initialId}"]`)
+  const toolbar = page.locator(`.studio-edge-toolbar[data-edge-id="${initialId}"]`)
+  await showEdgeToolbar(initialEdge, toolbar)
+  await toolbar.getByRole('button', { name: '删除连线' }).click()
+  await expect(initialEdge).toHaveCount(0)
   const inspector = page.getByTestId('node-details-view')
   await page.getByRole('textbox', { name: '搜索节点' }).fill('Boundary Plugin')
   await page.getByTestId('palette-action-acme.boundaries').first().click()

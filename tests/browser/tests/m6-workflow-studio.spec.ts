@@ -1,4 +1,6 @@
 import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
+
+import { connectStudioPorts as connect } from './studio-connections'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { publishCompatibleChatMapping, useRuntimePortForward } from './playground-helpers'
@@ -167,31 +169,6 @@ async function openNodeBasics(details: Locator) {
   await expect(basics).toHaveAttribute('open', '')
 }
 
-async function connect(page: Page, source: Locator, sourceHandle: string, target: Locator, targetHandle: string) {
-  const edges = page.locator('.react-flow__edge')
-  const edgeCount = await edges.count()
-  const from = source.locator(`.react-flow__handle.source[data-handleid="${sourceHandle}"]`)
-  const to = target.locator(`.react-flow__handle.target[data-handleid="${targetHandle}"]`)
-  await expect(from).toBeVisible()
-  await expect(to).toBeVisible()
-  for (let attempt = 0; attempt < 3 && await edges.count() === edgeCount; attempt += 1) {
-    let boxes: Awaited<ReturnType<Locator['boundingBox']>>[] | undefined
-    await expect.poll(async () => {
-      const next = await Promise.all([from.boundingBox(), to.boundingBox()])
-      if (next.some((box) => box === null)) return false
-      boxes = next
-      return true
-    }).toBeTruthy()
-    const [fromBox, toBox] = boxes!
-    await page.mouse.move(fromBox!.x + fromBox!.width / 2, fromBox!.y + fromBox!.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(toBox!.x + toBox!.width / 2, toBox!.y + toBox!.height / 2, { steps: 20 })
-    await page.waitForTimeout(125)
-    await page.mouse.up()
-    await page.waitForTimeout(200)
-  }
-  await expect(edges).toHaveCount(edgeCount + 1)
-}
 type InputBinding =
   | { kind: 'literal'; value: unknown }
   | { kind: 'reference'; selector: { namespace: string; sourceNodeId?: string; port?: string; path: Array<string | number> }; missingPolicy: { kind: string } }
@@ -910,7 +887,7 @@ test('M6 Studio creates, debugs, versions and publishes a manifest-driven Workfl
   }, { timeout: 60_000, intervals: [500, 1_000, 2_000] }).toEqual([])
   expect(traceSnapshot?.complete).toBe(true)
   const modelCall = traceSnapshot?.spans.find((span) => span.spanKind === 'runtime_call' && span.spanName === 'Model call')
-  const mcpCall = traceSnapshot?.spans.find((span) => span.spanKind === 'runtime_call' && span.resourceType === 'mcp')
+  const mcpCall = traceSnapshot?.spans.find((span) => span.spanKind === 'runtime_call' && span.resourceType === 'mcp' && span.spanName === 'echo')
   expect(modelCall).toMatchObject({ status: 'succeeded', resourceType: 'model' })
   expect(modelCall?.costMicros ?? 0).toBeGreaterThan(0)
   expect((modelCall?.inputTokens ?? 0) + (modelCall?.outputTokens ?? 0)).toBeGreaterThan(0)
@@ -1742,7 +1719,8 @@ test('M6 Studio renders all thirteen dedicated node panels in the focused editor
         await page.waitForTimeout(750)
         await panel.getByTestId('parameter-input').getByRole('textbox', { name: 'Value' }).click()
         await expect(page.getByTestId('reference-picker')).toBeVisible()
-        await expect(page.getByTestId('node-details-view')).toHaveScreenshot('loop-variable-picker-light-zh.png', {
+        const loopPickerSnapshot = process.platform === 'linux' ? 'loop-variable-picker-light-zh-linux.png' : 'loop-variable-picker-light-zh.png'
+        await expect(page.getByTestId('node-details-view')).toHaveScreenshot(loopPickerSnapshot, {
           animations: 'disabled',
           maxDiffPixelRatio: 0.002,
         })

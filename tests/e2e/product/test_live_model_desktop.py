@@ -5,14 +5,16 @@ from pathlib import Path
 
 import pytest
 
+from tests.e2e.product.live_agent_support import record_missing_session_refusal
 from tests.e2e.support import run_playwright
 
-pytestmark = [pytest.mark.cluster, pytest.mark.product]
+pytestmark = [pytest.mark.cluster, pytest.mark.product, pytest.mark.live_model]
 
 
 def test_real_model_playground_history_stop_trace_and_comparison(
-    installed_agentx, service_urls, live_application, live_comparison
+    installed_agentx, service_urls, live_application, live_comparison, live_providers, live_agent_application
 ):
+    refusal = record_missing_session_refusal(installed_agentx, live_providers, live_agent_application)
     environment = {
         **os.environ,
         "AGENTX_E2E_RUN_ID": installed_agentx["run_id"],
@@ -23,6 +25,7 @@ def test_real_model_playground_history_stop_trace_and_comparison(
         "AGENTX_E2E_COMPARE_BASELINE": live_comparison["baselineId"],
         "AGENTX_E2E_COMPARE_CANDIDATE": live_comparison["candidateId"],
         "AGENTX_E2E_JUDGE_MODEL_ALIAS": live_application["modelAlias"],
+        "AGENTX_E2E_INSIGHTS_WORKFLOW_ID": refusal["workflowId"],
     }
     run_playwright(
         Path(installed_agentx["root"]), "live-model-desktop", ("tests/live-model-desktop.spec.ts",), environment

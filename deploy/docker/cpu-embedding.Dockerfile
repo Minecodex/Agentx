@@ -11,10 +11,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OMP_NUM_THREADS=2 \
     MKL_NUM_THREADS=2
 
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 'torch==2.8.0+cpu'
+
+RUN pip install --no-cache-dir --index-url ${PIP_INDEX_URL} \
     'infinity-emb[server,torch]==0.0.77' \
-    'transformers==4.57.1' \
-    'torch==2.8.0'
+    'transformers==4.57.1'
 
 # Keep the public model in the image so Pods never download weights at startup.
 # The weight file is verified against the pinned Hugging Face LFS SHA-256.

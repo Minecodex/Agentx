@@ -1,27 +1,57 @@
 # PR 与 CI 合并规则
 
-本仓库默认主分支为 `master`。日常开发从最新主分支创建功能分支，将功能分支推送到组织仓库，再通过 PR 合并。
+日常开发使用功能分支和 PR。默认分支要求 GitHub Actions 的固定 `CI` 检查、同步最新主分支并解决审查讨论；失败、取消或意外跳过不能通过汇总门禁。禁止强推和删除，不设置管理员绕过。
 
+## 执行层级
+
+| 入口 | 实际范围 |
+| --- | --- |
+| 普通 PR / master push | Windows/Linux 原生源码、前端 lint/单测/构建；临时 Minikube 中 30 项核心系统测试 |
+| quality 手动 full / 版本候选 | 全部受控系统、浏览器、提供商容器、权限、故障及升级回归；排除真实模型与生产容量 |
+| full 画布性能 Job | 独立托管 Runner 与全新临时 Minikube，只运行原画布 benchmark，保留原帧率/输入延迟阈值 |
+| agentxctl-release | 同一不可变 Tag 的完整托管软件检查；Windows/Linux 候选包构建、解压和原生执行；只保存 Actions 制品 |
+| 独立环境 | 真实 Kimi/知识记忆质量、冻结容量矩阵和两小时窗口、公共注册表签名及正式发布认证 |
+
+核心测试清单在 [ci_profiles.py](../tests/e2e/ci_profiles.py)。PR 保留安装、镜像归属、初始化、流式模型、应用会话、渠道投递、Loop 恢复、幂等与鉴权，以及画布插件/API-first/应用文档和资源加载的真实浏览器流程。完整提供商、画布性能、复杂业务组合和全部故障矩阵在托管发布范围执行。清单中的测试缺失或选择为空时直接失败。
+
+当前收集为 PR 30 项、完整受控功能 107 项及独立性能 1 项；默认 independent 保留全部 130 项，包括 22 项真实模型/容量参数化测试。依赖真实 Kimi 凭证的测试必须声明 live_model，遗漏声明在托管收集阶段直接报错。性能 Job 不部署与指标无关的 RAGFlow；仍使用实际安装的 UI/API、实际插件制品和原 benchmark，不在普通 PR 执行。
+
+性能测量关闭视频和逐操作 DOM/截图 trace，避免记录器进入帧与输入延迟样本；功能套件继续记录。每档原始指标在断言前保存，失败档也保留证据；50/100 ms 输入延迟和原帧率阈值不变，没有按失败结果调参或自动重试。
+
+画布的插件契约和变量目录只订阅节点数据、连接、Start/End 和执行设置；拖动、尺寸测量与视口变化不再重新序列化全部插件或重建变量目录。参数修改即使不改变 GraphIndex revision 也会刷新定义；保存、恢复与历史记录仍读取当前完整文档。
+
+冻结节点查询通过 TanStack Query combine 保持相同数据的引用稳定。工具栏脏状态变化不再重新生成基础契约 Map，避免连带重建所有插件、图索引和可见节点。
+
+节点卡片内容只因 id、数据或选中状态变化而重绘；拖动坐标由 ReactFlow 外层处理，不重复翻译或重绘卡片内部。运行状态、主题与语言等内部订阅仍正常刷新。原 3 秒首次交互指标仍按首个画布节点显示计时；真实批量契约等待独立记录为 contractReadyMs，且必须验证全部契约 complete、插件 Canvas 和字体加载完成后才测量交互。避免把后端批次耗时混入原 UI 启动指标，也避免异步初始化进入拖动样本。
+
+合成 UI benchmark 的草稿、目录和契约都是固定输入；批量契约夹具先调用实际已安装插件的 SDK 接口并验证所有节点 complete，再给 UI 返回同一实际结果，且逐次核验 UI 请求定义完全一致。准备耗时另存 fixtureContractPreparationMs（大批次准备最多 60 秒），不混入原 UI 3 秒或50/100毫秒门槛。没有手写成功契约；真实动态传播、更新、保存和重载仍由插件链及完整业务 E2E 验证。
+
+连线工具栏通过 SVG 路径四分之一处的真实鼠标悬停显示，再单次点击删除并核验连接消失。避免强制点击包围盒中心时，悬浮工具栏覆盖该坐标而提前触发删除。动态插件链的端口传播、保存、重载和版本发布断言完整保留；plugins diagnostics 只聚焦这一业务场景。
+
+回折连线沿完整路径寻找实际未遮挡的鼠标命中点，避免固定四个采样点都被节点或缩略图覆盖。插件调用目录在原 30 秒命令预算内等待 Worker/Gateway 全部回到零；不会删除残留来使测试通过，超过预算仍失败并保留数量。
+
+performance-profile diagnostics 额外记录 300 节点 CPU profile，用于定位主线程热点；其带采样器的数字不作为性能通过证明。正常 full 和 performance diagnostics 不启动 CPU profiler。两种测量都保留原始逐帧、输入事件和长任务样本，拖动与滚轮延迟可分别追溯。
+
+系统入口保持 `pytest tests/e2e`，通过 `--ci-profile pr|release|independent` 选择范围。独立验收默认保留全部测试及原有容量阈值；Actions 不提供真实模型密钥，不把环境测试排除报告为通过。Minikube/网络及证据按运行所有权创建和清理。
+
+所有 quality Job 默认检出触发时的 github.sha；可复用的发布入口显式传入同一不可变 ref。full 并发组包含候选 SHA/ref，不会因修复分支继续提交而取消另一候选的完整验收；普通 PR 保留只检验当前提交的取消行为。
+
+完整托管软件验证：
 ```sh
-git fetch origin
-git switch -c feature/your-change origin/master
-git push -u origin feature/your-change
+uv run --frozen --group test pytest tests/e2e --minikube --values deploy/values/local.yaml --ci-profile release -m 'not browser_performance'
+
+# 独立的一次托管性能运行；CI 为该步骤另起 Runner/临时集群
+uv run --frozen --group test pytest tests/e2e/product/test_canvas_performance.py --minikube --values deploy/values/local.yaml
 ```
 
-主分支由仓库规则集保护：必须通过 PR，必须通过 `CI` 检查，合并前必须同步最新主分支，禁止强制推送和删除。规则没有管理员绕过名单；目前不额外要求他人批准，PR 上的审查讨论必须解决。
+独立环境具备后使用默认 independent 范围、真实临时提供商凭据和实际兼容 Worker 摘要执行既有认证；现有 `tools/scripts/release` 的完整证据、签名与公开发布校验继续保留。Actions 不推送 Docker Hub 镜像、不创建公开 CLI Release，也不依赖专用 Runner、Actions Secret 或 Environment。
 
-`CI` 是固定名称的汇总检查。它在所有 PR 上运行，任一必需任务失败、取消或意外跳过都会失败，避免工作流名称或矩阵版本变化导致保护规则失效。检查来源限定为 GitHub Actions。
+隔离的 boundary-echo-mcp 仅加入 local 测试 values 和托管临时集群的 HTTP 提供商服务白名单；生产默认值和 HTTPS/域名校验保持原有要求。使用自定义独立验收 values 时，也需显式列入该测试服务。
 
-## 自动检查范围
+`E2E diagnostics` 仅聚焦 PR/受控范围，不产生必需 CI 或正式认证。源码固定在当前候选，截图基线必须显式更新并正常比较复验。包、存储、网络、权限、TLS 与供给链的原有断言不放宽。没有定时任务。
 
-Ubuntu / Windows 原有 `cargo xtask check --fast` 门禁与新增前端 lint、单测、构建、浏览器测试类型检查。Rust 版本来自 `rust-toolchain.toml`；push 触发分支修正为实际 `master`。
+Minikube 显式映射的 NodePort 地址/端口在 agentxctl --run-id 作用域处理后保留，避免被改写为容器中不可解析的 Docker Desktop 地址。当前节点矩阵截图已与实际 Linux UI 对照并显式更新，像素比较保持有效。Redis 恢复等待 Gateway 观察到重连，拒绝期间仍不得产生 Receipt；调用投影等待终态，失败调用仍使测试失败。
 
-工作流也支持主分支 push 和手动运行。手动运行使用 Actions 页面的 Run workflow，选择待检查的分支；功能分支首次引入新工作流时，先创建 PR 触发检查。
+边界鉴权使用独立 boundary-echo-mcp Deployment/Service 与随机密钥，不修改其他场景的共享 Echo 凭据。连线测试同时核验规范图中只增加一条连接和指定节点对，不把 ReactFlow 延迟挂载的 SVG 总数当作新增操作的起点；最终四条连接的持久化断言保留。diagnostics 的 performance、attachments、studio 仅用于这些聚焦复验，不替代完整发布门禁。
 
-Kubernetes E2E 保留原有 `AGENTX_E2E_LINUX_ENABLED` / `AGENTX_E2E_WINDOWS_ENABLED` 开关和专用 self-hosted runner。启用时失败或取消会阻止 `CI`；关闭时跳过仅表示该集群验收未运行，不表示通过。
-
-CI 失败会阻止合并。修复失败后在同一个功能分支继续提交，重新运行检查；不要通过删除必需检查或设置管理员绕过来把失败当作通过。
-
-Rust 格式检查使用仓库指定的 1.97.1 工具链；修复了首次 CI 检出的五个既有源文件格式问题。
-
-Ruff 保留全部原有检查，仅通过官方 `allowed-confusables` 设置允许项目中文说明与错误文案中的常规全角标点；其他混淆字符仍会报错。设置说明见 https://docs.astral.sh/ruff/settings/#lint_allowed-confusables 。
+plan8 的 Fixture 模型与真实模型分别由 `studio_models`、`studio_live_models` 提供。PR 核心矩阵包含 AI 编辑、Undo、ACK、版本派生和恢复的 Fixture 场景，不需要读取本地模型或 Vault。真实模型用例标注 `live_model`，仅在已有本地集群中读取已配置的 `glm-5.3-flash` 元数据和凭据；托管 Minikube 不执行此独立环境验收，也不读取旧 Kimi 环境变量。

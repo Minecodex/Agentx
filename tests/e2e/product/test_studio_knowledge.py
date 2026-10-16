@@ -17,7 +17,7 @@ from tests.e2e.runtime.test_agent_attachments import (
 )
 from tests.e2e.support import run, run_playwright
 
-pytestmark = [pytest.mark.cluster, pytest.mark.product]
+pytestmark = [pytest.mark.cluster, pytest.mark.product, pytest.mark.live_model]
 
 
 def agent_resources(client, owner, endpoint):
@@ -84,8 +84,9 @@ def agent_resources(client, owner, endpoint):
 
 
 def test_knowledge_canvas_and_ai_resource_completion(
-    installed_agentx, service_urls, studio_models, studio_provider, studio_users
+    installed_agentx, service_urls, studio_live_models, studio_provider, studio_users
 ):
+    studio_models = studio_live_models
     resources = {}
     with httpx.Client(base_url=service_urls["web"], timeout=60, trust_env=False) as client:
         token, me = _access_token(client)

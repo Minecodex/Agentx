@@ -12,7 +12,7 @@ import httpx
 import pytest
 
 from tests.e2e.draft_fixtures import fixture_draft_id
-from tests.e2e.support import run
+from tests.e2e.support import MYSQL_ROOT_CLIENT, run
 
 
 def _login(client: httpx.Client) -> str:
@@ -104,8 +104,7 @@ def _wait_admission_delivery(installed_agentx: dict[str, str], timeout: float = 
                 "--",
                 "sh",
                 "-ec",
-                'MYSQL_PWD="$(cat /run/secrets/agentx/root-password)" mysql --ssl-mode=DISABLED '
-                '--batch --skip-column-names -uroot agentx_control -e "$1"',
+                f'{MYSQL_ROOT_CLIENT} --batch --skip-column-names -uroot agentx_control -e "$1"',
                 "agentx-plugin-admission-query",
                 query,
             ),
@@ -550,8 +549,7 @@ def test_failed_plugin_import_expires_through_the_retention_role(
                 "--",
                 "sh",
                 "-ec",
-                'MYSQL_PWD="$(cat /run/secrets/agentx/root-password)" mysql --ssl-mode=DISABLED '
-                '--batch --skip-column-names -uroot agentx_control -e "$1"',
+                f'{MYSQL_ROOT_CLIENT} --batch --skip-column-names -uroot agentx_control -e "$1"',
                 "agentx-plugin-expiry",
                 expiry_query,
             ),

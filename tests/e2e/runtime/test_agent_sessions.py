@@ -428,7 +428,7 @@ def test_p305_provider_overflow_compaction_retries_once(
     assert len(model_calls) == 3, {"calls": calls, "compactionKind": compaction_kind}
     assert model_calls[0]["status"] == "failed", calls
     assert sum(call["kind"] == "compaction" for call in calls) == 1, calls
-    assert any(call["error"] == "PROVIDER_REJECTED" for call in model_calls)
+    assert model_calls[0]["error"] == "PROVIDER_REJECTED", calls
 
 
 @pytest.mark.cluster

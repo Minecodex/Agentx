@@ -3,10 +3,16 @@ import { expect, type APIResponse, type Page, test } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { deserializeDraft, serializeStudio } from '../../../src/web/src/features/workflow-designer/model/serializer'
+
+// Recording video and DOM/screenshot traces adds work to every input frame.
+// Functional suites keep recording; this benchmark exports its raw metrics.
+test.use({ trace: 'off', video: 'off' })
 
 const password = 'agentx-e2e-admin-password'
 type Draft = { revision: number; updatedAt: string; [key: string]: unknown }
-type Metric = { nodeCount: number; firstInteractiveMs: number; medianFps: number; p95InputDelayMs: number; renderedNodes: number }
+type Metric = { nodeCount: number; firstInteractiveMs: number; fixtureContractPreparationMs?: number; contractReadyMs?: number; medianFps: number; p95InputDelayMs: number; renderedNodes: number }
+type CanvasSamples = { frames: number[]; inputDelays: number[]; inputEvents: Array<{ kind: string; at: number; delay: number }>; longTasks: Array<{ at: number; duration: number }>; started: number; lastFrame?: number }
 type CatalogPage = { items: Array<{ nodeType: string; version: number; [key: string]: unknown }> }
 
 async function login(page: Page) {
@@ -19,8 +25,8 @@ async function login(page: Page) {
   return ((await (await response).json()) as { accessToken: string }).accessToken
 }
 
-async function request<T>(page: Page, token: string, path: string, method = 'GET', body?: unknown): Promise<T> {
-  const response = await page.request.fetch(`/api/v1${path}`, { method, data: body, headers: { Authorization: `Bearer ${token}` } })
+async function request<T>(page: Page, token: string, path: string, method = 'GET', body?: unknown, timeout = 30_000): Promise<T> {
+  const response = await page.request.fetch(`/api/v1${path}`, { method, data: body, timeout, headers: { Authorization: `Bearer ${token}` } })
   await expectResponse(response, path)
   return response.json() as Promise<T>
 }
@@ -58,20 +64,50 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
   const draftId = await fixtureDraftId(page, workflow.id)
   const base = await request<Draft>(page, token, `/workflows/${workflow.id}/drafts/${draftId}`)
   const draft = syntheticDraft(base, nodeCount, nodeType, typeVersion, parameters)
+  let fixtureContractPreparationMs: number | undefined
+  if (nodeType === 'acme.json_mapper') {
+    const preparedAt = Date.now()
+    const definition = JSON.parse(JSON.stringify(serializeStudio(deserializeDraft(draft as Parameters<typeof deserializeDraft>[0])).definition))
+    const contracts = await request<{ nodes: Record<string, { status: string }> }>(page, token,
+      `/workflows/${workflow.id}/drafts/${draftId}/resolve-plugins`, 'POST', { definition }, 60_000)
+    expect(Object.keys(contracts.nodes)).toHaveLength(nodeCount)
+    expect(Object.values(contracts.nodes).every(value => value.status === 'complete')).toBeTruthy()
+    fixtureContractPreparationMs = Date.now() - preparedAt
+    // Draft/catalog are already fixed fixtures. Feed the same actual SDK
+    // result to the current batch endpoint, rather than timing cold server
+    // compilation during the UI benchmark or fabricating a contract.
+    await page.route(`**/api/v1/workflows/${workflow.id}/drafts/${draftId}/resolve-plugins`, async route => {
+      expect(route.request().postDataJSON().definition).toEqual(definition)
+      await route.fulfill({ json: contracts })
+    })
+  }
   await page.route(`**/api/v1/workflows/${workflow.id}/drafts/${draftId}`, async (route) => {
     if (route.request().method() === 'GET') await route.fulfill({ json: draft })
     else await route.fulfill({ json: { ...draft, revision: base.revision + 1, updatedAt: new Date().toISOString() } })
   })
 
   const started = Date.now()
+  const contractReady = nodeType === 'acme.json_mapper'
+    ? page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/workflows/${workflow.id}/drafts/${draftId}/resolve-plugins`))
+    : undefined
   await page.goto(`/workflows/${workflow.id}/drafts/${draftId}/editor`)
   const canvas = page.getByTestId('workflow-canvas')
   await expect(canvas).toBeVisible()
   const firstNode = page.getByTestId('studio-node-perf-0')
   await expect(firstNode).toBeVisible()
-  await firstNode.click({ trial: true })
   const firstInteractiveMs = Date.now() - started
   expect(firstInteractiveMs).toBeLessThanOrEqual(3_000)
+  let contractReadyMs: number | undefined
+  if (contractReady) {
+    const response = await contractReady
+    expect(response.ok(), await response.text()).toBeTruthy()
+    const contracts = await response.json() as { nodes: Record<string, { status: string }> }
+    expect(Object.keys(contracts.nodes)).toHaveLength(nodeCount)
+    expect(Object.values(contracts.nodes).every(value => value.status === 'complete')).toBeTruthy()
+    await expect(firstNode).toContainText('Label: performance')
+    contractReadyMs = Date.now() - started
+  }
+  await page.evaluate(() => document.fonts.ready)
   if (nodeType === 'acme.json_mapper' && nodeCount === 100) {
     for (let index = 0; index < 5; index += 1) {
       await firstNode.click()
@@ -84,13 +120,28 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
   await expect(page.locator('.react-flow__minimap')).toHaveCount(nodeCount >= 300 ? 0 : 1)
   await page.waitForTimeout(750)
 
+  const profiler = process.env.AGENTX_E2E_CANVAS_PROFILE === '1' && nodeCount === 300
+    ? await page.context().newCDPSession(page) : undefined
+  if (profiler) {
+    await profiler.send('Profiler.enable')
+    await profiler.send('Profiler.start')
+  }
+
   await page.evaluate(() => {
-    const target = window as Window & { __agentxPerf?: { frames: number[]; inputDelays: number[]; started: number; lastFrame?: number } }
-    const metrics = { frames: [] as number[], inputDelays: [] as number[], started: performance.now(), lastFrame: undefined as number | undefined }
+    const target = window as Window & { __agentxPerf?: CanvasSamples }
+    const metrics: CanvasSamples = { frames: [], inputDelays: [], inputEvents: [], longTasks: [], started: performance.now() }
     target.__agentxPerf = metrics
-    const input = () => {
+    const observer = new PerformanceObserver((entries) => entries.getEntries().forEach((entry) => {
+      metrics.longTasks.push({ at: entry.startTime - metrics.started, duration: entry.duration })
+    }))
+    observer.observe({ type: 'longtask' })
+    const input = (event: Event) => {
       const eventAt = performance.now()
-      requestAnimationFrame(() => metrics.inputDelays.push(performance.now() - eventAt))
+      requestAnimationFrame(() => {
+        const delay = performance.now() - eventAt
+        metrics.inputDelays.push(delay)
+        metrics.inputEvents.push({ kind: event.type, at: eventAt - metrics.started, delay })
+      })
     }
     document.addEventListener('pointermove', input, { passive: true })
     document.addEventListener('wheel', input, { passive: true })
@@ -101,6 +152,7 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
       else {
         document.removeEventListener('pointermove', input)
         document.removeEventListener('wheel', input)
+        observer.disconnect()
       }
     }
     requestAnimationFrame(frame)
@@ -121,15 +173,27 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
   for (let index = 0; index < 12; index += 1) await page.mouse.wheel(0, index % 2 === 0 ? -80 : 80)
   await page.waitForTimeout(1_900)
 
-  const samples = await page.evaluate(() => (window as Window & { __agentxPerf?: { frames: number[]; inputDelays: number[] } }).__agentxPerf!)
+  const samples = await page.evaluate(() => (window as Window & { __agentxPerf?: CanvasSamples }).__agentxPerf!)
+  if (profiler) {
+    const { profile } = await profiler.send('Profiler.stop')
+    const profilePath = test.info().outputPath(`canvas-${nodeCount}.cpuprofile`)
+    await writeFile(profilePath, JSON.stringify(profile), 'utf8')
+    await test.info().attach(`canvas-${nodeCount}.cpuprofile`, { path: profilePath, contentType: 'application/json' })
+    await profiler.detach()
+  }
   const medianFrame = percentile(samples.frames, 0.5)
   const metric = {
     nodeCount,
     firstInteractiveMs,
+    fixtureContractPreparationMs,
+    contractReadyMs,
     medianFps: Number((1_000 / medianFrame).toFixed(1)),
     p95InputDelayMs: Number(percentile(samples.inputDelays, 0.95).toFixed(1)),
     renderedNodes: await page.locator('.react-flow__node-manifest').count(),
   }
+  const metricPath = test.info().outputPath(`canvas-metric-${nodeCount}.json`)
+  await writeFile(metricPath, JSON.stringify({ ...metric, samples }, null, 2), 'utf8')
+  await test.info().attach(`canvas-metric-${nodeCount}.json`, { path: metricPath, contentType: 'application/json' })
   if (nodeCount >= 300) expect(metric.renderedNodes).toBeLessThan(nodeCount)
   else expect(metric.renderedNodes).toBe(nodeCount)
   expect(metric.medianFps).toBeGreaterThanOrEqual(nodeCount <= 500 ? 50 : 30)

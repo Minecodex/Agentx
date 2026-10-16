@@ -272,22 +272,35 @@ def test_plugin_files_concurrency_trace_and_cleanup(
             ),
             encoding="utf-8",
         )
-    for deployment in ("workflow-worker", "runtime-gateway"):
-        result = run(
-            (
-                "kubectl",
-                "-n",
-                installed_agentx["runtime_namespace"],
-                "exec",
-                f"deployment/{deployment}",
-                "--",
-                "sh",
-                "-ec",
-                'find "$AGENTX_PLUGIN_WORK_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l',
-            ),
-            timeout=30,
-        )
-        assert result.stdout.strip() == "0", (deployment, result.stdout)
+    _assert_invocation_workspaces_reclaimed(installed_agentx)
+
+
+def _assert_invocation_workspaces_reclaimed(context, timeout_seconds=30):
+    deadline = time.monotonic() + timeout_seconds
+    counts = {}
+    while time.monotonic() < deadline:
+        for deployment in ("workflow-worker", "runtime-gateway"):
+            remaining = deadline - time.monotonic()
+            assert remaining > 0, f"Plugin workspaces were not reclaimed: {counts}"
+            result = run(
+                (
+                    "kubectl",
+                    "-n",
+                    context["runtime_namespace"],
+                    "exec",
+                    f"deployment/{deployment}",
+                    "--",
+                    "sh",
+                    "-ec",
+                    'find "$AGENTX_PLUGIN_WORK_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l',
+                ),
+                timeout=min(30, remaining),
+            )
+            counts[deployment] = int(result.stdout.strip())
+        if all(count == 0 for count in counts.values()):
+            return
+        time.sleep(0.2)
+    raise AssertionError(f"Plugin workspaces were not reclaimed: {counts}")
 
 
 @pytest.mark.cluster

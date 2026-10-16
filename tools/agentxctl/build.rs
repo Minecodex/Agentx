@@ -5,6 +5,7 @@ const URL: &str = "https://github.com/kubernetes/ingress-nginx/releases/download
 const SHA256: &str = "3eff0bd18151d6e6b1c441463410571443dda1ac78292cb189346628de784f0c";
 
 fn main() {
+    println!("cargo:rerun-if-changed=../../deploy/helm");
     println!("cargo:rerun-if-changed=../../.local/deploy-cache/ingress-nginx-4.15.1.tgz");
     let output =
         PathBuf::from(std::env::var_os("OUT_DIR").unwrap()).join("ingress-nginx-4.15.1.tgz");

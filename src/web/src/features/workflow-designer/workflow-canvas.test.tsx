@@ -8,10 +8,17 @@ import { ToastProvider } from '../../shared/ui/toast'
 import { i18n } from '../../app/i18n'
 import { ThemeProvider } from '../../app/providers/theme-provider'
 import { deserializeDraft, serializeStudio } from './model/serializer'
+import { samePersistedDraft } from './model/draft-persistence'
 import type { NodeManifest, WorkflowDefinition } from './model/types'
 import { createEditorStore, EditorStoreProvider } from './store/editor-store'
 const useEditorStore = createEditorStore()
 import { WorkflowCanvasEditor } from './workflow-canvas'
+import { createCanvasRenderStore } from './store/canvas-render-store'
+const renderStore = createCanvasRenderStore()
+vi.mock('./store/canvas-render-store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./store/canvas-render-store')>()
+  return { ...actual, CanvasRenderProvider: ({ children }: { children: React.ReactNode }) => <actual.CanvasRenderProvider store={renderStore}>{children}</actual.CanvasRenderProvider> }
+})
 
 const editorDocument = { nodeLayouts: [{ nodeId: 'trigger', x: 100, y: 100 }, { nodeId: 'exit', x: 560, y: 100 }], boundaryLayouts: [], edges: [], annotations: [], groups: [], viewport: { x: 0, y: 0, zoom: 1 } }
 const draft = {
@@ -49,6 +56,50 @@ describe('workflow studio shell', () => {
       if (path.endsWith('/environments') || path.endsWith('/versions') || path.endsWith('/mcp/tools')) return json([])
       return json({ items: [], page: 1, pageSize: 100, total: 0 })
     }))
+  })
+
+  it('keeps resolved render contracts stable when a drag only changes toolbar and position state', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/drafts/draft-1/editor']}><Routes><Route element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor /></EditorStoreProvider>} path="/workflows/:workflowId/drafts/:draftId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
+    await screen.findByTestId('workflow-canvas')
+    const contracts = renderStore.getState().manifests
+    expect(contracts.size).toBeGreaterThan(0)
+    act(() => useEditorStore.getState().onNodesChange([{ id: 'trigger', type: 'position', position: { x: 140, y: 180 }, dragging: true }]))
+    await screen.findByText(/Unsaved/)
+    expect(renderStore.getState().manifests).toBe(contracts)
+  })
+
+  it('keeps edits made during an earlier save dirty and available to the next save', async () => {
+    const fallback = vi.mocked(fetch).getMockImplementation()!
+    let finishSave: ((response: Response) => void) | undefined
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      if (String(input).endsWith('/drafts/draft-1') && init?.method === 'PUT') {
+        return new Promise<Response>(resolve => { finishSave = resolve })
+      }
+      return fallback(input, init)
+    })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/drafts/draft-1/editor']}><Routes><Route element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor /></EditorStoreProvider>} path="/workflows/:workflowId/drafts/:draftId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Search nodes' }), { target: { value: 'set' } })
+    fireEvent.click(await screen.findByTestId('palette-action-set'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(finishSave).toBeDefined())
+    const movedNode = useEditorStore.getState().nodes.at(-1)!.id
+    act(() => useEditorStore.getState().onNodesChange([{ id: movedNode, type: 'position', position: { x: 990, y: 330 }, dragging: true }]))
+    const editedNodes = useEditorStore.getState().nodes.length
+    await act(async () => { finishSave!(json({ ...draft, revision: 1 })) })
+    await waitFor(() => expect(queryClient.getQueryData<{ revision: number }>(['workflow-document', 'workflow-1', 'draft-1'])?.revision).toBe(1))
+    expect(useEditorStore.getState().nodes).toHaveLength(editedNodes)
+    expect(useEditorStore.getState().nodes.find(node => node.id === movedNode)?.position).toEqual({ x: 990, y: 330 })
+    expect(useEditorStore.getState().dirty).toBe(true)
+  })
+
+  it('compares persisted data while ignoring selection changes', () => {
+    const saved = deserializeDraft(draft)
+    const selection = { ...saved, nodes: saved.nodes.map(node => ({ ...node, selected: true })) }
+    expect(samePersistedDraft(saved, selection)).toBe(true)
+    const moved = { ...saved, nodes: saved.nodes.map(node => ({ ...node, position: { x: node.position.x + 20, y: node.position.y } })) }
+    expect(samePersistedDraft(saved, moved)).toBe(false)
   })
 
   it('keeps local edits and offers all explicit conflict choices', async () => {

@@ -86,6 +86,7 @@ global:
     egressGateway:
       httpProviderServices:
       - echo-mcp
+      - boundary-echo-mcp
       - echo-node
       - lightrag
       - mem0

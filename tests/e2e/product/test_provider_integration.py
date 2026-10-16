@@ -36,6 +36,7 @@ from typing import Any
 import httpx
 import pytest
 
+from tests.e2e.product.user_auth import UserTokenAuth
 from tests.e2e.runtime.test_agent_attachments import (
     _access_token,
     _run_fixture_job,
@@ -240,7 +241,11 @@ def test_provider_long_term_memory_write_recall(
             control, headers, application_id, fixture["workflowVersionId"], environment["id"]
         )
 
-    with httpx.Client(base_url=service_urls["runtime"], timeout=60) as gateway:
+    from tests.e2e.product.live_text_support import Secret
+
+    with httpx.Client(
+        base_url=service_urls["runtime"], auth=UserTokenAuth(service_urls["web"], Secret(token)), timeout=60
+    ) as gateway:
         session_headers = {"Authorization": f"Bearer {token}"}
 
         def create_session(index: int) -> str:

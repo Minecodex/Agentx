@@ -87,7 +87,9 @@ def cpu_memory_service(cpu_embedding_service: dict[str, Any]) -> Iterator[dict[s
         if document["kind"] == "Deployment":
             document["spec"]["template"]["metadata"].setdefault("labels", {})["agentx.io/runtime-provider"] = "allowed"
             if document["metadata"]["name"] == "mem0":
-                document["spec"]["template"]["spec"]["containers"][0]["image"] = image
+                pod = document["spec"]["template"]["spec"]
+                for container in (*pod.get("initContainers", []), *pod["containers"]):
+                    container["image"] = image
     run(("kubectl", "-n", namespace, "apply", "-f", "-"), input_text=yaml.safe_dump_all(documents))
     forward = None
     try:

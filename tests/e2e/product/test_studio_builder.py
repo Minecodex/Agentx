@@ -14,7 +14,9 @@ from tests.e2e.support import run_playwright
 pytestmark = [pytest.mark.cluster, pytest.mark.product]
 
 
-def test_plan8_node_inspectors(installed_agentx, service_urls, studio_models):
+@pytest.mark.live_model
+def test_plan8_node_inspectors(installed_agentx, service_urls, studio_live_models):
+    studio_models = studio_live_models
     selected = ("tests/studio-builder-inspectors.spec.ts",)
     grep = os.environ.get("AGENTX_E2E_PLAYWRIGHT_GREP")
     if grep:
@@ -66,7 +68,9 @@ def test_plan8_layout_protocol(installed_agentx, service_urls, studio_models, st
         capture_builder_evidence(installed_agentx)
 
 
-def test_plan8_studio_builder_desktop(installed_agentx, service_urls, studio_models):
+@pytest.mark.live_model
+def test_plan8_studio_builder_desktop(installed_agentx, service_urls, studio_live_models):
+    studio_models = studio_live_models
     environment = {
         **os.environ,
         "AGENTX_E2E_RUN_ID": installed_agentx["run_id"],

@@ -107,8 +107,8 @@ def test_tls_registry_signature_attestation_and_negative_trust(deployment_values
             {
                 image
                 for image in re.findall(r'^\s+image:\s*["\']?([^\s"\']+)', rendered, re.MULTILINE)
-                if image.rsplit("/", 1)[-1].split(":", 1)[0].removeprefix("agentx-") in services
-                or image.rsplit("/", 1)[-1].split(":", 1)[0] in services
+                if image.rsplit("/", 1)[-1].split("@", 1)[0].split(":", 1)[0].removeprefix("agentx-") in services
+                or image.rsplit("/", 1)[-1].split("@", 1)[0].split(":", 1)[0] in services
             }
         )
         assert len(sources) == 11, sources
@@ -118,7 +118,7 @@ def test_tls_registry_signature_attestation_and_negative_trust(deployment_values
             metadata = run(("docker", "image", "inspect", source), timeout=30).json()[0]
             labels = metadata["Config"]["Labels"]
             build_identities.add((labels["org.opencontainers.image.revision"], labels["io.agentx.source-tree-sha256"]))
-            name = source.rsplit("/", 1)[-1].split(":", 1)[0]
+            name = source.rsplit("/", 1)[-1].split("@", 1)[0].split(":", 1)[0]
             target = f"{registry}/agentx/{name}:candidate"
             run(("docker", "tag", source, target), timeout=30)
             run(("docker", "push", target), timeout=300)

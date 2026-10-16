@@ -94,7 +94,15 @@ fn check(root: &Path, fast: bool) -> Result<()> {
     run(
         root,
         "cargo",
-        &["test", "-p", "agentxctl", "-p", "agentx-key-material"],
+        &[
+            "test",
+            "-p",
+            "agentxctl",
+            "-p",
+            "agentx-key-material",
+            "-p",
+            "echo-mcp",
+        ],
     )?;
     run(root, "uv", &["lock", "--check"])?;
     run(
@@ -123,6 +131,21 @@ fn check(root: &Path, fast: bool) -> Result<()> {
         root,
         "uv",
         &["run", "--group", "test", "pytest", "tests/acceptance"],
+    )?;
+    run(
+        root,
+        "uv",
+        &[
+            "run",
+            "--group",
+            "test",
+            "pytest",
+            "tests/e2e",
+            "--collect-only",
+            "-q",
+            "--values",
+            "deploy/values/local.yaml",
+        ],
     )?;
     for values in [
         "local.yaml",
@@ -314,7 +337,7 @@ fn images(root: &Path, args: Images) -> Result<()> {
             && !(local_runtime_fixture
                 && matches!(
                     service.as_str(),
-                    "echo-node" | "echo-mcp" | "cpu-embedding" | "mem0-server"
+                    "echo-node" | "echo-mcp" | "cpu-embedding" | "mem0-server" | "lightrag"
                 ))
         {
             bail!("unknown image service: {service}");
@@ -361,6 +384,10 @@ fn images(root: &Path, args: Images) -> Result<()> {
                 "--build-arg",
                 "NGINX_CONFIG=deploy/docker/nginx-v2.conf",
             ]);
+        } else if service == "mem0-server" {
+            command.args(["-f", "deploy/docker/mem0.Dockerfile"]);
+        } else if service == "lightrag" {
+            command.args(["-f", "deploy/docker/lightrag.Dockerfile"]);
         } else if service == "cpu-embedding" {
             command.args(["-f", "deploy/docker/cpu-embedding.Dockerfile"]);
             if let Ok(index) = std::env::var("PIP_INDEX_URL") {

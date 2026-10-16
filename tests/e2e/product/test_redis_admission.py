@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-import uuid
+from uuid import UUID
 
 import httpx
 import pytest
@@ -22,11 +22,11 @@ GROUP = "agentx:v2:workers:v1"
 
 
 def invocation_count(context, application_id):
-    application = uuid.UUID(application_id)
+    application_id = UUID(application_id)
     return int(
         _runtime_mysql(
             context,
-            f"SELECT COUNT(*) FROM application_invocations WHERE application_id=UUID_TO_BIN('{application}');",  # noqa: S608 -- UUID is validated
+            f"SELECT COUNT(*) FROM application_invocations WHERE application_id=UUID_TO_BIN('{application_id}');",  # noqa: S608 -- UUID normalized above.
         )
     )
 
@@ -158,20 +158,21 @@ def test_redis_real_watermark_rejects_new_api_and_chat_preserves_replay(boundary
             )
             redis_command(context, "XACK", STREAM, GROUP, *inserted)
             redis_command(context, "XDEL", STREAM, *inserted)
-            # Other applications can enqueue real scheduled work while the
-            # Worker is stopped. Resume it before requiring the shared queue
-            # to drain; remove only the synthetic entries owned by this test.
             scale(context, "deployment/workflow-worker", 1)
-            metric(boundary_gateway_metrics, "agentx_redis_task_unread_items", lambda value: value == 0)
-            metric(boundary_gateway_metrics, "agentx_redis_task_pending_items", lambda value: value == 0)
+            # These gauges record the latest intake snapshot. Trigger a real
+            # request after removing our messages before inspecting recovery;
+            # other suites can still have genuine work in the shared streams.
             recovered = gateway.post(chat_path, headers={"Idempotency-Key": "redis-recovered-chat"}, json=chat_body)
             assert recovered.status_code == 202, recovered.text
+            recovery = metric(boundary_gateway_metrics, "agentx_redis_task_pending_items", lambda value: value < 2000)
+            assert recovery["agentx_redis_task_unread_items"] + recovery["agentx_redis_task_pending_items"] < 2000
             report(
                 state,
                 "remaining-redis-watermark",
                 {
                     "unreadMetrics": values,
                     "pendingMetrics": pending,
+                    "recoveryMetrics": recovery,
                     "apiAndChatRefused": True,
                     "noRejectedReceipt": True,
                     "chatReplayPreserved": True,
@@ -206,13 +207,27 @@ def test_redis_unavailable_refuses_and_recovers_without_accepting_work(boundary_
             assert invocation_count(context, app["applicationId"]) == baseline
         finally:
             scale(context, "statefulset/runtime-redis", 1)
-        metric(boundary_gateway_metrics, "agentx_redis_admission_available", lambda value: value == 1)
-        recovered = gateway.post(
-            f"/gateway/v1/applications/{app['slug']}/invocations",
-            headers={"Idempotency-Key": "redis-after-unavailable"},
-            json={"input": {"message": "recovered"}},
-        )
+        # Pod readiness precedes reconnecting the Gateway's existing socket.
+        # Refusals remain receipt-free; the same key permits exactly one
+        # admission when the client observes the restored Redis service.
+        deadline = time.monotonic() + 30
+        while True:
+            recovered = gateway.post(
+                f"/gateway/v1/applications/{app['slug']}/invocations",
+                headers={"Idempotency-Key": "redis-after-unavailable"},
+                json={"input": {"message": "recovered"}},
+            )
+            if recovered.status_code == 202:
+                break
+            assert recovered.status_code == 503 and recovered.json()["code"] == "RUNTIME_STORAGE_UNAVAILABLE", (
+                recovered.text
+            )
+            assert invocation_count(context, app["applicationId"]) == baseline
+            assert time.monotonic() < deadline, recovered.text
+            time.sleep(0.5)
         assert recovered.status_code == 202, recovered.text
+        assert invocation_count(context, app["applicationId"]) == baseline + 1
+        metric(boundary_gateway_metrics, "agentx_redis_admission_available", lambda value: value == 1)
         report(
             state, "remaining-redis-unavailable", {"failedClosed": True, "noRejectedReceipt": True, "recovered": True}
         )

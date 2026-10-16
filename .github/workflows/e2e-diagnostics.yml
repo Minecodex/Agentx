@@ -1,0 +1,66 @@
+name: E2E diagnostics
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Focused diagnostic scope; never release certification
+        type: choice
+        options: [pr, controlled, performance, performance-profile, attachments, studio, plugins]
+        default: pr
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'ci:diagnostic'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/e2e-tools
+      - name: Run a focused suite in the disposable cluster
+        env:
+          SUITE: ${{ inputs.suite || 'pr' }}
+          RUN_ID: diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+        shell: python
+        run: |
+          import os
+          import subprocess
+
+          profiles = {'pr': 'pr', 'controlled': 'release', 'performance': 'independent', 'performance-profile': 'independent', 'attachments': 'independent', 'studio': 'independent', 'plugins': 'independent'}
+          suite = os.environ['SUITE']
+          selections = {
+              'performance': ['tests/e2e/product/test_canvas_performance.py'],
+              'performance-profile': ['tests/e2e/product/test_canvas_performance.py'],
+              'attachments': ['tests/e2e/product/test_remaining_faults.py::test_model_transport_faults_are_failed_and_have_call_trace', 'tests/e2e/runtime/test_agent_attachments.py'],
+              'studio': ['tests/e2e/product/test_playwright.py'],
+              'plugins': ['tests/e2e/runtime/test_plugin_boundaries.py'],
+          }
+          selected = selections.get(suite, ['tests/e2e'])
+          environment = os.environ.copy()
+          if suite in ('performance', 'performance-profile', 'attachments', 'studio', 'plugins'):
+              environment['AGENTX_E2E_RAGFLOW_DISABLE'] = '1'
+          if suite == 'performance-profile':
+              environment['AGENTX_E2E_CANVAS_PROFILE'] = '1'
+          if suite == 'studio':
+              environment['AGENTX_E2E_ONLY_SUITE'] = 'product-closure'
+              environment['AGENTX_E2E_PLAYWRIGHT_GREP'] = 'builds and reopens Start to IF|renders all thirteen|dual-Agent output selection'
+          command = [
+              'uv', 'run', '--frozen', '--group', 'test', 'pytest', *selected,
+              '--minikube', '--values', 'deploy/values/local.yaml', '--ci-profile', profiles[suite],
+              '--evidence-run-id', os.environ['RUN_ID'],
+              '--junitxml=.local/artifacts/e2e-diagnostic.xml', '--timeout=9000',
+          ]
+          subprocess.run(command, check=True, env=environment)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-diagnostic-${{ inputs.suite || 'pr' }}
+          path: |
+            .local/artifacts/e2e-diagnostic.xml
+            .local/artifacts/e2e
+            .local/artifacts/playwright

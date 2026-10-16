@@ -210,4 +210,5 @@ def cluster_load(context, pods, slug, api_keys, concurrent, duration, *, count=N
         result["duration_seconds"],
         result["connection_setup_ms"],
         transport="in-cluster-http",
+        first_intake_batch=result["first_intake_batch"],
     )
