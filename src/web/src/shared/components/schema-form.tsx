@@ -1,5 +1,5 @@
 import { Braces, RotateCcw, Upload } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { i18n } from '../../app/i18n'
@@ -85,7 +85,7 @@ export function SchemaFormWorkspace({ schema, value, onChange, onUpload, disable
   </div>
 }
 
-function SchemaField({ name, field, value, required, onChange, onUpload, disabled, error }: {
+export function SchemaField({ name, field, value, required, onChange, onUpload, disabled, error }: {
   name: string
   field: JsonSchema
   value: unknown
@@ -95,27 +95,33 @@ function SchemaField({ name, field, value, required, onChange, onUpload, disable
   disabled: boolean
   error?: string
 }) {
+  const errorId = useId()
   const label = field.title || humanize(name)
   const wide = field.type === 'object' || field.type === 'array' || field.multiline || field['x-agentx-artifact']
-  return <div className={wide ? 'sm:col-span-2' : undefined}><label className="mb-1.5 block text-xs font-medium"><span>{label}</span>{required && <span className="ml-1 text-danger">*</span>}{field.description && <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">{field.description}</span>}</label><SchemaControl disabled={disabled} field={field} label={label} onChange={onChange} onUpload={onUpload} value={value} />{error && <p className="mt-1 text-[10px] text-danger">{error}</p>}</div>
+  return <div className={wide ? 'sm:col-span-2' : undefined}><label className="mb-1.5 block text-xs font-medium"><span>{label}</span>{required && <span className="ml-1 text-danger">*</span>}{field.description && <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">{field.description}</span>}</label><SchemaControl disabled={disabled} error={error} errorId={errorId} field={field} label={label} name={name} onChange={onChange} onUpload={onUpload} required={required} value={value} />{error && <p className="mt-1 text-[10px] text-danger" id={errorId}>{error}</p>}</div>
 }
 
-function SchemaControl({ field, label, value, onChange, onUpload, disabled }: {
+function SchemaControl({ field, label, name, value, onChange, onUpload, disabled, required, error, errorId }: {
   field: JsonSchema
   label: string
+  name: string
   value: unknown
   onChange: (value: unknown) => void
   onUpload?: (file: File) => Promise<ArtifactReference>
   disabled: boolean
+  required: boolean
+  error?: string
+  errorId: string
 }) {
   const { t } = useTranslation()
+  const accessibility = { name, 'aria-invalid': Boolean(error), 'aria-describedby': error ? errorId : undefined, 'aria-required': required }
   if (field['x-agentx-artifact']) return <ArtifactInput disabled={disabled} field={field} label={label} onChange={onChange} onUpload={onUpload} value={value} />
-  if (field.enum?.length) return <Select aria-label={label} className="w-full" disabled={disabled} onValueChange={(selected) => onChange(field.enum?.find((item) => String(item) === selected))} options={field.enum.map((item) => ({ value: String(item), label: String(item) }))} value={value == null ? '' : String(value)} />
-  if (field.type === 'boolean') return <label className="flex h-9 items-center gap-2 rounded-md border border-border bg-surface px-3 text-xs"><input aria-label={label} checked={Boolean(value)} disabled={disabled} onChange={(event) => onChange(event.target.checked)} type="checkbox" />{value ? t('common.schemaForm.yes') : t('common.schemaForm.no')}</label>
-  if (field.type === 'number' || field.type === 'integer') return <Input aria-label={label} disabled={disabled} max={field.maximum} min={field.minimum} onChange={(event) => onChange(event.target.value ? Number(event.target.value) : undefined)} step={field.type === 'integer' ? 1 : 'any'} type="number" value={typeof value === 'number' ? value : ''} />
+  if (field.enum?.length) return <Select {...accessibility} aria-label={label} className="w-full" disabled={disabled} onValueChange={(selected) => onChange(field.enum?.find((item) => String(item) === selected))} options={field.enum.map((item) => ({ value: String(item), label: String(item) }))} value={value == null ? '' : String(value)} />
+  if (field.type === 'boolean') return <label className="flex h-9 items-center gap-2 rounded-md border border-border bg-surface px-3 text-xs"><input {...accessibility} aria-label={label} checked={Boolean(value)} disabled={disabled} onChange={(event) => onChange(event.target.checked)} type="checkbox" />{value ? t('common.schemaForm.yes') : t('common.schemaForm.no')}</label>
+  if (field.type === 'number' || field.type === 'integer') return <Input {...accessibility} aria-label={label} disabled={disabled} max={field.maximum} min={field.minimum} onChange={(event) => onChange(event.target.value ? Number(event.target.value) : undefined)} step={field.type === 'integer' ? 1 : 'any'} type="number" value={typeof value === 'number' ? value : ''} />
   if (field.type === 'object' || field.type === 'array') return <JsonValueInput disabled={disabled} fallback={field.type === 'array' ? [] : {}} label={label} onChange={onChange} value={value} />
-  if (field.multiline) return <Textarea aria-label={label} className="min-h-28" disabled={disabled} maxLength={field.maxLength} minLength={field.minLength} onChange={(event) => onChange(event.target.value)} value={String(value ?? '')} />
-  return <Input aria-label={label} disabled={disabled} maxLength={field.maxLength} minLength={field.minLength} onChange={(event) => onChange(event.target.value)} type={field.format === 'password' ? 'password' : field.format === 'email' ? 'email' : 'text'} value={String(value ?? '')} />
+  if (field.multiline) return <Textarea {...accessibility} aria-label={label} className="min-h-28" disabled={disabled} maxLength={field.maxLength} minLength={field.minLength} onChange={(event) => onChange(event.target.value)} value={String(value ?? '')} />
+  return <Input {...accessibility} aria-label={label} disabled={disabled} maxLength={field.maxLength} minLength={field.minLength} onChange={(event) => onChange(event.target.value)} type={field.format === 'password' ? 'password' : field.format === 'email' ? 'email' : 'text'} value={String(value ?? '')} />
 }
 
 function ArtifactInput({ field, value, onChange, onUpload, label, disabled }: {

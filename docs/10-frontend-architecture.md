@@ -228,6 +228,8 @@ Playground 调用正式 Application API，不建立单独的执行实现。页�
 
 参数测试采用“无 Session 运行历史 / Schema 表单 / 结果详情”三栏布局。共享 `SchemaForm` 负责 string、multiline、enum、number、integer、boolean、object、array、Artifact、Artifact Array、递归默认值、恢复默认和 JSON 模式，Workflow Studio 的 Run Parameters 与 Playground 复用该组件。选择历史运行时，表单以当前 Deployment Schema 默认值为基础，只回填 Execution 输入中名称与类型仍兼容的字段，忽略旧版本已删除或改型的参数。Artifact 先上传到 `/gateway/v1/artifacts`，随后用 Artifact Reference 调用正式 Invocation API；结果面板展示输出、错误、耗时、Token、成本、文件和 Execution/Trace 入口。
 
+应用定时触发使用“参数下拉选择 + 类型化值控件”的配置行，不提供原始 JSON 输入。表单采用双列宽布局，长内容在弹窗内滚动；下拉框按 Esc 只关闭选项并保留表单。必填参数和默认值在新建时自动列出，枚举和布尔值使用下拉框，对象与数组递归填写；基础值控件复用共享 `SchemaField`。参数来自当前激活应用部署的输入 Schema，首次部署前使用最新已发布工作流版本。编辑保留已保存的值与类型，已删除参数明确提示并要求重新选择或删除；提交前校验必填、类型与取值范围。Schema 加载失败提供重试，缺少已发布版本沿用共享前置条件提示。
+
 对话测试采用“会话历史 / 消息历史与固定 Composer”两栏布局，工作区填满页面剩余高度，各栏内部独立滚动。共享映射配置放在 Radix Dialog 中，由带 Tooltip 和可访问名称的齿轮图标打开，只列出类型兼容的顶层字段；没有活动映射时发送按钮禁用，附件按钮在未映射文件输入时禁用。Composer 使用多行矩形输入框，附件 `+` 在左下角，发送图标在右下角，Enter 发送且 Shift+Enter 换行。`application:manage` 可以保存或清除映射，只有 `application:invoke` 的用户可以使用已发布映射。保存后轮询 `publishing/active/failed`，发布期间保留服务端草稿并暂停发送；用户与 Assistant 附件都渲染文件卡片，Assistant 消息提供 Execution/Trace 入口。Session 列表使用首条用户问题作为标题，单行省略并在悬停时展示完整标题。
 
 首期企业工作台只验收 1280px 及以上桌面布局。Sidebar 折叠状态保存到 agentx.sidebar.collapsed；不实现移动端 Drawer。普通一级列表页继续使用本地搜索、状态筛选、8 条分页和无结果状态；执行记录页是受控服务端表格的明确例外，不能加载固定 100 条后本地筛选。

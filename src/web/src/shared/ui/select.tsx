@@ -1,5 +1,6 @@
 import * as SelectPrimitive from '@radix-ui/react-select'
 import { Check, ChevronDown } from 'lucide-react'
+import { useState } from 'react'
 
 import { cn } from '../lib/cn'
 
@@ -20,8 +21,9 @@ type SelectProps = {
 }
 
 export function Select({ value, onValueChange, options, placeholder, className, disabled, name, 'aria-label': ariaLabel, 'aria-invalid': ariaInvalid, 'aria-describedby': ariaDescribedBy, 'aria-required': ariaRequired }: SelectProps) {
+  const [open, setOpen] = useState(false)
   return (
-    <SelectPrimitive.Root disabled={disabled} onValueChange={onValueChange} value={value}>
+    <SelectPrimitive.Root disabled={disabled} onOpenChange={setOpen} onValueChange={onValueChange} open={open} value={value}>
       <SelectPrimitive.Trigger
         aria-label={ariaLabel}
         aria-invalid={ariaInvalid}
@@ -42,6 +44,12 @@ export function Select({ value, onValueChange, options, placeholder, className, 
         <SelectPrimitive.Content
           className="z-[230] max-h-[min(20rem,var(--radix-select-content-available-height))] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-xl border border-border bg-surface p-1 text-foreground shadow-xl outline-none"
           position="popper"
+          onEscapeKeyDown={(event) => {
+            // Keep the same Escape key from also dismissing a surrounding dialog.
+            event.preventDefault()
+            event.stopImmediatePropagation()
+            setOpen(false)
+          }}
           sideOffset={6}
         >
           <SelectPrimitive.Viewport>
