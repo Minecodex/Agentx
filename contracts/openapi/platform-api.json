@@ -3936,8 +3936,11 @@
         ]
       },
       "CreateConnectionRequest": {
+        "additionalProperties": false,
         "properties": {
-          "configuration": {},
+          "configuration": {
+            "default": {}
+          },
           "credentialId": {
             "format": "uuid",
             "type": [
@@ -3962,19 +3965,18 @@
             "type": "string"
           },
           "provider": {
-            "enum": [
-              "lightrag",
-              "ragflow"
-            ],
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "name",
           "endpoint",
-          "ownerDepartmentId",
-          "configuration"
+          "ownerDepartmentId"
         ],
+        "title": "CreateConnectionRequest",
         "type": "object"
       },
       "CreateCredentialRequest": {
@@ -4171,12 +4173,9 @@
         "type": "object"
       },
       "CreateKnowledgeRequest": {
+        "additionalProperties": false,
         "properties": {
-          "connectionId": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "externalResourceId": {
+          "description": {
             "type": "string"
           },
           "name": {
@@ -4185,15 +4184,61 @@
           "ownerDepartmentId": {
             "format": "uuid",
             "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/CreateKnowledgeRequest_RagScope"
           }
         },
         "required": [
-          "connectionId",
           "name",
-          "externalResourceId",
+          "description",
+          "scope",
           "ownerDepartmentId"
         ],
+        "title": "CreateKnowledgeRequest",
         "type": "object"
+      },
+      "CreateKnowledgeRequest_RagScope": {
+        "description": "A query freezes an external content scope, never an Agentx index.",
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "datasetIds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "kind": {
+                "const": "ragflow",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "datasetIds"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "lightrag",
+                "type": "string"
+              },
+              "workspace": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "workspace"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "CreateMcpServerRequest": {
         "properties": {
@@ -6503,67 +6548,50 @@
         ],
         "type": "object"
       },
-      "KnowledgeDocument": {
-        "additionalProperties": false,
+      "KnowledgeCatalogItem": {
         "properties": {
-          "contentType": {
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "errorCode": {
-            "nullable": true,
-            "type": "string"
-          },
-          "errorMessage": {
-            "nullable": true,
-            "type": "string"
-          },
-          "externalDocumentId": {
-            "nullable": true,
-            "type": "string"
-          },
           "id": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "indexedAt": {
-            "nullable": true,
             "type": "string"
           },
           "name": {
             "type": "string"
           },
-          "ragResourceId": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "sizeBytes": {
-            "type": "integer"
-          },
-          "status": {
-            "enum": [
-              "uploading",
-              "indexing",
-              "indexed",
-              "failed"
-            ],
-            "type": "string"
-          },
-          "version": {
-            "type": "integer"
+          "scope": {
+            "$ref": "#/components/schemas/RagScope"
           }
         },
         "required": [
           "id",
-          "ragResourceId",
           "name",
-          "contentType",
-          "sizeBytes",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "KnowledgeDocument": {
+        "properties": {
+          "connectionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/RagScope"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
           "status",
-          "version",
-          "createdAt"
+          "scope",
+          "connectionId"
         ],
         "type": "object"
       },
@@ -6576,11 +6604,11 @@
           "connectionName": {
             "type": "string"
           },
-          "externalResourceId": {
+          "description": {
             "type": "string"
           },
           "grantCount": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
           },
@@ -6595,18 +6623,17 @@
             "format": "uuid",
             "type": "string"
           },
+          "scope": {
+            "$ref": "#/components/schemas/KnowledgeResponse_RagScope"
+          },
           "status": {
             "type": "string"
           },
-          "syncStatus": {
-            "type": "string"
-          },
           "updatedAt": {
-            "format": "date-time",
             "type": "string"
           },
           "version": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
           }
@@ -6616,15 +6643,58 @@
           "connectionId",
           "connectionName",
           "name",
-          "externalResourceId",
+          "description",
+          "scope",
           "ownerDepartmentId",
-          "syncStatus",
           "status",
           "grantCount",
           "version",
           "updatedAt"
         ],
+        "title": "KnowledgeResponse",
         "type": "object"
+      },
+      "KnowledgeResponse_RagScope": {
+        "description": "A query freezes an external content scope, never an Agentx index.",
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "datasetIds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "kind": {
+                "const": "ragflow",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "datasetIds"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "lightrag",
+                "type": "string"
+              },
+              "workspace": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "workspace"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "LineageResponse": {
         "properties": {
@@ -8223,6 +8293,54 @@
         ],
         "type": "object"
       },
+      "RagScope": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "datasetIds": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "kind": {
+                "enum": [
+                  "ragflow"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "datasetIds"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "lightrag"
+                ],
+                "type": "string"
+              },
+              "workspace": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "workspace"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "ReassignApprovalRequest": {
         "properties": {
           "targetUserId": {
@@ -8754,27 +8872,425 @@
         ],
         "type": "object"
       },
-      "RetrievalTestResult": {
+      "RetrievalTestRequest": {
+        "additionalProperties": false,
         "properties": {
-          "citations": {
-            "items": {},
-            "type": "array"
-          },
-          "documents": {
-            "items": {
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "recordIds": {
-            "items": {},
-            "type": "array"
-          },
-          "text": {
+          "query": {
             "type": "string"
+          },
+          "topK": {
+            "default": 5,
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
           }
         },
+        "required": [
+          "query"
+        ],
+        "title": "RetrievalTestRequest",
         "type": "object"
+      },
+      "RetrievalTestResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "documents",
+          "files",
+          "partial",
+          "sources",
+          "elapsedMs"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "documentId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "chunkId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "uri": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "content": {
+                  "type": "string"
+                },
+                "metadata": {
+                  "type": "object"
+                },
+                "queryIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "fusionScore": {
+                  "type": "number"
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "queryIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "connectionVersion": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "scope": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "ragflow"
+                              },
+                              "datasetIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "minItems": 1
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "datasetIds"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "lightrag"
+                              },
+                              "workspace": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "workspace"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "rawScore": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "rank": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "queryIds",
+                      "connectionId",
+                      "connectionVersion",
+                      "scope",
+                      "rawScore",
+                      "rank"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "documentId",
+                "chunkId",
+                "title",
+                "uri",
+                "content",
+                "metadata",
+                "queryIds",
+                "fusionScore",
+                "sources"
+              ]
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "documentId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "referenceId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "uri": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "contentType": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "queryIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "connectionVersion": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "scope": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "ragflow"
+                              },
+                              "datasetIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "minItems": 1
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "datasetIds"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "lightrag"
+                              },
+                              "workspace": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "workspace"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "rawScore": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "rank": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "queryIds",
+                      "connectionId",
+                      "connectionVersion",
+                      "scope",
+                      "rawScore",
+                      "rank"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "documentId",
+                "referenceId",
+                "uri",
+                "name",
+                "contentType",
+                "sources"
+              ]
+            },
+            "description": "External attachment source references, not platform Artifacts or downloaded originals."
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "queryIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "connectionId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "connectionVersion": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "scope": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "ragflow"
+                        },
+                        "datasetIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "datasetIds"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "lightrag"
+                        },
+                        "workspace": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "workspace"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "succeeded",
+                    "failed"
+                  ]
+                },
+                "elapsedMs": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "error": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "queryIds",
+                "connectionId",
+                "connectionVersion",
+                "scope",
+                "status",
+                "elapsedMs",
+                "error"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "elapsedMs": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
       },
       "ReviewResourceGrantRequest": {
         "properties": {
@@ -15096,6 +15612,84 @@
         ],
         "type": "object"
       },
+      "UpdateKnowledgeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ownerDepartmentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/UpdateKnowledgeRequest_RagScope"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "scope",
+          "ownerDepartmentId",
+          "status",
+          "version"
+        ],
+        "title": "UpdateRequest",
+        "type": "object"
+      },
+      "UpdateKnowledgeRequest_RagScope": {
+        "description": "A query freezes an external content scope, never an Agentx index.",
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "datasetIds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "kind": {
+                "const": "ragflow",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "datasetIds"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "lightrag",
+                "type": "string"
+              },
+              "workspace": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "workspace"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "UpdateMarkdownRequest": {
         "properties": {
           "content": {
@@ -15315,6 +15909,49 @@
         "required": [
           "policies"
         ],
+        "type": "object"
+      },
+      "UpdateRagConnectionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "credentialId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ownerDepartmentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "provider",
+          "endpoint",
+          "ownerDepartmentId",
+          "status",
+          "version"
+        ],
+        "title": "UpdateRagConnectionRequest",
         "type": "object"
       },
       "UpdateRoleRequest": {
@@ -17245,14 +17882,14 @@
           "requestId": "019ff3e3-3c2b-7ad0-902f-1f5c34644ed9"
         }
       },
-      "KnowledgeExternalResourceIdExists": {
-        "summary": "KNOWLEDGE_EXTERNAL_RESOURCE_ID_EXISTS uniqueness conflict",
+      "KnowledgeNameExists": {
+        "summary": "KNOWLEDGE_NAME_EXISTS uniqueness conflict",
         "value": {
-          "code": "KNOWLEDGE_EXTERNAL_RESOURCE_ID_EXISTS",
+          "code": "KNOWLEDGE_NAME_EXISTS",
           "fieldErrors": [
             {
-              "code": "KNOWLEDGE_EXTERNAL_RESOURCE_ID_EXISTS",
-              "field": "externalResourceId",
+              "code": "KNOWLEDGE_NAME_EXISTS",
+              "field": "name",
               "message": "The submitted value already exists"
             }
           ],
@@ -20812,6 +21449,222 @@
         ]
       }
     },
+    "/api/v1/knowledge/connections/{id}": {
+      "delete": {
+        "operationId": "deleteKnowledgeConnection",
+        "responses": {
+          "204": {
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "getKnowledgeConnection",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponse"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "patch": {
+        "operationId": "updateKnowledgeConnection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRagConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponse"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/knowledge/connections/{id}/catalog": {
+      "get": {
+        "operationId": "discoverKnowledgeScopes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeCatalogItem"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/v1/knowledge/connections/{id}/queries": {
+      "get": {
+        "operationId": "listKnowledgeQueries",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "$ref": "#/components/schemas/KnowledgeResponse"
+                      },
+                      "type": "array"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "pageSize": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "page",
+                    "pageSize",
+                    "total"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "createKnowledgeQuery",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateKnowledgeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeResponse"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/knowledge/connections/{id}/test-connection": {
       "post": {
         "operationId": "test_rag_connection",
@@ -20832,132 +21685,106 @@
         ]
       }
     },
-    "/api/v1/knowledge/resources": {
-      "get": {
-        "operationId": "list_knowledge",
-        "responses": {},
-        "tags": [
-          "external_resources"
-        ]
-      },
-      "post": {
-        "operationId": "create_knowledge",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateKnowledgeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {},
-        "tags": [
-          "external_resources"
-        ]
-      }
-    },
-    "/api/v1/knowledge/resources/{id}": {
+    "/api/v1/knowledge/queries/{id}": {
       "delete": {
-        "operationId": "delete_knowledge",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "expectedVersion",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "minimum": 0,
-              "type": "integer"
-            }
-          }
-        ],
+        "operationId": "deleteKnowledgeQuery",
         "responses": {
           "204": {
-            "description": ""
-          },
-          "409": {
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "getKnowledgeQuery",
+        "responses": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
+                  "$ref": "#/components/schemas/KnowledgeResponse"
                 }
               }
             },
-            "description": ""
+            "description": "Success"
           }
         },
-        "tags": [
-          "deletion"
-        ]
-      },
-      "get": {
-        "operationId": "get_knowledge",
-        "parameters": [
+        "security": [
           {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
+            "bearerAuth": []
           }
-        ],
-        "responses": {},
-        "tags": [
-          "external_resources"
         ]
       },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
       "patch": {
-        "operationId": "update_knowledge",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
+        "operationId": "updateKnowledgeQuery",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateExternalResourceRequest"
+                "$ref": "#/components/schemas/UpdateKnowledgeRequest"
               }
             }
           },
           "required": true
         },
-        "responses": {},
-        "tags": [
-          "external_resources"
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeResponse"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
         ]
       }
     },
-    "/api/v1/knowledge/resources/{id}/documents": {
+    "/api/v1/knowledge/queries/{id}/documents": {
       "get": {
         "operationId": "listKnowledgeDocuments",
         "parameters": [
           {
-            "in": "path",
-            "name": "id",
-            "required": true,
+            "in": "query",
+            "name": "page",
             "schema": {
-              "format": "uuid",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "datasetId",
+            "schema": {
               "type": "string"
             }
           }
@@ -20967,152 +21794,73 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/KnowledgeDocument"
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "$ref": "#/components/schemas/KnowledgeDocument"
+                      },
+                      "type": "array"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "pageSize": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
                   },
-                  "type": "array"
+                  "required": [
+                    "items",
+                    "page",
+                    "pageSize",
+                    "total"
+                  ],
+                  "type": "object"
                 }
               }
             },
-            "description": "Documents"
+            "description": "Success"
           }
         },
         "security": [
           {
             "bearerAuth": []
           }
-        ],
-        "tags": [
-          "knowledge"
         ]
       },
-      "post": {
-        "operationId": "uploadKnowledgeDocument",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
           }
-        ],
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "properties": {
-                  "file": {
-                    "format": "binary",
-                    "type": "string"
-                  }
-                },
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KnowledgeDocument"
-                }
-              }
-            },
-            "description": "Source stored; durable external indexing accepted"
-          },
-          "422": {
-            "description": "Type/size/limit/duplicate rejection"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "tags": [
-          "knowledge"
-        ]
-      }
+        }
+      ]
     },
-    "/api/v1/knowledge/resources/{id}/documents/{document_id}": {
-      "delete": {
-        "operationId": "deleteKnowledgeDocument",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "document_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
+    "/api/v1/knowledge/queries/{id}/retrieval-test": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
           }
-        ],
-        "responses": {
-          "204": {
-            "description": "Deleted"
-          },
-          "404": {
-            "description": "Not found"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "tags": [
-          "knowledge"
-        ]
-      }
-    },
-    "/api/v1/knowledge/resources/{id}/retrieval-test": {
+        }
+      ],
       "post": {
-        "operationId": "knowledgeRetrievalTest",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
+        "operationId": "testKnowledgeQuery",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "properties": {
-                  "query": {
-                    "type": "string"
-                  },
-                  "topK": {
-                    "maximum": 20,
-                    "minimum": 1,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "query"
-                ],
-                "type": "object"
+                "$ref": "#/components/schemas/RetrievalTestRequest"
               }
             }
           },
@@ -21127,19 +21875,13 @@
                 }
               }
             },
-            "description": "Hits"
-          },
-          "422": {
-            "description": "Provider rejection"
+            "description": "Success"
           }
         },
         "security": [
           {
             "bearerAuth": []
           }
-        ],
-        "tags": [
-          "knowledge"
         ]
       }
     },

@@ -97,11 +97,13 @@ def test_knowledge_canvas_and_ai_resource_completion(
             )
             resources[provider] = post(
                 client,
-                "/knowledge/resources",
+                f"/knowledge/connections/{connection['id']}/queries",
                 {
-                    "connectionId": connection["id"],
                     "name": name,
-                    "externalResourceId": "p8_knowledge",
+                    "description": "Launch and support documentation",
+                    "scope": {"kind": "lightrag", "workspace": ""}
+                    if provider == "lightrag"
+                    else {"kind": "ragflow", "datasetIds": ["dataset-a", "dataset-b"]},
                     "ownerDepartmentId": me["departmentId"],
                 },
             )
@@ -160,7 +162,7 @@ def verify_failed_execution_recovery(installed_agentx, service_urls, studio_user
         target = json.loads(
             _runtime_mysql(
                 installed_agentx,
-                "SELECT JSON_OBJECT('executionId',BIN_TO_UUID(e.id),'workflowId',BIN_TO_UUID(e.workflow_id),'draftId',JSON_UNQUOTE(JSON_EXTRACT(s.execution_context_json,'$.workflow.source.draftId'))) FROM workflow_executions e JOIN execution_snapshots s ON s.execution_id=e.id WHERE e.status='failed' AND e.error_code='PROVIDER_REJECTED' ORDER BY e.created_at DESC LIMIT 1",
+                "SELECT JSON_OBJECT('executionId',BIN_TO_UUID(e.id),'workflowId',BIN_TO_UUID(e.workflow_id),'draftId',JSON_UNQUOTE(JSON_EXTRACT(s.execution_context_json,'$.workflow.source.draftId'))) FROM workflow_executions e JOIN execution_snapshots s ON s.execution_id=e.id WHERE e.status='failed' AND e.error_code='KNOWLEDGE_ALL_SOURCES_FAILED' ORDER BY e.created_at DESC LIMIT 1",
             )
         )
         detail_path = f"/api/v1/executions/{target['executionId']}"

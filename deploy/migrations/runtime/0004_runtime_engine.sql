@@ -55,7 +55,7 @@ CREATE TABLE runtime_resource_states (
     status ENUM('active','disabled','revoked') NOT NULL,
     content_hash CHAR(71) NOT NULL,
     applied_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    PRIMARY KEY (tenant_id, resource_kind, resource_id),
+    PRIMARY KEY (tenant_id, resource_kind, resource_id, resource_version, content_hash),
     KEY idx_runtime_resource_state (tenant_id, status, state_epoch)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 

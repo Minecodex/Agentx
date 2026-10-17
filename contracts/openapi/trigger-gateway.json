@@ -907,6 +907,80 @@
         ]
       }
     },
+    "/gateway/v1/invocations/{id}/artifacts/{artifact_id}": {
+      "get": {
+        "description": "Download a file referenced in this Invocation's outputs using an active Application API Key or authorized platform user. Internal execution artifacts are not exposed.",
+        "operationId": "downloadInvocationArtifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Verified output file. Content-Type follows the stored file; ETag contains its SHA-256."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
     "/gateway/v1/invocations/{id}/cancel": {
       "post": {
         "operationId": "cancelInvocation",

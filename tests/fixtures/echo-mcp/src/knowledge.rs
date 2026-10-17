@@ -26,7 +26,9 @@ pub async fn lightrag(Json(input): Json<Value>) -> Response {
 }
 
 pub async fn ragflow(Json(input): Json<Value>) -> Response {
-    if input["question"] == "fixture-error" {
+    if input["question"] == "fixture-error"
+        || (input["question"] == "fixture-partial" && input["dataset_ids"][0] == "dataset-b")
+    {
         return Json(json!({"code":102,"message":"retrieval rejected"})).into_response();
     }
     let chunks = if input["question"] == "fixture-empty" {
@@ -37,4 +39,15 @@ pub async fn ragflow(Json(input): Json<Value>) -> Response {
         ]
     };
     Json(json!({"code":0,"data":{"chunks":chunks}})).into_response()
+}
+
+pub async fn datasets() -> Json<Value> {
+    Json(
+        json!({"code":0,"data":[{"id":"dataset-a","name":"Product documentation"},{"id":"dataset-b","name":"Support handbook"}]}),
+    )
+}
+pub async fn documents() -> Json<Value> {
+    Json(
+        json!({"code":0,"data":{"docs":[{"id":"guide-1","name":"Launch guide","run":"3"}],"total":1},"documents":[{"id":"guide-1","file_path":"Launch guide","status":"processed"}],"pagination":{"total_count":1}}),
+    )
 }

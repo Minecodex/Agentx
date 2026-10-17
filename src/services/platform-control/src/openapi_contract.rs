@@ -81,6 +81,30 @@ pub(crate) fn write(path: &Path) -> Result<()> {
         &mut contract,
         "ArchiveVersionRequest",
     )?;
+    add_schema::<crate::external_resource_api::CreateConnectionRequest>(
+        &mut contract,
+        "CreateConnectionRequest",
+    )?;
+    add_schema::<crate::external_resource_api::KnowledgeResponse>(
+        &mut contract,
+        "KnowledgeResponse",
+    )?;
+    add_schema::<crate::external_resource_api::CreateKnowledgeRequest>(
+        &mut contract,
+        "CreateKnowledgeRequest",
+    )?;
+    add_schema::<crate::external_resource_api::UpdateRequest>(
+        &mut contract,
+        "UpdateKnowledgeRequest",
+    )?;
+    add_schema::<crate::external_resource_api::UpdateRagConnectionRequest>(
+        &mut contract,
+        "UpdateRagConnectionRequest",
+    )?;
+    add_schema::<crate::knowledge_document_api::RetrievalTestRequest>(
+        &mut contract,
+        "RetrievalTestRequest",
+    )?;
     add_schema::<crate::external_resource_api::ConnectionResponse>(
         &mut contract,
         "ConnectionResponse",

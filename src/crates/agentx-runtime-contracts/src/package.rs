@@ -294,7 +294,9 @@ pub struct AgentKnowledgeCitationV1 {
     pub chunk_id: String,
     pub title: Option<String>,
     pub uri: Option<String>,
-    pub score: Option<f64>,
+    pub fusion_score: Option<f64>,
+    pub sources: Vec<Value>,
+    pub query_ids: Vec<Uuid>,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -308,11 +310,13 @@ pub struct AgentKnowledgeDocumentSummaryV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AgentKnowledgeSearchResultV1 {
+    pub partial: bool,
+    pub sources: Vec<Value>,
+    pub files: Vec<Value>,
     pub documents: Vec<AgentKnowledgeDocumentSummaryV1>,
     pub citations: Vec<AgentKnowledgeCitationV1>,
     pub trust: String,
     pub prompt_boundary: String,
-    pub artifact_refs: Vec<String>,
     pub truncated: bool,
 }
 
@@ -435,12 +439,14 @@ pub fn derive_attachment_registry(
                     skill_resource_added = true;
                 }
             }
-            RuntimeResourceConfigurationV1::Rag { .. } => add_tool(AgentAttachmentToolV1 {
+            RuntimeResourceConfigurationV1::Rag {
+                name, description, ..
+            } => add_tool(AgentAttachmentToolV1 {
                 name: format!("knowledge_search_{}", attachment.resource_id.simple()),
-                description: "Search an authorized Knowledge resource and return citations.".into(),
+                description: format!("Search {name}. {description}"),
                 input_schema: serde_json::json!({
                     "type":"object","additionalProperties":false,"required":["query"],
-                    "properties":{"query":{"type":"string","minLength":1},"topK":{"type":"integer","minimum":1,"maximum":20},"filters":{"type":"object"}}
+                    "properties":{"query":{"type":"string","minLength":1},"topK":{"type":"integer","minimum":1,"maximum":20}}
                 }),
                 origin: "knowledge".into(),
                 replay_policy: "safe".into(),
@@ -1558,8 +1564,14 @@ mod attachment_registry_tests {
                 configuration: RuntimeResourceConfigurationV1::Rag {
                     provider: "lightrag".into(),
                     endpoint: "https://rag.example/search".into(),
-                    namespace: "knowledge".into(),
-                    index_version: rag_version.to_string(),
+                    connection_id: Uuid::nil(),
+                    connection_version: 1,
+                    query_version: 1,
+                    name: "Knowledge".into(),
+                    description: "Purpose".into(),
+                    scope: crate::rag::RagScope::Lightrag {
+                        workspace: "knowledge".into(),
+                    },
                     credential: None,
                 },
                 object_ids: vec![],
@@ -1580,6 +1592,66 @@ mod attachment_registry_tests {
                 && evidence.policy_epoch == 7
                 && evidence.grant_ids == vec![grant_bindings[1].grant_id]
         }));
+    }
+
+    #[test]
+    fn agent_has_distinct_business_tools_for_queries_on_multiple_connections() {
+        let resources = (1..=2)
+            .map(|id| RuntimeResourceBindingV1 {
+                resource_kind: RuntimeResourceKindV1::Rag,
+                resource_id: Uuid::from_u128(id),
+                resource_version: Uuid::from_u128(id + 10).to_string(),
+                state_epoch: 1,
+                content_hash: hash(),
+                configuration: RuntimeResourceConfigurationV1::Rag {
+                    provider: "lightrag".into(),
+                    endpoint: format!("https://knowledge-{id}.test"),
+                    connection_id: Uuid::from_u128(id + 20),
+                    connection_version: 1,
+                    query_version: 1,
+                    name: format!("Business {id}"),
+                    description: format!("Purpose {id}"),
+                    scope: crate::rag::RagScope::Lightrag {
+                        workspace: format!("team-{id}"),
+                    },
+                    credential: None,
+                },
+                object_ids: vec![],
+            })
+            .collect::<Vec<_>>();
+        let configuration = crate::CompiledAgentNodeV2 {
+            contract_version: AGENT_CORE_CONTRACT_VERSION.into(),
+            session_policy: crate::AgentSessionPolicyModeV2::Invocation,
+            model: crate::CompiledAgentResourceReferenceV2 {
+                binding_role: "model".into(),
+                resource_type: ResourceType::Model,
+                resource_id: Uuid::nil(),
+                resource_version_id: Uuid::nil(),
+                operation: ResourceOperation::Use,
+            },
+            workspace_sandbox: None,
+            core_tools: vec![],
+            attachments: (1..=2)
+                .map(|id| crate::CompiledAgentAttachmentV2 {
+                    binding_role: "knowledge".into(),
+                    resource_type: ResourceType::Rag,
+                    resource_id: Uuid::from_u128(id),
+                    resource_version_id: Uuid::from_u128(id + 10),
+                    operation: ResourceOperation::Read,
+                })
+                .collect(),
+        };
+        let registry =
+            derive_attachment_registry(&configuration, &resources, 7, &grants(&resources)).unwrap();
+        assert_eq!(registry.tools.len(), 2);
+        for (index, tool) in registry.tools.iter().enumerate() {
+            assert!(
+                tool.description
+                    .contains(&format!("Business {}", index + 1))
+            );
+            assert!(tool.description.contains(&format!("Purpose {}", index + 1)));
+        }
+        assert_ne!(registry.tools[0].name, registry.tools[1].name);
     }
 
     #[test]

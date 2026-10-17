@@ -1,4 +1,4 @@
-"""Actual indexing, retrieval and subject-scoped Agent memory, without mocks."""
+"""External indexing, retrieval and subject-scoped Agent memory, without mocks."""
 
 # ruff: noqa: S608 -- UUIDs and call kinds come from this isolated E2E run.
 
@@ -10,6 +10,7 @@ import time
 import httpx
 import pytest
 
+from tests.e2e.product.knowledge_native_support import provider_client, seed_lightrag
 from tests.e2e.product.live_agent_support import record_missing_session_refusal
 from tests.e2e.product.live_text_support import post
 from tests.e2e.product.test_live_text_acceptance import message, session, terminal
@@ -26,34 +27,20 @@ def live_indexed_document(live_providers, installed_agentx, run_id, request):
     # before function-scoped auth refresh runs on its requesting test.
     token, _ = _access_token(control)
     control.headers["Authorization"] = f"Bearer {token}"
-    path = f"/api/v1/knowledge/resources/{live_providers['ragId']}"
+    path = f"/api/v1/knowledge/queries/{live_providers['ragId']}"
     marker = f"sapphire-orbit-{run_id}-{request.node.name}"
     content = f"水星计划由蓝桥团队负责。水星计划唯一发布代号是 {marker}。正式上线日期为2026年11月5日。负责人是林晓。"
-    uploaded = control.post(
-        f"{path}/documents", files={"file": ("p7-live-document.md", content.encode(), "text/markdown")}
-    )
-    assert uploaded.status_code == 202, uploaded.text
-    document = uploaded.json()
-    duplicate = control.post(f"{path}/documents", files={"file": ("duplicate.md", content.encode(), "text/markdown")})
-    assert duplicate.status_code == 422 and duplicate.json()["code"] == "KNOWLEDGE_DOCUMENT_DUPLICATED", duplicate.text
-    invalid = control.post(f"{path}/documents", files={"file": ("invalid.exe", b"invalid", "application/octet-stream")})
-    assert invalid.status_code in (400, 415, 422), invalid.text
-    oversized = control.post(
-        f"{path}/documents", files={"file": ("oversized.txt", b"x" * (8 * 1024 * 1024 + 1), "text/plain")}
-    )
-    assert oversized.status_code == 422 and oversized.json()["code"] == "KNOWLEDGE_DOCUMENT_TOO_LARGE", oversized.text
-    busy = control.delete(f"{path}/documents/{document['id']}")
-    assert busy.status_code == 409, busy.text
-    deadline = time.monotonic() + 600
-    while True:
-        response = control.get(f"{path}/documents")
-        response.raise_for_status()
-        current = next(item for item in response.json() if item["id"] == document["id"])
-        assert current["status"] != "failed", current
-        if current["status"] == "indexed":
-            break
-        assert time.monotonic() < deadline, current
-        time.sleep(2)
+    with provider_client(
+        live_providers["namespace"],
+        "lightrag",
+        9621,
+        live_providers["directory"],
+        {"X-API-Key": live_providers["ragKey"].value},
+    ) as native:
+        document = seed_lightrag(native, content, "p7-live-document.md")
+    listed = control.get(f"{path}/documents")
+    assert listed.status_code == 200, listed.text
+    current = next(item for item in listed.json()["items"] if item["id"] == document["id"])
     retrieval = control.post(f"{path}/retrieval-test", json={"query": "水星计划唯一发布代号是什么", "topK": 5})
     assert retrieval.status_code == 200, retrieval.text
     assert any(marker in item.get("content", "") for item in retrieval.json()["documents"]), retrieval.text
@@ -64,7 +51,6 @@ def live_indexed_document(live_providers, installed_agentx, run_id, request):
             "status": "passed",
             "ragId": live_providers["ragId"],
             "documentId": current["id"],
-            "externalDocumentId": current["externalDocumentId"],
             "marker": marker,
             "documents": retrieval.json()["documents"],
             "realCpuEmbedding": True,
@@ -246,36 +232,23 @@ def test_debug_agent_rejects_missing_application_session_before_memory_access(
     record_missing_session_refusal(installed_agentx, live_providers, live_agent_application)
 
 
-def test_indexed_document_delete_releases_platform_record(
+def test_external_new_document_is_visible_without_republishing(
     installed_agentx, service_urls, live_providers, live_indexed_document, live_agent_application, run_id
 ):
     control = live_providers["control"]
-    resource_path = f"/api/v1/knowledge/resources/{live_providers['ragId']}"
+    resource_path = f"/api/v1/knowledge/queries/{live_providers['ragId']}"
     version = control.get(resource_path).json()["version"]
-    path = f"{resource_path}/documents"
-    deleted = control.delete(f"{path}/{live_indexed_document['documentId']}")
-    assert deleted.status_code == 204, deleted.text
-    assert all(item["id"] != live_indexed_document["documentId"] for item in control.get(path).json())
-    assert control.get(resource_path).json()["version"] == version
-    test_debug_agent_rejects_missing_application_session_before_memory_access(
-        installed_agentx, live_providers, live_agent_application
-    )
     marker = f"emerald-comet-{run_id}"
-    uploaded = control.post(
-        f"{resource_path}/documents",
-        files={
-            "file": ("p7-live-update.md", f"海王计划的新发布代号是 {marker},负责人是林夏。".encode(), "text/markdown")
-        },
-    )
-    assert uploaded.status_code == 202, uploaded.text
-    document_id = uploaded.json()["id"]
-    deadline = time.monotonic() + 180
-    while True:
-        document = next(item for item in control.get(path).json() if item["id"] == document_id)
-        if document["status"] == "indexed":
-            break
-        assert document["status"] != "failed" and time.monotonic() < deadline, document
-        time.sleep(1)
+    with provider_client(
+        live_providers["namespace"],
+        "lightrag",
+        9621,
+        live_providers["directory"],
+        {"X-API-Key": live_providers["ragKey"].value},
+    ) as native:
+        document = seed_lightrag(native, f"海王计划的新发布代号是 {marker},负责人是林夏。", "p7-live-update.md")
+    listed = control.get(f"{resource_path}/documents")
+    assert listed.status_code == 200 and any(item["id"] == document["id"] for item in listed.json()["items"])
     assert control.get(resource_path).json()["version"] == version
     app = live_agent_application
     with httpx.Client(

@@ -443,6 +443,10 @@ export type ResourceOption = {
   pendingRequestId?: string | null;
   manifest?: NodeManifest;
   metadata?: {
+    connectionId?: string;
+    connectionName?: string;
+    description?: string;
+    scope?: { kind: "ragflow"; datasetIds: string[] } | { kind: "lightrag"; workspace: string };
     maxInputTokens?: number;
     maxOutputTokens?: number;
     currency?: string | null;

@@ -67,6 +67,10 @@ pub fn router() -> Router<RuntimeState> {
             get(list_messages).post(send_message),
         )
         .route("/invocations/{id}", get(get_invocation))
+        .route(
+            "/invocations/{id}/artifacts/{artifact_id}",
+            get(download_invocation_artifact),
+        )
         .route("/invocations/{id}/cancel", post(cancel_invocation))
         .route("/invocations/{id}/events", get(invocation_events))
         .route("/webhooks/{public_id}", post(webhook).get(webhook))
@@ -433,6 +437,48 @@ async fn get_invocation(
 ) -> RuntimeResult<Json<InvocationResponseV1>> {
     let caller = authenticate_resource(&state, &headers, "invocation", id).await?;
     Ok(Json(load_invocation(&state, &caller, id).await?))
+}
+
+async fn download_invocation_artifact(
+    State(state): State<RuntimeState>,
+    Path((id, artifact_id)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> RuntimeResult<Response> {
+    let caller = authenticate_resource(&state, &headers, "invocation", id).await?;
+    let invocation = load_invocation(&state, &caller, id).await?;
+    if !invocation
+        .outputs
+        .as_ref()
+        .is_some_and(|output| contains_output_artifact(output, artifact_id))
+    {
+        return Err(RuntimeError::NotFound);
+    }
+    crate::query_authority::execution_artifact_response(
+        &state,
+        caller.tenant_id,
+        invocation.execution_id.ok_or(RuntimeError::NotFound)?,
+        artifact_id,
+    )
+    .await
+}
+
+fn contains_output_artifact(value: &Value, artifact_id: Uuid) -> bool {
+    match value {
+        Value::Object(fields) => {
+            fields
+                .get("artifactId")
+                .and_then(Value::as_str)
+                .and_then(|id| Uuid::parse_str(id).ok())
+                == Some(artifact_id)
+                || fields
+                    .values()
+                    .any(|value| contains_output_artifact(value, artifact_id))
+        }
+        Value::Array(values) => values
+            .iter()
+            .any(|value| contains_output_artifact(value, artifact_id)),
+        _ => false,
+    }
 }
 
 async fn cancel_invocation(
@@ -1276,6 +1322,19 @@ pub fn public_openapi() -> Value {
                 "security":[{"runtimeBearer":[]}]
             }},
             "/gateway/v1/invocations/{id}":{"get":public_get("getInvocation","InvocationResponse")},
+            "/gateway/v1/invocations/{id}/artifacts/{artifact_id}":{"get":{
+                "operationId":"downloadInvocationArtifact",
+                "description":"Download a file referenced in this Invocation's outputs using an active Application API Key or authorized platform user. Internal execution artifacts are not exposed.",
+                "parameters":[
+                    {"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},
+                    {"name":"artifact_id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}
+                ],
+                "responses":{
+                    "200":{"description":"Verified output file. Content-Type follows the stored file; ETag contains its SHA-256.","content":{"application/octet-stream":{"schema":{"type":"string","format":"binary"}}}},
+                    "401":error_response(),"404":error_response(),"503":error_response()
+                },
+                "security":[{"runtimeBearer":[]}]
+            }},
             "/gateway/v1/invocations/{id}/cancel":{"post":public_command("cancelInvocation")},
             "/gateway/v1/invocations/{id}/events":{"get":{
                 "operationId":"streamInvocationEvents",
@@ -1421,5 +1480,33 @@ mod tests {
             ["content"];
         assert!(content.get("application/json").is_some());
         assert!(content.get("multipart/form-data").is_none());
+    }
+
+    #[test]
+    fn invocation_download_requires_an_explicit_output_reference() {
+        let id = Uuid::now_v7();
+        assert!(contains_output_artifact(
+            &json!({"report":{"files":[{"artifactId":id,"fileName":"report.csv"}]}}),
+            id
+        ));
+        for output in [
+            Value::Null,
+            json!({"answer":id}),
+            json!({"artifactRefs":[id]}),
+            json!({"files":[{"artifactId":Uuid::now_v7()}]}),
+        ] {
+            assert!(!contains_output_artifact(&output, id), "{output}");
+        }
+    }
+
+    #[test]
+    fn invocation_download_contract_uses_application_authentication() {
+        let openapi = public_openapi();
+        let download =
+            &openapi["paths"]["/gateway/v1/invocations/{id}/artifacts/{artifact_id}"]["get"];
+        assert_eq!(download["security"], json!([{"runtimeBearer":[]}]));
+        for status in ["200", "401", "404", "503"] {
+            assert!(download["responses"].get(status).is_some());
+        }
     }
 }

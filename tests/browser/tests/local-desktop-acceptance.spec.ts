@@ -63,14 +63,14 @@ test('department users cannot read another department knowledge resource or mana
   const username = `p7-reader-${stamp}`
   await api(page, token, '/users', 'POST', { username, displayName: username, departmentId: outsider.id, roleId: role.id })
   const credential = await api<{ id: string }>(page, token, '/credentials', 'POST', {
-    name: `P7 scope credential ${stamp}`, credentialType: 'bearer', secret: `scope-test-${stamp}`, ownerDepartmentId: owner.id,
+    name: `P7 scope credential ${stamp}`, credentialType: 'bearer', secret: process.env.AGENTX_E2E_LIGHTRAG_API_KEY ?? 'agentx-v2-04-rag-key', ownerDepartmentId: owner.id,
   })
   const connection = await api<{ id: string }>(page, token, '/knowledge/connections', 'POST', {
-    name: `P7 scope connection ${stamp}`, provider: 'lightrag', endpoint: 'http://lightrag:9621', healthPath: '/health',
+    name: `P7 scope connection ${stamp}`, provider: 'lightrag', endpoint: process.env.AGENTX_E2E_LIGHTRAG_BASE_URL ?? 'http://lightrag:9621', healthPath: '/health',
     credentialId: credential.id, ownerDepartmentId: owner.id, configuration: {},
   })
-  const resource = await api<{ id: string }>(page, token, '/knowledge/resources', 'POST', {
-    name: `P7 scoped resource ${stamp}`, connectionId: connection.id, externalResourceId: `p7_scope_${stamp}`, ownerDepartmentId: owner.id,
+  const resource = await api<{ id: string }>(page, token, `/knowledge/connections/${connection.id}/queries`, 'POST', {
+    name: `P7 scoped resource ${stamp}`, description: 'Department scoped content', scope: { kind: 'lightrag', workspace: '' }, ownerDepartmentId: owner.id,
   })
   const firstLogin = await page.request.post('/api/v1/auth/login', { data: { username, password: '123456' } })
   expect(firstLogin.status()).toBe(200)
@@ -83,10 +83,10 @@ test('department users cannot read another department knowledge resource or mana
     const reader = await context.newPage()
     const readerToken = await login(reader, username, `P7-reader-password-${stamp}`)
     const headers = { Authorization: `Bearer ${readerToken}` }
-    const resources = await reader.request.get('/api/v1/knowledge/resources?pageSize=100', { headers })
+    const resources = await reader.request.get('/api/v1/knowledge/connections?pageSize=100', { headers })
     expect(resources.status()).toBe(200)
-    expect(((await resources.json()) as { items: Array<{ id: string }> }).items.some((item) => item.id === resource.id)).toBe(false)
-    const denied = await reader.request.get(`/api/v1/knowledge/resources/${resource.id}/documents`, { headers })
+    expect(((await resources.json()) as Array<{ id: string }>).some((item) => item.id === connection.id)).toBe(false)
+    const denied = await reader.request.get(`/api/v1/knowledge/queries/${resource.id}/documents`, { headers })
     expect([403, 404]).toContain(denied.status())
     const manage = await reader.request.post('/api/v1/users', { headers, data: { username: `forbidden-${stamp}`, displayName: 'Forbidden account', departmentId: outsider.id, roleId: role.id } })
     expect(manage.status()).toBe(403)

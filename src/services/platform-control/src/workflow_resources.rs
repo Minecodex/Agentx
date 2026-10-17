@@ -659,7 +659,7 @@ async fn external_snapshot(
         ));
     }
     let row = if rag {
-        sqlx::query("SELECT r.external_resource_id external_name,r.version resource_version,c.id connection_id,c.provider,c.endpoint,c.version connection_version,c.credential_id,c.configuration_json FROM rag_resources r JOIN rag_connections c ON c.id=r.connection_id WHERE r.tenant_id=? AND r.id=? AND r.status='active' AND c.status='active'")
+        sqlx::query("SELECT r.name,r.description,r.scope_json,r.version resource_version,c.id connection_id,c.provider,c.endpoint,c.version connection_version,c.credential_id,c.configuration_json FROM rag_resources r JOIN rag_connections c ON c.id=r.connection_id AND c.tenant_id=r.tenant_id WHERE r.tenant_id=? AND r.id=? AND r.status='active' AND c.status='active'")
             .bind(tenant_id).bind(resource_id).fetch_optional(&state.pool).await?
     } else {
         sqlx::query("SELECT c.version resource_version,c.id connection_id,NULL provider,c.endpoint,c.version connection_version,c.credential_id,c.configuration_json FROM memory_connections c WHERE c.tenant_id=? AND c.id=? AND c.status='active'")
@@ -673,7 +673,9 @@ async fn external_snapshot(
         "vaultSecretRef":optional_credential_snapshot(state,tenant_id,credential_id).await?});
     if rag {
         value["resourceId"] = json!(resource_id);
-        value["externalResourceId"] = json!(row.try_get::<String, _>("external_name")?);
+        value["scope"] = row.try_get::<Value, _>("scope_json")?;
+        value["name"] = json!(row.try_get::<String, _>("name")?);
+        value["description"] = json!(row.try_get::<String, _>("description")?);
     } else {
         value["resourceId"] = json!(resource_id);
     }
@@ -740,7 +742,7 @@ async fn credential_dependencies(
     let ids = match reference.resource_type {
         ResourceType::Model => sqlx::query_scalar("SELECT d.credential_id FROM model_aliases a JOIN model_deployments d ON d.id=a.deployment_id WHERE a.tenant_id=? AND a.id=? AND d.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
         ResourceType::McpServer => sqlx::query_scalar("SELECT credential_id FROM mcp_server_versions WHERE tenant_id=? AND server_id=? AND id=? AND credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).bind(reference.resource_version_id).fetch_all(&state.pool).await?,
-        ResourceType::Rag => sqlx::query_scalar("SELECT c.credential_id FROM rag_resources r JOIN rag_connections c ON c.id=r.connection_id WHERE r.tenant_id=? AND r.id=? AND c.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
+        ResourceType::Rag => sqlx::query_scalar("SELECT c.credential_id FROM rag_resources r JOIN rag_connections c ON c.id=r.connection_id AND c.tenant_id=r.tenant_id WHERE r.tenant_id=? AND r.id=? AND c.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
         ResourceType::Memory => sqlx::query_scalar("SELECT c.credential_id FROM memory_connections c WHERE c.tenant_id=? AND c.id=? AND c.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
         _ => Vec::new(),
     };

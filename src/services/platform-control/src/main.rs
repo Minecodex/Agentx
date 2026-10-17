@@ -54,7 +54,7 @@ mod governance_api;
 mod iam_api;
 mod insights_api;
 mod knowledge_document_api;
-mod knowledge_indexing;
+mod knowledge_provider;
 mod mcp_api;
 mod model_api;
 mod openapi_contract;
@@ -215,14 +215,6 @@ async fn main() -> Result<()> {
             publisher.pool.clone(),
             publisher.control_objects.clone(),
         )?;
-        let indexing_state = api_state.clone();
-        let indexing_lifecycle = lifecycle.clone();
-        let indexing_progress =
-            role_health::watchdog("knowledge-indexing", &health, &lifecycle, &metrics).await;
-        tasks.spawn(async move {
-            knowledge_indexing::run_loop(indexing_state, indexing_lifecycle, indexing_progress)
-                .await
-        });
         let builder_state = api_state.clone();
         let builder_lifecycle = lifecycle.clone();
         let builder_progress =

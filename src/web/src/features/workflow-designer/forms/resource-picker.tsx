@@ -1,9 +1,10 @@
 import * as Popover from '@radix-ui/react-popover'
 import { ChevronDown, Search, ShieldCheck } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
+import { scopeLabel } from '../../knowledge/scope'
 import { Button } from '../../../shared/ui/button'
 import { localizedValue } from '../../../shared/lib/localized-value'
 import { Dialog, DialogContent } from '../../../shared/ui/dialog'
@@ -30,8 +31,9 @@ export function ResourcePicker({ options, value, onChange, onAuthorize, onReques
   const selectedUnavailable = Boolean(value && (!selected || (selected.accessState !== undefined && selected.accessState !== 'authorized')))
   const visibleOptions = useMemo(() => {
     const normalized = search.trim().toLocaleLowerCase()
-    if (!normalized) return options
-    return options.filter((option) => `${option.label} ${option.detail ?? ''}`.toLocaleLowerCase().includes(normalized))
+    const sorted = [...options].sort((a, b) => (a.metadata?.connectionName ?? '').localeCompare(b.metadata?.connectionName ?? '') || (a.metadata?.connectionId ?? '').localeCompare(b.metadata?.connectionId ?? '') || a.label.localeCompare(b.label))
+    if (!normalized) return sorted
+    return sorted.filter((option) => `${option.label} ${option.detail ?? ''} ${option.metadata?.connectionName ?? ''} ${JSON.stringify(option.metadata?.scope ?? '')}`.toLocaleLowerCase().includes(normalized))
   }, [options, search])
 
   const beginAction = (next: ResourceAction) => {
@@ -67,19 +69,20 @@ export function ResourcePicker({ options, value, onChange, onAuthorize, onReques
           </div>
           <div className="max-h-64 overflow-y-auto p-1" role="listbox">
             {visibleOptions.length === 0 && <p className="p-3 text-[11px] text-muted-foreground">{t('studio.inspector.noResource')}</p>}
-            {visibleOptions.map((option) => {
+            {visibleOptions.map((option, index) => {
               const selectable = option.accessState === 'authorized' || option.accessState === undefined
               const actionKind = option.accessState === 'grantable' ? 'grant' : option.accessState === 'requestable' || option.accessState === 'rejected' ? 'request' : undefined
-              return <div className="flex min-h-11 items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/45" key={option.value}>
+              return <Fragment key={option.value}>{option.metadata?.connectionName && visibleOptions[index - 1]?.metadata?.connectionId !== option.metadata.connectionId && <p className="px-2 pb-1 pt-3 text-[11px] font-semibold text-muted-foreground">{option.metadata.connectionName}</p>}<div className="flex min-h-11 items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/45" key={option.value}>
                 <button aria-disabled={!selectable} className={`min-w-0 flex-1 truncate text-left text-xs ${selectable ? 'text-foreground' : 'cursor-not-allowed text-muted-foreground'}`} disabled={!selectable} onClick={() => { onChange(option.value, option.versionId, option.label); setOpen(false) }} role="option" type="button">
                   <span className="block truncate">{option.label}</span>
-                  {option.detail && <span className="block truncate text-[10px] text-muted-foreground">{option.detail}</span>}
+                  {option.detail && <span className="block truncate text-[10px] text-muted-foreground">{option.metadata?.description ?? option.detail}</span>}
+                  {option.metadata?.scope && <span className="block truncate text-[10px] text-muted-foreground">{scopeLabel(option.metadata.scope, t('knowledge.defaultWorkspace'))}</span>}
                 </button>
                 {option.accessState && option.accessState !== 'authorized' && <span className="shrink-0 text-[10px] text-muted-foreground">{localizedValue(t, 'studio.inspector.resourceStates', option.accessState)}</span>}
                 {actionKind === 'grant' && onAuthorize && <Button onClick={() => beginAction({ option, kind: 'grant' })} size="sm" variant="ghost"><ShieldCheck className="size-3.5" />{t('studio.inspector.authorize')}</Button>}
                 {actionKind === 'request' && onRequest && <Button onClick={() => beginAction({ option, kind: 'request' })} size="sm" variant="ghost"><ShieldCheck className="size-3.5" />{t(option.accessState === 'rejected' ? 'studio.inspector.requestAgain' : 'studio.inspector.request')}</Button>}
                 {option.accessState === 'pending' && option.pendingRequestId && <Button asChild size="sm" variant="ghost"><Link to={`/approvals/resource-grants/${option.pendingRequestId}`}>{t('studio.inspector.viewRequest')}</Link></Button>}
-              </div>
+              </div></Fragment>
             })}
           </div>
         </Popover.Content>

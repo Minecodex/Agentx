@@ -182,6 +182,34 @@ impl AgentCore {
                     state,
                 });
             }
+            // Settlement and terminal state are separate commits. A crash
+            // after the tool-result message must not start another model turn.
+            // If the message is absent, normal effect reconciliation below
+            // restores it from the settlement before terminating the run.
+            let terminated_tool = state.operation.as_ref().is_some_and(|operation| {
+                operation.operation_kind == OperationKindV1::Tool
+                    && operation.operation_id.starts_with(&format!("{}:tool:", input.run_id))
+                    && operation.intent["callId"].as_str().is_some_and(|call_id| {
+                        state.messages.iter().any(|message| {
+                            message.role == MessageRole::ToolResult
+                                && message.tool_call_id.as_deref() == Some(call_id)
+                        })
+                    })
+                    && matches!(&operation.phase, OperationPhaseV1::SettledSuccess { result }
+                        if serde_json::from_value::<ToolResultV1>(result.clone()).is_ok_and(|tool| tool.terminate))
+            });
+            if terminated_tool {
+                events.publish(CoreEventV1::AgentStarted {
+                    run_id: input.run_id.clone(),
+                })?;
+                return terminal(
+                    state_port,
+                    events,
+                    state,
+                    input.fencing_token,
+                    TerminalReasonV1::ToolError,
+                );
+            }
         }
         state.terminal = None;
         if state

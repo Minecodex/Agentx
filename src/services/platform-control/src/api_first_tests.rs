@@ -533,13 +533,28 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
     .await;
     assert_eq!(status, 201, "cross-department MCP: {cross_department_mcp}");
 
+    let knowledge_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let knowledge_endpoint = format!("http://{}", knowledge_listener.local_addr().unwrap());
+    let knowledge_server = tokio::spawn(async move {
+        axum::serve(
+            knowledge_listener,
+            axum::Router::new().route(
+                "/health",
+                axum::routing::get(|| async {
+                    axum::Json(json!({"status":"healthy","configuration":{"workspace":""}}))
+                }),
+            ),
+        )
+        .await
+        .unwrap();
+    });
     let (status, rag_connection) = request(
         &app,
         "POST",
         "/api/v1/knowledge/connections",
         Some(&token),
         Some(json!({
-            "name":"API Knowledge Connection","endpoint":"http://lightrag:9621",
+            "name":"API Knowledge Connection","endpoint":knowledge_endpoint,
             "healthPath":"/health","credentialId":null,
             "ownerDepartmentId":department_id,"configuration":{}
         })),
@@ -552,16 +567,20 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
     let (status, knowledge) = request(
         &app,
         "POST",
-        "/api/v1/knowledge/resources",
+        &format!(
+            "/api/v1/knowledge/connections/{}/queries",
+            rag_connection["id"].as_str().unwrap()
+        ),
         Some(&token),
         Some(json!({
-            "connectionId":rag_connection["id"],"name":"API Knowledge",
-            "externalResourceId":"api_knowledge","ownerDepartmentId":department_id
+            "name":"API Knowledge", "description":"API query",
+            "scope":{"kind":"lightrag","workspace":""},"ownerDepartmentId":department_id
         })),
     )
     .await;
     assert_eq!(status, 201, "knowledge resource response: {knowledge}");
     assert_eq!(knowledge["grantCount"], 0);
+    knowledge_server.abort();
 
     let (status, mcp_server) = request(
         &app,

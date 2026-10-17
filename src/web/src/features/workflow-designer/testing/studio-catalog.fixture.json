@@ -606,7 +606,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
+      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -969,7 +969,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
+      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -1397,7 +1397,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
+      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -2296,7 +2296,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
+      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -2318,7 +2318,7 @@
     "nodeType": "knowledge_retrieval",
     "version": 1,
     "displayName": "Knowledge Retrieval",
-    "description": "Retrieve document chunks and existing attachment sources from an authorized knowledge resource.",
+    "description": "Search all selected knowledge queries across connections, with ranked results and explicit source status.",
     "category": "ai",
     "keywords": [
       "knowledge",
@@ -2328,7 +2328,7 @@
     "localizations": {
       "en-US": {
         "displayName": "Knowledge Retrieval",
-        "description": "Retrieve document chunks and existing attachment sources.",
+        "description": "Search selected query configurations across connections, with ranked results and explicit source status.",
         "keywords": [
           "knowledge",
           "retrieval",
@@ -2349,7 +2349,7 @@
       },
       "zh-CN": {
         "displayName": "知识检索",
-        "description": "检索知识片段、文档来源和已有附件引用。",
+        "description": "跨连接检索所选查询配置，返回融合排名、文档来源和逐来源状态。",
         "keywords": [
           "knowledge",
           "retrieval",
@@ -2461,18 +2461,100 @@
                   "null"
                 ]
               },
-              "knowledgeResourceId": {
-                "format": "uuid",
-                "type": "string"
+              "fusionScore": {
+                "type": "number"
               },
               "metadata": {
                 "type": "object"
               },
-              "score": {
-                "type": [
-                  "number",
-                  "null"
-                ]
+              "queryIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "sources": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "connectionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "connectionVersion": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "queryIds": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "rank": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "rawScore": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "scope": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "datasetIds": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "kind": {
+                              "const": "ragflow"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "datasetIds"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "lightrag"
+                            },
+                            "workspace": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "workspace"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "queryIds",
+                    "connectionId",
+                    "connectionVersion",
+                    "scope",
+                    "rawScore",
+                    "rank"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               },
               "title": {
                 "type": [
@@ -2488,14 +2570,15 @@
               }
             },
             "required": [
-              "knowledgeResourceId",
               "documentId",
               "chunkId",
               "title",
               "uri",
               "content",
-              "score",
-              "metadata"
+              "metadata",
+              "queryIds",
+              "fusionScore",
+              "sources"
             ],
             "type": "object"
           },
@@ -2518,10 +2601,6 @@
                   "null"
                 ]
               },
-              "knowledgeResourceId": {
-                "format": "uuid",
-                "type": "string"
-              },
               "name": {
                 "type": [
                   "string",
@@ -2534,6 +2613,88 @@
                   "null"
                 ]
               },
+              "sources": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "connectionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "connectionVersion": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "queryIds": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "rank": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "rawScore": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "scope": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "datasetIds": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "kind": {
+                              "const": "ragflow"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "datasetIds"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "lightrag"
+                            },
+                            "workspace": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "workspace"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "queryIds",
+                    "connectionId",
+                    "connectionVersion",
+                    "scope",
+                    "rawScore",
+                    "rank"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
               "uri": {
                 "type": [
                   "string",
@@ -2542,12 +2703,120 @@
               }
             },
             "required": [
-              "knowledgeResourceId",
               "documentId",
               "referenceId",
               "uri",
               "name",
-              "contentType"
+              "contentType",
+              "sources"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "partial": {
+          "type": "boolean"
+        },
+        "sources": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "connectionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "connectionVersion": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "elapsedMs": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "error": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "message": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "message"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "queryIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "scope": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "datasetIds": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "kind": {
+                        "const": "ragflow"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "datasetIds"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "lightrag"
+                      },
+                      "workspace": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "workspace"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "status": {
+                "enum": [
+                  "succeeded",
+                  "failed"
+                ]
+              }
+            },
+            "required": [
+              "queryIds",
+              "connectionId",
+              "connectionVersion",
+              "scope",
+              "status",
+              "elapsedMs",
+              "error"
             ],
             "type": "object"
           },
@@ -2560,7 +2829,9 @@
       "required": [
         "text",
         "documents",
-        "files"
+        "files",
+        "partial",
+        "sources"
       ],
       "type": "object"
     },
@@ -2632,6 +2903,7 @@
       },
       "resourceSelectors": [
         {
+          "multiple": true,
           "operation": "read",
           "required": true,
           "resourceType": "rag"
@@ -2644,7 +2916,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
+      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3439,7 +3711,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
+      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3716,7 +3988,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
+      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4138,7 +4410,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
+      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4370,7 +4642,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
+      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4638,7 +4910,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
+      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -5082,7 +5354,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
+      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },

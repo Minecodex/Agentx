@@ -21,7 +21,7 @@ async function login(page: Page, username = 'admin', password = 'agentx-e2e-admi
 const lists = [
   ['workflows', 'workflows'], ['applications', 'applications'], ['models', 'models/aliases'],
   ['credentials', 'credentials'], ['mcp', 'mcp/servers'], ['skills', 'skills'],
-  ['knowledge', 'knowledge/resources'], ['memory', 'memory/namespaces'], ['evaluations', 'evaluations'],
+  ['knowledge', 'knowledge/connections'], ['memory', 'memory/namespaces'], ['evaluations', 'evaluations'],
 ] as const
 
 for (const [path, api] of lists) {
@@ -159,7 +159,7 @@ test('desktop states remain usable in English and both themes', async ({ page },
   for (const dark of [true, false]) {
     await page.getByRole('button', { name: 'Theme', exact: true }).click()
     await page.getByRole('menuitemradio', { name: dark ? 'Dark' : 'Light', exact: true }).click()
-    for (const [path, title] of [['/knowledge', 'Knowledge'], ['/runtime', 'Runtime status'], ['/evaluations', 'Evaluation Reports']]) {
+    for (const [path, title] of [['/knowledge', 'Knowledge connections'], ['/runtime', 'Runtime status'], ['/evaluations', 'Evaluation Reports']]) {
       await page.goto(path)
       await expect(page.getByRole('main').getByRole('heading', { name: title, exact: true })).toBeVisible()
       if (path === '/runtime') {

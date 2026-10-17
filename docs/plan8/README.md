@@ -36,6 +36,7 @@
 |---|---|
 | [01-product-and-versioning.md](01-product-and-versioning.md) | 用户流程、版本工作文档、版本来源、界面与产品边界 |
 | [09-version-canvases.md](09-version-canvases.md) | 版本列表、定稿与发布、只读详情、还原和本次重构验收 |
+| [11-knowledge-connections.md](11-knowledge-connections.md) | 外部知识连接、查询配置、跨连接多来源检索与验收 |
 | [02-architecture-and-contracts.md](02-architecture-and-contracts.md) | Core/Host、数据所有权、模型设计态 Effect、恢复与授权 |
 | [03-tools-and-context.md](03-tools-and-context.md) | 七个业务工具、静态闭环、上下文投影与限制 |
 | [04-editor-data-and-api.md](04-editor-data-and-api.md) | 编辑命令/ACK、保存竞态、数据与 API、精确修订调试 |

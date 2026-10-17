@@ -284,3 +284,48 @@ test('P8 recovered execution: failed history and full trace remain visible', asy
   await expect(page.getByTestId('execution-events')).toContainText('execution.failed')
   expect(executionId).toBeTruthy()
 })
+
+test('P8 knowledge multi-connection picker saves both queries and Agent knowledge slots', async ({ page }) => {
+  const token = await login(page)
+  await setModel(page, process.env.AGENTX_E2E_STUDIO_FIXTURE_ALIAS!)
+  const created = await create(page, `P8 multiple sources ${Date.now()}`)
+  const ids = [process.env.AGENTX_E2E_STUDIO_KNOWLEDGE_LIGHTRAG!, process.env.AGENTX_E2E_STUDIO_KNOWLEDGE_RAGFLOW!]
+  for (const resourceId of ids) {
+    const response = await page.request.post(`/api/v1/workflows/${created.id}/resource-authorizations`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() }, data: { resourceType: 'rag', resourceId, operation: 'read' } })
+    expect(response.ok(), await response.text()).toBeTruthy()
+  }
+  const value = await document(page, token, created, ids[0])
+  await page.getByRole('button', { name: 'AI 创作', exact: true }).click()
+  await apply(page, value)
+  await page.reload()
+  await page.getByTestId('studio-node-retrieve').dblclick()
+  await page.getByTestId('resource-selector-rag').getByRole('combobox').click()
+  const list = page.getByRole('listbox')
+  await expect(list.getByText('P8 Knowledge lightrag', { exact: true }).first()).toBeVisible()
+  await expect(list.getByText('P8 Knowledge ragflow', { exact: true }).first()).toBeVisible()
+  await list.getByRole('option', { name: /P8 Knowledge ragflow/ }).click()
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  let draft = await saved(page, token, created) as unknown as Draft
+  expect(draft.definition.nodes.find(node => node.id === 'retrieve')!.resourceReferences.map(ref => ref.resourceId)).toEqual(ids)
+  await page.reload()
+  await page.getByTestId('studio-node-retrieve').dblclick()
+  const panel = page.getByTestId('knowledge-panel')
+  for (const name of ['P8 Knowledge lightrag', 'P8 Knowledge ragflow']) await expect(panel).toContainText(name)
+  // The Agent registry also accepts multiple query resources in its knowledge slot.
+  const agent = draft.definition.nodes.find(node => node.id === 'retrieve')!
+  agent.type = 'agent'; agent.typeVersion = 2
+  agent.parameters = { systemPrompt: { kind: 'literal', value: 'Search relevant project knowledge' }, userQuestion: { kind: 'literal', value: 'Launch code' }, sessionPolicy: { mode: 'invocation' } }
+  for (const ref of agent.resourceReferences) ref.bindingRole = 'knowledge'
+  const exit = draft.definition.nodes.find(node => node.protected)!
+  exit.parameters = { outputs: { answer: { kind: 'literal', value: 'configured' } }, errorOutputs: {} }
+  draft.definition.end.outputs = { answer: { schema: { type: 'string' }, required: true, sensitive: false } }
+  draft.definition.end.error.outputs = {}
+  await page.getByTestId('node-details-view').getByRole('button', { name: '关闭', exact: true }).click()
+  await page.getByRole('button', { name: 'AI 创作', exact: true }).click()
+  await apply(page, { definition: draft.definition, editorDocument: draft.editorDocument })
+  draft = await saved(page, token, created) as unknown as Draft
+  expect(draft.definition.nodes.find(node => node.id === 'retrieve')!.resourceReferences).toHaveLength(2)
+  await page.reload()
+  await page.getByTestId('studio-node-retrieve').dblclick()
+  for (const name of ['P8 Knowledge lightrag', 'P8 Knowledge ragflow']) await expect(page.getByTestId('agent-panel')).toContainText(name)
+})

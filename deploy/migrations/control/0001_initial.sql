@@ -935,15 +935,15 @@ CREATE TABLE rag_resources (
     tenant_id BINARY(16) NOT NULL,
     connection_id BINARY(16) NOT NULL,
     name VARCHAR(160) NOT NULL,
-    external_resource_id VARCHAR(512) NOT NULL,
+    description VARCHAR(2000) NOT NULL DEFAULT '',
+    scope_json JSON NOT NULL,
     owner_department_id BINARY(16) NOT NULL,
-    sync_status ENUM('unknown', 'syncing', 'synced', 'failed') NOT NULL DEFAULT 'unknown',
     status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
     version BIGINT UNSIGNED NOT NULL DEFAULT 1,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
-    UNIQUE KEY uq_rag_resource_external (tenant_id, connection_id, external_resource_id),
+    UNIQUE KEY uq_rag_query_name (tenant_id, connection_id, name),
     KEY idx_rag_resources_department (tenant_id, owner_department_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 

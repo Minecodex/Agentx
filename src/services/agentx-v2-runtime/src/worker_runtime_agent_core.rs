@@ -27,7 +27,7 @@ use uuid::Uuid;
 use super::agent_attachments::{
     authorize_attachment_projection, core_attachment_tools, knowledge_result_from_execution,
     load_external_contexts, read_skill_resource, successful_execution_payload,
-    tool_result_from_execution,
+    terminal_knowledge_failure, tool_result_from_execution,
 };
 use super::agent_budget::{BudgetCounters, WorkerBudget, WorkerClock};
 use super::agent_model::ProviderModelPort;
@@ -550,6 +550,15 @@ async fn finish(
         )
         .await;
     if status != "succeeded" {
+        if result.terminal_reason == agentx_agent_core::TerminalReasonV1::ToolError
+            && let Some(failure) = result
+                .state
+                .operation
+                .as_ref()
+                .and_then(terminal_knowledge_failure)
+        {
+            return failure;
+        }
         let code = match &result.terminal_reason {
             agentx_agent_core::TerminalReasonV1::Cancelled => "AGENT_CANCELLED",
             agentx_agent_core::TerminalReasonV1::BudgetExhausted => "AGENT_BUDGET_EXHAUSTED",
@@ -1603,43 +1612,29 @@ impl<'a> AgentToolRouter<'a> {
                 tool_result_from_execution(execution)
             }
             RuntimeResourceConfigurationV1::Rag {
-                provider,
-                endpoint,
-                namespace,
-                index_version,
-                credential,
+                credential, scope, ..
             } => {
                 if let Some(secret) = credential {
                     self.authorize_secret_dependency(secret)?;
                 }
-                let (path, request, secret_header) = match super::output::rag_query_request(
-                    provider,
-                    "retrieve",
-                    namespace,
-                    index_version,
-                    &call.arguments,
-                ) {
-                    Ok(built) => built,
-                    Err(failed) => {
-                        return tool_result_from_execution(failed);
-                    }
-                };
                 let index = self.call_index;
-                self.call_index = self.call_index.saturating_add(1);
-                let endpoint = format!("{}/{}", endpoint.trim_end_matches('/'), path);
+                let count = match scope {
+                    agentx_runtime_contracts::rag::RagScope::Ragflow { dataset_ids } => {
+                        dataset_ids.len()
+                    }
+                    _ => 1,
+                };
+                self.call_index = self.call_index.saturating_add(count as u32 * 2);
                 let execution = tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(self.worker.call_http(
-                        self.claim,
-                        "rag",
-                        &endpoint,
-                        request,
-                        index,
-                        credential.as_ref(),
-                        secret_header,
-                        Some(&binding),
-                    ))
+                    tokio::runtime::Handle::current().block_on(
+                        self.worker.execute_knowledge_queries(
+                            self.claim,
+                            &[&binding],
+                            &call.arguments,
+                            index,
+                        ),
+                    )
                 });
-                let execution = super::output::finalize_retrieval_response(provider, execution);
                 knowledge_result_from_execution(execution, binding.resource_id)
             }
             RuntimeResourceConfigurationV1::Memory { .. } => {

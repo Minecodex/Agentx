@@ -1,98 +1,52 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, FileUp, Trash2 } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Plus } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useParams } from 'react-router-dom'
-
+import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../../app/providers/auth-provider'
 import { apiRequest } from '../../shared/api/client'
-import type { ExternalConnection, HealthCheck, Knowledge, KnowledgeDocument, RetrievalTestResult } from '../../shared/api/types'
-import { ConfirmDialog } from '../../shared/components/confirm-dialog'
+import type { Department, ExternalConnection, Knowledge, PageResponse } from '../../shared/api/types'
+import { EntityDeleteButton } from '../../shared/components/entity-delete-button'
 import { ResourceDetailLayout } from '../../shared/components/resource-detail-layout'
-import { localizedValue } from '../../shared/lib/localized-value'
-import { useLocaleFormat } from '../../shared/lib/locale-format'
+import { ResourceGrantDialog } from '../../shared/components/resource-grant-panel'
+import { StatusBadge } from '../../shared/components/status-badge'
 import { Button } from '../../shared/ui/button'
 import { Card } from '../../shared/ui/card'
-import { Input } from '../../shared/ui/input'
-import { StatusBadge } from '../../shared/components/status-badge'
-import { useToast } from '../../shared/ui/toast'
-
-type RetrievalChunk = { documentId?: unknown, chunkId?: unknown, content?: unknown, score?: unknown }
+import { ConnectionForm } from './connection-form'
+import { QueryForm } from './query-form'
+import { scopeLabel } from './scope'
+import { QueryInspectDialog } from './query-inspect-dialog'
 
 export function KnowledgeDetailPage() {
-  const { id = '' } = useParams(); const { t } = useTranslation(); const auth = useAuth(); const { showToast } = useToast(); const queryClient = useQueryClient(); const [health, setHealth] = useState<HealthCheck>(); const { formatNumber } = useLocaleFormat()
-  const fileInput = useRef<HTMLInputElement>(null)
-  const [removeId, setRemoveId] = useState<string>()
-  const [query, setQuery] = useState(''); const [topK, setTopK] = useState('5'); const [hits, setHits] = useState<RetrievalChunk[] | null>(null)
-  const resource = useQuery({ queryKey: ['knowledge', id], queryFn: () => apiRequest<Knowledge>(`/knowledge/resources/${id}`), refetchInterval: (page) => page.state.data?.syncStatus === 'syncing' ? 3_000 : false })
-  const connections = useQuery({ queryKey: ['knowledge-connections'], queryFn: () => apiRequest<ExternalConnection[]>('/knowledge/connections') })
-  const documents = useQuery({ queryKey: ['knowledge-documents', id], queryFn: () => apiRequest<KnowledgeDocument[]>(`/knowledge/resources/${id}/documents`), refetchInterval: (page) => (page.state.data as KnowledgeDocument[] | undefined)?.some((item) => item.status === 'uploading' || item.status === 'indexing') ? 3_000 : false })
-  const test = useMutation({ mutationFn: () => apiRequest<HealthCheck>(`/knowledge/connections/${resource.data?.connectionId}/test-connection`, { method: 'POST' }), onSuccess: (value) => { setHealth(value); showToast(localizedValue(t, 'knowledge', value.status)) }, onError: (error: Error) => showToast(error.message) })
-  const upload = useMutation({
-    mutationFn: async (file: File) => {
-      const body = new FormData(); body.append('file', file)
-      return apiRequest<KnowledgeDocument>(`/knowledge/resources/${id}/documents`, { method: 'POST', body })
-    },
-    onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['knowledge-documents', id] }), queryClient.invalidateQueries({ queryKey: ['knowledge', id] })]); showToast(t('knowledge.documentUploaded')) },
-    onError: (error: Error) => showToast(error.message),
-  })
-  const remove = useMutation({
-    mutationFn: (documentId: string) => apiRequest<void>(`/knowledge/resources/${id}/documents/${documentId}`, { method: 'DELETE' }),
-    onSuccess: async () => { setRemoveId(undefined); await Promise.all([queryClient.invalidateQueries({ queryKey: ['knowledge-documents', id] }), queryClient.invalidateQueries({ queryKey: ['knowledge', id] })]); showToast(t('knowledge.documentDeleted')) },
-    onError: (error: Error) => showToast(error.message),
-  })
-  const retrieval = useMutation({
-    mutationFn: () => apiRequest<RetrievalTestResult>(`/knowledge/resources/${id}/retrieval-test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: query.trim(), topK: Number(topK) || 5 }) }),
-    onSuccess: (value) => setHits((value.documents ?? []) as RetrievalChunk[]),
-    onError: (error: Error) => showToast(error.message),
-  })
-  const value = resource.data; const connection = connections.data?.find((item) => item.id === value?.connectionId)
-  const externalManaged = connection?.provider === 'ragflow'
-  return <ResourceDetailLayout actions={auth.hasPermission('knowledge:manage') ? <Button disabled={test.isPending} onClick={() => test.mutate()} variant="secondary"><Activity className="size-4" />{t('knowledge.connectionTest')}</Button> : undefined} description={t('knowledge.description')} details={value ? [{ label: t('knowledge.connectionName'), value: value.connectionName }, { label: t('knowledge.endpoint'), value: connection?.endpoint }, { label: t('knowledge.healthPath'), value: connection?.healthPath }, { label: t('knowledge.externalId'), value: value.externalResourceId }, { label: t('knowledge.sync'), value: localizedValue(t, 'common', value.syncStatus) }, { label: t('knowledge.department'), value: value.ownerDepartmentId }] : []} error={resource.error} loading={resource.isLoading} name={value?.name} status={value?.status}>
-    {health && <Card className="p-4 text-xs text-muted-foreground">{localizedValue(t, 'knowledge', health.status)} · {health.latencyMs ?? 0} ms{health.errorMessage ? ` · ${health.errorMessage}` : ''}</Card>}
+  const { id = '' } = useParams(); const { t } = useTranslation(); const auth = useAuth(); const client = useQueryClient()
+  const [editConnection, setEditConnection] = useState(false)
+  const [editing, setEditing] = useState<Knowledge | 'new'>(); const [grant, setGrant] = useState<Knowledge>()
+  const [inspect, setInspect] = useState<{ query: Knowledge; mode: 'test' | 'documents' }>(); const [page, setPage] = useState(1)
+  const connection = useQuery({ queryKey: ['knowledge-connection', id], queryFn: () => apiRequest<ExternalConnection>(`/knowledge/connections/${id}`) })
+  const queries = useQuery({ queryKey: ['knowledge-queries', id, page], queryFn: () => apiRequest<PageResponse<Knowledge>>(`/knowledge/connections/${id}/queries?page=${page}&pageSize=20`) })
+  const refresh = async () => { await Promise.all([client.invalidateQueries({ queryKey: ['knowledge-queries', id] }), client.invalidateQueries({ queryKey: ['studio-resource-options'] })]) }
+  const departments = useQuery({ queryKey: ['departments'], queryFn: () => apiRequest<Department[]>('/departments') })
+  const departmentName = (id: string) => departments.data?.find(item => item.id === id)?.name ?? id
+  const value = connection.data
+  return <ResourceDetailLayout loading={connection.isLoading} error={connection.error} name={value?.name} status={value?.status} description={t('knowledge.connectionDescription')} details={value ? [{ label: t('knowledge.provider'), value: value.provider }, { label: t('knowledge.endpoint'), value: value.endpoint }, { label: t('knowledge.department'), value: departmentName(value.ownerDepartmentId) }] : []} actions={<div className="flex gap-2"><Button asChild variant="ghost"><Link to="/knowledge">{t('knowledge.back')}</Link></Button>{value && auth.hasPermission('knowledge:manage') && <Button variant="secondary" onClick={() => setEditConnection(true)}>{t('knowledge.editConnection')}</Button>}</div>}>
     <Card className="overflow-hidden">
-      <div className="flex min-h-14 items-center justify-between border-b border-border px-5"><h2 className="text-sm font-semibold">{t('knowledge.documents')}</h2>{auth.hasPermission('knowledge:manage') && !externalManaged && <><input accept=".txt,.md,.json,.csv,text/plain,text/markdown,application/json,text/csv" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) upload.mutate(file); event.target.value = '' }} ref={fileInput} type="file" /><Button disabled={upload.isPending} onClick={() => fileInput.current?.click()} size="sm"><FileUp className="size-4" />{t('knowledge.uploadDocument')}</Button></>}</div>
-      {externalManaged ? <p className="px-5 py-8 text-center text-xs text-muted-foreground">{t('knowledge.externalManaged')}</p> : <div className="px-5">
-        {documents.data?.map((item) => <div className="flex items-center gap-4 border-t border-border py-3 first:border-0" key={item.id}>
-          <div className="min-w-0"><p className="truncate text-xs font-medium">{item.name}</p><p className="mt-1 text-[11px] text-muted-foreground">{item.contentType} · {formatNumber(item.sizeBytes)} B{item.errorCode ? ` · ${item.errorCode}: ${item.errorMessage}` : ''}</p></div>
-          <div className="flex-1" />
-          <StatusBadge label={documentStatusLabel(t, item.status)} status={documentStatus(item.status)} />
-          {auth.hasPermission('knowledge:manage') && <Button aria-label={t('knowledge.deleteDocument')} disabled={remove.isPending || item.status === 'indexing' || item.status === 'uploading'} onClick={() => setRemoveId(item.id)} size="icon" variant="ghost"><Trash2 className="size-4" /></Button>}
-        </div>)}
-        {!documents.isLoading && (documents.data?.length ?? 0) === 0 && <p className="py-8 text-center text-xs text-muted-foreground">{t('knowledge.noDocuments')}</p>}
-      </div>}
-    </Card>
-    <Card className="overflow-hidden">
-      <div className="flex min-h-14 items-center border-b border-border px-5"><h2 className="text-sm font-semibold">{t('knowledge.retrievalTest')}</h2></div>
-      <div className="space-y-3 px-5 py-4">
-        <div className="flex gap-2">
-          <Input disabled={!auth.hasPermission('knowledge:manage') || retrieval.isPending} onChange={(event) => setQuery(event.target.value)} placeholder={t('knowledge.retrievalQueryPlaceholder')} value={query} />
-          <Input className="w-20" disabled={retrieval.isPending} min={1} max={20} onChange={(event) => setTopK(event.target.value)} type="number" value={topK} />
-          <Button disabled={!auth.hasPermission('knowledge:manage') || !query.trim() || retrieval.isPending} onClick={() => retrieval.mutate()} size="sm">{t('knowledge.retrievalRun')}</Button>
+      <div className="flex min-h-16 items-center justify-between border-b border-border px-5"><h2 className="text-sm font-semibold">{t('knowledge.queries')}</h2>{auth.hasPermission('knowledge:manage') && <Button size="sm" disabled={value?.status !== 'active'} onClick={() => setEditing('new')}><Plus className="size-4" />{t('knowledge.addQuery')}</Button>}</div>
+      {queries.isLoading && <p className="p-5 text-xs">{t('common.loading')}</p>}{queries.error && <p role="alert" className="p-5 text-xs text-danger">{queries.error.message}</p>}
+      <div className="divide-y divide-border">{queries.data?.items.map(query => <div className="flex items-start gap-4 p-5" key={query.id}>
+        <div className="min-w-0 flex-1"><div className="flex items-center gap-3"><h3 className="text-sm font-medium">{query.name}</h3><StatusBadge status={query.status === 'active' ? 'active' : 'inactive'} /></div><p className="mt-2 text-xs text-muted-foreground">{query.description}</p><p className="mt-2 break-all text-[11px] text-muted-foreground">{t('knowledge.scope')}: {scopeLabel(query.scope, t('knowledge.defaultWorkspace'))}</p><p className="mt-1 text-[11px] text-muted-foreground">{t('knowledge.department')}: {departmentName(query.ownerDepartmentId)} · {t('knowledge.grantCount', { count: query.grantCount })}</p></div>
+        <div className="flex max-w-[500px] flex-wrap justify-end gap-1">
+          <Button size="sm" variant="ghost" disabled={query.status !== 'active' || value?.status !== 'active'} onClick={() => setInspect({ query, mode: 'documents' })}>{t('knowledge.documents')}</Button>
+          {auth.hasPermission('knowledge:manage') && <><Button size="sm" variant="ghost" disabled={query.status !== 'active' || value?.status !== 'active'} onClick={() => setInspect({ query, mode: 'test' })}>{t('knowledge.retrievalTest')}</Button><Button size="sm" variant="ghost" onClick={() => setEditing(query)}>{t('common.edit')}</Button></>}
+          <Button size="sm" variant="ghost" onClick={() => setGrant(query)}>{t('knowledge.authorization')}</Button>
+          <EntityDeleteButton canDelete={auth.hasPermission('knowledge:delete')} entityId={query.id} entityName={query.name} entityType="knowledge" deletePath={`/knowledge/queries/${query.id}`} onDeleted={refresh} />
         </div>
-        {hits && (hits.length ? hits.map((chunk, index) => <div className="rounded-md border border-border bg-muted/40 p-3 text-[11px]" key={index}>
-          <p className="whitespace-pre-wrap break-words">{typeof chunk.content === 'string' ? chunk.content : JSON.stringify(chunk.content)}</p>
-          <p className="mt-2 text-[10px] text-muted-foreground">{String(chunk.documentId ?? '—')} · {String(chunk.chunkId ?? '—')} · {String(chunk.score ?? '—')}</p>
-        </div>) : <p className="text-xs text-muted-foreground">{t('knowledge.retrievalNoHits')}</p>)}
-      </div>
+      </div>)}</div>
+      {queries.data?.items.length === 0 && <p className="p-8 text-center text-xs text-muted-foreground">{t('knowledge.noQueries')}</p>}
+      <div className="flex justify-end gap-2 border-t border-border p-3"><Button size="sm" variant="ghost" disabled={page === 1} onClick={() => setPage(page - 1)}>{t('knowledge.previous')}</Button><Button size="sm" variant="ghost" disabled={!queries.data || page * 20 >= queries.data.total} onClick={() => setPage(page + 1)}>{t('knowledge.next')}</Button></div>
     </Card>
-    <ConfirmDialog open={Boolean(removeId)} title={t('knowledge.deleteDocument')} description={t('knowledge.deleteDocumentDescription')} cancelLabel={t('common.cancel')} confirmLabel={t('common.confirm')} pending={remove.isPending} onClose={() => setRemoveId(undefined)} onConfirm={() => remove.mutateAsync(removeId!).then(() => undefined)} />
+    {value && editConnection && <ConnectionForm connection={value} onClose={() => setEditConnection(false)} onSaved={async () => { await client.invalidateQueries({ queryKey: ['knowledge-connection', id] }); await client.invalidateQueries({ queryKey: ['knowledge-connections'] }) }} />}
+    {value && editing && <QueryForm connection={value} query={editing === 'new' ? undefined : editing} onClose={() => setEditing(undefined)} onSaved={async (query, configureGrants) => { await refresh(); if (configureGrants) setGrant(query) }} />}
+    {grant && <ResourceGrantDialog open resource={{ id: grant.id, name: grant.name, resourceType: 'rag' }} onClose={() => { setGrant(undefined); void refresh() }} />}
+    {inspect && <QueryInspectDialog key={`${inspect.query.id}-${inspect.mode}`} {...inspect} onClose={() => setInspect(undefined)} />}
   </ResourceDetailLayout>
-}
-
-function documentStatusLabel(t: (key: string) => string, status: string) {
-  const labels: Record<string, string> = {
-    uploading: t('knowledge.document_uploading'),
-    indexing: t('knowledge.document_indexing'),
-    indexed: t('knowledge.document_indexed'),
-    failed: t('knowledge.document_failed'),
-  }
-  return labels[status] ?? status
-}
-
-function documentStatus(status: string): 'active' | 'pending' | 'running' | 'failed' | 'inactive' {
-  if (status === 'indexed') return 'active'
-  if (status === 'failed') return 'failed'
-  if (status === 'indexing' || status === 'uploading') return 'running'
-  return 'pending'
 }

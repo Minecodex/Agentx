@@ -83,7 +83,7 @@ macro_rules! grantable_query {
             " UNION ALL SELECT s.tenant_id,s.id,CONVERT('mcp_server' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(s.name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(sv.endpoint,'') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(s.status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,s.owner_department_id,s.updated_at FROM mcp_servers s JOIN mcp_server_versions sv ON sv.server_id=s.id AND sv.version_number=s.current_version_number",
             " UNION ALL SELECT t.tenant_id,t.id,CONVERT('mcp_tool' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(t.title,t.name) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(CONCAT(s.name,' / ',t.name) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(IF(t.availability='available' AND p.enabled=TRUE AND s.status='active','active','unavailable') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,s.owner_department_id,GREATEST(t.updated_at,p.updated_at,s.updated_at) FROM mcp_tools t JOIN mcp_servers s ON s.id=t.server_id AND s.tenant_id=t.tenant_id JOIN mcp_tool_policies p ON p.tool_id=t.id AND p.tenant_id=t.tenant_id",
             " UNION ALL SELECT tenant_id,id,CONVERT('skill' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(description,'') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,owner_department_id,updated_at FROM skills",
-            " UNION ALL SELECT tenant_id,id,CONVERT('rag' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(external_resource_id,'') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,owner_department_id,updated_at FROM rag_resources",
+            " UNION ALL SELECT r.tenant_id,r.id,CONVERT('rag' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(r.name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(CONCAT(c.name,' / ',r.description) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(IF(c.status='active',r.status,'disabled') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,r.owner_department_id,r.updated_at FROM rag_resources r JOIN rag_connections c ON c.tenant_id=r.tenant_id AND c.id=r.connection_id",
             " UNION ALL SELECT tenant_id,id,CONVERT('memory' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(endpoint USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,owner_department_id,updated_at FROM memory_connections",
             " UNION ALL SELECT p.tenant_id,p.id,CONVERT('sandbox_profile' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(p.name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(v.image_digest USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(p.status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,p.owner_department_id,p.updated_at FROM sandbox_profiles p JOIN sandbox_profile_versions v ON v.profile_id=p.id AND v.version_number=p.current_version_number",
             ") ",
@@ -540,6 +540,16 @@ async fn resource_options(
         }));
     }
     attach_model_metadata(&state, actor.tenant_id, &query.resource_type, &mut items).await?;
+    if query.resource_type == "rag" {
+        for item in &mut items {
+            let id = item["id"]
+                .as_str()
+                .and_then(|id| Uuid::parse_str(id).ok())
+                .ok_or_else(|| ApiError::internal("query option ID invalid"))?;
+            let row = sqlx::query("SELECT r.description,r.scope_json,c.id,c.name FROM rag_resources r JOIN rag_connections c ON c.tenant_id=r.tenant_id AND c.id=r.connection_id WHERE r.tenant_id=? AND r.id=?").bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
+            item["metadata"] = json!({"connectionId":row.try_get::<Uuid,_>("id")?,"connectionName":row.try_get::<String,_>("name")?,"description":row.try_get::<String,_>("description")?,"scope":row.try_get::<Value,_>("scope_json")?});
+        }
+    }
     Ok(Json(PageResponse {
         items,
         page,
@@ -1529,6 +1539,37 @@ async fn department_resource_authorized(
     }
     Ok(sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM resource_grants WHERE tenant_id=? AND subject_type='department' AND subject_id=? AND resource_type=? AND resource_id=? AND operation_key IN (?,'manage') AND (resource_version_id IS NULL OR resource_version_id=?))")
         .bind(tenant).bind(department).bind(resource_type).bind(resource_id).bind(operation).bind(resource_version_id).fetch_one(&state.pool).await?)
+}
+
+pub(crate) async fn require_knowledge_credential(
+    state: &ControlApiState,
+    actor: &Actor,
+    id: Option<Uuid>,
+) -> ApiResult<()> {
+    let Some(id) = id else {
+        return Ok(());
+    };
+    if actor.roles.iter().any(|role| role == "company_admin") {
+        return Ok(());
+    }
+    let owner = ensure_resource(state, actor.tenant_id, "credential", id).await?;
+    if !department_resource_authorized(
+        state,
+        actor.tenant_id,
+        actor.department_id,
+        "credential",
+        id,
+        None,
+        owner,
+        "use",
+    )
+    .await?
+    {
+        return Err(ApiError::forbidden(
+            "Credential dependency is not authorized for this department",
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) async fn ensure_department_resource_authorized(

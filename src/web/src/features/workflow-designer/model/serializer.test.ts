@@ -53,6 +53,22 @@ function documentWithChip(): StudioDocument {
 }
 
 describe('studio serializer container roundtrip', () => {
+  it('omits null query versions so manual multi-source selection has the canonical server hash', () => {
+    const document = documentWithChip()
+    const node = document.nodes[0]
+    if (node.data.editorKind !== 'action') throw new Error('Expected action')
+    node.data.resourceReferences = [
+      { resourceType: 'rag', resourceId: 'query-a', operation: 'read' },
+      { resourceType: 'rag', resourceId: 'query-b', operation: 'read', resourceVersionId: null },
+    ]
+    const saved = serializeStudio(document)
+    expect(saved.definition.nodes[0].resourceReferences).toEqual([
+      { resourceType: 'rag', resourceId: 'query-a', operation: 'read' },
+      { resourceType: 'rag', resourceId: 'query-b', operation: 'read' },
+    ])
+    expect(JSON.stringify(serializeStudio(deserializeDraft(saved as unknown as WorkflowDraft)))).toBe(JSON.stringify(saved))
+  })
+
   it('drops iteration chip nodes and their edges while keeping real connections untouched', () => {
     const { definition } = serializeStudio(documentWithChip())
 

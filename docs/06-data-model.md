@@ -177,6 +177,7 @@ Checkpoint 小载荷保存在 `checkpoints.payload_json`。超过配置阈值的
 - skill_dependencies
 - rag_connections
 - rag_resources
+- rag_retrieval_tests
 - memory_connections
 - resource_grants
 
@@ -341,3 +342,11 @@ Workflow Draft/Revision/Version 的 definition_json、editor_json，以及 Build
 应用部署保存 `api_user_id_input`；Runtime 会话和调用保存来源用户 JSON 快照，会话另保存初始业务输入。执行快照的 `endUser` 与 `environmentId` 供记忆作用域及查询使用，平台操作人仍由 `initiator_*` 独立表示。
 
 记忆审计的 `application_user_id` 是来源用户身份的确定性摘要，不能解释为平台账号外键；`memory_connection_id` 指向连接资源，`scope_hash` 覆盖环境、工作流与稳定节点。清理使用相同范围，连接版本不参与个人记忆身份。应用调用的用户身份 JSON 与执行上下文快照保持一致。
+
+### 知识查询配置
+
+`rag_connections` 保存外部服务配置与连接版本。`rag_resources` 表示可授权的查询配置，保存 `name`、`description`、`scope_json`、部门、状态和版本；名称在 `(tenant_id, connection_id)` 内唯一，范围允许重复。`scope_json` 为 `{kind:"ragflow",datasetIds:[...]}` 或 `{kind:"lightrag",workspace:"..."}`。默认 LightRAG 工作区使用实际返回的空字符串。
+
+无本地知识文档表、上传 Artifact 引用或索引状态。`rag_retrieval_tests` 仅记录测试审计。初始化基线直接修改，不提供历史数据迁移。运行包快照包含查询版本、连接版本、范围与凭证版本，外部内容不冻结。连接删除与查询创建使用连接行锁，Workflow/Skill 引用查询时受统一删除保护。
+
+Runtime 的 `runtime_resource_states` 主键包含 `resource_version` 与 `content_hash`，保留不同运行包冻结配置的独立状态；资源级授权撤销通过 ResourceGrant 投影生效。

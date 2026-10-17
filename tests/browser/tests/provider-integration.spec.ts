@@ -8,7 +8,6 @@ const echoBaseUrl = process.env.AGENTX_E2E_ECHO_BASE_URL ?? 'http://echo-mcp:809
 const lightRagBaseUrl = process.env.AGENTX_E2E_LIGHTRAG_BASE_URL ?? 'http://lightrag:9621'
 const mem0BaseUrl = process.env.AGENTX_E2E_MEM0_BASE_URL ?? 'http://mem0:8000'
 const ragflowBaseUrl = process.env.AGENTX_E2E_RAGFLOW_BASE_URL ?? ''
-const ragflowRejectedBaseUrl = process.env.AGENTX_E2E_RAGFLOW_REJECTED_BASE_URL ?? 'http://host.docker.internal:19380'
 const ragflowAliasBaseUrl = process.env.AGENTX_E2E_RAGFLOW_ALIAS_BASE_URL ?? ''
 const sandboxUiCreate = process.env.AGENTX_E2E_SANDBOX_UI_CREATE === '1'
 const providerCredentialName = 'Provider Integration Credential'
@@ -162,19 +161,27 @@ async function submit(container: Locator, name: string) {
   await expect(container).toBeHidden()
 }
 
-async function createKnowledgeViaUi(page: Page, connectionName: string, endpoint: string, healthPath: string, resourceName: string, externalId: string, credentialName?: string, provider?: 'lightrag' | 'ragflow') {
-  await page.getByRole('link', { name: '知识库' }).click()
-  await page.getByRole('button', { name: '接入知识库' }).click()
-  const form = await dialog(page, '接入知识库')
+async function createKnowledgeViaUi(page: Page, connectionName: string, endpoint: string, _healthPath: string, resourceName: string, _externalId: string, credentialName?: string, provider?: 'lightrag' | 'ragflow') {
+  await page.getByRole('link', { name: '知识库', exact: true }).click()
+  await page.getByRole('button', { name: '新建连接', exact: true }).click()
+  const form = await dialog(page, '新建连接')
   await (await field(form, '连接名称')).fill(connectionName)
   if (provider === 'ragflow') await select(form, '服务协议', 'RAGFlow')
-  await (await field(form, 'Endpoint')).fill(endpoint)
-  if (healthPath !== '/health') await (await field(form, '健康检查路径')).fill(healthPath)
+  await (await field(form, '服务地址')).fill(endpoint)
   if (credentialName) await select(form, '凭证', credentialName)
   await select(form, '所属部门', company)
-  await (await field(form, '资源名称')).fill(resourceName)
-  await (await field(form, '外部资源 ID')).fill(externalId)
+  await expect(form.getByText('资源名称', { exact: true })).toHaveCount(0)
+  await expect(form.getByText('外部资源 ID', { exact: true })).toHaveCount(0)
   await submit(form, '保存')
+  await page.getByRole('row').filter({ hasText: connectionName }).getByRole('link', { name: '详情', exact: true }).click()
+  await page.getByRole('button', { name: '新建查询', exact: true }).click()
+  const query = await dialog(page, '新建查询')
+  await (await field(query, '查询名称')).fill(resourceName)
+  await (await field(query, '用途说明')).fill('Provider integration knowledge')
+  if (provider === 'ragflow') await query.getByRole('checkbox').first().check()
+  else await select(query, '工作区', '默认工作区')
+  await query.getByRole('checkbox', { name: /保存后配置授权/ }).uncheck()
+  await submit(query, '保存')
 }
 
 async function createMemoryViaUi(page: Page, connectionName: string, endpoint: string, healthPath: string) {
@@ -200,8 +207,13 @@ async function openResourceDetail(page: Page, navName: string, resourceName: str
 }
 
 async function verifyConnectionTest(page: Page, navName: string, resourceName: string) {
-  await openResourceDetail(page, navName, resourceName)
-  await page.getByRole('button', { name: '测试连接' }).click()
+  if (navName === '知识库') {
+    await page.goto('/knowledge')
+    await page.getByRole('row').filter({ hasText: resourceName }).getByRole('button', { name: '测试连接' }).click()
+  } else {
+    await openResourceDetail(page, navName, resourceName)
+    await page.getByRole('button', { name: '测试连接' }).click()
+  }
   await expect(page.getByText(/连接正常 · \d+ ms/)).toBeVisible({ timeout: 30_000 })
   await page.screenshot({ path: test.info().outputPath(`provider-${navName === '知识库' ? 'knowledge' : 'memory'}-connection-test.png`), fullPage: true })
 }
@@ -536,7 +548,7 @@ test.describe.serial('Provider integration', () => {
     const sandboxName = `Provider Sandbox ${stamp}`
     await createKnowledgeViaUi(page, `Provider LightRAG Connection ${stamp}`, lightRagBaseUrl, '/health', knowledgeName, `pv_integration_${stamp}`, providerRagKeyName)
     await createMemoryViaUi(page, memoryName, mem0BaseUrl, '/openapi.json')
-    await verifyConnectionTest(page, '知识库', knowledgeName)
+    await verifyConnectionTest(page, '知识库', `Provider LightRAG Connection ${stamp}`)
     await verifyConnectionTest(page, '记忆', memoryName)
     await ensureSandboxProfile(page, token, department.id, sandboxName)
 
@@ -607,21 +619,6 @@ test.describe.serial('Provider integration', () => {
 
   })
 
-  test('RAGflow endpoint is rejected by the provider egress policy', async ({ page }) => {
-    test.skip(!ragflowRejectedBaseUrl, 'RAGflow rejected endpoint is not configured')
-    test.setTimeout(300_000)
-    const token = await login(page)
-    await ensureModelResources(page, token)
-    const stamp = Date.now()
-    const knowledgeName = `Provider RAGflow ${stamp}`
-    await createKnowledgeViaUi(page, `Provider RAGflow Connection ${stamp}`, ragflowRejectedBaseUrl, '/', knowledgeName, '0'.repeat(32), ragflowCredentialName, 'ragflow')
-    await openResourceDetail(page, '知识库', knowledgeName)
-    await page.getByRole('button', { name: '测试连接' }).click()
-    await expect(page.getByText('连接正常')).toHaveCount(0)
-    await expect(page.getByRole('status').filter({ hasText: /.+/ }).first()).toBeVisible({ timeout: 30_000 })
-    await page.screenshot({ path: test.info().outputPath('provider-ragflow-policy-rejected.png'), fullPage: true })
-  })
-
   test('RAGflow knowledge speaks the RAGFlow retrieval protocol end to end', async ({ page }, testInfo) => {
     test.skip(!ragflowBaseUrl, 'RAGflow endpoint is not configured')
     test.setTimeout(600_000)
@@ -630,7 +627,7 @@ test.describe.serial('Provider integration', () => {
     const stamp = Date.now()
     const knowledgeName = `Provider RAGflow ${stamp}`
     // Provider=ragflow routes the runtime through POST /api/v1/retrieval with
-    // a Bearer credential; the dataset id is the external resource id.
+    // a Bearer credential and the selected Dataset scope.
     await createKnowledgeViaUi(page, `Provider RAGflow Connection ${stamp}`, ragflowBaseUrl, '/v1/system/healthz', knowledgeName, process.env.AGENTX_E2E_RAGFLOW_DATASET_ID ?? '00000000-0000-0000-0000-000000000000', ragflowCredentialName, 'ragflow')
     const workflowName = `Provider RAGflow Workflow ${stamp}`
     const workflowId = await createWorkflow(page, workflowName)
@@ -654,35 +651,19 @@ test.describe.serial('Provider integration', () => {
     await page.screenshot({ path: testInfo.outputPath('provider-ragflow-adapter-execution.png'), fullPage: true })
   })
 
-  test('RAGflow cannot answer the LightRAG query protocol even when reachable', async ({ page }) => {
-    test.skip(!ragflowAliasBaseUrl, 'RAGflow alias endpoint is not configured')
-    test.setTimeout(600_000)
-    let token = await login(page)
-    await ensureModelResources(page, token)
-    const stamp = Date.now()
-    const knowledgeName = `Provider RAGflow Alias ${stamp}`
-    await createKnowledgeViaUi(page, `Provider RAGflow Alias Connection ${stamp}`, ragflowAliasBaseUrl, '/', knowledgeName, `ragflow_alias_${stamp}`)
-    const workflowName = `Provider RAGflow Workflow ${stamp}`
-    const workflowId = await createWorkflow(page, workflowName)
-    for (const [type, name] of [['credential', providerCredentialName], ['model', providerModelAlias], ['rag', knowledgeName]] as Array<[keyof typeof resourceTabs, string]>) {
-      await grantResource(page, type, name, workflowName)
-    }
-    await buildAgentWorkflow(page, token, workflowId, { knowledgeName, memoryName: null, sandboxName: null })
-    token = await freshApiToken(page, token)
-    const executionId = await startDebug(page, () => page.locator('header').getByRole('button', { name: '运行', exact: true }).click())
-    token = await freshApiToken(page, token)
-    await waitExecution(page, token, executionId, ['succeeded'])
-    // RAGflow wraps unknown LightRAG routes in HTTP 200 + code 100, so the
-    // span may look successful while the knowledge result is always empty.
-    const ragSpan = await expectRuntimeTrace(page, token, executionId, 'rag', 'succeeded')
-    const detail = await page.request.get(`/api/v1/executions/${executionId}/trace/spans/${ragSpan.spanId}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
-    if (!detail.ok()) throw new Error(`ragflow span detail: ${detail.status()}`)
-    const span = (await detail.json()) as { contents?: Array<{ kind: string, preview: unknown }> }
-    const response = span.contents?.find((content) => content.kind === 'runtime_response')?.preview as Record<string, unknown> | undefined
-    const documents = response?.data ?? response?.documents ?? response?.chunks
-    expect(JSON.stringify(response ?? {})).toContain('100')
-    expect(documents ?? []).toHaveLength(0)
-    await page.goto(`/executions/${executionId}`)
-    await page.screenshot({ path: test.info().outputPath('provider-ragflow-protocol-mismatch.png'), fullPage: true })
+  test('Wrong provider protocol prevents workspace discovery and query creation', async ({ page }) => {
+    test.skip(!ragflowAliasBaseUrl, 'RAGflow endpoint is not configured')
+    const token = await login(page)
+    const headers = { Authorization: `Bearer ${token}` }
+    const me = await (await page.request.get('/api/v1/auth/me', { headers })).json()
+    const response = await page.request.post('/api/v1/knowledge/connections', { headers,
+      data: { name: `Protocol mismatch ${Date.now()}`, provider: 'lightrag', endpoint: ragflowAliasBaseUrl, ownerDepartmentId: me.departmentId } })
+    expect(response.status()).toBe(201)
+    const connection = await response.json()
+    const catalog = await page.request.get(`/api/v1/knowledge/connections/${connection.id}/catalog`, { headers })
+    expect(catalog.ok()).toBe(false)
+    const query = await page.request.post(`/api/v1/knowledge/connections/${connection.id}/queries`, { headers,
+      data: { name: 'Invalid workspace', scope: { kind: 'lightrag', workspace: '' }, ownerDepartmentId: me.departmentId } })
+    expect(query.ok()).toBe(false)
   })
 })

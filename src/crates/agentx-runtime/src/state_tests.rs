@@ -296,6 +296,29 @@ fn error_terminal_fixture() -> Value {
 }
 
 #[test]
+fn source_failure_details_survive_the_error_outlet() {
+    let mut machine =
+        ExecutionMachine::new(compile(error_terminal_fixture()), vec![item(1)]).unwrap();
+    let first = machine.next_ready().unwrap();
+    machine.start_attempt(first).unwrap();
+    let details = json!({"sources":[{"connectionId":"connection-a","queryIds":["query-a"],"scope":{"kind":"lightrag","workspace":"alpha"},"status":"failed","elapsedMs":12,"error":{"code":"PROVIDER_UNAVAILABLE","message":"unreachable"}}]});
+    machine
+        .fail_with_details(
+            first,
+            "KNOWLEDGE_ALL_SOURCES_FAILED",
+            "All sources failed",
+            false,
+            details.clone(),
+        )
+        .unwrap();
+    assert_eq!(machine.end_deliveries()[0].target_port, "error");
+    assert_eq!(
+        machine.end_deliveries()[0].items[0].json["details"],
+        details
+    );
+}
+
+#[test]
 fn end_error_fail_fast_cancels_other_running_activations() {
     let workflow = compile(error_terminal_fixture());
     let mut machine = ExecutionMachine::new(workflow, vec![item(1)]).unwrap();

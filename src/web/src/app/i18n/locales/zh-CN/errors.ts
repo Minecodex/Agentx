@@ -38,7 +38,7 @@ const translations = {
     "SKILL_PATH_EXISTS": "技能工作区中已存在相同路径。",
     "SANDBOX_PROFILE_NAME_EXISTS": "该沙箱配置名称已存在。",
     "DATASET_CASE_KEY_EXISTS": "测试集中已存在相同的用例 Key。",
-    "KNOWLEDGE_EXTERNAL_RESOURCE_ID_EXISTS": "所选连接下已存在相同的外部知识资源 ID。",
+    "KNOWLEDGE_NAME_EXISTS": "同一连接下已存在相同的查询名称。",
     "SANDBOX_PROFILE_CONFIGURATION_EXISTS": "该沙箱配置内容已存在。",
     "SKILL_DUPLICATE_PATH": "工作区 ZIP 中包含重复路径。",
     "UNKNOWN_NODE_VERSION": "节点版本 {{nodeTypeVersion}} 在节点目录中不可用。",
