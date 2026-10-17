@@ -270,6 +270,7 @@ async fn agent_attachment_revocation_is_tool_scoped(fixture: &Fixture) {
         context: json!({}),
         plugin: None,
         trace_parent_span_entity_id: None,
+        agent_trace_turn: None,
     };
     let probe = Arc::new(AgentAuthorizationProbe {
         pool: fixture.state.pool.clone(),

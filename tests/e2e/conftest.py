@@ -149,14 +149,19 @@ def _scale_development(values: Path, enabled: bool) -> dict[tuple[str, str], Dev
                 "items"
             ]
             active = [pod for pod in pods if not pod["metadata"].get("deletionTimestamp")]
-            templates = {container["name"]: container["image"] for container in spec["template"]["spec"]["containers"]}
+            templates = {
+                container["name"]: container["image"]
+                for field in ("initContainers", "containers")
+                for container in spec["template"]["spec"].get(field, [])
+            }
             # Preserve an existing running Pod override without changing the
             # Deployment template. Scaling otherwise discards that live state.
             images = {}
             if len(active) == 1 and int(spec.get("replicas", 1)) == 1:
                 images = {
                     container["name"]: container["image"]
-                    for container in active[0]["spec"]["containers"]
+                    for field in ("initContainers", "containers")
+                    for container in active[0]["spec"].get(field, [])
                     if container["image"] != templates.get(container["name"])
                 }
             replicas[(namespace, name)] = DevelopmentDeployment(
@@ -193,20 +198,21 @@ def _restore_development(replicas: dict[tuple[str, str], DevelopmentDeployment])
                     if pods:
                         for pod in pods:
                             patch = []
-                            for index, container in enumerate(pod["spec"]["containers"]):
-                                image = saved.pod_images.get(container["name"])
-                                if (
-                                    image
-                                    and image != container["image"]
-                                    and container["image"] == saved.template_images.get(container["name"])
-                                ):
-                                    path = f"/spec/containers/{index}/image"
-                                    patch.extend(
-                                        [
-                                            {"op": "test", "path": path, "value": container["image"]},
-                                            {"op": "replace", "path": path, "value": image},
-                                        ]
-                                    )
+                            for field in ("initContainers", "containers"):
+                                for index, container in enumerate(pod["spec"].get(field, [])):
+                                    image = saved.pod_images.get(container["name"])
+                                    if (
+                                        image
+                                        and image != container["image"]
+                                        and container["image"] == saved.template_images.get(container["name"])
+                                    ):
+                                        path = f"/spec/{field}/{index}/image"
+                                        patch.extend(
+                                            [
+                                                {"op": "test", "path": path, "value": container["image"]},
+                                                {"op": "replace", "path": path, "value": image},
+                                            ]
+                                        )
                             if patch:
                                 run(
                                     (

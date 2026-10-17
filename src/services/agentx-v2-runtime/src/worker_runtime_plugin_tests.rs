@@ -101,6 +101,7 @@ async fn rust_worker_executes_a_node_module() {
             node_parameters: json!({"answer":42}), per_item_parameters: vec![], string_conversions: json!([]), inputs: BTreeMap::new(), resources: vec![], context: json!({}),
             plugin: Some(plugin_binding("acme/test", format!("sha256:{}", "b".repeat(64)), "export async function execute(ctx){return {status:'completed',outputs:{main:[{json:{answer:ctx.parameters.answer,pid:process.pid}}]}}}".into())),
             trace_parent_span_entity_id: None,
+            agent_trace_turn: None,
         };
     install_runtime_artifact(
         &worker,
@@ -203,6 +204,7 @@ async fn timeout_reclaims_the_plugin_process_tree() {
             source,
         )),
         trace_parent_span_entity_id: None,
+        agent_trace_turn: None,
     };
     install_runtime_artifact(
         &worker,
@@ -355,6 +357,7 @@ async fn runner_crash_is_contained_and_the_pool_recovers() {
             "export async function execute(){process.exit(17)}".into(),
         )),
         trace_parent_span_entity_id: None,
+        agent_trace_turn: None,
     };
     install_runtime_artifact(
         &worker,
@@ -396,6 +399,7 @@ async fn plugin_failure_preserves_its_retry_decision() {
             node_parameters: json!({}), per_item_parameters: vec![], string_conversions: json!([]), inputs: BTreeMap::new(), resources: vec![], context: json!({}),
             plugin: Some(plugin_binding("acme/retry", format!("sha256:{}", "9".repeat(64)), "export async function execute(){return {status:'failed',code:'TRY_AGAIN',message:'transient',retryable:true,details:{phase:'remote'}}}".into())),
             trace_parent_span_entity_id: None,
+            agent_trace_turn: None,
         };
     install_runtime_artifact(
         &worker,
@@ -460,6 +464,7 @@ async fn bounded_invocations_wake_waiters_and_keep_fast_work_independent() {
             context: json!({}),
             plugin: Some(binding.clone()),
             trace_parent_span_entity_id: None,
+            agent_trace_turn: None,
         }
     });
     let results =

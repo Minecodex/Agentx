@@ -1,4 +1,5 @@
 const translations = {
+  jsonItems: '{{count}} 项', jsonProperties: '{{count}} 个字段',
   loading: '正在加载 Trace…', unavailable: 'Trace 暂时不可用', delayed: 'Trace 正在同步，当前展示已到达的 Span。', degraded: 'Trace 存在摄取冲突，当前诊断信息可能不完整。',
   search: '搜索 Span、ID 或错误码', filterKind: '筛选 Span 类型', allKinds: '全部类型', errorsOnly: '仅异常', expandAll: '全部展开', zoom: '缩放', loaded: '已加载 {{loaded}} / {{total}}', loadMore: '加载更多', noMatches: '没有匹配的 Span',
   tree: 'Trace 层级瀑布', hierarchy: '调用层级', status: '状态', duration: '耗时', totalDuration: '总耗时', timeline: '时间轴', expand: '展开', collapse: '折叠', selectSpan: '选择一个 Span 查看详情', loadingDetail: '正在加载 Span 详情…',

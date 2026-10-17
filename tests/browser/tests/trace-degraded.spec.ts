@@ -31,6 +31,8 @@ test('Trace keeps authoritative node data when diagnostics are unavailable and r
   const node = workspace.getByTestId('trace-node-card').first()
   const nodeToggle = node.getByRole('button').first()
   if (await nodeToggle.getAttribute('aria-expanded') !== 'true') await nodeToggle.click()
+  await node.getByRole('button', { name: '输入与解析参数', exact: true }).click()
+  await node.getByRole('button', { name: '语义输出', exact: true }).click()
   await expect(node.getByText('上游 Item')).toBeVisible()
   await expect(node.getByText('语义输出')).toBeVisible()
 

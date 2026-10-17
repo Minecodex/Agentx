@@ -24,6 +24,8 @@ pub struct ClaimedWorkerAttempt {
     pub context: Value,
     pub plugin: Option<PluginNodeBinding>,
     pub trace_parent_span_entity_id: Option<uuid::Uuid>,
+    /// The synchronous Agent event sink shares the actual active turn with provider calls.
+    pub agent_trace_turn: Option<std::sync::Arc<std::sync::atomic::AtomicU32>>,
 }
 
 pub(super) enum ContextWriteOutcome {
