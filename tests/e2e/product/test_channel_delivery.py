@@ -1,4 +1,3 @@
-# ruff: noqa: S608
 """Channel outbound delivery E2E (plan7 P7-A A7).
 
 Drives the L1 auto-reply loop end to end against the in-cluster IM mock:
@@ -10,6 +9,7 @@ exercises the permanent-failure dead-letter path and its replay.
 
 from __future__ import annotations
 
+# ruff: noqa: S608
 import base64
 import hashlib
 import hmac
@@ -21,7 +21,7 @@ from typing import Any
 import httpx
 import pytest
 
-from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id, idempotent_headers, publish_fixture_version
 from tests.e2e.runtime.test_agent_attachments import (
     _access_token,
     _runtime_mysql,
@@ -107,13 +107,8 @@ def _passthrough_workflow(control: httpx.Client, headers: dict[str, str], name: 
         f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}", headers=headers
     )
     latest.raise_for_status()
-    published = control.post(
-        f"/api/v1/workflows/{workflow_id}/versions",
-        headers=headers,
-        json={
-            "draftId": fixture_draft(control, workflow_id, headers)["id"],
-            "draftRevision": latest.json()["revision"],
-        },
+    published = publish_fixture_version(
+        control, workflow_id, fixture_draft(control, workflow_id, headers)["id"], latest.json()["revision"], headers
     )
     assert published.status_code in (200, 201), published.text
     return {"workflowId": workflow_id, "versionId": published.json()["id"]}
@@ -245,8 +240,12 @@ def test_l1_reply_delivered_and_dead_letter_replay(
         # workflow level first.
         deploy = control.post(
             f"/api/v1/workflows/{workflow['workflowId']}/deployments",
-            headers=headers,
-            json={"environmentId": environment_id, "workflowVersionId": workflow["versionId"]},
+            headers=idempotent_headers(headers),
+            json={
+                "contentSource": "version",
+                "environmentId": environment_id,
+                "workflowVersionId": workflow["versionId"],
+            },
         )
         assert deploy.status_code in (200, 201), deploy.text
         application = control.post(
@@ -621,13 +620,8 @@ def test_l2_reply_node_delivers_to_trigger_conversation(
             f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}", headers=headers
         )
         latest.raise_for_status()
-        published = control.post(
-            f"/api/v1/workflows/{workflow_id}/versions",
-            headers=headers,
-            json={
-                "draftId": fixture_draft(control, workflow_id, headers)["id"],
-                "draftRevision": latest.json()["revision"],
-            },
+        published = publish_fixture_version(
+            control, workflow_id, fixture_draft(control, workflow_id, headers)["id"], latest.json()["revision"], headers
         )
         assert published.status_code in (200, 201), published.text
         version_id = published.json()["id"]
@@ -635,8 +629,8 @@ def test_l2_reply_node_delivers_to_trigger_conversation(
         environment_id = _development_environment_id(control, headers)
         deploy = control.post(
             f"/api/v1/workflows/{workflow_id}/deployments",
-            headers=headers,
-            json={"environmentId": environment_id, "workflowVersionId": version_id},
+            headers=idempotent_headers(headers),
+            json={"contentSource": "version", "environmentId": environment_id, "workflowVersionId": version_id},
         )
         assert deploy.status_code in (200, 201), deploy.text
         application = control.post(
@@ -807,13 +801,8 @@ def test_l3_send_message_idempotency_and_pod_crash_resilience(
             },
         )
         initial.raise_for_status()
-        initial_version = control.post(
-            f"/api/v1/workflows/{workflow_id}/versions",
-            headers=headers,
-            json={
-                "draftId": fixture_draft_id(control, workflow_id, headers),
-                "draftRevision": initial.json()["revision"],
-            },
+        initial_version = publish_fixture_version(
+            control, workflow_id, fixture_draft_id(control, workflow_id, headers), initial.json()["revision"], headers
         )
         initial_version.raise_for_status()
         draft = control.get(
@@ -917,20 +906,19 @@ def test_l3_send_message_idempotency_and_pod_crash_resilience(
             f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}", headers=headers
         )
         latest.raise_for_status()
-        published = control.post(
-            f"/api/v1/workflows/{workflow_id}/versions",
-            headers=headers,
-            json={
-                "draftId": fixture_draft(control, workflow_id, headers)["id"],
-                "draftRevision": latest.json()["revision"],
-            },
+        published = publish_fixture_version(
+            control, workflow_id, fixture_draft(control, workflow_id, headers)["id"], latest.json()["revision"], headers
         )
         assert published.status_code in (200, 201), published.text
         environment_id = _development_environment_id(control, headers)
         deploy = control.post(
             f"/api/v1/workflows/{workflow_id}/deployments",
-            headers=headers,
-            json={"environmentId": environment_id, "workflowVersionId": published.json()["id"]},
+            headers=idempotent_headers(headers),
+            json={
+                "contentSource": "version",
+                "environmentId": environment_id,
+                "workflowVersionId": published.json()["id"],
+            },
         )
         assert deploy.status_code in (200, 201), deploy.text
         _publish_application(
@@ -1253,21 +1241,16 @@ def test_reply_node_fails_without_im_trigger(
             f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}", headers=headers
         )
         latest.raise_for_status()
-        published = control.post(
-            f"/api/v1/workflows/{workflow_id}/versions",
-            headers=headers,
-            json={
-                "draftId": fixture_draft(control, workflow_id, headers)["id"],
-                "draftRevision": latest.json()["revision"],
-            },
+        published = publish_fixture_version(
+            control, workflow_id, fixture_draft(control, workflow_id, headers)["id"], latest.json()["revision"], headers
         )
         assert published.status_code in (200, 201), published.text
         version_id = published.json()["id"]
         environment_id = _development_environment_id(control, headers)
         deploy = control.post(
             f"/api/v1/workflows/{workflow_id}/deployments",
-            headers=headers,
-            json={"environmentId": environment_id, "workflowVersionId": version_id},
+            headers=idempotent_headers(headers),
+            json={"contentSource": "version", "environmentId": environment_id, "workflowVersionId": version_id},
         )
         assert deploy.status_code in (200, 201), deploy.text
         application = control.post(
@@ -1324,7 +1307,7 @@ def test_reply_node_fails_without_im_trigger(
         session = gateway.post(
             f"/gateway/v1/applications/{slug}/sessions",
             headers={"Authorization": f"Bearer {token}", "Idempotency-Key": f"notrigger-session-{time.time_ns()}"},
-            json={"title": None, "externalUserId": None},
+            json={"title": None, "input": {}},
         )
         assert session.status_code == 201, session.text
         session_id = session.json()["id"]

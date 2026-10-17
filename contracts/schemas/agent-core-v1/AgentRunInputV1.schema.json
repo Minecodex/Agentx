@@ -73,7 +73,7 @@
         "trustedSubject": {
           "anyOf": [
             {
-              "$ref": "#/$defs/TrustedSubjectEvidenceV1"
+              "$ref": "#/$defs/ApplicationUserEvidenceV1"
             },
             {
               "type": "null"
@@ -85,6 +85,26 @@
         "mode",
         "sessionKey",
         "stateVersion"
+      ],
+      "type": "object"
+    },
+    "ApplicationUserEvidenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "evidenceHash": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "userIdentityId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "userIdentityId",
+        "source",
+        "evidenceHash"
       ],
       "type": "object"
     },
@@ -330,26 +350,6 @@
         "memory"
       ],
       "type": "string"
-    },
-    "TrustedSubjectEvidenceV1": {
-      "additionalProperties": false,
-      "properties": {
-        "authenticatedSubjectId": {
-          "type": "string"
-        },
-        "evidenceHash": {
-          "type": "string"
-        },
-        "source": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "authenticatedSubjectId",
-        "source",
-        "evidenceHash"
-      ],
-      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

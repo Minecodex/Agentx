@@ -136,7 +136,7 @@ test('permission denial and revocation refresh the existing browser session', as
     await expect(user.getByRole('heading', { level: 1 }).first()).toBeVisible()
     const role = JSON.parse(required('AGENTX_E2E_PERMISSION_ROLE')) as { id: string; name: string; description: string | null; version: number }
     const revoked = await admin.request.patch(`/api/v1/roles/${role.id}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
       data: { name: role.name, description: role.description, dataScope: 'company', permissions: [], version: role.version },
     })
     expect(revoked.status()).toBe(200)

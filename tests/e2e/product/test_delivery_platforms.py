@@ -8,7 +8,7 @@ from itertools import pairwise
 import httpx
 import pytest
 
-from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id, idempotent_headers, publish_fixture_version
 from tests.e2e.product import test_channel_delivery as channels
 from tests.e2e.runtime.test_agent_attachments import _access_token
 from tests.e2e.support import run
@@ -158,21 +158,20 @@ def test_official_protocols_and_loop_delivery_identity(installed_agentx, service
             f"/api/v1/workflows/{workflow['workflowId']}/drafts/{fixture_draft_id(control, workflow['workflowId'], headers)}",
             headers=headers,
         ).json()
-        published = control.post(
-            f"/api/v1/workflows/{workflow['workflowId']}/versions",
-            headers=headers,
-            json={
-                "draftId": fixture_draft(control, workflow["workflowId"], headers)["id"],
-                "draftRevision": latest["revision"],
-            },
+        published = publish_fixture_version(
+            control,
+            workflow["workflowId"],
+            fixture_draft(control, workflow["workflowId"], headers)["id"],
+            latest["revision"],
+            headers,
         )
-        assert published.status_code == 201, published.text
+        assert published.status_code == 200, published.text
         workflow["versionId"] = published.json()["id"]
         environment = channels._development_environment_id(control, headers)
         deployed = control.post(
             f"/api/v1/workflows/{workflow['workflowId']}/deployments",
-            headers=headers,
-            json={"environmentId": environment, "workflowVersionId": workflow["versionId"]},
+            headers=idempotent_headers(headers),
+            json={"contentSource": "version", "environmentId": environment, "workflowVersionId": workflow["versionId"]},
         )
         assert deployed.status_code in (200, 201), deployed.text
         channels._publish_application(control, headers, workflow, application["id"], environment)

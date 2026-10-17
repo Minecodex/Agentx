@@ -1,3 +1,6 @@
+#[path = "worker_runtime_memory.rs"]
+mod memory;
+
 use std::{collections::BTreeMap, sync::Arc};
 
 use agentx_node_protocol::{Item, NodeCapability};
@@ -789,55 +792,8 @@ impl RuntimeWorker {
                     secret_header,
                 )
             }
-            RuntimeResourceConfigurationV1::Memory {
-                endpoint,
-                namespace,
-                memory_version,
-                credential,
-                ..
-            } => {
-                let secret_header =
-                    match memory_secret_header(&claim.resources, credential.as_ref()) {
-                        Ok(header) => header,
-                        Err(code) => {
-                            return WorkerExecution::failed(
-                                code,
-                                "Memory requires a frozen api_key or bearer Credential",
-                                false,
-                            );
-                        }
-                    };
-                let operation = claim
-                    .node_parameters
-                    .get("operation")
-                    .and_then(Value::as_str)
-                    .unwrap_or("search");
-                let input = claim.node_parameters.get("input").cloned().unwrap_or(input);
-                let (path, request) = if operation == "add" || operation == "write" {
-                    let content = input.get("text").cloned().unwrap_or_else(|| input.clone());
-                    (
-                        "memories",
-                        json!({
-                            "messages":[{"role":"user","content":content}],
-                            "user_id":namespace,
-                            "version":memory_version
-                        }),
-                    )
-                } else {
-                    let query = input.get("query").cloned().unwrap_or_else(|| input.clone());
-                    let top_k = input.get("top_k").and_then(Value::as_u64).unwrap_or(5);
-                    (
-                        "search",
-                        json!({"query":query,"filters":{"user_id":namespace},"top_k":top_k}),
-                    )
-                };
-                (
-                    "memory",
-                    format!("{}/{}", endpoint.trim_end_matches('/'), path),
-                    request,
-                    credential.as_ref(),
-                    secret_header,
-                )
+            RuntimeResourceConfigurationV1::Memory { .. } => {
+                return self.call_memory(claim, binding, input, call_index).await;
             }
             RuntimeResourceConfigurationV1::SandboxProfile { .. } => {
                 let Ok(manager) = std::env::var("AGENTX_SANDBOX_MANAGER_ENDPOINT") else {

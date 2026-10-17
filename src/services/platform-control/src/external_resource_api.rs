@@ -48,12 +48,10 @@ pub fn routes() -> Router<ControlApiState> {
             post(test_memory_connection),
         )
         .route(
-            "/api/v1/memory/namespaces",
-            get(list_memory).post(create_memory),
-        )
-        .route(
-            "/api/v1/memory/namespaces/{id}",
-            get(get_memory).patch(update_memory).delete(delete_memory),
+            "/api/v1/memory/connections/{id}",
+            get(get_memory_connection)
+                .patch(update_memory_connection)
+                .delete(delete_memory_connection),
         )
 }
 
@@ -65,9 +63,9 @@ struct ListQuery {
     search: Option<String>,
     status: Option<String>,
 }
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
-struct ConnectionResponse {
+pub(crate) struct ConnectionResponse {
     id: Uuid,
     name: String,
     provider: Option<String>,
@@ -112,31 +110,6 @@ struct CreateKnowledgeRequest {
     connection_id: Uuid,
     name: String,
     external_resource_id: String,
-    owner_department_id: Uuid,
-}
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct MemoryResponse {
-    id: Uuid,
-    connection_id: Uuid,
-    connection_name: String,
-    name: String,
-    external_namespace: String,
-    access_mode: String,
-    owner_department_id: Uuid,
-    status: String,
-    grant_count: u64,
-    version: u64,
-    #[serde(with = "time::serde::rfc3339")]
-    updated_at: OffsetDateTime,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct CreateMemoryRequest {
-    connection_id: Uuid,
-    name: String,
-    external_namespace: String,
-    access_mode: String,
     owner_department_id: Uuid,
 }
 #[derive(Deserialize)]
@@ -284,82 +257,7 @@ async fn delete_knowledge(
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     actor.require("knowledge:manage")?;
-    delete_resource(&state, &actor, "rag", "rag_resources", id).await
-}
-
-async fn list_memory(
-    State(state): State<ControlApiState>,
-    actor: Actor,
-    Query(query): Query<ListQuery>,
-) -> ApiResult<Json<PageResponse<MemoryResponse>>> {
-    actor.require("memory:view")?;
-    let (page, page_size, search, status) = list_values(query);
-    let (rows, total) = memory_rows(&state, &actor, &search, &status, page, page_size).await?;
-    Ok(Json(PageResponse {
-        items: rows
-            .into_iter()
-            .map(memory_from_row)
-            .collect::<Result<_, _>>()?,
-        page,
-        page_size,
-        total: total.try_into().unwrap_or_default(),
-    }))
-}
-async fn create_memory(
-    State(state): State<ControlApiState>,
-    actor: Actor,
-    Json(input): Json<CreateMemoryRequest>,
-) -> ApiResult<(StatusCode, Json<MemoryResponse>)> {
-    actor.require("memory:manage")?;
-    require_department_scope(&state, &actor, input.owner_department_id).await?;
-    require_connection(&state, &actor, "memory_connections", input.connection_id).await?;
-    if !matches!(input.access_mode.as_str(), "read" | "read_write") {
-        return Err(ApiError::bad_request(
-            "INVALID_MEMORY_ACCESS",
-            "Memory access mode is invalid",
-        ));
-    }
-    let id = Uuid::now_v7();
-    sqlx::query("INSERT INTO memory_namespaces(id,tenant_id,connection_id,name,external_namespace,access_mode,owner_department_id) VALUES(?,?,?,?,?,?,?)").bind(id).bind(actor.tenant_id).bind(input.connection_id).bind(required_name(&input.name)?).bind(required_external(&input.external_namespace)?).bind(input.access_mode).bind(input.owner_department_id).execute(&state.pool).await.map_err(|error|map_external_error(error,"MEMORY_EXTERNAL_NAMESPACE_EXISTS"))?;
-    Ok((
-        StatusCode::CREATED,
-        Json(load_memory(&state, actor.tenant_id, id).await?),
-    ))
-}
-async fn get_memory(
-    State(state): State<ControlApiState>,
-    actor: Actor,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Json<MemoryResponse>> {
-    actor.require("memory:view")?;
-    require_resource(&state, &actor, "memory_namespaces", id).await?;
-    Ok(Json(load_memory(&state, actor.tenant_id, id).await?))
-}
-async fn update_memory(
-    State(state): State<ControlApiState>,
-    actor: Actor,
-    Path(id): Path<Uuid>,
-    Json(input): Json<UpdateRequest>,
-) -> ApiResult<Json<MemoryResponse>> {
-    actor.require("memory:manage")?;
-    require_resource(&state, &actor, "memory_namespaces", id).await?;
-    validate_status(&input.status)?;
-    let changed=sqlx::query("UPDATE memory_namespaces SET name=?,status=?,version=version+1 WHERE tenant_id=? AND id=? AND version=?").bind(required_name(&input.name)?).bind(input.status).bind(actor.tenant_id).bind(id).bind(input.version).execute(&state.pool).await?;
-    if changed.rows_affected() != 1 {
-        return Err(ApiError::conflict(
-            "MEMORY_VERSION_CONFLICT",
-            "Memory namespace changed",
-        ));
-    }
-    Ok(Json(load_memory(&state, actor.tenant_id, id).await?))
-}
-async fn delete_memory(
-    State(state): State<ControlApiState>,
-    actor: Actor,
-    Path(id): Path<Uuid>,
-) -> ApiResult<StatusCode> {
-    actor.require("memory:manage")?;
-    delete_resource(&state, &actor, "memory", "memory_namespaces", id).await
+    delete_resource(&state, &actor, "rag", "rag_resources", id, None).await
 }
 
 async fn create_connection(
@@ -550,25 +448,6 @@ async fn knowledge_rows(
         Ok((rows, total))
     }
 }
-async fn memory_rows(
-    state: &ControlApiState,
-    actor: &Actor,
-    search: &str,
-    status: &str,
-    page: u32,
-    page_size: u32,
-) -> ApiResult<(Vec<MySqlRow>, i64)> {
-    if actor.roles.iter().any(|role| role == "company_admin") {
-        let rows=sqlx::query("SELECT n.id,n.connection_id,c.name connection_name,n.name,n.external_namespace,n.access_mode,n.owner_department_id,n.status,n.version,n.updated_at,(SELECT COUNT(*) FROM resource_grants g WHERE g.tenant_id=n.tenant_id AND g.resource_type='memory' AND g.resource_id=n.id AND g.subject_type='workflow_service_identity') grant_count FROM memory_namespaces n JOIN memory_connections c ON c.tenant_id=n.tenant_id AND c.id=n.connection_id WHERE n.tenant_id=? AND (?='' OR n.status=?) AND (?='%%' OR n.name LIKE ?) ORDER BY n.updated_at DESC,n.id DESC LIMIT ? OFFSET ?").bind(actor.tenant_id).bind(status).bind(status).bind(search).bind(search).bind(page_size).bind(u64::from((page-1)*page_size)).fetch_all(&state.pool).await?;
-        let total=sqlx::query_scalar("SELECT COUNT(*) FROM memory_namespaces n WHERE n.tenant_id=? AND (?='' OR n.status=?) AND (?='%%' OR n.name LIKE ?)").bind(actor.tenant_id).bind(status).bind(status).bind(search).bind(search).fetch_one(&state.pool).await?;
-        Ok((rows, total))
-    } else {
-        let rows=sqlx::query("SELECT n.id,n.connection_id,c.name connection_name,n.name,n.external_namespace,n.access_mode,n.owner_department_id,n.status,n.version,n.updated_at,(SELECT COUNT(*) FROM resource_grants g WHERE g.tenant_id=n.tenant_id AND g.resource_type='memory' AND g.resource_id=n.id AND g.subject_type='workflow_service_identity') grant_count FROM memory_namespaces n JOIN memory_connections c ON c.tenant_id=n.tenant_id AND c.id=n.connection_id WHERE n.tenant_id=? AND EXISTS(SELECT 1 FROM department_closure dc WHERE dc.tenant_id=n.tenant_id AND dc.ancestor_id=? AND dc.descendant_id=n.owner_department_id) AND (?='' OR n.status=?) AND (?='%%' OR n.name LIKE ?) ORDER BY n.updated_at DESC,n.id DESC LIMIT ? OFFSET ?").bind(actor.tenant_id).bind(actor.department_id).bind(status).bind(status).bind(search).bind(search).bind(page_size).bind(u64::from((page-1)*page_size)).fetch_all(&state.pool).await?;
-        let total=sqlx::query_scalar("SELECT COUNT(*) FROM memory_namespaces n WHERE n.tenant_id=? AND EXISTS(SELECT 1 FROM department_closure dc WHERE dc.tenant_id=n.tenant_id AND dc.ancestor_id=? AND dc.descendant_id=n.owner_department_id) AND (?='' OR n.status=?) AND (?='%%' OR n.name LIKE ?)").bind(actor.tenant_id).bind(actor.department_id).bind(status).bind(status).bind(search).bind(search).fetch_one(&state.pool).await?;
-        Ok((rows, total))
-    }
-}
-
 async fn require_connection(
     state: &ControlApiState,
     actor: &Actor,
@@ -622,14 +501,14 @@ pub(crate) async fn require_resource(
         ("rag_resources", true) => {
             "SELECT EXISTS(SELECT 1 FROM rag_resources WHERE tenant_id=? AND id=?)"
         }
-        ("memory_namespaces", true) => {
-            "SELECT EXISTS(SELECT 1 FROM memory_namespaces WHERE tenant_id=? AND id=?)"
+        ("memory_connections", true) => {
+            "SELECT EXISTS(SELECT 1 FROM memory_connections WHERE tenant_id=? AND id=?)"
         }
         ("rag_resources", false) => {
             "SELECT EXISTS(SELECT 1 FROM rag_resources r JOIN department_closure dc ON dc.tenant_id=r.tenant_id AND dc.ancestor_id=? AND dc.descendant_id=r.owner_department_id WHERE r.tenant_id=? AND r.id=?)"
         }
-        ("memory_namespaces", false) => {
-            "SELECT EXISTS(SELECT 1 FROM memory_namespaces r JOIN department_closure dc ON dc.tenant_id=r.tenant_id AND dc.ancestor_id=? AND dc.descendant_id=r.owner_department_id WHERE r.tenant_id=? AND r.id=?)"
+        ("memory_connections", false) => {
+            "SELECT EXISTS(SELECT 1 FROM memory_connections r JOIN department_closure dc ON dc.tenant_id=r.tenant_id AND dc.ancestor_id=? AND dc.descendant_id=r.owner_department_id WHERE r.tenant_id=? AND r.id=?)"
         }
         _ => return Err(ApiError::internal("unsupported resource table")),
     };
@@ -659,6 +538,7 @@ async fn delete_resource(
     resource_type: &str,
     table: &str,
     id: Uuid,
+    expected_version: Option<u64>,
 ) -> ApiResult<StatusCode> {
     require_resource(state, actor, table, id).await?;
 
@@ -671,8 +551,8 @@ async fn delete_resource(
     .await?;
     let lock_sql = match table {
         "rag_resources" => "SELECT id FROM rag_resources WHERE tenant_id=? AND id=? FOR UPDATE",
-        "memory_namespaces" => {
-            "SELECT id FROM memory_namespaces WHERE tenant_id=? AND id=? FOR UPDATE"
+        "memory_connections" => {
+            "SELECT id FROM memory_connections WHERE tenant_id=? AND id=? FOR UPDATE"
         }
         _ => return Err(ApiError::internal("unsupported resource table")),
     };
@@ -682,8 +562,24 @@ async fn delete_resource(
         .fetch_optional(&mut *tx)
         .await?
         .ok_or_else(|| ApiError::not_found("Resource"))?;
+    if let Some(expected) = expected_version {
+        let current: u64 =
+            sqlx::query_scalar("SELECT version FROM memory_connections WHERE tenant_id=? AND id=?")
+                .bind(actor.tenant_id)
+                .bind(id)
+                .fetch_one(&mut *tx)
+                .await?;
+        if expected != current {
+            return Err(ApiError::conflict(
+                "MEMORY_VERSION_CONFLICT",
+                "Memory connection changed",
+            ));
+        }
+    }
     let references:i64=sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM workflow_draft_resources WHERE tenant_id=? AND resource_type=? AND resource_id=?)+(SELECT COUNT(*) FROM workflow_version_resources WHERE tenant_id=? AND resource_type=? AND resource_id=?)").bind(actor.tenant_id).bind(resource_type).bind(id).bind(actor.tenant_id).bind(resource_type).bind(id).fetch_one(&mut *tx).await?;
-    if references != 0 {
+    let skill_references: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM skill_dependencies WHERE tenant_id=? AND resource_type=? AND resource_id=?")
+        .bind(actor.tenant_id).bind(resource_type).bind(id).fetch_one(&mut *tx).await?;
+    if references != 0 || skill_references != 0 {
         return Err(ApiError::conflict(
             "RESOURCE_REFERENCED",
             "Resource is referenced",
@@ -706,7 +602,7 @@ async fn delete_resource(
     }
     let sql = match table {
         "rag_resources" => "DELETE FROM rag_resources WHERE tenant_id=? AND id=?",
-        "memory_namespaces" => "DELETE FROM memory_namespaces WHERE tenant_id=? AND id=?",
+        "memory_connections" => "DELETE FROM memory_connections WHERE tenant_id=? AND id=?",
         _ => return Err(ApiError::internal("unsupported resource table")),
     };
     sqlx::query(sql)
@@ -777,10 +673,6 @@ async fn load_knowledge(
     let row=sqlx::query("SELECT r.id,r.connection_id,c.name connection_name,r.name,r.external_resource_id,r.owner_department_id,r.sync_status,r.status,r.version,r.updated_at,(SELECT COUNT(*) FROM resource_grants g WHERE g.tenant_id=r.tenant_id AND g.resource_type='rag' AND g.resource_id=r.id AND g.subject_type='workflow_service_identity') grant_count FROM rag_resources r JOIN rag_connections c ON c.tenant_id=r.tenant_id AND c.id=r.connection_id WHERE r.tenant_id=? AND r.id=?").bind(tenant).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Knowledge resource"))?;
     Ok(knowledge_from_row(row)?)
 }
-async fn load_memory(state: &ControlApiState, tenant: Uuid, id: Uuid) -> ApiResult<MemoryResponse> {
-    let row=sqlx::query("SELECT n.id,n.connection_id,c.name connection_name,n.name,n.external_namespace,n.access_mode,n.owner_department_id,n.status,n.version,n.updated_at,(SELECT COUNT(*) FROM resource_grants g WHERE g.tenant_id=n.tenant_id AND g.resource_type='memory' AND g.resource_id=n.id AND g.subject_type='workflow_service_identity') grant_count FROM memory_namespaces n JOIN memory_connections c ON c.tenant_id=n.tenant_id AND c.id=n.connection_id WHERE n.tenant_id=? AND n.id=?").bind(tenant).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Memory namespace"))?;
-    Ok(memory_from_row(row)?)
-}
 fn connection_from_row(row: MySqlRow) -> Result<ConnectionResponse, sqlx::Error> {
     Ok(ConnectionResponse {
         id: row.try_get("id")?,
@@ -804,21 +696,6 @@ fn knowledge_from_row(row: MySqlRow) -> Result<KnowledgeResponse, sqlx::Error> {
         external_resource_id: row.try_get("external_resource_id")?,
         owner_department_id: row.try_get("owner_department_id")?,
         sync_status: row.try_get("sync_status")?,
-        status: row.try_get("status")?,
-        grant_count: row.try_get::<i64, _>("grant_count")? as u64,
-        version: row.try_get("version")?,
-        updated_at: row.try_get("updated_at")?,
-    })
-}
-fn memory_from_row(row: MySqlRow) -> Result<MemoryResponse, sqlx::Error> {
-    Ok(MemoryResponse {
-        id: row.try_get("id")?,
-        connection_id: row.try_get("connection_id")?,
-        connection_name: row.try_get("connection_name")?,
-        name: row.try_get("name")?,
-        external_namespace: row.try_get("external_namespace")?,
-        access_mode: row.try_get("access_mode")?,
-        owner_department_id: row.try_get("owner_department_id")?,
         status: row.try_get("status")?,
         grant_count: row.try_get::<i64, _>("grant_count")? as u64,
         version: row.try_get("version")?,
@@ -861,7 +738,6 @@ fn map_external_error(error: sqlx::Error, code: &'static str) -> ApiError {
         sqlx::Error::Database(database) if database.is_unique_violation() => {
             let field = match code {
                 "KNOWLEDGE_EXTERNAL_RESOURCE_ID_EXISTS" => "externalResourceId",
-                "MEMORY_EXTERNAL_NAMESPACE_EXISTS" => "externalNamespace",
                 _ => "name",
             };
             ApiError::conflict(code, "External resource reference already exists").with_field_error(
@@ -872,6 +748,92 @@ fn map_external_error(error: sqlx::Error, code: &'static str) -> ApiError {
         }
         _ => ApiError::from(error),
     }
+}
+
+async fn get_memory_connection(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<ConnectionResponse>> {
+    actor.require("memory:view")?;
+    require_connection(&state, &actor, "memory_connections", id).await?;
+    Ok(Json(
+        load_connection(&state, actor.tenant_id, "memory_connections", id).await?,
+    ))
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct UpdateMemoryConnectionRequest {
+    name: String,
+    endpoint: String,
+    health_path: String,
+    credential_id: Option<Uuid>,
+    owner_department_id: Uuid,
+    status: String,
+    version: u64,
+}
+
+async fn update_memory_connection(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Path(id): Path<Uuid>,
+    Json(input): Json<UpdateMemoryConnectionRequest>,
+) -> ApiResult<Json<ConnectionResponse>> {
+    actor.require("memory:manage")?;
+    require_connection(&state, &actor, "memory_connections", id).await?;
+    require_department_scope(&state, &actor, input.owner_department_id).await?;
+    require_credential(&state, actor.tenant_id, input.credential_id).await?;
+    validate_status(&input.status)?;
+    let endpoint = Url::parse(&input.endpoint)
+        .map_err(|_| ApiError::bad_request("INVALID_ENDPOINT", "Connection endpoint is invalid"))?;
+    if !matches!(endpoint.scheme(), "http" | "https") {
+        return Err(ApiError::bad_request(
+            "INVALID_ENDPOINT",
+            "Connection endpoint must use HTTP or HTTPS",
+        ));
+    }
+    if !input.health_path.starts_with('/') || input.health_path.len() > 512 {
+        return Err(ApiError::bad_request(
+            "INVALID_HEALTH_PATH",
+            "Health path must begin with /",
+        ));
+    }
+    let changed = sqlx::query("UPDATE memory_connections SET name=?,endpoint=?,health_path=?,credential_id=?,owner_department_id=?,status=?,version=version+1 WHERE tenant_id=? AND id=? AND version=?")
+        .bind(required_name(&input.name)?).bind(input.endpoint).bind(input.health_path).bind(input.credential_id).bind(input.owner_department_id).bind(input.status).bind(actor.tenant_id).bind(id).bind(input.version).execute(&state.pool).await?;
+    if changed.rows_affected() != 1 {
+        return Err(ApiError::conflict(
+            "MEMORY_VERSION_CONFLICT",
+            "Memory connection changed",
+        ));
+    }
+    Ok(Json(
+        load_connection(&state, actor.tenant_id, "memory_connections", id).await?,
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeleteMemoryConnectionQuery {
+    expected_version: u64,
+}
+
+async fn delete_memory_connection(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Path(id): Path<Uuid>,
+    Query(query): Query<DeleteMemoryConnectionQuery>,
+) -> ApiResult<StatusCode> {
+    actor.require("memory:delete")?;
+    delete_resource(
+        &state,
+        &actor,
+        "memory",
+        "memory_connections",
+        id,
+        Some(query.expected_version),
+    )
+    .await
 }
 
 #[cfg(test)]

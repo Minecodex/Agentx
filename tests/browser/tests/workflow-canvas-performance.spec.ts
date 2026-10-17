@@ -1,4 +1,4 @@
-import { fixtureDraftId } from '../draft-fixtures'
+import { fixtureVersionId, fixtureDraftId } from '../draft-fixtures'
 import { expect, type APIResponse, type Page, test } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { readFile } from 'node:fs/promises'
@@ -26,7 +26,7 @@ async function login(page: Page) {
 }
 
 async function request<T>(page: Page, token: string, path: string, method = 'GET', body?: unknown, timeout = 30_000): Promise<T> {
-  const response = await page.request.fetch(`/api/v1${path}`, { method, data: body, timeout, headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.fetch(`/api/v1${path}`, { method, data: body, timeout, headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   await expectResponse(response, path)
   return response.json() as Promise<T>
 }
@@ -90,7 +90,7 @@ async function benchmark(page: Page, token: string, nodeCount: number, nodeType:
   const contractReady = nodeType === 'acme.json_mapper'
     ? page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/workflows/${workflow.id}/drafts/${draftId}/resolve-plugins`))
     : undefined
-  await page.goto(`/workflows/${workflow.id}/drafts/${draftId}/editor`)
+  await page.goto(`/workflows/${workflow.id}/versions/${await fixtureVersionId(page, workflow.id)}/editor`)
   const canvas = page.getByTestId('workflow-canvas')
   await expect(canvas).toBeVisible()
   const firstNode = page.getByTestId('studio-node-perf-0')
@@ -214,9 +214,9 @@ test('Workflow canvas meets the 100, 300, 500, and 1000 plugin-node interaction 
   let catalog = await request<CatalogPage>(page, token, '/node-definitions?pageSize=100')
   if (!catalog.items.some((item) => item.nodeType === 'acme.json_mapper')) {
     const bytes = await readFile(resolve(import.meta.dirname, '../../../src/plugins/templates/canvas-plugin/dist/acme-json-mapper.agentx-plugin'))
-    const imported = await page.request.post('/api/v1/canvas-plugin-imports', { headers: { Authorization: `Bearer ${token}` }, multipart: { file: { name: 'performance.agentx-plugin', mimeType: 'application/zip', buffer: bytes } } })
+    const imported = await page.request.post('/api/v1/canvas-plugin-imports', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, multipart: { file: { name: 'performance.agentx-plugin', mimeType: 'application/zip', buffer: bytes } } })
     const preview = await imported.json() as { id: string; bundleDigest: string }
-    const installed = await page.request.post(`/api/v1/canvas-plugin-imports/${preview.id}/install`, { headers: { Authorization: `Bearer ${token}` }, data: { bundleDigest: preview.bundleDigest, enable: true, setDefault: true } })
+    const installed = await page.request.post(`/api/v1/canvas-plugin-imports/${preview.id}/install`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { bundleDigest: preview.bundleDigest, enable: true, setDefault: true } })
     expect(installed.ok(), await installed.text()).toBeTruthy()
     catalog = await request<CatalogPage>(page, token, '/node-definitions?pageSize=100')
   }

@@ -60,7 +60,7 @@ Bootstrap Admin 是 Company Admin，可以管理全部部门、用户和角色�
 - 哪些 Workflow 可以调用某个自动发现的 MCP Tool
 - 哪些 Workflow 可以加载某 Skill
 - 哪些 Workflow 可以查询某 RAG Collection
-- 哪些 Workflow 可以读写某 Memory Namespace
+- 哪些 Workflow 可以使用某记忆连接（同时读取和写入）
 - 哪些 Workflow 可以使用某 Credential
 
 授权控制面使用统一“资源授权”列表聚合 Credential、Model、MCP Server、MCP Tool、Skill、RAG 和 Memory。资源详情页只负责配置、版本和连接诊断，不再各自维护授权面板。统一列表可按资源类型筛选，并分别向 Department 或 Workflow Service Identity 授予 `view/use/read/write/manage`。
@@ -133,7 +133,7 @@ Workflow Draft 可以选择 Skill Definition 和目标版本；发布时必须�
 
 Agent 加载 Skill 指令时同时向模型提供被冻结的 `skillVersionId`，用于 `skill_resource` 读取附件。版本标识来自已签名的资源绑定，不能依靠模型猜测；附件读取仍逐项校验版本、Hash、授权和依赖闭包。
 
-发布 Skill Version 时，其所属部门必须能使用完整依赖包，其他部门或工作流的 Grant 不构成发布权限。逐项按依赖声明的操作校验；Memory 的 `read` Grant 不能授权 `write`，`manage` 可以覆盖所需操作。
+发布 Skill Version 时，其所属部门必须能使用完整依赖包，其他部门或工作流的 Grant 不构成发布权限。逐项按依赖声明的操作校验；Memory 统一使用 `use` Grant，同时允许召回和写入。
 
 仅包含 Prompt 和静态资产的 Skill 可由 Agent Runtime 直接加载；包含 Python、JavaScript、Shell 或其他不可信代码的能力必须通过 OpenSandbox 执行，并沿用平台的超时、资源配额、默认拒绝网络和短期凭证注入策略。
 
@@ -183,14 +183,9 @@ RAG 节点的 Trace 包含查询、召回结果引用、Score、耗时和错误�
 - update
 - delete
 
-Memory Scope：
+记忆连接是唯一授权资源，固定支持读写，不提供独立资源名称、命名空间或访问模式。个人范围由租户、环境、应用、工作流、稳定节点和来源用户自动生成；版本、部署、会话及 API Key 不参与身份。无用户身份时不使用共享记忆。
 
-- User
-- Session
-- Application
-- Workflow
-
-Workflow 需要明确自己可访问的 Namespace 及读写权限。
+应用部署的高级配置 `apiUserIdInput` 可选择顶层字符串输入，API 直接使用其值作为调用方声明的用户，不做用户认证、账号或归属核验。平台登录与渠道发送者自动识别。会话初始输入固定身份与业务参数，后续消息继承。身份仅用于记忆、归属和查询，不替代工作流运行授权。完整规则见 [应用用户与记忆连接](plan8/10-application-user-memory.md)。
 
 ## 8. Application
 

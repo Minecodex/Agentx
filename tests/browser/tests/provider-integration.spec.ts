@@ -1,4 +1,4 @@
-import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
+import { fixtureVersionId, fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { fillMonaco, sandboxImageDigest, showEdgeToolbar } from './workflow-studio-editor-helpers'
 
@@ -52,13 +52,13 @@ async function login(page: Page) {
 }
 
 async function api<T>(page: Page, token: string, path: string): Promise<T> {
-  const response = await page.request.get(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.get(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   if (!response.ok()) throw new Error(`${path}: ${response.status()} ${await response.text()}`)
   return response.json() as Promise<T>
 }
 
 async function tokenAlive(page: Page, token: string) {
-  const response = await page.request.get('/api/v1/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.get('/api/v1/auth/me', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   return response.ok()
 }
 
@@ -72,13 +72,13 @@ async function freshApiToken(page: Page, token: string) {
 async function ensureFreshEditorSession(page: Page, token: string, workflowId: string) {
   if (await tokenAlive(page, token)) return token
   const fresh = await login(page)
-  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+  await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible({ timeout: 60_000 })
   return fresh
 }
 
 async function mutate<T>(page: Page, token: string, path: string, method: 'POST' | 'PUT' | 'PATCH', body: unknown): Promise<T> {
-  const response = await page.request.fetch(`/api/v1${path}`, { method, data: body, headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.fetch(`/api/v1${path}`, { method, data: body, headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   if (!response.ok()) throw new Error(`${path}: ${response.status()} ${await response.text()}`)
   return response.json() as Promise<T>
 }
@@ -177,7 +177,7 @@ async function createKnowledgeViaUi(page: Page, connectionName: string, endpoint
   await submit(form, '保存')
 }
 
-async function createMemoryViaUi(page: Page, connectionName: string, endpoint: string, healthPath: string, resourceName: string, namespace: string) {
+async function createMemoryViaUi(page: Page, connectionName: string, endpoint: string, healthPath: string) {
   await page.getByRole('link', { name: '记忆' }).click()
   await page.getByRole('button', { name: '接入记忆服务' }).click()
   const form = await dialog(page, '接入记忆服务')
@@ -185,8 +185,9 @@ async function createMemoryViaUi(page: Page, connectionName: string, endpoint: s
   await (await field(form, 'Endpoint')).fill(endpoint)
   await (await field(form, '健康检查路径')).fill(healthPath)
   await select(form, '所属部门', company)
-  await (await field(form, '资源名称')).fill(resourceName)
-  await (await field(form, '记忆命名空间')).fill(namespace)
+  await expect(form.getByText('资源名称', { exact: true })).toHaveCount(0)
+  await expect(form.getByText('记忆命名空间', { exact: true })).toHaveCount(0)
+  await expect(form.getByText('访问模式', { exact: true })).toHaveCount(0)
   await submit(form, '保存')
 }
 
@@ -450,7 +451,7 @@ async function waitExecution(page: Page, token: string, executionId: string, sta
 type TraceSpan = { spanId: string, spanKind: string, spanName: string, status: string, resourceType?: string, errorCode?: string | null }
 
 async function fetchTrace(page: Page, token: string, executionId: string) {
-  const response = await page.request.get(`/api/v1/executions/${executionId}/trace?limit=200`, { headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.get(`/api/v1/executions/${executionId}/trace?limit=200`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   if (!response.ok()) throw new Error(`trace: ${response.status()} ${await response.text()}`)
   return (await response.json()) as { complete: boolean, spans: TraceSpan[] }
 }
@@ -466,7 +467,7 @@ async function expectRuntimeTrace(page: Page, token: string, executionId: string
 }
 
 async function buildAgentWorkflow(page: Page, token: string, workflowId: string, options: { knowledgeName: string, memoryName: string | null, sandboxName: string | null }) {
-  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+  await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   await setStartQuestionInput(page)
   await addFromCreator(page, 'palette-action-agent')
@@ -534,7 +535,7 @@ test.describe.serial('Provider integration', () => {
     const memoryName = `Provider Mem0 ${stamp}`
     const sandboxName = `Provider Sandbox ${stamp}`
     await createKnowledgeViaUi(page, `Provider LightRAG Connection ${stamp}`, lightRagBaseUrl, '/health', knowledgeName, `pv_integration_${stamp}`, providerRagKeyName)
-    await createMemoryViaUi(page, `Provider Mem0 Connection ${stamp}`, mem0BaseUrl, '/openapi.json', memoryName, `pv_integration_${stamp}`)
+    await createMemoryViaUi(page, memoryName, mem0BaseUrl, '/openapi.json')
     await verifyConnectionTest(page, '知识库', knowledgeName)
     await verifyConnectionTest(page, '记忆', memoryName)
     await ensureSandboxProfile(page, token, department.id, sandboxName)
@@ -642,7 +643,7 @@ test.describe.serial('Provider integration', () => {
     token = await freshApiToken(page, token)
     await waitExecution(page, token, executionId, ['succeeded'])
     const ragSpan = await expectRuntimeTrace(page, token, executionId, 'rag', 'succeeded')
-    const detail = await page.request.get(`/api/v1/executions/${executionId}/trace/spans/${ragSpan.spanId}`, { headers: { Authorization: `Bearer ${token}` } })
+    const detail = await page.request.get(`/api/v1/executions/${executionId}/trace/spans/${ragSpan.spanId}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
     if (!detail.ok()) throw new Error(`ragflow span detail: ${detail.status()}`)
     const span = (await detail.json()) as { contents?: Array<{ kind: string, preview: unknown }> }
     const request = span.contents?.find((content) => content.kind === 'runtime_request')?.preview as Record<string, unknown> | undefined
@@ -674,7 +675,7 @@ test.describe.serial('Provider integration', () => {
     // RAGflow wraps unknown LightRAG routes in HTTP 200 + code 100, so the
     // span may look successful while the knowledge result is always empty.
     const ragSpan = await expectRuntimeTrace(page, token, executionId, 'rag', 'succeeded')
-    const detail = await page.request.get(`/api/v1/executions/${executionId}/trace/spans/${ragSpan.spanId}`, { headers: { Authorization: `Bearer ${token}` } })
+    const detail = await page.request.get(`/api/v1/executions/${executionId}/trace/spans/${ragSpan.spanId}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
     if (!detail.ok()) throw new Error(`ragflow span detail: ${detail.status()}`)
     const span = (await detail.json()) as { contents?: Array<{ kind: string, preview: unknown }> }
     const response = span.contents?.find((content) => content.kind === 'runtime_response')?.preview as Record<string, unknown> | undefined

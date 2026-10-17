@@ -1,4 +1,8 @@
-# plan8：多草稿画布与 AI 工作流编辑
+# plan8：版本画布与 AI 工作流编辑
+
+当前版本管理采用 [版本列表与画布管理](09-version-canvases.md)：版本成为唯一画布入口，草稿由版本拥有。当前产品规则见下文；原多独立草稿阶段的任务和验收记录保留历史事实。
+
+2026-10-16 版本列表与画布管理重构已完成：版本定稿/草稿派生、事务发布、只读详情、还原、归档和成员弹框均已实现。最终候选通过 482 项前端测试及 5 项 Kubernetes 系统验收（22 个浏览器场景），Rust/契约检查与清理记录见 [重构验收](09-version-canvases.md#验证记录)。
 
 状态：done（本次非压测范围）。依据 2026-10-14 的用户讨论及 grilling 决策，43 个任务和 26+3 功能场景已完成并验证。完整非压测回归及同一候选的失败项复测已关闭；分轮结果见 [实施与测试报告](implementation-report.md)。
 
@@ -12,15 +16,15 @@
 
 ## 1. 目标与已确认决策
 
-用户先创建 Workflow、打开已有草稿，或从指定不可变版本创建独立草稿，再通过画布 AI 图标输入需求。AI 使用现有 agentx-agent-core 修改当前画布，沿用手动编辑的命令、历史、保存和权限链路。
+用户创建 Workflow 后进入版本列表，点击版本的“编辑”或“新建画布”进入编辑器，再通过 AI 图标输入需求。AI 使用现有 agentx-agent-core 修改当前工作文档，沿用手动编辑的命令、历史、保存和权限链路。
 
 | 决策 | 已确认的结果 |
 |---|---|
 | Agent 内核 | 设计态 Builder 与业务 Agent 复用同一个 Rust Core，分别注入 Host Adapter |
 | 操作入口 | 用户先打开画布；AI 始终绑定当前 Workflow/Draft，不创建或切换业务对象 |
-| 历史版本 | 从任意有权读取的 Version 创建独立 Draft，记录 baseVersionId；一个 Workflow 支持多个草稿画布 |
+| 历史版本 | 每个版本最多拥有一个共享工作草稿；已发布内容冻结，草稿发布生成新版本并记录固定 baseVersionId |
 | 编辑方式 | AI 变更进入与手动编辑相同的 Editor Store、Undo/Redo、Recovery、自动保存与保存按钮链路 |
-| 版本与部署 | 用户通过 UI 创建不可变版本、发布到环境；AI 无创建版本或部署能力 |
+| 版本与部署 | 未发布版本随保存更新；用户在列表发布时定稿或派生并部署，AI 无创建版本或部署能力 |
 | AI 验证范围 | 只进行静态校验；所有 Workflow、节点、代码及集成的实际运行和测试，均由用户手动在 UI 触发 |
 | 结果辅助修复 | 用户可把手动执行的结果交给 AI 只读检查；AI 修复后仍只静态校验，不自动重跑 |
 
@@ -30,7 +34,8 @@
 
 | 文档 | 内容 |
 |---|---|
-| [01-product-and-versioning.md](01-product-and-versioning.md) | 用户流程、多草稿、版本来源、界面与产品边界 |
+| [01-product-and-versioning.md](01-product-and-versioning.md) | 用户流程、版本工作文档、版本来源、界面与产品边界 |
+| [09-version-canvases.md](09-version-canvases.md) | 版本列表、定稿与发布、只读详情、还原和本次重构验收 |
 | [02-architecture-and-contracts.md](02-architecture-and-contracts.md) | Core/Host、数据所有权、模型设计态 Effect、恢复与授权 |
 | [03-tools-and-context.md](03-tools-and-context.md) | 七个业务工具、静态闭环、上下文投影与限制 |
 | [04-editor-data-and-api.md](04-editor-data-and-api.md) | 编辑命令/ACK、保存竞态、数据与 API、精确修订调试 |

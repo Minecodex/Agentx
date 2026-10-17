@@ -6,13 +6,14 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '../../../shared/lib/cn'
 import type { CanvasNode } from '../model/types'
 import { PortHandle } from '../nodes/manifest-node'
-import { useEditorStoreApi } from '../store/editor-store'
+import { useEditorStore, useEditorStoreApi } from '../store/editor-store'
 import { useCanvasRenderStore } from '../store/canvas-render-store'
 import { LOOP_CONTAINER_DEFAULT_HEIGHT, LOOP_CONTAINER_DEFAULT_WIDTH, LOOP_CONTAINER_MIN_HEIGHT, LOOP_CONTAINER_MIN_WIDTH } from '../utils/layout'
 
 const NOTE_COLORS = ['yellow', 'blue', 'green', 'rose'] as const
 
 export function AnnotationNode({ id, data, selected }: NodeProps<CanvasNode>) {
+  const readOnly = useEditorStore((state) => state.readOnly)
   const { t } = useTranslation()
   const note = data.editorKind === 'annotation' ? data : undefined
   const [editing, setEditing] = useState(false)
@@ -24,19 +25,20 @@ export function AnnotationNode({ id, data, selected }: NodeProps<CanvasNode>) {
 
   const commitText = () => {
     setEditing(false)
-    if (text !== note.text) note.onChange({ text })
+    if (!readOnly && text !== note.text) note.onChange({ text })
   }
-  return <article className={cn('studio-note relative h-full w-full overflow-hidden border shadow-sm', `studio-note-${note.color ?? 'yellow'}`, selected && 'ring-2 ring-primary/40')} data-testid={`studio-note-${note.annotationId}`} onDoubleClick={(event) => { event.stopPropagation(); setEditing(true) }}>
-    <NodeResizer color="var(--ui-primary)" isVisible={selected} minHeight={80} minWidth={150} onResize={(_, frame) => note.onResize(frame)} onResizeEnd={() => { note.onResizeEnd(); updateNodeInternals(id) }} onResizeStart={note.onResizeStart} />
+  return <article className={cn('studio-note relative h-full w-full overflow-hidden border shadow-sm', `studio-note-${note.color ?? 'yellow'}`, selected && 'ring-2 ring-primary/40')} data-testid={`studio-note-${note.annotationId}`} onDoubleClick={(event) => { event.stopPropagation(); if (!readOnly) setEditing(true) }}>
+    <NodeResizer color="var(--ui-primary)" isVisible={selected && !readOnly} minHeight={80} minWidth={150} onResize={(_, frame) => note.onResize(frame)} onResizeEnd={() => { note.onResizeEnd(); updateNodeInternals(id) }} onResizeStart={note.onResizeStart} />
     <header className="drag-handle flex h-8 items-center gap-1 border-b border-black/10 px-2">
       <span className="flex-1 text-[9px] font-semibold uppercase text-black/55">{t('studio.note.title')}</span>
-      <div className="nodrag flex items-center gap-1">{NOTE_COLORS.map((color) => <button aria-label={t('studio.note.color', { color })} className={cn('size-3 rounded-full border border-black/15', `studio-note-swatch-${color}`, note.color === color && 'ring-1 ring-black/40')} key={color} onClick={() => note.onChange({ color })} type="button" />)}<button aria-label={t('studio.note.delete')} className="ml-1 grid size-5 place-items-center rounded text-black/50 hover:bg-black/10 hover:text-black" onClick={note.onRemove} type="button"><Trash2 className="size-3" /></button></div>
+      {!readOnly && <div className="nodrag flex items-center gap-1">{NOTE_COLORS.map((color) => <button aria-label={t('studio.note.color', { color })} className={cn('size-3 rounded-full border border-black/15', `studio-note-swatch-${color}`, note.color === color && 'ring-1 ring-black/40')} key={color} onClick={() => note.onChange({ color })} type="button" />)}<button aria-label={t('studio.note.delete')} className="ml-1 grid size-5 place-items-center rounded text-black/50 hover:bg-black/10 hover:text-black" onClick={note.onRemove} type="button"><Trash2 className="size-3" /></button></div>}
     </header>
-    {editing ? <textarea autoFocus className="nodrag nowheel h-[calc(100%-2rem)] w-full resize-none bg-transparent p-3 text-xs leading-5 text-black/75 outline-none" onBlur={commitText} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setText(note.text); setEditing(false) }; if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') commitText() }} value={text} /> : <div className="h-[calc(100%-2rem)] whitespace-pre-wrap break-words p-3 text-xs leading-5 text-black/75">{note.text}</div>}
+    {editing && !readOnly ? <textarea autoFocus className="nodrag nowheel h-[calc(100%-2rem)] w-full resize-none bg-transparent p-3 text-xs leading-5 text-black/75 outline-none" onBlur={commitText} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setText(note.text); setEditing(false) }; if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') commitText() }} value={text} /> : <div className="h-[calc(100%-2rem)] whitespace-pre-wrap break-words p-3 text-xs leading-5 text-black/75">{note.text}</div>}
   </article>
 }
 
 export function GroupNode({ data }: NodeProps<CanvasNode>) {
+  const readOnly = useEditorStore((state) => state.readOnly)
   const { t } = useTranslation()
   const group = data.editorKind === 'group' ? data : undefined
   if (!group) return null
@@ -44,19 +46,20 @@ export function GroupNode({ data }: NodeProps<CanvasNode>) {
     <Handle className="!size-3 !border-2 !border-background !bg-muted-foreground" id="group-in" isConnectable={false} position={Position.Left} type="target" />
     <button aria-label={t('studio.group.expand')} className="nodrag grid size-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary hover:bg-primary/15" onClick={group.onToggle} type="button"><ChevronRight className="size-4" /></button>
     <div className="min-w-0 flex-1"><strong className="block truncate text-xs">{group.label}</strong><span className="text-[9px] text-muted-foreground">{t('studio.group.members', { count: group.memberCount })}</span></div>
-    <button aria-label={t('studio.group.delete')} className="nodrag grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-danger" onClick={group.onRemove} type="button"><Trash2 className="size-3.5" /></button>
+    {!readOnly && <button aria-label={t('studio.group.delete')} className="nodrag grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-danger" onClick={group.onRemove} type="button"><Trash2 className="size-3.5" /></button>}
     <Handle className="!size-3 !border-2 !border-background !bg-primary" id="group-out" isConnectable={false} position={Position.Right} type="source" />
   </div>
   return <section className="studio-group-expanded relative h-full w-full border border-dashed border-primary/45 bg-primary/[0.025]" data-testid={`studio-group-${group.groupId}`}>
     <header className="drag-handle pointer-events-auto absolute left-0 top-0 flex h-8 max-w-full items-center gap-2 rounded-br-md border-b border-r border-primary/25 bg-surface/95 px-2 shadow-sm">
       <button aria-label={t('studio.group.collapse')} className="nodrag grid size-5 place-items-center rounded text-primary hover:bg-primary/10" onClick={group.onToggle} type="button"><ChevronDown className="size-3.5" /></button>
       <strong className="max-w-48 truncate text-[10px]">{group.label}</strong><span className="text-[9px] text-muted-foreground">{group.memberCount}</span>
-      <button aria-label={t('studio.group.delete')} className="nodrag grid size-5 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-danger" onClick={group.onRemove} type="button"><Trash2 className="size-3" /></button>
+      {!readOnly && <button aria-label={t('studio.group.delete')} className="nodrag grid size-5 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-danger" onClick={group.onRemove} type="button"><Trash2 className="size-3" /></button>}
     </header>
   </section>
 }
 
 export function LoopContainerNode({ data, selected }: NodeProps<CanvasNode>) {
+  const readOnly = useEditorStore((state) => state.readOnly)
   const { t } = useTranslation()
   const onQuickAdd = useCanvasRenderStore((state) => state.onQuickAdd)
   const onSourceHover = useCanvasRenderStore((state) => state.onSourceHover)
@@ -68,7 +71,7 @@ export function LoopContainerNode({ data, selected }: NodeProps<CanvasNode>) {
     <svg aria-hidden className="pointer-events-none absolute inset-0 z-[1] size-full overflow-visible" data-testid={`studio-loop-boundary-links-${container.loopId}`}>
       {container.boundaryLinks.map((link) => <path className={link.kind === 'error' ? 'studio-loop-boundary-edge-error' : 'studio-loop-boundary-edge-main'} d={`M ${link.source.x} ${link.source.y} C ${link.source.x + 40} ${link.source.y}, ${link.target.x - 40} ${link.target.y}, ${link.target.x} ${link.target.y}`} data-loop-boundary-edge={link.kind} fill="none" key={link.id} vectorEffect="non-scaling-stroke" />)}
     </svg>
-    {selected && <LoopResizeHandles loopId={container.loopId} />}
+    {selected && !readOnly && <LoopResizeHandles loopId={container.loopId} />}
     <PortHandle id="main" kind="main" label={t('studio.boundary.input')} placement={{ position: Position.Left, axis: 18 }} type="target" />
     <PortHandle addLabel={t('studio.ports.addAfter', { label: t('studio.boundary.output') })} id="main" kind="main" label={t('studio.boundary.output')} onHover={onSourceHover ? (active) => onSourceHover(container.loopId, 'main', active) : undefined} onQuickAdd={onQuickAdd && !occupied.has('main') ? () => onQuickAdd(container.loopId, 'main') : undefined} placement={{ position: Position.Right, axis: 18 }} type="source" />
     <PortHandle addLabel={t('studio.ports.addAfter', { label: t('studio.boundary.error') })} id="error" kind="error" label={t('studio.boundary.error')} onHover={onSourceHover ? (active) => onSourceHover(container.loopId, 'error', active) : undefined} onQuickAdd={onQuickAdd && !occupied.has('error') ? () => onQuickAdd(container.loopId, 'error') : undefined} placement={{ position: Position.Right, axis: 32 }} type="source" />

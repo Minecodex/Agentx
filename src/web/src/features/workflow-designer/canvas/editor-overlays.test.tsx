@@ -8,6 +8,21 @@ const useEditorStore = createEditorStore()
 import { AnnotationNode, GroupNode, IterationChipNode, IterationEndNode, LoopContainerNode } from './editor-overlays'
 
 describe('editor overlay nodes', () => {
+  it('keeps readonly notes and loops immutable while allowing group inspection', () => {
+    const onChange = vi.fn()
+    const onToggle = vi.fn()
+    const note = { id: 'annotation:readonly', selected: true, data: { editorKind: 'annotation', annotationId: 'readonly', text: 'Saved note', onChange } } as unknown as NodeProps<CanvasNode>
+    const group = { id: 'group:readonly', data: { editorKind: 'group', groupId: 'readonly', label: 'Saved group', collapsed: true, memberCount: 1, onToggle } } as unknown as NodeProps<CanvasNode>
+    const loop = { id: 'loop-readonly', selected: true, data: { editorKind: 'loop-container', loopId: 'loop-readonly', label: 'Saved loop', parallelism: 1, childCount: 0, boundaryLinks: [] } } as unknown as NodeProps<CanvasNode>
+    render(<EditorStoreProvider readOnly><ReactFlowProvider><AnnotationNode {...note} /><GroupNode {...group} /><LoopContainerNode {...loop} /></ReactFlowProvider></EditorStoreProvider>)
+    fireEvent.doubleClick(screen.getByTestId('studio-note-readonly'))
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button')).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: /Expand group|展开分组/ }))
+    expect(onToggle).toHaveBeenCalledOnce()
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
   it('edits and colors a Sticky Note without entering the Workflow Definition', () => {
     const onChange = vi.fn()
     const props = { id: 'annotation:note', selected: true, data: { editorKind: 'annotation', annotationId: 'note', text: 'Initial note', color: 'yellow', onChange, onRemove: vi.fn(), onResizeStart: vi.fn(), onResize: vi.fn(), onResizeEnd: vi.fn() } } as unknown as NodeProps<CanvasNode>

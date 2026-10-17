@@ -311,7 +311,10 @@ async fn composite_child_uses_immutable_runtime_snapshot_and_merges_on_success(f
         workflow: agentx_runtime_contracts::ExecutionWorkflowSnapshotV1 {
             id: Uuid::now_v7(),
             name: "Composite Child".into(),
-            source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version { version_id: child_version_id, version_number: 3 },
+            source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version {
+                version_id: child_version_id,
+                version_number: 3,
+            },
             version_id: Some(child_version_id),
             version_number: Some(3),
             owner_department: None,
@@ -342,7 +345,11 @@ async fn composite_child_uses_immutable_runtime_snapshot_and_merges_on_success(f
     )
     .unwrap();
     source.spec = agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Debug {
-        source: agentx_runtime_contracts::WorkflowDesignSourceV1::DraftRevision { draft_id: uuid::Uuid::now_v7(), revision_id: uuid::Uuid::now_v7(), revision: 1 },
+        source: agentx_runtime_contracts::WorkflowDesignSourceV1::DraftRevision {
+            draft_id: uuid::Uuid::now_v7(),
+            revision_id: uuid::Uuid::now_v7(),
+            revision: 1,
+        },
         debug_plan: agentx_runtime_contracts::RuntimeDebugPlanV1::whole(&compiled),
     };
     source.objects = vec![definition_object, ir_object];
@@ -406,7 +413,7 @@ async fn composite_child_uses_immutable_runtime_snapshot_and_merges_on_success(f
     .fetch_one(&fixture.state.pool)
     .await
     .unwrap();
-    let child_origin = sqlx::query("SELECT e.trigger_type,e.initiator_user_id,e.initiator_user_name,e.initiator_department_id,e.initiator_department_name,e.trigger_source_id,e.trigger_name,c.parent_node_execution_id,s.execution_context_json FROM workflow_executions e JOIN execution_children c ON c.tenant_id=e.tenant_id AND c.child_execution_id=e.id JOIN execution_snapshots s ON s.tenant_id=e.tenant_id AND s.execution_id=e.id WHERE e.tenant_id=? AND e.id=?")
+    let child_origin = sqlx::query("SELECT e.workflow_id,e.trigger_type,e.initiator_user_id,e.initiator_user_name,e.initiator_department_id,e.initiator_department_name,e.trigger_source_id,e.trigger_name,c.parent_node_execution_id,s.execution_context_json FROM workflow_executions e JOIN execution_children c ON c.tenant_id=e.tenant_id AND c.child_execution_id=e.id JOIN execution_snapshots s ON s.tenant_id=e.tenant_id AND s.execution_id=e.id WHERE e.tenant_id=? AND e.id=?")
         .bind(fixture.tenant_id)
         .bind(child_execution_id)
         .fetch_one(&fixture.state.pool)
@@ -435,6 +442,23 @@ async fn composite_child_uses_immutable_runtime_snapshot_and_merges_on_success(f
     );
     assert!(!child_origin.get::<String, _>("trigger_name").is_empty());
     let child_context: Value = child_origin.get("execution_context_json");
+    assert_eq!(
+        json!(child_origin.get::<Uuid, _>("workflow_id")),
+        child_context["workflow"]["id"]
+    );
+    let parent_context: Value = sqlx::query_scalar(
+        "SELECT execution_context_json FROM execution_snapshots WHERE execution_id=?",
+    )
+    .bind(parent_execution_id)
+    .fetch_one(&fixture.state.pool)
+    .await
+    .unwrap();
+    assert_eq!(child_context["endUser"], parent_context["endUser"]);
+    assert_eq!(
+        child_context["environmentId"],
+        parent_context["environmentId"]
+    );
+
     assert_eq!(
         child_context.pointer("/workflow/name"),
         Some(&json!("Composite Child"))
@@ -532,7 +556,7 @@ async fn agent_worker_runs_a_bounded_tool_loop_and_persists_usage(fixture: &Fixt
     .unwrap();
     let model_id = Uuid::now_v7();
     let model_configuration = agentx_runtime_contracts::RuntimeResourceConfigurationV1::Model {
-            capabilities: Vec::new(),
+        capabilities: Vec::new(),
         provider: "openai_compatible".into(),
         endpoint: format!("{endpoint}/model"),
         model: "fixture-model".into(),
@@ -570,7 +594,8 @@ async fn agent_worker_runs_a_bounded_tool_loop_and_persists_usage(fixture: &Fixt
                 .unwrap(),
             deadline_at: OffsetDateTime::now_utc() + time::Duration::seconds(30),
         },
-        node_key: "test_node".into(), node_type: "agent".into(),
+        node_key: "test_node".into(),
+        node_type: "agent".into(),
         invocation_id: None,
         node_version: 1,
         run_index: 0,
@@ -597,17 +622,15 @@ async fn agent_worker_runs_a_bounded_tool_loop_and_persists_usage(fixture: &Fixt
                 ..Default::default()
             }],
         )]),
-        resources: vec![
-            agentx_runtime_contracts::RuntimeResourceBindingV1 {
-                resource_kind: agentx_runtime_contracts::RuntimeResourceKindV1::Model,
-                resource_id: model_id,
-                resource_version: "model:1".into(),
-                state_epoch: 1,
-                content_hash: agentx_runtime_contracts::content_hash(&model_configuration).unwrap(),
-                configuration: model_configuration,
-                object_ids: vec![],
-            },
-        ],
+        resources: vec![agentx_runtime_contracts::RuntimeResourceBindingV1 {
+            resource_kind: agentx_runtime_contracts::RuntimeResourceKindV1::Model,
+            resource_id: model_id,
+            resource_version: "model:1".into(),
+            state_epoch: 1,
+            content_hash: agentx_runtime_contracts::content_hash(&model_configuration).unwrap(),
+            configuration: model_configuration,
+            object_ids: vec![],
+        }],
         context: json!({}),
         plugin: None,
         trace_parent_span_entity_id: None,
@@ -708,7 +731,10 @@ async fn agent_worker_runs_a_bounded_tool_loop_and_persists_usage(fixture: &Fixt
         .fetch_one(&fixture.state.pool)
         .await
         .unwrap();
-    assert!(core_trace_events >= 6, "Core events must be projected into Trace");
+    assert!(
+        core_trace_events >= 6,
+        "Core events must be projected into Trace"
+    );
 }
 
 async fn application_session_agent_restores_context_across_executions(fixture: &Fixture) {
@@ -728,7 +754,7 @@ async fn application_session_agent_restores_context_across_executions(fixture: &
     let model_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let model_id = Uuid::now_v7();
     let configuration = agentx_runtime_contracts::RuntimeResourceConfigurationV1::Model {
-            capabilities: Vec::new(),
+        capabilities: Vec::new(),
         provider: "openai_compatible".into(),
         endpoint: "https://provider.example.test/model".into(),
         model: "fixture-model".into(),
@@ -763,10 +789,12 @@ async fn application_session_agent_restores_context_across_executions(fixture: &
                 bundle_id: Uuid::now_v7(),
                 work_package_id: None,
                 state_version: 1,
-                compatibility_hash: agentx_runtime_contracts::content_hash(&json!({"agent":1})).unwrap(),
+                compatibility_hash: agentx_runtime_contracts::content_hash(&json!({"agent":1}))
+                    .unwrap(),
                 deadline_at: OffsetDateTime::now_utc() + time::Duration::seconds(30),
             },
-            node_key: "test_node".into(), node_type: "agent".into(),
+            node_key: "test_node".into(),
+            node_type: "agent".into(),
             invocation_id: None,
             node_version: 1,
             run_index: 0,
@@ -814,8 +842,16 @@ async fn application_session_agent_restores_context_across_executions(fixture: &
         .fetch_all(&fixture.state.pool)
         .await
         .unwrap();
-    assert!(entries.iter().any(|message| message["content"] == "session-prompt-0"));
-    assert!(entries.iter().any(|message| message["content"] == "session-prompt-1"));
+    assert!(
+        entries
+            .iter()
+            .any(|message| message["content"] == "session-prompt-0")
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|message| message["content"] == "session-prompt-1")
+    );
 }
 
 async fn sandbox_manager_is_fenced_and_idempotent(fixture: &Fixture) {
@@ -1044,8 +1080,9 @@ async fn sandbox_manager_is_fenced_and_idempotent(fixture: &Fixture) {
     )
     .await;
     assert_eq!(terminated_process.status(), axum::http::StatusCode::OK);
-    let terminated_process_body =
-        to_bytes(terminated_process.into_body(), 1024 * 1024).await.unwrap();
+    let terminated_process_body = to_bytes(terminated_process.into_body(), 1024 * 1024)
+        .await
+        .unwrap();
     let terminated_process: agentx_runtime_contracts::ProcessSessionControlResponseV1 =
         serde_json::from_slice(&terminated_process_body).unwrap();
     assert_eq!(
@@ -1589,7 +1626,7 @@ async fn retention_dry_run_reference_block_and_object_sweep_are_fenced(fixture: 
         trust: fixture.state.trust.clone(),
         wakeups: Default::default(),
         vault: None,
-                admission_redis: fixture.state.admission_redis.clone(),
+        admission_redis: fixture.state.admission_redis.clone(),
     };
     assert!(
         run_retention_once(&failing_state, Uuid::now_v7())
@@ -1642,7 +1679,8 @@ async fn trigger_claim_takeover_is_fenced(pool: &MySqlPool) {
         application_id,
         node_id: "schedule-source".into(),
         revision: 1,
-        configuration_hash: agentx_runtime_contracts::content_hash(&json!({"schedule":"v1"})).unwrap(),
+        configuration_hash: agentx_runtime_contracts::content_hash(&json!({"schedule":"v1"}))
+            .unwrap(),
         enabled: true,
         configuration: RuntimeTriggerConfigurationV1::Schedule {
             cron_expression: "*/5 * * * *".into(),

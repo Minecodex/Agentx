@@ -594,7 +594,7 @@
           "bindingRole": "long_term_memory",
           "label": "Long-term Memory",
           "multiple": false,
-          "operation": "read",
+          "operation": "use",
           "required": false,
           "resourceType": "memory"
         }
@@ -606,7 +606,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
+      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -969,7 +969,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
+      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -1397,7 +1397,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
+      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -2296,7 +2296,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
+      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -2644,7 +2644,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
+      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3439,7 +3439,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
+      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3716,7 +3716,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
+      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4138,7 +4138,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
+      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4370,7 +4370,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
+      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4638,7 +4638,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
+      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -5082,7 +5082,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:17307f8f936c40b83385dfd44ac1a150a93397cb46bcd9fa79e6ad35de1782fb",
+      "bundleDigest": "sha256:7a50b35a3e38f58da7a60f598a58e96454b2adda7e0d7bb759ba20f724880439",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },

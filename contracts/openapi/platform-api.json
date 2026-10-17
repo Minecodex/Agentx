@@ -149,6 +149,118 @@
         ],
         "type": "object"
       },
+      "AgentSubjectMemoryInput": {
+        "properties": {
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "memoryResourceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/AgentSubjectMemoryInput_MemoryScopeV1"
+          }
+        },
+        "required": [
+          "applicationId",
+          "memoryResourceId",
+          "scope"
+        ],
+        "title": "AgentSubjectMemoryInput",
+        "type": "object"
+      },
+      "AgentSubjectMemoryInput_ApplicationUserIdentityV1": {
+        "additionalProperties": false,
+        "description": "The end user a call acts for. API identities are declarations, not authentication.",
+        "properties": {
+          "externalUserId": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/AgentSubjectMemoryInput_ApplicationUserSourceV1"
+          },
+          "sourceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "sourceId",
+          "externalUserId"
+        ],
+        "type": "object"
+      },
+      "AgentSubjectMemoryInput_ApplicationUserSourceV1": {
+        "enum": [
+          "platform",
+          "channel",
+          "api_parameter"
+        ],
+        "type": "string"
+      },
+      "AgentSubjectMemoryInput_MemoryScopeV1": {
+        "additionalProperties": false,
+        "description": "Stable scope shared by all Mem0 call sites. Runtime data never uses display names.",
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "environmentId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stableNodeId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/AgentSubjectMemoryInput_ApplicationUserIdentityV1"
+          },
+          "workflowId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "workflowId",
+          "stableNodeId",
+          "user"
+        ],
+        "type": "object"
+      },
       "ApiErrorResponse": {
         "properties": {
           "code": {
@@ -225,6 +337,12 @@
       },
       "ApplicationDeploymentResponse": {
         "properties": {
+          "apiUserIdInput": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "applicationId": {
             "format": "uuid",
             "type": "string"
@@ -297,6 +415,149 @@
           "inputSchema",
           "outputSchema",
           "sessionVersionPolicy",
+          "status",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "ApplicationInvocationPageResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "apiVersion": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationInvocationPageResponse_InvocationSummaryV1"
+            },
+            "type": "array"
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "snapshotId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "snapshotUpperBound": {
+            "type": "string"
+          },
+          "total": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "snapshotId",
+          "snapshotUpperBound",
+          "total",
+          "items"
+        ],
+        "title": "InvocationSearchPageV1",
+        "type": "object"
+      },
+      "ApplicationInvocationPageResponse_ApplicationUserIdentityV1": {
+        "additionalProperties": false,
+        "description": "The end user a call acts for. API identities are declarations, not authentication.",
+        "properties": {
+          "externalUserId": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ApplicationInvocationPageResponse_ApplicationUserSourceV1"
+          },
+          "sourceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "sourceId",
+          "externalUserId"
+        ],
+        "type": "object"
+      },
+      "ApplicationInvocationPageResponse_ApplicationUserSourceV1": {
+        "enum": [
+          "platform",
+          "channel",
+          "api_parameter"
+        ],
+        "type": "string"
+      },
+      "ApplicationInvocationPageResponse_InvocationSummaryV1": {
+        "additionalProperties": false,
+        "properties": {
+          "admissionEpoch": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "bundleId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "callerType": {
+            "type": "string"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "endUser": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApplicationInvocationPageResponse_ApplicationUserIdentityV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "executionId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "invocationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sessionId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "invocationId",
+          "applicationId",
+          "bundleId",
+          "admissionEpoch",
+          "callerType",
           "status",
           "createdAt"
         ],
@@ -387,6 +648,36 @@
           "updatedAt"
         ],
         "type": "object"
+      },
+      "ApplicationUserIdentity": {
+        "additionalProperties": false,
+        "description": "The end user a call acts for. API identities are declarations, not authentication.",
+        "properties": {
+          "externalUserId": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ApplicationUserIdentity_ApplicationUserSourceV1"
+          },
+          "sourceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "sourceId",
+          "externalUserId"
+        ],
+        "title": "ApplicationUserIdentityV1",
+        "type": "object"
+      },
+      "ApplicationUserIdentity_ApplicationUserSourceV1": {
+        "enum": [
+          "platform",
+          "channel",
+          "api_parameter"
+        ],
+        "type": "string"
       },
       "ApprovalActionResponse": {
         "properties": {
@@ -547,6 +838,19 @@
           "createdAt",
           "buttons"
         ],
+        "type": "object"
+      },
+      "ArchiveVersionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "archived"
+        ],
+        "title": "ArchiveVersionRequest",
         "type": "object"
       },
       "ArtifactUploadResponse": {
@@ -1200,7 +1504,7 @@
       },
       "ConnectionResponse": {
         "properties": {
-          "configuration": {},
+          "configuration": true,
           "credentialId": {
             "format": "uuid",
             "type": [
@@ -1235,7 +1539,7 @@
             "type": "string"
           },
           "version": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
           }
@@ -1250,6 +1554,7 @@
           "status",
           "version"
         ],
+        "title": "ConnectionResponse",
         "type": "object"
       },
       "CreateApiKeyRequest": {
@@ -1265,6 +1570,12 @@
       },
       "CreateApplicationDeploymentRequest": {
         "properties": {
+          "apiUserIdInput": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "environmentId": {
             "format": "uuid",
             "type": "string"
@@ -3725,23 +4036,6 @@
         ],
         "type": "object"
       },
-      "CreateDraftRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "baseVersionId": {
-            "format": "uuid",
-            "nullable": true,
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "type": "object"
-      },
       "CreateEntryRequest": {
         "properties": {
           "entryType": {
@@ -3925,35 +4219,6 @@
           "name",
           "ownerDepartmentId",
           "transport"
-        ],
-        "type": "object"
-      },
-      "CreateMemoryRequest": {
-        "properties": {
-          "accessMode": {
-            "type": "string"
-          },
-          "connectionId": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "externalNamespace": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "ownerDepartmentId": {
-            "format": "uuid",
-            "type": "string"
-          }
-        },
-        "required": [
-          "connectionId",
-          "name",
-          "externalNamespace",
-          "accessMode",
-          "ownerDepartmentId"
         ],
         "type": "object"
       },
@@ -4252,24 +4517,6 @@
           "displayName",
           "departmentId",
           "roleId"
-        ],
-        "type": "object"
-      },
-      "CreateVersionRequest": {
-        "properties": {
-          "draftId": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "draftRevision": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "draftRevision",
-          "draftId"
         ],
         "type": "object"
       },
@@ -5141,44 +5388,55 @@
       },
       "DraftResponse": {
         "properties": {
+          "archived": {
+            "type": "boolean"
+          },
           "baseVersionId": {
             "format": "uuid",
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          "definition": {},
+          "definition": true,
           "definitionHash": {
             "type": "string"
           },
-          "editorDocument": {},
+          "editorDocument": true,
           "editorHash": {
             "type": "string"
+          },
+          "generation": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
           },
           "id": {
             "format": "uuid",
             "type": "string"
           },
-          "name": {
+          "publicationStatus": {
             "type": "string"
           },
           "revision": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
           },
           "schemaVersion": {
             "type": "string"
           },
-          "status": {
-            "enum": [
-              "active",
-              "archived"
-            ],
+          "updatedAt": {
             "type": "string"
           },
-          "updatedAt": {
-            "format": "date-time",
+          "versionId": {
+            "format": "uuid",
             "type": "string"
+          },
+          "versionNumber": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
           },
           "workflowId": {
             "format": "uuid",
@@ -5186,6 +5444,11 @@
           }
         },
         "required": [
+          "versionId",
+          "versionNumber",
+          "publicationStatus",
+          "archived",
+          "generation",
           "id",
           "workflowId",
           "schemaVersion",
@@ -5194,11 +5457,9 @@
           "editorDocument",
           "definitionHash",
           "editorHash",
-          "updatedAt",
-          "name",
-          "status",
-          "baseVersionId"
+          "updatedAt"
         ],
+        "title": "DraftResponse",
         "type": "object"
       },
       "EnvironmentResponse": {
@@ -5773,6 +6034,16 @@
               "null"
             ]
           },
+          "endUser": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApplicationUserIdentity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "endedAt": {
             "format": "date-time",
             "type": [
@@ -6213,11 +6484,11 @@
       },
       "ImportedWorkflowResponse": {
         "properties": {
-          "definitionHash": {
+          "createdVersionId": {
+            "format": "uuid",
             "type": "string"
           },
-          "draftId": {
-            "format": "uuid",
+          "definitionHash": {
             "type": "string"
           },
           "workflowId": {
@@ -6227,7 +6498,7 @@
         },
         "required": [
           "workflowId",
-          "draftId",
+          "createdVersionId",
           "definitionHash"
         ],
         "type": "object"
@@ -6765,65 +7036,6 @@
           "permissions",
           "locale",
           "timezone"
-        ],
-        "type": "object"
-      },
-      "MemoryResponse": {
-        "properties": {
-          "accessMode": {
-            "type": "string"
-          },
-          "connectionId": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "connectionName": {
-            "type": "string"
-          },
-          "externalNamespace": {
-            "type": "string"
-          },
-          "grantCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "id": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "ownerDepartmentId": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "version": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "connectionId",
-          "connectionName",
-          "name",
-          "externalNamespace",
-          "accessMode",
-          "ownerDepartmentId",
-          "status",
-          "grantCount",
-          "version",
-          "updatedAt"
         ],
         "type": "object"
       },
@@ -7873,10 +8085,22 @@
         "type": "object"
       },
       "PublishWorkflowRequest": {
+        "additionalProperties": false,
         "properties": {
+          "contentSource": {
+            "$ref": "#/components/schemas/PublishWorkflowRequest_PublishContent"
+          },
           "environmentId": {
             "format": "uuid",
             "type": "string"
+          },
+          "expectedRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "workflowVersionId": {
             "format": "uuid",
@@ -7885,9 +8109,18 @@
         },
         "required": [
           "environmentId",
-          "workflowVersionId"
+          "workflowVersionId",
+          "contentSource"
         ],
+        "title": "PublishWorkflowRequest",
         "type": "object"
+      },
+      "PublishWorkflowRequest_PublishContent": {
+        "enum": [
+          "version",
+          "draft"
+        ],
+        "type": "string"
       },
       "PutPlaygroundConfigRequest": {
         "additionalProperties": false,
@@ -8413,6 +8646,21 @@
           "valid",
           "missingGrants"
         ],
+        "type": "object"
+      },
+      "RestoreVersionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ],
+        "title": "RestoreRequest",
         "type": "object"
       },
       "RetentionItemResponse": {
@@ -9295,6 +9543,16 @@
           "applicationId": {
             "format": "uuid",
             "type": "string"
+          },
+          "endUser": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApplicationUserIdentity"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "externalUserId": {
             "type": [
@@ -14796,31 +15054,6 @@
         ],
         "type": "object"
       },
-      "UpdateDraftRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "expectedRevision": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "name": {
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "active",
-              "archived"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "status",
-          "expectedRevision"
-        ],
-        "type": "object"
-      },
       "UpdateEnvironmentRequest": {
         "properties": {
           "name": {
@@ -14947,6 +15180,49 @@
           "sideEffect",
           "version"
         ],
+        "type": "object"
+      },
+      "UpdateMemoryConnectionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "credentialId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "healthPath": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ownerDepartmentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "endpoint",
+          "healthPath",
+          "ownerDepartmentId",
+          "status",
+          "version"
+        ],
+        "title": "UpdateMemoryConnectionRequest",
         "type": "object"
       },
       "UpdateModelRequest": {
@@ -15684,13 +15960,13 @@
           },
           {
             "properties": {
-              "createdDraftId": {
+              "createdVersionId": {
                 "format": "uuid",
                 "type": "string"
               }
             },
             "required": [
-              "createdDraftId"
+              "createdVersionId"
             ],
             "type": "object"
           }
@@ -15753,6 +16029,41 @@
           }
         ],
         "title": "WorkflowDesignSourceV1"
+      },
+      "WorkflowEditorContext": {
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/DraftResponse"
+          },
+          "restoreTarget": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "version",
+                  "initial"
+                ],
+                "type": "string"
+              },
+              "versionNumber": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          "version": {
+            "$ref": "#/components/schemas/WorkflowVersionResponse"
+          }
+        },
+        "required": [
+          "version",
+          "document",
+          "restoreTarget"
+        ],
+        "type": "object"
       },
       "WorkflowMemberResponse": {
         "properties": {
@@ -15909,10 +16220,6 @@
               "null"
             ]
           },
-          "draftCount": {
-            "minimum": 0,
-            "type": "integer"
-          },
           "id": {
             "format": "uuid",
             "type": "string"
@@ -15968,7 +16275,6 @@
           "ownerDepartmentId",
           "serviceIdentityId",
           "ownerName",
-          "draftCount",
           "version",
           "updatedAt",
           "canEdit"
@@ -15977,10 +16283,21 @@
       },
       "WorkflowVersionResponse": {
         "properties": {
+          "archived": {
+            "type": "boolean"
+          },
           "baseVersionId": {
             "format": "uuid",
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "baseVersionNumber": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
               "null"
             ]
           },
@@ -15995,7 +16312,21 @@
             "type": "string"
           },
           "definition": true,
+          "draftRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "editorDocument": true,
+          "editorHash": {
+            "type": "string"
+          },
+          "hasDraft": {
+            "type": "boolean"
+          },
           "id": {
             "format": "uuid",
             "type": "string"
@@ -16005,6 +16336,15 @@
               "$ref": "#/components/schemas/WorkflowVersionResponse_NodeManifestVersion"
             },
             "type": "object"
+          },
+          "publicationStatus": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "schemaVersion": {
             "type": "string"
@@ -16022,6 +16362,16 @@
             "format": "uuid",
             "type": "string"
           },
+          "updatedAt": {
+            "type": "string"
+          },
+          "updatedBy": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "updatedByName": {
+            "type": "string"
+          },
           "versionNumber": {
             "format": "uint64",
             "minimum": 0,
@@ -16030,22 +16380,36 @@
           "workflowId": {
             "format": "uuid",
             "type": "string"
+          },
+          "workingDraftId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
-          "sourceDraftId",
-          "sourceRevisionId",
           "id",
           "workflowId",
           "versionNumber",
+          "publicationStatus",
+          "archived",
+          "hasDraft",
+          "sourceDraftId",
+          "sourceRevisionId",
           "sourceRevision",
           "schemaVersion",
           "contentHash",
+          "editorHash",
           "definition",
           "editorDocument",
           "nodeManifests",
           "createdBy",
-          "createdAt"
+          "updatedBy",
+          "updatedByName",
+          "createdAt",
+          "updatedAt"
         ],
         "title": "WorkflowVersionResponse",
         "type": "object"
@@ -16677,6 +17041,128 @@
           "irreversible"
         ],
         "type": "string"
+      },
+      "WorkflowVersionSummary": {
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          },
+          "baseVersionId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "baseVersionNumber": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "contentHash": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "createdBy": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "draftRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "editorHash": {
+            "type": "string"
+          },
+          "hasDraft": {
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "publicationStatus": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "schemaVersion": {
+            "type": "string"
+          },
+          "sourceDraftId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sourceRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sourceRevisionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "updatedBy": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "updatedByName": {
+            "type": "string"
+          },
+          "versionNumber": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "workflowId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "workingDraftId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "workflowId",
+          "versionNumber",
+          "publicationStatus",
+          "archived",
+          "hasDraft",
+          "sourceDraftId",
+          "sourceRevisionId",
+          "sourceRevision",
+          "schemaVersion",
+          "contentHash",
+          "editorHash",
+          "createdBy",
+          "updatedBy",
+          "updatedByName",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "WorkflowVersionSummary",
+        "type": "object"
       }
     },
     "x-uniqueness-error-examples": {
@@ -16782,21 +17268,6 @@
             {
               "code": "MCP_SERVER_NAME_EXISTS",
               "field": "name",
-              "message": "The submitted value already exists"
-            }
-          ],
-          "message": "The submitted value already exists",
-          "requestId": "019ff3e3-3c2b-7ad0-902f-1f5c34644ed9"
-        }
-      },
-      "MemoryExternalNamespaceExists": {
-        "summary": "MEMORY_EXTERNAL_NAMESPACE_EXISTS uniqueness conflict",
-        "value": {
-          "code": "MEMORY_EXTERNAL_NAMESPACE_EXISTS",
-          "fieldErrors": [
-            {
-              "code": "MEMORY_EXTERNAL_NAMESPACE_EXISTS",
-              "field": "externalNamespace",
               "message": "The submitted value already exists"
             }
           ],
@@ -16922,6 +17393,68 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/agent-subject-memory/audit": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentSubjectMemoryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Memory scope operation result"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/agent-subject-memory/clear": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentSubjectMemoryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Memory scope operation result"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/applications": {
       "get": {
         "operationId": "list_applications",
@@ -17395,6 +17928,64 @@
         ]
       }
     },
+    "/api/v1/applications/{id}/invocations": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "externalUserId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "userSource",
+            "schema": {
+              "enum": [
+                "platform",
+                "channel",
+                "api_parameter"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationInvocationPageResponse"
+                }
+              }
+            },
+            "description": "Application invocation records"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/applications/{id}/publish-attempts/{attempt_id}": {
       "get": {
         "operationId": "get_publish_attempt",
@@ -17510,6 +18101,26 @@
             "required": true,
             "schema": {
               "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "externalUserId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "userSource",
+            "schema": {
+              "enum": [
+                "platform",
+                "channel",
+                "api_parameter"
+              ],
               "type": "string"
             }
           }
@@ -19561,6 +20172,35 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Comma-separated version IDs. Includes production executions and debug runs of their owned working documents.",
+            "in": "query",
+            "name": "workflowVersionIds",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "externalUserId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "userSource",
+            "schema": {
+              "enum": [
+                "platform",
+                "channel",
+                "api_parameter"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -20789,7 +21429,21 @@
     "/api/v1/memory/connections": {
       "get": {
         "operationId": "list_memory_connections",
-        "responses": {},
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectionResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Memory service connections"
+          }
+        },
         "tags": [
           "external_resources"
         ]
@@ -20806,61 +21460,26 @@
           },
           "required": true
         },
-        "responses": {},
-        "tags": [
-          "external_resources"
-        ]
-      }
-    },
-    "/api/v1/memory/connections/{id}/test-connection": {
-      "post": {
-        "operationId": "test_memory_connection",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {},
-        "tags": [
-          "external_resources"
-        ]
-      }
-    },
-    "/api/v1/memory/namespaces": {
-      "get": {
-        "operationId": "list_memory",
-        "responses": {},
-        "tags": [
-          "external_resources"
-        ]
-      },
-      "post": {
-        "operationId": "create_memory",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateMemoryRequest"
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponse"
+                }
               }
-            }
-          },
-          "required": true
+            },
+            "description": "Created memory connection"
+          }
         },
-        "responses": {},
         "tags": [
           "external_resources"
         ]
       }
     },
-    "/api/v1/memory/namespaces/{id}": {
+    "/api/v1/memory/connections/{id}": {
       "delete": {
-        "operationId": "delete_memory",
+        "operationId": "delete_memory_connection",
         "parameters": [
           {
             "in": "path",
@@ -20902,7 +21521,7 @@
         ]
       },
       "get": {
-        "operationId": "get_memory",
+        "operationId": "get_memory_connection",
         "parameters": [
           {
             "in": "path",
@@ -20914,13 +21533,24 @@
             }
           }
         ],
-        "responses": {},
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponse"
+                }
+              }
+            },
+            "description": "Memory connection"
+          }
+        },
         "tags": [
           "external_resources"
         ]
       },
       "patch": {
-        "operationId": "update_memory",
+        "operationId": "update_memory_connection",
         "parameters": [
           {
             "in": "path",
@@ -20936,12 +21566,43 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateExternalResourceRequest"
+                "$ref": "#/components/schemas/UpdateMemoryConnectionRequest"
               }
             }
           },
           "required": true
         },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponse"
+                }
+              }
+            },
+            "description": "Memory connection"
+          }
+        },
+        "tags": [
+          "external_resources"
+        ]
+      }
+    },
+    "/api/v1/memory/connections/{id}/test-connection": {
+      "post": {
+        "operationId": "test_memory_connection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {},
         "tags": [
           "external_resources"
@@ -22952,6 +23613,19 @@
       },
       "post": {
         "operationId": "create_workflow",
+        "parameters": [
+          {
+            "description": "Persistent receipt key for safe creation retries.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -22971,7 +23645,7 @@
                 }
               }
             },
-            "description": "Workflow and revision-zero Draft created atomically"
+            "description": "Workflow and unpublished v1 created atomically"
           }
         },
         "tags": [
@@ -22982,6 +23656,18 @@
     "/api/v1/workflows/import": {
       "post": {
         "operationId": "import_workflow_package",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -23088,26 +23774,6 @@
         ]
       }
     },
-    "/api/v1/workflows/{id}/archive": {
-      "post": {
-        "operationId": "archive_workflow",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {},
-        "tags": [
-          "workflows"
-        ]
-      }
-    },
     "/api/v1/workflows/{id}/deployments": {
       "get": {
         "operationId": "list_deployments",
@@ -23138,6 +23804,16 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -23150,7 +23826,18 @@
           },
           "required": true
         },
-        "responses": {},
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentResponse"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
         "tags": [
           "workflows"
         ]
@@ -23177,6 +23864,16 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -23189,84 +23886,20 @@
           },
           "required": true
         },
-        "responses": {},
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentResponse"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
         "tags": [
           "workflows"
-        ]
-      }
-    },
-    "/api/v1/workflows/{id}/drafts": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DraftResponse"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Success"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateDraftRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DraftResponse"
-                }
-              }
-            },
-            "description": "Success"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
         ]
       }
     },
@@ -23532,57 +24165,6 @@
         ]
       }
     },
-    "/api/v1/workflows/{id}/drafts/{draft_id}/metadata": {
-      "patch": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "draft_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateDraftRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DraftResponse"
-                }
-              }
-            },
-            "description": "Success"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/v1/workflows/{id}/drafts/{draft_id}/resolve-plugins": {
       "post": {
         "operationId": "resolveWorkflowPluginDefinitions",
@@ -23813,6 +24395,67 @@
         "tags": [
           "workflow_studio"
         ]
+      }
+    },
+    "/api/v1/workflows/{id}/member-candidates": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "properties": {
+                      "displayName": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "username": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "username",
+                      "displayName"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Up to 100 active tenant users who are not already members"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Search eligible members with workflow membership permission"
       }
     },
     "/api/v1/workflows/{id}/members": {
@@ -24095,13 +24738,32 @@
             }
           }
         ],
-        "responses": {},
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowVersionSummary"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "tags": [
           "workflows"
         ]
       },
       "post": {
-        "operationId": "create_workflow_version",
+        "operationId": "create_canvas",
         "parameters": [
           {
             "in": "path",
@@ -24111,19 +24773,53 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateVersionRequest"
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "versionNumber": {
+                      "type": "integer"
+                    },
+                    "workflowId": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "workflowId",
+                    "versionNumber"
+                  ],
+                  "type": "object"
+                }
               }
-            }
-          },
-          "required": true
+            },
+            "description": "Success"
+          }
         },
-        "responses": {},
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "tags": [
           "workflows"
         ]
@@ -24131,6 +24827,7 @@
     },
     "/api/v1/workflows/{id}/versions/{version_id}": {
       "get": {
+        "operationId": "get_workflow_version",
         "parameters": [
           {
             "in": "path",
@@ -24167,6 +24864,193 @@
           {
             "bearerAuth": []
           }
+        ],
+        "tags": [
+          "workflows"
+        ]
+      },
+      "patch": {
+        "operationId": "archive_workflow_version",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "archived": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "archived"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/v1/workflows/{id}/versions/{version_id}/edit": {
+      "post": {
+        "operationId": "edit_workflow_version",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowEditorContext"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/v1/workflows/{id}/versions/{version_id}/restore": {
+      "post": {
+        "operationId": "restore_workflow_version",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "revision": {
+                      "type": "integer"
+                    },
+                    "versionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "revision",
+                    "versionId"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "workflows"
         ]
       }
     },

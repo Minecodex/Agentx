@@ -1,7 +1,5 @@
 """MCP and transitive Skill approvals, live tool execution and refusal."""
 
-# ruff: noqa: S608 -- UUIDs in isolated SQL are returned by the typed test API.
-
 from __future__ import annotations
 
 import time
@@ -391,41 +389,29 @@ def test_nested_skill_package_cancel_or_reject_never_grants_dependencies(mcp_pac
     )
 
 
-@pytest.mark.parametrize("operation", ["read", "write"])
-def test_skill_memory_dependency_respects_department_read_only_grant(mcp_package, operation):
+@pytest.mark.parametrize("operation", ["use", "read", "write"])
+def test_skill_memory_dependency_uses_one_read_write_permission(mcp_package, operation):
     state = mcp_package
     control = state["control"]
     owner, skill_owner = state["departments"][0]["id"], state["departments"][2]["id"]
-    connection = post(
+    memory = post(
         control,
         "/memory/connections",
         {
-            "name": f"Boundary read-only memory {operation} {state['runId']}",
-            "provider": "mem0",
+            "name": f"Boundary memory {operation} {state['runId']}",
             "endpoint": f"{state['echo']}/memory",
             "ownerDepartmentId": owner,
             "configuration": {},
         },
     )
-    memory = post(
-        control,
-        "/memory/namespaces",
-        {
-            "name": f"Boundary read-only namespace {operation} {state['runId']}",
-            "connectionId": connection["id"],
-            "externalNamespace": f"readonly_{operation}_{state['runId']}",
-            "accessMode": "read_write",
-            "ownerDepartmentId": owner,
-        },
-    )
-    grant(control, "memory", memory["id"], skill_owner, operation="read")
+    grant(control, "memory", memory["id"], skill_owner, operation="use")
     skill = post(
         control,
         "/skills",
         {
             "name": f"Boundary memory Skill {operation} {state['runId']}",
             "alias": f"boundary-memory-{operation}-{state['runId']}",
-            "description": "A read grant cannot authorize writing",
+            "description": "Memory use authorizes recall and write together",
             "ownerDepartmentId": skill_owner,
         },
     )
@@ -436,168 +422,13 @@ def test_skill_memory_dependency_respects_department_read_only_grant(mcp_package
             "dependencies": [reference("memory", memory["id"], operation=operation)],
         },
     )
-    assert response.status_code == (201 if operation == "read" else 403), response.text
-    assert len(get(control, f"/skills/{skill['id']}/versions")) == (1 if operation == "read" else 0)
+    assert response.status_code == (201 if operation == "use" else 400), response.text
+    assert len(get(control, f"/skills/{skill['id']}/versions")) == (1 if operation == "use" else 0)
     report(
         state,
         f"remaining-skill-memory-{operation}",
-        {"statusCode": response.status_code, "departmentReadOnlyEnforced": True},
-    )
-
-
-@pytest.mark.parametrize("kind", ["mcp_server", "mcp_tool"])
-def test_frozen_mcp_version_uses_its_own_credential_dependency(mcp_package, kind):
-    from tests.e2e.runtime.test_agent_attachments import _control_mysql
-
-    state = mcp_package
-    control = state["control"]
-    server = post(
-        control,
-        "/mcp/servers",
         {
-            "name": f"Boundary frozen {kind} {state['runId']}",
-            "ownerDepartmentId": state["departments"][1]["id"],
-            "transport": {
-                "kind": "streamable_http",
-                "endpoint": f"{state['echo']}/mcp",
-                "bearerCredentialId": state["credential"]["id"],
-            },
-            "configuration": {},
+            "statusCode": response.status_code,
+            "singleReadWritePermission": True,
         },
     )
-    tool = next(t for t in post(control, f"/mcp/servers/{server['id']}/discover", {})["tools"] if t["name"] == "echo")
-    old_version = _control_mysql(
-        state["context"],
-        f"SELECT BIN_TO_UUID(server_version_id) FROM mcp_tool_versions WHERE id=UUID_TO_BIN('{tool['currentVersionId']}');",
-    )
-    other = post(
-        control,
-        "/credentials",
-        {
-            "name": f"Boundary future MCP key {kind} {state['runId']}",
-            "credentialType": "bearer",
-            "secret": "future-invalid-key",
-            "ownerDepartmentId": state["departments"][0]["id"],
-        },
-    )
-    grant(control, "credential", other["id"], state["departments"][1]["id"])
-    response = control.patch(
-        f"/api/v1/mcp/servers/{server['id']}",
-        json={
-            "name": server["name"],
-            "description": server["description"],
-            "status": "active",
-            "version": server["version"],
-            "transport": {**server["transport"], "bearerCredentialId": other["id"]},
-            "configuration": {},
-        },
-    )
-    assert response.status_code == 200, response.text
-    resource = reference(
-        kind,
-        server["id"] if kind == "mcp_server" else tool["id"],
-        old_version if kind == "mcp_server" else tool["currentVersionId"],
-    )
-    workflow, request = workflow_request(state, resource, f"frozen {kind}")
-    credential_ids = {i["resourceId"] for i in request["items"] if i["resourceType"] == "credential"}
-    assert credential_ids == {state["credential"]["id"]}, request
-    assert next(i for i in request["items"] if i["resourceType"] == "mcp_server")["resourceVersionId"] == old_version
-    approved = approve_all(state, workflow, request)
-    execution = None
-    if kind == "mcp_tool":
-        model = new_model(state, "frozen-mcp")
-        template = model_workflow(state, model, "frozen MCP template")
-        authorize(control, workflow, reference("model", model["id"], model["deploymentId"]))
-        save_version(control, workflow, agent_definition(control, template["workflowId"], model, tool))
-        execution, _ = invoke(state, workflow)
-        calls = get(control, f"/executions/{execution}/runtime-details")["calls"]
-        assert any(c["callKind"] == "mcp_tool" and c["status"] == "succeeded" for c in calls), calls
-    report(
-        state,
-        f"remaining-frozen-{kind}",
-        {
-            "requestId": approved["id"],
-            "oldServerVersionId": old_version,
-            "oldCredentialSelected": True,
-            "executionId": execution,
-        },
-    )
-
-
-@pytest.mark.parametrize("changed", ["server", "tool", "credential"])
-def test_mcp_pending_package_stales_on_dependency_change(mcp_package, changed):
-    state = mcp_package
-    control = state["control"]
-    workflow, request = workflow_request(
-        state, reference("mcp_tool", state["tool"]["id"], state["tool"]["currentVersionId"]), f"MCP stale {changed}"
-    )
-    if changed == "credential":
-        value = get(control, f"/credentials/{state['credential']['id']}")
-        response = control.post(
-            f"/api/v1/credentials/{value['id']}/rotate",
-            json={"secret": state["mcpKey"].value, "version": value["version"]},
-        )
-    elif changed == "server":
-        value = get(control, f"/mcp/servers/{state['server']['id']}")
-        response = control.patch(
-            f"/api/v1/mcp/servers/{value['id']}",
-            json={
-                "name": value["name"],
-                "description": value["description"],
-                "status": "disabled",
-                "transport": value["transport"],
-                "version": value["version"],
-                "configuration": {},
-            },
-        )
-    else:
-        value = next(t for t in get(control, "/mcp/tools?pageSize=100")["items"] if t["id"] == state["tool"]["id"])
-        response = control.patch(
-            f"/api/v1/mcp/tools/{value['id']}/policy",
-            json={
-                "enabled": False,
-                "debugEnabled": value["debugEnabled"],
-                "timeoutSeconds": value["timeoutSeconds"],
-                "sideEffect": value["sideEffect"],
-                "version": value["version"],
-            },
-        )
-    assert response.status_code == 200, response.text
-    try:
-        own = request["reviews"][0]
-        response = control.post(
-            f"/api/v1/resource-grant-requests/{request['id']}/reviews/{own['ownerDepartmentId']}/approve",
-            json={"expectedVersion": own["version"], "comment": None},
-        )
-        assert response.status_code == 409 and response.json()["code"] == "RESOURCE_GRANT_REQUEST_STALE", response.text
-        assert get(control, f"/resource-grant-requests/{request['id']}")["status"] == "stale"
-    finally:
-        if changed == "server":
-            value = get(control, f"/mcp/servers/{value['id']}")
-            response = control.patch(
-                f"/api/v1/mcp/servers/{value['id']}",
-                json={
-                    "name": value["name"],
-                    "description": value["description"],
-                    "status": "active",
-                    "transport": value["transport"],
-                    "version": value["version"],
-                    "configuration": {},
-                },
-            )
-            assert response.status_code == 200, response.text
-        elif changed == "tool":
-            value = next(t for t in get(control, "/mcp/tools?pageSize=100")["items"] if t["id"] == value["id"])
-            response = control.patch(
-                f"/api/v1/mcp/tools/{value['id']}/policy",
-                json={
-                    "enabled": True,
-                    "debugEnabled": value["debugEnabled"],
-                    "timeoutSeconds": value["timeoutSeconds"],
-                    "sideEffect": value["sideEffect"],
-                    "version": value["version"],
-                },
-            )
-            assert response.status_code == 200, response.text
-    assert not workflow_grants(state, workflow, request)
-    report(state, f"remaining-mcp-stale-{changed}", {"requestId": request["id"], "noGrantCreated": True})

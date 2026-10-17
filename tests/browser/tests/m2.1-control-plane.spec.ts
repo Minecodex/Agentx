@@ -390,13 +390,15 @@ async function configureCentralResourceGrants(page: Page) {
 async function configureAndPublishWorkflow(page: Page) {
   let latestDraftPayload: { definition: { nodes: Array<{ type: string; parameters: Record<string, unknown>; resourceReferences: Array<{ bindingRole?: string; resourceVersionId?: string }> }> } } | undefined
   await page.getByRole('link', { name: /^工作流/ }).click()
-  await page.getByRole('row', { name: /MCP Echo Workflow/ }).getByRole('link', { name: '打开画布' }).click()
+  await page.getByRole('row', { name: /MCP Echo Workflow/ }).getByRole('link', { name: '详情', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'MCP Echo Workflow', exact: true })).toBeVisible()
-  await page.getByRole('link', { name: '打开画布', exact: true }).click()
+  const editing=page.waitForResponse(response=>response.url().endsWith('/edit')&&response.request().method()==='POST')
+  await page.getByTestId('workflow-version-1').getByRole('link', { name: '编辑', exact: true }).click()
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
-  const source = new URL(page.url()).pathname.match(/^\/workflows\/([^/]+)\/drafts\/([^/]+)\/editor$/)
+  const source = new URL(page.url()).pathname.match(/^\/workflows\/([^/]+)\/versions\/([^/]+)\/editor$/)
   if (!source) throw new Error('The selected Workflow Draft is missing from the editor URL')
-  const [, workflowId, draftId] = source
+  const [, workflowId] = source
+  const draftId=((await (await editing).json()) as {document:{id:string}}).document.id
   const draftPath = `/workflows/${workflowId}/drafts/${draftId}`
   page.on('request', (request) => {
     if (request.method() === 'PUT' && request.url().endsWith(draftPath)) latestDraftPayload = request.postDataJSON() as typeof latestDraftPayload
@@ -498,22 +500,12 @@ async function configureAndPublishWorkflow(page: Page) {
   const exit = payload.definition.nodes.find((node) => node.type === 'exit')
   expect((exit?.parameters.outputs as Record<string, unknown>).answer).toMatchObject({ kind: 'reference', selector: { namespace: 'outputs', port: 'main', path: ['text'] } })
   await page.getByRole('link', { name: '返回', exact: true }).click()
-  await page.getByRole('combobox', { name: '选择当前草稿', exact: true }).click()
-  await page.locator(`[data-option-value="${draftId}"]`).click()
-  await expect(page.getByText('资源与授权校验通过')).toBeVisible()
-  const versionResponsePromise = page.waitForResponse((response) => response.request().method() === 'POST' && /\/workflows\/[^/]+\/versions$/.test(response.url()))
-  await page.getByRole('button', { name: '保存为版本' }).click()
-  const versionResponse = await versionResponsePromise
-  const versionBody = await versionResponse.text()
-  expect(versionBody, `create version failed with ${versionResponse.status()}`).toMatch(/./)
-  expect(versionResponse.status(), versionBody).toBe(201)
-  await expect(page.getByText('v1', { exact: true }).first()).toBeVisible()
-  await page.getByRole('button', { name: '发布到环境…', exact: true }).first().click()
+  await page.getByTestId('workflow-version-1').getByRole('button',{name:'发布',exact:true}).click()
   const publish = await dialog(page, '发布到环境…')
   await select(publish, '目标环境', 'Development')
-  await select(publish, '发布内容', '版本 v1')
   await submit(publish, '发布到环境…')
-  await expect(page.getByText(/当前 v1 · 部署 #1/)).toBeVisible()
+  await expect(page.getByTestId('workflow-version-1')).toContainText('已发布')
+
 }
 
 async function verifyThemeLocaleAndRbac(page: Page, browser: Browser) {
@@ -695,19 +687,12 @@ async function verifyExternalResourceUniqueness(page: Page) {
   await (await field(form, '连接名称')).fill('唯一性记忆连接')
   await (await field(form, 'Endpoint')).fill(mem0BaseUrl)
   await select(form, '所属部门', company)
-  await (await field(form, '资源名称')).fill('记忆资源一')
-  await (await field(form, '记忆命名空间')).fill('memory-001')
+  await expect(form.getByText('资源名称', { exact: true })).toHaveCount(0)
+  await expect(form.getByText('记忆命名空间', { exact: true })).toHaveCount(0)
+  await expect(form.getByText('访问模式', { exact: true })).toHaveCount(0)
   await submit(form, '保存')
-  await page.getByRole('button', { name: '添加记忆命名空间' }).click()
-  form = await dialog(page, '添加记忆命名空间')
-  await select(form, '现有连接', '唯一性记忆连接')
-  await select(form, '所属部门', company)
-  await (await field(form, '资源名称')).fill('记忆资源二')
-  await (await field(form, '记忆命名空间')).fill('memory-001')
-  await form.getByRole('button', { name: '保存' }).click()
-  await expect(form.getByText('所选连接下已存在相同的外部 Namespace。')).toBeVisible()
-  await expect(await field(form, '记忆命名空间')).toHaveAttribute('aria-invalid', 'true')
-  await form.getByRole('button', { name: '取消' }).click()
+  await expect(page.getByRole('row').filter({ hasText: '唯一性记忆连接' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '添加记忆命名空间' })).toHaveCount(0)
 }
 
 test('required form fields show markers and actionable errors', async ({ page }) => {

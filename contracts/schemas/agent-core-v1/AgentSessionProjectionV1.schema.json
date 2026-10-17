@@ -1,5 +1,25 @@
 {
   "$defs": {
+    "ApplicationUserEvidenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "evidenceHash": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "userIdentityId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "userIdentityId",
+        "source",
+        "evidenceHash"
+      ],
+      "type": "object"
+    },
     "RetentionPolicyV1": {
       "additionalProperties": false,
       "properties": {
@@ -32,26 +52,6 @@
         "invocation"
       ],
       "type": "string"
-    },
-    "TrustedSubjectEvidenceV1": {
-      "additionalProperties": false,
-      "properties": {
-        "authenticatedSubjectId": {
-          "type": "string"
-        },
-        "evidenceHash": {
-          "type": "string"
-        },
-        "source": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "authenticatedSubjectId",
-        "source",
-        "evidenceHash"
-      ],
-      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -90,7 +90,7 @@
     "trustedSubject": {
       "anyOf": [
         {
-          "$ref": "#/$defs/TrustedSubjectEvidenceV1"
+          "$ref": "#/$defs/ApplicationUserEvidenceV1"
         },
         {
           "type": "null"

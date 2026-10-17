@@ -20,7 +20,10 @@ export interface components {
         };
         /** CreateSessionRequestV1 */
         CreateSessionRequest: {
-            externalUserId?: string | null;
+            /** @default {} */
+            input: {
+                [key: string]: unknown;
+            };
             title?: string | null;
         };
         /** GatewayErrorV1 */
@@ -45,6 +48,7 @@ export interface components {
             bundleId: string;
             conversationId?: string | null;
             createdAt: string;
+            endUser?: components["schemas"]["InvocationResponse"]["$defs"]["ApplicationUserIdentityV1"] | null;
             error?: unknown;
             /** Format: uuid */
             executionId?: string | null;
@@ -57,7 +61,16 @@ export interface components {
             sessionId?: string | null;
             status: string;
             triggerContext?: unknown;
+            userIdentityDiagnostic?: string | null;
             $defs: {
+                /** @description The end user a call acts for. API identities are declarations, not authentication. */
+                ApplicationUserIdentityV1: {
+                    externalUserId: string;
+                    source: components["schemas"]["InvocationResponse"]["$defs"]["ApplicationUserSourceV1"];
+                    sourceId: string;
+                };
+                /** @enum {string} */
+                ApplicationUserSourceV1: "platform" | "channel" | "api_parameter";
                 /** @enum {string} */
                 WebhookProviderV1: "agentx" | "dingtalk" | "wecom" | "feishu";
             };
@@ -109,6 +122,7 @@ export interface components {
             applicationId: string;
             /** Format: uuid */
             bundleId?: string | null;
+            endUser?: components["schemas"]["SessionResponse"]["$defs"]["ApplicationUserIdentityV1"] | null;
             externalUserId?: string | null;
             /** Format: uuid */
             id: string;
@@ -121,6 +135,14 @@ export interface components {
             /** Format: uuid */
             workflowVersionId?: string | null;
             $defs: {
+                /** @description The end user a call acts for. API identities are declarations, not authentication. */
+                ApplicationUserIdentityV1: {
+                    externalUserId: string;
+                    source: components["schemas"]["SessionResponse"]["$defs"]["ApplicationUserSourceV1"];
+                    sourceId: string;
+                };
+                /** @enum {string} */
+                ApplicationUserSourceV1: "platform" | "channel" | "api_parameter";
                 /** @enum {string} */
                 SessionVersionPolicyV1: "pinned" | "follow_deployment" | "manual_upgrade";
             };

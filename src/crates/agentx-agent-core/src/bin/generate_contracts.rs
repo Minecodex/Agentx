@@ -7,9 +7,8 @@ use std::{
 use agentx_agent_core::{
     AgentBundleV2, AgentDefinitionV6, AgentManifestV2, AgentRunInputV1, AgentSessionEntryV1,
     AgentSessionIdentityV1, AgentSessionProjectionV1, AgentSessionRegisterV1, AgentSessionStateV1,
-    AgentSessionUsageV1, CompactionRegisterV1, DurableOperationStateV1, McpServerVersionV1,
-    OperationRecordV1, RetentionPolicyV1, SandboxProcessSessionContractV1, SubjectMemoryScopeV1,
-    TrustedSubjectEvidenceV1,
+    AgentSessionUsageV1, ApplicationUserEvidenceV1, CompactionRegisterV1, DurableOperationStateV1,
+    McpServerVersionV1, OperationRecordV1, RetentionPolicyV1, SandboxProcessSessionContractV1,
 };
 use schemars::{JsonSchema, schema_for};
 use serde_json::{Value, json};
@@ -44,8 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     add::<AgentSessionUsageV1>(&schema_directory, &mut schemas, "AgentSessionUsageV1")?;
     add::<CompactionRegisterV1>(&schema_directory, &mut schemas, "CompactionRegisterV1")?;
     add::<DurableOperationStateV1>(&schema_directory, &mut schemas, "DurableOperationStateV1")?;
-    add::<TrustedSubjectEvidenceV1>(&schema_directory, &mut schemas, "TrustedSubjectEvidenceV1")?;
-    add::<SubjectMemoryScopeV1>(&schema_directory, &mut schemas, "SubjectMemoryScopeV1")?;
+    add::<ApplicationUserEvidenceV1>(&schema_directory, &mut schemas, "ApplicationUserEvidenceV1")?;
     add::<RetentionPolicyV1>(&schema_directory, &mut schemas, "RetentionPolicyV1")?;
     add::<OperationRecordV1>(&schema_directory, &mut schemas, "OperationRecordV1")?;
     add::<SandboxProcessSessionContractV1>(

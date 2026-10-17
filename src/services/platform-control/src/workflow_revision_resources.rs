@@ -31,10 +31,10 @@ fn resource_lock_query(kind: &str, exclusive: bool) -> ApiResult<&'static str> {
         ("rag", false) => Ok("SELECT id FROM rag_resources WHERE tenant_id=? AND id=? FOR SHARE"),
         ("rag", true) => Ok("SELECT id FROM rag_resources WHERE tenant_id=? AND id=? FOR UPDATE"),
         ("memory", false) => {
-            Ok("SELECT id FROM memory_namespaces WHERE tenant_id=? AND id=? FOR SHARE")
+            Ok("SELECT id FROM memory_connections WHERE tenant_id=? AND id=? FOR SHARE")
         }
         ("memory", true) => {
-            Ok("SELECT id FROM memory_namespaces WHERE tenant_id=? AND id=? FOR UPDATE")
+            Ok("SELECT id FROM memory_connections WHERE tenant_id=? AND id=? FOR UPDATE")
         }
         ("sandbox_profile", false) => {
             Ok("SELECT id FROM sandbox_profiles WHERE tenant_id=? AND id=? FOR SHARE")

@@ -1,6 +1,6 @@
 const translations = {
   title: '智能体会话',
-  description: '查看持久智能体上下文、压缩、恢复、用量和可信记忆审计状态。',
+  description: '查看持久智能体上下文、压缩、恢复、用量和用户记忆审计状态。',
   applicationId: '应用 ID',
   sessionKey: '会话键',
   nodeKey: '智能体节点键',
@@ -32,10 +32,9 @@ const translations = {
   clearTitle: '清除智能体会话？',
   clearDescription: '这会移除会话条目、压缩摘要、待处理任务和未被引用的对象，并生成审计记录。操作不可撤销。',
   clearSuccess: '智能体会话已清除',
-  memoryAudit: '可信主体记忆审计',
-  memoryVersion: '记忆资源版本 ID',
+  memoryAudit: '用户记忆审计',
   loadAudit: '加载审计',
-  clearMemory: '清除主体记忆',
+  clearMemory: '清除用户记忆',
 } as const
 
 export default translations

@@ -173,15 +173,15 @@ CREATE TABLE agent_subject_memory_audit (
     audit_id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
     application_id BINARY(16) NOT NULL,
-    authenticated_subject_id BINARY(16) NOT NULL,
-    memory_resource_version_id BINARY(16) NOT NULL,
+    application_user_id BINARY(16) NOT NULL,
+    memory_connection_id BINARY(16) NOT NULL,
     operation VARCHAR(32) NOT NULL,
     scope_hash CHAR(64) NOT NULL,
     operation_id VARCHAR(191) NULL,
     result_hash CHAR(64) NULL,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY (audit_id),
-    KEY idx_agent_subject_memory_scope (tenant_id, application_id, authenticated_subject_id, memory_resource_version_id, created_at)
+    KEY idx_agent_subject_memory_scope (tenant_id, application_id, application_user_id, memory_connection_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE agent_subject_memory_clears (
@@ -189,8 +189,8 @@ CREATE TABLE agent_subject_memory_clears (
     audit_id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
     application_id BINARY(16) NOT NULL,
-    authenticated_subject_id BINARY(16) NOT NULL,
-    memory_resource_version_id BINARY(16) NOT NULL,
+    application_user_id BINARY(16) NOT NULL,
+    memory_connection_id BINARY(16) NOT NULL,
     scope_hash CHAR(64) NOT NULL,
     idempotency_key VARCHAR(191) NOT NULL,
     status ENUM('requested','applied','failed') NOT NULL DEFAULT 'requested',
@@ -199,7 +199,7 @@ CREATE TABLE agent_subject_memory_clears (
     last_error VARCHAR(1000) NULL,
     PRIMARY KEY (clear_id),
     UNIQUE KEY uq_agent_subject_memory_clear_idempotency (tenant_id, idempotency_key),
-    KEY idx_agent_subject_memory_clear_scope (tenant_id, application_id, authenticated_subject_id, memory_resource_version_id, created_at)
+    KEY idx_agent_subject_memory_clear_scope (tenant_id, application_id, application_user_id, memory_connection_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE api_key_admission (
@@ -251,6 +251,7 @@ CREATE TABLE application_invocations (
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
     application_id BINARY(16) NOT NULL,
+    user_identity_json JSON NULL,
     session_id BINARY(16) NULL,
     workflow_version_id BINARY(16) NOT NULL,
     execution_id BINARY(16) NULL,
@@ -331,10 +332,13 @@ CREATE TABLE application_sessions (
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
     application_id BINARY(16) NOT NULL,
+    environment_id BINARY(16) NULL,
+    user_identity_json JSON NULL,
+    initial_input_json JSON NULL,
     application_deployment_id BINARY(16) NOT NULL,
     workflow_version_id BINARY(16) NULL,
     version_policy ENUM('pinned', 'follow_deployment', 'manual_upgrade') NOT NULL,
-    external_user_id VARCHAR(255) NULL,
+    external_user_id LONGTEXT NULL,
     title VARCHAR(255) NULL,
     status ENUM('active', 'closed') NOT NULL DEFAULT 'active',
     version BIGINT UNSIGNED NOT NULL DEFAULT 1,

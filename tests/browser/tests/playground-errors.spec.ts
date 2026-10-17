@@ -1,3 +1,4 @@
+import { publishFixtureVersion } from '../draft-fixtures'
 import { fixtureDraftId } from '../draft-fixtures'
 import { expect, type Page, test } from '@playwright/test'
 
@@ -6,7 +7,7 @@ import { useRuntimePortForward } from './playground-helpers'
 const networkError = '无法连接服务。请检查网络、服务地址或浏览器的安全提示后重试。'
 
 async function api(page: Page, token: string, path: string, method = 'GET', data?: unknown) {
-  const response = await page.request.fetch(`/api/v1${path}`, { method, data, headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.fetch(`/api/v1${path}`, { method, data, headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(response.ok(), `${method} ${path}: ${await response.text()}`).toBeTruthy()
   return response.json()
 }
@@ -33,10 +34,10 @@ test('publishes untitled chat fields and explains blocked parameter and session 
   definition.connections = [{ id: 'start-exit', sourceNodeId: '__start__', sourceHandle: 'main', targetNodeId: exit.id, targetHandle: 'main', order: 0 }]
   await api(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`, 'PUT', { expectedRevision: draft.revision, definition, editorDocument: { ...draft.editorDocument, edges: [{ edgeId: 'start-exit' }] } })
   const latest = await api(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
-  const version = await api(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftId: await fixtureDraftId(page, workflow.id),  draftRevision: latest.revision })
+  const version = await publishFixtureVersion(page, token, workflow.id, latest.revision)
   const environments = await api(page, token, '/environments')
   const environmentId = environments.find((item: { code: string }) => item.code === 'development').id
-  await api(page, token, `/workflows/${workflow.id}/deployments`, 'POST', { environmentId, workflowVersionId: version.id })
+  await api(page, token, `/workflows/${workflow.id}/deployments`, 'POST', {contentSource:'version', environmentId, workflowVersionId: version.id })
   const application = await api(page, token, '/applications', 'POST', { name: `Playground errors ${runId}`, slug: `playground-${runId}`, workflowId: workflow.id, visibility: 'company' })
   const deployment = await api(page, token, `/applications/${application.id}/deployments`, 'POST', { environmentId, workflowVersionId: version.id, sessionVersionPolicy: 'pinned' })
 

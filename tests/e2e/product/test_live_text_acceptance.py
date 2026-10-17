@@ -17,7 +17,7 @@ pytestmark = [pytest.mark.cluster, pytest.mark.product, pytest.mark.live_model]
 def session(gateway, app, title):
     response = gateway.post(
         f"/gateway/v1/applications/{app['applicationSlug']}/sessions",
-        json={"title": title, "externalUserId": None},
+        json={"title": title, "input": {}},
         headers={"Idempotency-Key": f"live-session-{time.time_ns()}"},
     )
     assert response.status_code == 201, response.text

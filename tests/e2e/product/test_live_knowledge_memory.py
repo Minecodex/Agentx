@@ -197,7 +197,7 @@ def test_real_agent_searches_managed_knowledge_and_recalls_across_sessions(
         gateway.headers["Authorization"] = f"Bearer {signed_in.json()['accessToken']}"
         denied = gateway.post(
             f"/gateway/v1/applications/{app['applicationSlug']}/sessions",
-            json={"title": "撤销权限后应拒绝", "externalUserId": None},
+            json={"title": "撤销权限后应拒绝", "input": {}},
             headers={"Idempotency-Key": f"live-revoked-{time.time_ns()}"},
         )
         assert denied.status_code == 401, denied.text

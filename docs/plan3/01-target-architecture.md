@@ -210,7 +210,7 @@ Agent Workspace Sandbox Reference 的基数为 `0..1`：
 
 - Recall 可在当前 User Message 前作为带来源的 Context Entry 注入。
 - 写入、更新和删除通过受权 Tool 或明确后台策略完成，不自动保存全部 Transcript。
-- Read/Write Grant 独立；Memory 内容不是 System Instruction。
+- Memory 使用授权同时允许读写；内容不是 System Instruction。
 
 ## 9. Session、Context 与 Compaction
 
@@ -253,13 +253,9 @@ Agent Core 从当前 Lane 的完整 Entry 链生成模型 Context：
 
 ## 10. 长期记忆身份
 
-默认 Scope：
+当前身份和作用域以 [应用用户与记忆连接](../plan8/10-application-user-memory.md) 为准。用户身份来自平台登录、渠道验签后的发送者或应用部署指定的 API 输入参数。API 参数为直接声明，不验证其账号、真实性或归属，来源与平台操作人分开存储。无身份时个人长期记忆不可用，不退化为共享范围。
 
-```text
-tenant_id + application_id + verified_subject_type + verified_subject_id + memory_namespace_id
-```
-
-可信 Subject 只能来自内部用户 JWT、Application 身份协议或受信 Client Identity 映射。请求体中的 `external_user_id` 不能单独证明身份。无法得到可信 Subject 时按 Policy 跳过并诊断或拒绝，禁止退化为共享 Namespace。
+记忆键包含租户、环境、应用、工作流、稳定节点和来源用户；不包含发布版本、部署 ID、API Key 或会话 ID。Studio 使用独立调试域。
 
 ## 11. 故障与恢复
 

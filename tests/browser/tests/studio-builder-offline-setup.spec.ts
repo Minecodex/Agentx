@@ -1,6 +1,5 @@
 import { expect } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
-import { fixtureDraftId } from '../draft-fixtures'
 import { test, create, createVersion, login, publishVersion } from '../studio-builder-support'
 
 test('user publishes Workflow and business Agent versions before Control-offline verification', async ({page}) => {
@@ -12,6 +11,6 @@ test('user publishes Workflow and business Agent versions before Control-offline
   const agentVersion = process.env.AGENTX_E2E_OFFLINE_AGENT_VERSION!
   expect(agentId).toBeTruthy()
   expect(agentVersion).toBeTruthy()
-  await publishVersion(page, token, {id:agentId,createdDraftId:await fixtureDraftId(page,agentId)}, agentVersion)
+  await publishVersion(page, token, {id:agentId}, agentVersion)
   await writeFile(process.env.AGENTX_E2E_OFFLINE_SETUP_OUTPUT!, JSON.stringify({workflowId:created.id,versionId:version.id,agentWorkflowId:agentId,agentVersionId:agentVersion},null,2))
 })

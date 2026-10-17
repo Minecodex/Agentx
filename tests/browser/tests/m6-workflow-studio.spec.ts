@@ -1,4 +1,6 @@
-import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
+import { publishVersion } from '../studio-builder-support'
+import { publishFixtureVersion } from '../draft-fixtures'
+import { fixtureVersionId, fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
 
 import { connectStudioPorts as connect } from './studio-connections'
 import { expect, type Locator, type Page, test } from '@playwright/test'
@@ -58,7 +60,7 @@ async function login(page: Page) {
     await page.getByRole('button', { name: '初始化并进入工作台' }).click()
     await expect(page).toHaveURL(/\/$/)
     const token = ((await (await response).json()) as { accessToken: string }).accessToken
-    const me = await page.request.get('/api/v1/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+    const me = await page.request.get('/api/v1/auth/me', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
     expect(me.ok()).toBeTruthy()
     const user = (await me.json()) as { id: string; displayName: string }
     return { token, userName: user.displayName }
@@ -70,14 +72,14 @@ async function login(page: Page) {
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/\/$/)
   const token = ((await (await response).json()) as { accessToken: string }).accessToken
-  const me = await page.request.get('/api/v1/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+  const me = await page.request.get('/api/v1/auth/me', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(me.ok()).toBeTruthy()
   const user = (await me.json()) as { id: string; displayName: string }
   return { token, userName: user.displayName }
 }
 
 async function api<T>(page: Page, token: string, path: string): Promise<T> {
-  const response = await page.request.get(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.get(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   if (!response.ok()) {
     throw new Error(`${path}: ${response.status()} ${await response.text()}`)
   }
@@ -85,7 +87,7 @@ async function api<T>(page: Page, token: string, path: string): Promise<T> {
 }
 
 async function mutate<T>(page: Page, token: string, path: string, method: 'POST' | 'PUT' | 'PATCH', body: unknown): Promise<T> {
-  const response = await page.request.fetch(`/api/v1${path}`, { method, data: body, headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.fetch(`/api/v1${path}`, { method, data: body, headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   if (!response.ok()) throw new Error(`${path}: ${response.status()} ${await response.text()}`)
   return response.json() as Promise<T>
 }
@@ -574,7 +576,7 @@ test('M6 Studio builds and reopens Start to IF to Set to Merge to Exit entirely 
   const workflowName = `M6 UI Branch Merge ${Date.now()}`
   const workflowId = await createWorkflow(page, workflowName)
 
-  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+  await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   await addFromCreator(page, 'palette-action-if')
   const ifNode = page.locator('.react-flow__node-manifest').filter({ hasText: /条件分支|IF/ }).first()
@@ -645,7 +647,7 @@ test('M6 Studio creates, debugs, versions and publishes a manifest-driven Workfl
 
   for (const [resourceType, resourceName, detail] of resourceNames) await grantResource(page, resourceType, resourceName, detail, workflowName)
 
-  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+  await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   await setStartInputs(page)
   await expect(page.getByTestId('node-creator')).toBeVisible()
@@ -1049,20 +1051,11 @@ test('M6 Studio creates, debugs, versions and publishes a manifest-driven Workfl
   await page.getByRole('button', { name: '停止', exact: true }).click()
   await waitExecution(page, token, stoppedExecution, ['cancelled'])
 
-  await page.getByRole('button', { name: '版本', exact: true }).click()
-  const versionDialog = page.getByRole('dialog', { name: '工作流版本' })
-  await versionDialog.getByRole('button', { name: '创建版本' }).click()
-  await expect(page.getByText('版本已创建', { exact: true })).toBeVisible()
-  const versions = await api<Array<{ id: string; definition: unknown }>>(page, token, `/workflows/${workflowId}/versions`)
-  expect(versions).toHaveLength(1)
-  expect(JSON.stringify(versions[0].definition)).not.toMatch(/pin_data|mock_output|debugOverlay/)
-
-  await page.getByRole('button', { name: '发布', exact: true }).click()
-  const publishDialog = page.getByRole('dialog', { name: '发布工作流' })
-  await choose(page, publishDialog.getByLabel('环境'), /Development/)
-  await choose(page, publishDialog.getByLabel('版本'), /v1/)
-  await publishDialog.getByRole('button', { name: '发布', exact: true }).click()
-  await expect(page.getByText('工作流已发布', { exact: true })).toBeVisible()
+  const publicationPage=await context.newPage()
+  await publishVersion(publicationPage,token,{id:workflowId},await fixtureVersionId(page,workflowId))
+  const version=await api<{definition:unknown}>(page,token,`/workflows/${workflowId}/versions/${await fixtureVersionId(page,workflowId)}`)
+  expect(JSON.stringify(version.definition)).not.toMatch(/pin_data|mock_output|debugOverlay/)
+  await publicationPage.close()
 
   const viewports = [{ width: 1280, height: 800 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }]
   for (const locale of ['zh-CN', 'en-US'] as const) {
@@ -1083,22 +1076,11 @@ test('M6 Studio creates, debugs, versions and publishes a manifest-driven Workfl
         await page.screenshot({ path: testInfo.outputPath(`studio-${viewport.width}x${viewport.height}-${locale}-${theme}.png`), fullPage: true })
       }
     }
-    const versionsEndpoint = `/api/v1/workflows/${workflowId}/versions`
-    await page.route(versionsEndpoint, (route) => route.fulfill({
-      status: 422,
-      contentType: 'application/json',
-      body: JSON.stringify({ code: 'INVALID_WORKFLOW_DEFINITION', message: locale === 'zh-CN' ? 'Workflow definition is invalid' : '工作流定义无效', requestId: crypto.randomUUID() }),
-    }))
-    await page.getByRole('button', { name: locale === 'zh-CN' ? '版本' : 'Version', exact: true }).click()
-    const localizedVersionDialog = page.getByRole('dialog', { name: locale === 'zh-CN' ? '工作流版本' : 'Workflow versions' })
-    await localizedVersionDialog.getByRole('button', { name: locale === 'zh-CN' ? '创建版本' : 'Create version' }).click()
-    await expect(page.getByText(locale === 'zh-CN' ? '工作流定义无效' : 'The workflow definition is invalid', { exact: true })).toBeVisible()
-    await localizedVersionDialog.getByRole('button', { name: locale === 'zh-CN' ? '关闭' : 'Close' }).click()
-    await page.unroute(versionsEndpoint)
+
   }
 
   const concurrent = await context.newPage()
-  await concurrent.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+  await concurrent.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   await expect(concurrent.getByTestId('workflow-canvas')).toBeVisible()
   const concurrentDetails = await openNodeDetails(concurrent, flowNode(concurrent, 'code'))
   await concurrentDetails.getByRole('tab', { name: 'Parameters' }).click()
@@ -1141,7 +1123,7 @@ test('M6 Code executes JavaScript and Shell named-input contracts in OpenSandbox
     const workflowName = `M6 Code ${codeCase.runner} ${Date.now()}`
     const workflowId = await createWorkflow(page, workflowName)
     await grantResource(page, 'sandbox_profile', studioSandboxName, undefined, workflowName)
-    await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+    await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
     await expect(page.getByTestId('workflow-canvas')).toBeVisible()
     await addFromCreator(page, 'palette-action-code')
     const code = flowNode(page, 'code')
@@ -1329,7 +1311,7 @@ printf '{"http":"ok","tcp":"%s"}' "$tcp_value" > "$AGENTX_OUTPUT_PATH"`
   const workflowName = `M6 Gateway runners ${Date.now()}`
   const workflowId = await createWorkflow(page, workflowName)
   await grantResource(page, 'sandbox_profile', studioNetworkSandboxName, undefined, workflowName)
-  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+  await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   await addFromCreator(page, 'palette-action-code')
   const code = flowNode(page, 'code')
@@ -1420,7 +1402,7 @@ test('M6 standalone Model sends prompt and question as ordered messages and expo
   await grantResource(page, 'credential', studioCredentialName, undefined, workflowName)
   await grantResource(page, 'model', studioModelName, undefined, workflowName)
 
-  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+  await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   await setStartInputs(page)
   await addFromCreator(page, 'palette-action-model')
@@ -1548,7 +1530,7 @@ test('M6 Model validates native JSON Schema output without text parsing fallback
   await grantResource(page, 'credential', studioCredentialName, undefined, workflowName)
   await grantResource(page, 'model', studioModelName, undefined, workflowName)
 
-  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+  await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   await setStartInputs(page)
   await addFromCreator(page, 'palette-action-model')
   await page.getByRole('button', { name: /^(适应画布|Fit view)$/i }).click({ force: true })
@@ -1581,7 +1563,7 @@ test('M6 standalone Approval resumes with the frozen decision output contract', 
   const { token, userName } = await login(page)
   const workflowName = `M6 Approval Contract ${Date.now()}`
   const workflowId = await createWorkflow(page, workflowName)
-  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+  await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   await setStartInputs(page)
   await addFromCreator(page, 'palette-action-approval')
@@ -1598,7 +1580,7 @@ test('M6 standalone Approval resumes with the frozen decision output contract', 
   await details.getByRole('button', { name: /^(关闭|Close)$/ }).first().click()
 
   await saveAndReadDraft(page, token, workflowId)
-  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+  await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   await page.getByRole('button', { name: /^(适应画布|Fit view)$/i }).click({ force: true })
   const configuredApproval = page.locator('.react-flow__node-manifest').filter({ hasText: /审批|Approval/ }).first()
   await connect(page, page.getByTestId('workflow-start'), 'main', configuredApproval, 'main')
@@ -1643,12 +1625,9 @@ test('M6 Studio renders all thirteen dedicated node panels in the focused editor
   // the Workflow and Version themselves are still created through visible UI.
   const childName = 'M6 Panel Child Golden'
   const childId = await createWorkflow(page, childName)
-  await page.goto(`/workflows/${childId}/drafts/${await fixtureDraftId(page, childId)}/editor`)
+  await page.goto(`/workflows/${childId}/versions/${await fixtureVersionId(page, childId)}/editor`)
   await saveAndReadDraft(page, token, childId)
-  await page.getByRole('button', { name: '版本', exact: true }).click()
-  const childVersions = page.getByRole('dialog', { name: '工作流版本' })
-  await childVersions.getByRole('button', { name: '创建版本' }).click()
-  await expect(page.getByText('版本已创建', { exact: true })).toBeVisible()
+  await publishVersion(page,token,{id:childId},await fixtureVersionId(page,childId))
   await page.goto('/')
 
   const workflowName = 'M6 Panel Matrix Golden'
@@ -1656,7 +1635,7 @@ test('M6 Studio renders all thirteen dedicated node panels in the focused editor
   await grantResource(page, 'credential', studioCredentialName, undefined, workflowName)
   await grantResource(page, 'model', studioModelName, undefined, workflowName)
   await grantResource(page, 'sandbox_profile', studioSandboxName, undefined, workflowName)
-  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+  await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
 
   await setStartArrayInput(page)
@@ -1851,7 +1830,7 @@ test('M6 Studio makes dual-Agent output selection explicit across serial, parall
   await grantResource(page, 'credential', studioCredentialName, undefined, workflowName)
   await grantResource(page, 'model', studioModelName, undefined, workflowName)
 
-  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+  await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   await setStartInputs(page)
   await addFromCreator(page, 'palette-action-agent')
   await addFromCreator(page, 'palette-action-agent')
@@ -1924,12 +1903,12 @@ test('M6 Studio makes dual-Agent output selection explicit across serial, parall
   expect(mergedDraft.definition.nodes.some((node) => node.type === 'merge')).toBeTruthy()
   const mergedExitParameters = mergedDraft.definition.nodes.find((node) => node.type === 'exit')?.parameters as { outputs: Record<string, unknown> }
   expect(mergedExitParameters.outputs.answer).toMatchObject({ kind: 'reference', selector: { namespace: 'outputs', port: 'main', path: ['text'] } })
-  const mergedVersion = await mutate<WorkflowVersion>(page, token, `/workflows/${workflowId}/versions`, 'POST', { draftId: await fixtureDraftId(page, workflowId),  draftRevision: mergedDraft.revision })
+  const mergedVersion = await publishFixtureVersion<WorkflowVersion>(page, token, workflowId, mergedDraft.revision)
   const application = await mutate<Application>(page, token, '/applications', 'POST', { workflowId, name: workflowName, slug: `m6-multi-agent-${Date.now()}`, description: 'Dual Agent output contract E2E', visibility: 'company' })
   const environments = await api<Array<{ id: string; code: string }>>(page, token, '/environments')
   const environment = environments.find((item) => item.code === 'development')
   expect(environment).toBeTruthy()
-  await mutate<{ id: string }>(page, token, `/workflows/${workflowId}/deployments`, 'POST', { workflowVersionId: mergedVersion.id, environmentId: environment!.id })
+  await mutate<{ id: string }>(page, token, `/workflows/${workflowId}/deployments`, 'POST', {contentSource:'version', workflowVersionId: mergedVersion.id, environmentId: environment!.id })
   const deployment = await mutate<ApplicationDeployment>(page, token, `/applications/${application.id}/deployments`, 'POST', { workflowVersionId: mergedVersion.id, environmentId: environment!.id, sessionVersionPolicy: 'pinned' })
   expect(deployment.id).toBeTruthy()
   await waitApplicationDeployment(page, token, application.id, deployment.id)
@@ -1954,12 +1933,12 @@ test('M6 Studio makes dual-Agent output selection explicit across serial, parall
   const invocation = await invocationHttpResponse.json() as GatewayInvocation
   let completed: GatewayInvocation | undefined
   await expect.poll(async () => {
-    const response = await page.request.get(`${gatewayBase}/gateway/v1/invocations/${invocation.id}`, { headers: { Authorization: `Bearer ${token}` } })
+    const response = await page.request.get(`${gatewayBase}/gateway/v1/invocations/${invocation.id}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
     completed = await response.json() as GatewayInvocation
     return completed.status
   }, { timeout: 180_000, intervals: [500, 1_000, 2_000] }).toBe('completed')
   expect(completed?.error).toBeNull()
-  const messagesResponse = await page.request.get(`${gatewayBase}/gateway/v1/sessions/${session.id}/messages`, { headers: { Authorization: `Bearer ${token}` } })
+  const messagesResponse = await page.request.get(`${gatewayBase}/gateway/v1/sessions/${session.id}/messages`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   const messages = await messagesResponse.json() as GatewayMessage[]
   const sessionTitle = page.locator('aside').getByText('M6 dual Agent output', { exact: true })
   await expect(sessionTitle).toBeVisible({ timeout: 30_000 })

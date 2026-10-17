@@ -97,6 +97,7 @@ async fn export_workflow(
 async fn import_workflow(
     State(state): State<ControlApiState>,
     actor: Actor,
+    headers: axum::http::HeaderMap,
     Json(input): Json<ImportRequest>,
 ) -> ApiResult<(StatusCode, Json<Value>)> {
     actor.require("workflow:create")?;
@@ -167,7 +168,23 @@ async fn import_workflow(
     let identity = Uuid::now_v7();
     let definition_hash = canonical_content_hash(&definition).map_err(ApiError::internal)?;
     let editor_hash = canonical_content_hash(&editor).map_err(ApiError::internal)?;
+    let request = json!({"name":input.name,"description":input.description,"visibility":input.visibility,"package":input.package});
+    let keyed = headers.contains_key("Idempotency-Key");
     let mut tx = state.pool.begin().await?;
+    if keyed {
+        sqlx::query("SELECT id FROM users WHERE tenant_id=? AND id=? FOR UPDATE")
+            .bind(actor.tenant_id)
+            .bind(actor.user_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        if let Some(result) =
+            crate::workflow_versions::replay(&mut tx, &actor, "import-workflow", &headers, &request)
+                .await?
+        {
+            tx.commit().await?;
+            return Ok((StatusCode::CREATED, Json(result)));
+        }
+    }
     sqlx::query("INSERT INTO workflows(id,tenant_id,name,description,visibility,owner_user_id,owner_department_id) VALUES(?,?,?,?,?,?,?)").bind(workflow).bind(actor.tenant_id).bind(name).bind(input.description).bind(input.visibility).bind(actor.user_id).bind(actor.department_id).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO workflow_service_identities(id,tenant_id,workflow_id) VALUES(?,?,?)")
         .bind(identity)
@@ -203,11 +220,23 @@ async fn import_workflow(
         &parsed,
     )
     .await?;
+    let version =
+        crate::workflow_versions::insert_unpublished(&mut tx, &actor, workflow, draft).await?;
+    let result =
+        json!({"workflowId":workflow,"createdVersionId":version,"definitionHash":definition_hash});
+    if keyed {
+        crate::workflow_versions::receipt(
+            &mut tx,
+            &actor,
+            "import-workflow",
+            &headers,
+            &request,
+            &result,
+        )
+        .await?;
+    }
     tx.commit().await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(json!({"workflowId":workflow,"draftId":draft,"definitionHash":definition_hash})),
-    ))
+    Ok((StatusCode::CREATED, Json(result)))
 }
 
 async fn run_workflow(
@@ -218,7 +247,7 @@ async fn run_workflow(
 ) -> ApiResult<(StatusCode, Json<Value>)> {
     actor.require("execution:run")?;
     crate::workflow_api::require_workflow_access(&state, &actor, id, false).await?;
-    let version:Uuid=sqlx::query_scalar("SELECT id FROM workflow_versions WHERE tenant_id=? AND workflow_id=? ORDER BY version_number DESC LIMIT 1").bind(actor.tenant_id).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::unprocessable("WORKFLOW_VERSION_REQUIRED","Publish a Workflow Version before running"))?;
+    let version:Uuid=sqlx::query_scalar("SELECT id FROM workflow_versions WHERE tenant_id=? AND workflow_id=? AND publication_status='published' ORDER BY version_number DESC LIMIT 1").bind(actor.tenant_id).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::unprocessable("WORKFLOW_VERSION_REQUIRED","Publish a Workflow Version before running"))?;
     invoke_version(&state, &actor, version, input.input, input.idempotency_key).await
 }
 async fn start_version_execution(

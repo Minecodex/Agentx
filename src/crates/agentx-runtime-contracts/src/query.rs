@@ -180,11 +180,15 @@ pub struct DelegationScopeV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExecutionSearchRequestV1 {
+    pub user_source: Option<String>,
+    pub external_user_id: Option<String>,
     #[serde(deserialize_with = "crate::deserialize_v1")]
     pub api_version: u32,
     pub tenant_id: Uuid,
     pub application_ids: Vec<Uuid>,
     pub workflow_ids: Vec<Uuid>,
+    pub workflow_version_ids: Vec<Uuid>,
+    pub workflow_draft_ids: Vec<Uuid>,
     pub tool_ids: Vec<Uuid>,
     pub initiator_user_ids: Vec<Uuid>,
     pub initiator_department_ids: Vec<Uuid>,
@@ -216,6 +220,8 @@ pub enum ExecutionSessionModeV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct InvocationSearchRequestV1 {
+    pub user_source: Option<String>,
+    pub external_user_id: Option<String>,
     #[serde(deserialize_with = "crate::deserialize_v1")]
     pub api_version: u32,
     pub tenant_id: Uuid,
@@ -234,6 +240,7 @@ pub struct InvocationSearchRequestV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExecutionSummaryV1 {
+    pub end_user: Option<crate::ApplicationUserIdentityV1>,
     pub execution_id: Uuid,
     pub invocation_id: Option<Uuid>,
     pub application_id: Option<Uuid>,
@@ -269,6 +276,7 @@ pub struct ExecutionSummaryV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct InvocationSummaryV1 {
+    pub end_user: Option<crate::ApplicationUserIdentityV1>,
     pub invocation_id: Uuid,
     pub execution_id: Option<Uuid>,
     pub application_id: Uuid,

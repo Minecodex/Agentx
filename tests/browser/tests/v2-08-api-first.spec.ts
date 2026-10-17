@@ -1,3 +1,4 @@
+import { publishFixtureVersion } from '../draft-fixtures'
 import { fixtureDraftId } from '../draft-fixtures'
 import { expect, type APIResponse, type Page, test } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
@@ -97,10 +98,10 @@ test('V2-08 API-first empty-domain closure creates product facts without SQL fix
       edges: ['start-step-1', 'step-1-step-2', 'step-2-step-3', 'step-3-step-4', 'step-4-end'].map(edgeId => ({ edgeId })),
     },
   })
-  const version = await request<{ id: string }>(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftId: await fixtureDraftId(page, workflow.id),  draftRevision: saved.revision })
+  const version = await publishFixtureVersion<{ id: string }>(page, token, workflow.id, saved.revision)
   const environment = (await request<Environment[]>(page, token, '/environments')).find((item) => item.code === 'development')
   expect(environment).toBeTruthy()
-  await request(page, token, `/workflows/${workflow.id}/deployments`, 'POST', { workflowVersionId: version.id, environmentId: environment!.id })
+  await request(page, token, `/workflows/${workflow.id}/deployments`, 'POST', {contentSource:'version', workflowVersionId: version.id, environmentId: environment!.id })
 
   const application = await request<{ id: string; slug: string }>(page, token, '/applications', 'POST', {
     workflowId: workflow.id, name: `V2-08 Application ${suffix}`, slug: `v2-08-${suffix}`,
@@ -157,7 +158,7 @@ test('V2-08 API-first empty-domain closure creates product facts without SQL fix
   })
   await request(page, token, `/evaluations/${evaluation.id}/start`, 'POST')
   await expect.poll(async () => {
-    const response = await page.request.get(`/api/v1/evaluations/${evaluation.id}/report`, { headers: { Authorization: `Bearer ${token}` } })
+    const response = await page.request.get(`/api/v1/evaluations/${evaluation.id}/report`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
     return response.status()
   }, { timeout: 180_000, intervals: [500, 1_000, 2_000] }).toBe(200)
 

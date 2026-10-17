@@ -95,4 +95,4 @@ export function ResourceGrantDialog({ onClose, open, resource }: { onClose: () =
 }
 
 function Field({ children, label }: { children: ReactNode; label: string }) { return <label className="block text-xs"><span className="mb-2 block font-medium">{label}<span aria-hidden="true" className="ml-1 text-danger">*</span></span>{children}</label> }
-function operationsFor(type: string): GrantOperation[] { return type === 'rag' || type === 'memory' ? ['read', 'write', 'view', 'manage'] : ['use', 'view', 'manage'] }
+function operationsFor(type: string): GrantOperation[] { return type === 'rag' ? ['read', 'write', 'view', 'manage'] : ['use', 'view', 'manage'] }

@@ -14,18 +14,18 @@ const edge = (sourceNodeId: string, targetNodeId: string, sourceHandle = 'main',
 const nodeCard = (page: Page, id: string, type: string) => type === 'loop_over_items' ? page.getByTestId(`studio-loop-${id}`).locator('header') : page.getByTestId(`studio-node-${id}`)
 
 async function fixtureDocument(page: Page, token: string, type: string, created: Created): Promise<Document> {
-  const draft = await read<DetailedDraft>(page, token, `/workflows/${created.id}/drafts/${created.createdDraftId}`)
+  const draft = await read<DetailedDraft>(page, token, `/workflows/${created.id}/drafts/${created.documentId}`)
   const document: Document = { definition: structuredClone(draft.definition), editorDocument: structuredClone(draft.editorDocument) }
   const parameters = structuredClone(cases[type])
   if (type === 'approval') parameters.candidateUserId = (await read<{ id: string }>(page, token, '/auth/me')).id
   if (type === 'sub_workflow') {
     const child = await create(page, `Inspector child ${Date.now()}`)
-    const value = await read<DetailedDraft>(page, token, `/workflows/${child.id}/drafts/${child.createdDraftId}`)
+    const value = await read<DetailedDraft>(page, token, `/workflows/${child.id}/drafts/${child.documentId}`)
     value.definition.start.inputs = { type: 'object', properties: { question: { type: 'string' }, nested: { type: 'array', items: { type: 'string' } } }, additionalProperties: false }
-    const response = await page.request.put(`/api/v1/workflows/${child.id}/drafts/${child.createdDraftId}`, { headers: { Authorization: `Bearer ${token}` }, data: { expectedRevision: value.revision, definition: value.definition, editorDocument: value.editorDocument } })
+    const response = await page.request.put(`/api/v1/workflows/${child.id}/drafts/${child.documentId}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { expectedRevision: value.revision, definition: value.definition, editorDocument: value.editorDocument } })
     expect(response.ok(), await response.text()).toBeTruthy()
     parameters.workflowVersionId = (await createVersion(page, child)).id
-    await page.goto(`/workflows/${created.id}/drafts/${created.createdDraftId}/editor`)
+    await page.goto(`/workflows/${created.id}/versions/${created.createdVersionId}/editor`)
     await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   }
   const node: Document['definition']['nodes'][number] = definitionNode(type, parameters)

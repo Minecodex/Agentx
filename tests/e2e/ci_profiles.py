@@ -26,6 +26,7 @@ PR_TESTS = {
     "product/test_playwright.py::test_product_playwright_suite",
     "product/test_studio_builder.py::test_plan8_layout_protocol",
     "product/test_web_asset_loading.py::test_workflow_creation_and_chunk_recovery",
+    "product/test_workflow_version_canvases.py::test_workflow_version_canvases",
     "observability/test_observability.py::test_observability_is_available",
     "security/test_isolation.py::test_each_namespace_has_default_deny",
     "security/test_workload_credentials.py::test_serving_workload_uses_dedicated_service_account",

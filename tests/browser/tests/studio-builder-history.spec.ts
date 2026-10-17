@@ -1,7 +1,7 @@
 import { expect } from '@playwright/test'
-import { test, allEntries, completed, count, derive, editorPath, fixtureCanvas, read, saved, send } from '../studio-builder-support'
+import { test, allEntries, completed, count, newCanvas, editorPath, fixtureCanvas, read, saved, send } from '../studio-builder-support'
 
-test('P8-E2E-26: removed resources remain protected by immutable revisions and archived independent drafts', async ({page}) => {
+test('P8-E2E-26: removed resources remain protected by immutable revisions and archived canvases', async ({page}) => {
   const {token, created} = await fixtureCanvas(page, 'P8 historical references')
   const model = process.env.AGENTX_E2E_STUDIO_ALTERNATE_ID!
   let session = ''
@@ -21,10 +21,11 @@ test('P8-E2E-26: removed resources remain protected by immutable revisions and a
   await completed(page)
   const current = await saved(page, token, created)
   expect(current.revision).toBeGreaterThan(referenced.revision)
-  const other = await derive(page, created, '', 'Independent blank')
+  const other = await newCanvas(page, created)
   await page.goto(`/workflows/${created.id}`)
-  const row = page.getByText('Independent blank', {exact:true}).locator('..').locator('..')
-  await row.getByRole('button', {name:'归档草稿',exact:true}).click()
+  const row = page.getByTestId('workflow-version-2')
+  await row.getByRole('button',{name:'v2 更多操作'}).click()
+  await page.getByRole('menuitem', {name:'归档',exact:true}).click()
   const impact = await read<{references:Array<{sourceType:string;immutable:boolean;sourceName:string}>}>(page,token,`/deletion-impact/model/${model}`)
   expect(impact.references.some(item=>item.sourceType==='workflow_draft_revision'&&item.immutable&&item.sourceName.includes(`r${referenced.revision}`))).toBeTruthy()
   const blocked = await page.request.delete(`/api/v1/models/aliases/${model}`,{headers:{Authorization:`Bearer ${token}`}})
@@ -32,5 +33,5 @@ test('P8-E2E-26: removed resources remain protected by immutable revisions and a
   expect((await blocked.json()).code).toBe('RESOURCE_REFERENCED')
   await page.goto(editorPath(created))
   expect(await count(page,token,created.id)).toBe(0)
-  expect((await read<{revision:number}>(page,token,`/workflows/${other.id}/drafts/${other.createdDraftId}`)).revision).toBe(0)
+  expect((await read<{revision:number}>(page,token,`/workflows/${other.id}/drafts/${other.documentId}`)).revision).toBe(1)
 })

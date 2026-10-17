@@ -449,55 +449,52 @@ pub fn derive_attachment_registry(
                 operation: attachment.operation.as_str().into(),
                 scope: "run".into(),
             })?,
-            RuntimeResourceConfigurationV1::Memory { access_mode, .. } => {
+            RuntimeResourceConfigurationV1::Memory { .. } => {
+                if !matches!(
+                    attachment.operation,
+                    agentx_domain::ResourceOperation::Use
+                        | agentx_domain::ResourceOperation::Manage
+                ) {
+                    return Err(
+                        "INVALID_MEMORY_OPERATION: memory requires the read/write use permission"
+                            .into(),
+                    );
+                }
                 if matches!(
                     attachment.operation,
                     agentx_domain::ResourceOperation::Use
-                        | agentx_domain::ResourceOperation::Read
-                        | agentx_domain::ResourceOperation::Write
                         | agentx_domain::ResourceOperation::Manage
                 ) {
                     add_tool(AgentAttachmentToolV1 {
                         name: "memory_recall".into(),
-                        description: "Recall data from the run-scoped authorized Memory namespace."
+                        description: "Recall personal memory for the current application user and Agent node."
                             .into(),
                         input_schema: serde_json::json!({"type":"object","additionalProperties":false,"required":["query"],"properties":{"query":{"type":"string","minLength":1},"topK":{"type":"integer","minimum":1,"maximum":20}}}),
                         origin: "memory".into(),
                         replay_policy: "safe".into(),
                         resource_id: attachment.resource_id,
                         resource_version_id: attachment.resource_version_id,
-                        operation: "read".into(),
-                        scope: if attachment.binding_role == "long_term_memory" {
-                            "subject"
-                        } else {
-                            "run"
-                        }
-                        .into(),
+                        operation: "use".into(),
+                        scope: "subject".into(),
                     })?;
                 }
-                if access_mode == "read_write"
-                    && matches!(
-                        attachment.operation,
-                        agentx_domain::ResourceOperation::Write
-                            | agentx_domain::ResourceOperation::Manage
-                    )
-                {
+                if matches!(
+                    attachment.operation,
+                    agentx_domain::ResourceOperation::Use
+                        | agentx_domain::ResourceOperation::Manage
+                ) {
                     add_tool(AgentAttachmentToolV1 {
                         name: "memory_write".into(),
-                        description: "Write data to the run-scoped authorized Memory namespace."
-                            .into(),
+                        description:
+                            "Write personal memory for the current application user and Agent node."
+                                .into(),
                         input_schema: serde_json::json!({"type":"object","additionalProperties":false,"required":["text"],"properties":{"text":{"type":"string","minLength":1},"metadata":{"type":"object"}}}),
                         origin: "memory".into(),
                         replay_policy: "never".into(),
                         resource_id: attachment.resource_id,
                         resource_version_id: attachment.resource_version_id,
-                        operation: "write".into(),
-                        scope: if attachment.binding_role == "long_term_memory" {
-                            "subject"
-                        } else {
-                            "run"
-                        }
-                        .into(),
+                        operation: "use".into(),
+                        scope: "subject".into(),
                     })?;
                 }
             }
@@ -1453,6 +1450,56 @@ mod attachment_registry_tests {
                 operation: "use".into(),
             })
             .collect()
+    }
+
+    #[test]
+    fn memory_use_registers_recall_and_write_and_rejects_read_only_bindings() {
+        let id = Uuid::from_u128(88);
+        let version = Uuid::from_u128(89);
+        let resources = vec![RuntimeResourceBindingV1 {
+            resource_kind: RuntimeResourceKindV1::Memory,
+            resource_id: id,
+            resource_version: version.to_string(),
+            state_epoch: 1,
+            content_hash: hash(),
+            object_ids: vec![],
+            configuration: RuntimeResourceConfigurationV1::Memory {
+                endpoint: "https://mem0.example".into(),
+                credential: None,
+            },
+        }];
+        let registry = derive_attachment_registry(
+            &configuration(vec![attachment(ResourceType::Memory, id, version)]),
+            &resources,
+            1,
+            &grants(&resources),
+        )
+        .unwrap();
+        assert_eq!(
+            registry
+                .tools
+                .iter()
+                .map(|tool| tool.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["memory_recall", "memory_write"]
+        );
+        assert!(
+            registry
+                .tools
+                .iter()
+                .all(|tool| tool.operation == "use" && tool.scope == "subject")
+        );
+        let mut read_only = attachment(ResourceType::Memory, id, version);
+        read_only.operation = ResourceOperation::Read;
+        assert!(
+            derive_attachment_registry(
+                &configuration(vec![read_only]),
+                &resources,
+                1,
+                &grants(&resources)
+            )
+            .is_err()
+        );
     }
 
     #[test]

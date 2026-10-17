@@ -593,7 +593,7 @@
         "bindingRole": "long_term_memory",
         "label": "Long-term Memory",
         "multiple": false,
-        "operation": "read",
+        "operation": "use",
         "required": false,
         "resourceType": "memory"
       }

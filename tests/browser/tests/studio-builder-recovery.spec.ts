@@ -27,7 +27,7 @@ test('P8-E2E-20: Gateway kill exposes an unknown model outcome without replay or
     const value=await read<{runs:Array<{id:string;status:string}>}>(page,token,`/studio-builder/sessions/${session}`)
     return value.runs.find(item=>item.id===run)?.status
   },{timeout:200_000}).toBe('outcome_unknown')
-  const after=await read<Draft>(page,token,`/workflows/${created.id}/drafts/${created.createdDraftId}`)
+  const after=await read<Draft>(page,token,`/workflows/${created.id}/drafts/${created.documentId}`)
   expect(after.definition).toEqual(before.definition)
   expect(after.revision).toBe(before.revision)
   await expect.poll(async()=>{try{return await count(page,token,created.id)}catch{return -1}},{timeout:60_000}).toBe(0)

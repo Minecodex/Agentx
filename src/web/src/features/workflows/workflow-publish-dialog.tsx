@@ -1,103 +1,52 @@
-import { ArrowRight, Check, FileEdit, GitCommitHorizontal, LoaderCircle, Rocket, X } from 'lucide-react'
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-
-import type { WorkflowDeployment, WorkflowEnvironment, WorkflowVersion } from '../../shared/api/types'
-import { Button } from '../../shared/ui/button'
+import { Rocket } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import type { WorkflowDeployment, WorkflowEnvironment, WorkflowVersionSummary } from '../../shared/api/types'
 import { Dialog, DialogContent } from '../../shared/ui/dialog'
+import { Button } from '../../shared/ui/button'
 import { Select } from '../../shared/ui/select'
 
-export type WorkflowPublishInput = { environmentId: string; workflowVersionId?: string; useDraft: boolean }
-export type WorkflowPublishStage = 'idle' | 'creating' | 'publishing'
-
-type Props = {
-  open: boolean
-  draftRevision: number
-  dirty: boolean
-  versions: WorkflowVersion[]
-  environments: WorkflowEnvironment[]
-  deployments: WorkflowDeployment[]
-  defaultEnvironmentId?: string
-  defaultVersionId?: string
-  onClose: () => void
-  onSubmit: (input: WorkflowPublishInput, setStage: Dispatch<SetStateAction<WorkflowPublishStage>>) => Promise<void>
-}
-
-const CURRENT_DRAFT = '__current_draft__'
-
-export function WorkflowPublishDialog({ open, draftRevision, dirty, versions, environments, deployments, defaultEnvironmentId, defaultVersionId, onClose, onSubmit }: Props) {
+export type WorkflowPublishInput = { environmentId: string; workflowVersionId: string; contentSource: 'version' | 'draft'; expectedRevision?: number }
+export function WorkflowPublishDialog({ version, environments, environmentsLoading, environmentsError, onRetryEnvironments, deployments, onClose, onSubmit }: {
+  version: WorkflowVersionSummary; environments: WorkflowEnvironment[]; deployments: WorkflowDeployment[]; onClose: () => void
+  environmentsLoading: boolean; environmentsError?: string; onRetryEnvironments: () => void
+  onSubmit: (input: WorkflowPublishInput, key: string) => Promise<void>
+}) {
   const { t } = useTranslation()
-  const [environmentId, setEnvironmentId] = useState('')
-  const [versionId, setVersionId] = useState('')
-  const [stage, setStage] = useState<WorkflowPublishStage>('idle')
+  const [selectedEnvironmentId, setEnvironmentId] = useState<string>()
+  const environmentId = selectedEnvironmentId ?? environments[0]?.id ?? ''
+  const targetEnvironment = environments.find(item => item.id === environmentId)
+  const environmentsReady = !environmentsLoading && !environmentsError && environments.length > 0
+  const [contentSource, setContentSource] = useState<'version' | 'draft'>(version.hasDraft ? 'draft' : 'version')
+  const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
-  const latest = versions[0]
-  const nextVersion = (latest?.versionNumber ?? 0) + 1
-  const pending = stage !== 'idle'
-
-  useEffect(() => {
-    if (!open) return
-    setEnvironmentId(defaultEnvironmentId && environments.some((item) => item.id === defaultEnvironmentId) ? defaultEnvironmentId : environments[0]?.id ?? '')
-    setVersionId(defaultVersionId && versions.some((item) => item.id === defaultVersionId) ? defaultVersionId : dirty ? CURRENT_DRAFT : latest?.id ?? '')
-    setStage('idle')
-    setError('')
-  }, [defaultEnvironmentId, defaultVersionId, dirty, environments, latest?.id, open, versions])
-
-  const environment = environments.find((item) => item.id === environmentId)
-  const version = versions.find((item) => item.id === versionId)
-  const useDraft = versionId === CURRENT_DRAFT
-  const targetVersionNumber = useDraft ? nextVersion : version?.versionNumber
-  const active = deployments.find((item) => item.environmentId === environmentId && item.status === 'active')
-  const noOp = Boolean(version && active?.workflowVersionId === version.id)
-  const environmentOptions = useMemo(() => environments.map((item) => ({ value: item.id, label: item.name })), [environments])
-  const versionOptions = useMemo(() => [
-    ...(dirty ? [{ value: CURRENT_DRAFT, label: t('workflows.publishDialog.currentDraftOption', { revision: draftRevision, version: nextVersion }) }] : []),
-    ...versions.map((item) => ({ value: item.id, label: t('workflows.publishDialog.existingVersionOption', { version: item.versionNumber }) })),
-  ], [dirty, draftRevision, nextVersion, t, versions])
-
+  const operation = useRef({ payload: '', key: '' })
+  const active = deployments.find(item => item.environmentId === environmentId && item.status === 'active')
+  const noOp = version.publicationStatus === 'published' && contentSource === 'version' && active?.workflowVersionId === version.id
   const submit = async () => {
-    if (!environmentId || (!useDraft && !versionId) || noOp) return
-    setError('')
-    setStage(useDraft ? 'creating' : 'publishing')
-    try {
-      await onSubmit({ environmentId, workflowVersionId: useDraft ? undefined : versionId, useDraft }, setStage)
-      onClose()
-    } catch (value) {
-      setStage('idle')
-      setError(value instanceof Error ? value.message : String(value))
-    }
+    if (!environmentsReady || !targetEnvironment || pending || noOp) return
+    const input: WorkflowPublishInput = { environmentId, workflowVersionId: version.id, contentSource, ...((version.publicationStatus === 'unpublished' || contentSource === 'draft') ? { expectedRevision: version.draftRevision ?? undefined } : {}) }
+    const payload = JSON.stringify(input)
+    if (operation.current.payload !== payload) operation.current = { payload, key: crypto.randomUUID() }
+    setPending(true); setError('')
+    try { await onSubmit(input, operation.current.key); onClose() }
+    catch (failure) { setError((failure as Error).message) }
+    finally { setPending(false) }
   }
-
-  const close = () => { if (!pending) onClose() }
-  return <Dialog onOpenChange={(value) => !value && close()} open={open}><DialogContent description={t('workflows.publishDialog.description')} title={t('workflows.publishToEnvironment')}>
-    <div className="flex items-start gap-4 border-b border-border px-6 py-5"><div><h2 className="text-lg font-semibold">{t('workflows.publishToEnvironment')}</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">{t('workflows.publishDialog.description')}</p></div><Button aria-label={t('common.close')} className="ml-auto" disabled={pending} onClick={close} size="icon" variant="ghost"><X className="size-4" /></Button></div>
-    <div className="space-y-5 px-6 py-5">
-      <label className="block text-xs"><span className="mb-2 block font-medium">{t('workflows.publishDialog.targetEnvironment')}</span><Select aria-label={t('workflows.publishDialog.targetEnvironment')} className="w-full" disabled={pending} onValueChange={setEnvironmentId} options={environmentOptions} value={environmentId} /></label>
-      <label className="block text-xs"><span className="mb-2 block font-medium">{t('workflows.publishDialog.releaseContent')}</span><Select aria-label={t('workflows.publishDialog.releaseContent')} className="w-full" disabled={pending} onValueChange={setVersionId} options={versionOptions} value={versionId} /></label>
-
-      <div className={`rounded-lg border p-3 text-xs leading-5 ${noOp ? 'border-warning/20 bg-warning/10 text-warning' : 'border-primary/15 bg-primary/5 text-foreground'}`}>
-        {noOp ? t('workflows.publishDialog.noOp', { environment: environment?.name, version: targetVersionNumber }) : useDraft ? t('workflows.publishDialog.combinedDescription', { revision: draftRevision, version: targetVersionNumber, environment: environment?.name }) : t('workflows.publishDialog.existingDescription', { version: targetVersionNumber, environment: environment?.name })}
-      </div>
-
-      <div className="rounded-lg border border-border p-4"><p className="mb-3 text-[10px] text-muted-foreground">{t('workflows.publishDialog.changeSummary')}</p><div className="grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]">
-        <PreviewNode icon={useDraft ? FileEdit : GitCommitHorizontal} label={useDraft ? t('workflows.publishDialog.draftNode', { revision: draftRevision }) : t('workflows.publishDialog.versionNode', { version: targetVersionNumber })} />
-        <ArrowRight className="mx-auto size-3.5 rotate-90 text-muted-foreground sm:rotate-0" />
-        <PreviewNode icon={GitCommitHorizontal} label={t('workflows.publishDialog.immutableNode', { version: targetVersionNumber })} />
-        <ArrowRight className="mx-auto size-3.5 rotate-90 text-muted-foreground sm:rotate-0" />
-        <PreviewNode icon={Rocket} label={t('workflows.publishDialog.environmentNode', { environment: environment?.name ?? '—', from: active ? `v${active.versionNumber}` : t('workflows.publishDialog.notDeployed'), to: targetVersionNumber })} />
-      </div></div>
-
-      {pending && <div className="space-y-2 rounded-lg border border-border bg-muted/25 p-4"><ProgressRow active={stage === 'creating'} done={stage === 'publishing'} label={t('workflows.publishDialog.createVersionStep', { version: targetVersionNumber })} /><ProgressRow active={stage === 'publishing'} done={false} label={t('workflows.publishDialog.publishStep', { environment: environment?.name })} /></div>}
-      {error && <p className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-xs text-danger" role="alert">{error}</p>}
+  return <Dialog open onOpenChange={open => { if (!open && !pending) onClose() }}><DialogContent title={t('workflows.publishToEnvironment')}>
+    <div className="border-b border-border px-6 py-5"><h2 className="text-lg font-semibold">{t('workflows.publishToEnvironment')}</h2><p className="mt-1 text-xs text-muted-foreground">{t('workflows.versionCanvas.publishDescription')}</p></div>
+    <div className="space-y-4 p-6">
+      <label className="block text-xs"><span className="mb-2 block font-medium">{t('workflows.publishDialog.targetEnvironment')}</span><Select aria-label={t('workflows.publishDialog.targetEnvironment')} className="w-full" disabled={pending || !environmentsReady} value={targetEnvironment ? environmentId : ''} placeholder={t(environmentsLoading ? 'workflows.publishDialog.environmentsLoading' : 'workflows.publishDialog.noEnvironments')} onValueChange={setEnvironmentId} options={environments.map(item => ({ value: item.id, label: item.name }))} /></label>
+      {environmentsLoading ? <p role="status" className="text-xs text-muted-foreground">{t('workflows.publishDialog.environmentsLoading')}</p> : environmentsError ? <div role="alert" className="space-y-2 text-xs text-danger"><p>{t('workflows.publishDialog.environmentLoadFailed')}</p><p>{environmentsError}</p><Button size="sm" variant="secondary" onClick={onRetryEnvironments}>{t('workflows.publishDialog.retryEnvironments')}</Button></div> : environments.length === 0 && <div role="status" className="space-y-3 rounded-lg border border-border bg-muted/30 p-4 text-xs text-muted-foreground"><p>{t('workflows.publishDialog.noEnvironmentsHint')}</p><div className="flex items-center gap-2"><Button asChild size="sm" variant="secondary"><Link to="/environments" target="_blank" rel="noreferrer">{t('workflows.manageEnvironments')}</Link></Button><Button size="sm" variant="ghost" onClick={onRetryEnvironments}>{t('workflows.publishDialog.retryEnvironments')}</Button></div></div>}
+      <label className="block text-xs"><span className="mb-2 block font-medium">{t('workflows.publishDialog.releaseContent')}</span><Select aria-label={t('workflows.publishDialog.releaseContent')} className="w-full" disabled={pending} value={contentSource} onValueChange={value => setContentSource(value as 'version' | 'draft')} options={[
+        { value: 'version', label: t(version.publicationStatus === 'published' ? 'workflows.versionCanvas.originalContent' : 'workflows.versionCanvas.unpublishedContent', { version: version.versionNumber, revision: version.publicationStatus === 'published' ? version.sourceRevision : version.draftRevision }) },
+        ...(version.hasDraft ? [{ value: 'draft', label: t('workflows.versionCanvas.draftContent', { version: version.versionNumber, revision: version.draftRevision }) }] : []),
+      ]} /></label>
+      {targetEnvironment && <div className="rounded-lg border border-border bg-muted/30 p-4 text-xs leading-6"><p>{t('workflows.versionCanvas.environmentFrom', { version: active ? `v${active.versionNumber}` : t('workflows.versionBadges.notDeployed') })}</p><p>{t(contentSource === 'draft' ? 'workflows.versionCanvas.derivePreview' : version.publicationStatus === 'unpublished' ? 'workflows.versionCanvas.freezePreview' : 'workflows.versionCanvas.deployPreview', { version: version.versionNumber })}</p></div>}
+      {noOp && <p role="status" className="text-xs text-warning">{t('workflows.publishDialog.noOp', { version: version.versionNumber, environment: environments.find(item => item.id === environmentId)?.name })}</p>}
+      {error && <p role="alert" className="text-xs text-danger">{error}</p>}
     </div>
-    <div className="flex justify-end gap-2 border-t border-border bg-muted/30 px-6 py-4"><Button disabled={pending} onClick={close} variant="ghost">{t('common.cancel')}</Button><Button disabled={pending || noOp || !environmentId || !versionId} onClick={() => void submit()}><Rocket className="size-4" />{pending ? stage === 'creating' ? t('workflows.publishDialog.creatingVersion') : t('workflows.publishDialog.publishing') : t('workflows.publishToEnvironment')}</Button></div>
+    <div className="flex justify-end gap-2 border-t border-border px-6 py-4"><Button variant="ghost" disabled={pending} onClick={onClose}>{t('common.cancel')}</Button><Button disabled={pending || noOp || !environmentsReady || !targetEnvironment} onClick={() => void submit()}><Rocket className="size-4" />{t(pending ? 'workflows.publishDialog.publishing' : 'workflows.publishToEnvironment')}</Button></div>
   </DialogContent></Dialog>
-}
-
-function PreviewNode({ icon: Icon, label }: { icon: typeof Rocket; label: string }) {
-  return <div className="flex min-h-14 items-center justify-center gap-2 rounded-lg bg-muted/50 px-3 text-center text-[10px] font-medium"><Icon className="size-3.5 shrink-0 text-primary" />{label}</div>
-}
-
-function ProgressRow({ active, done, label }: { active: boolean; done: boolean; label: string }) {
-  return <div className={`flex items-center gap-3 text-xs ${active ? 'text-primary' : done ? 'text-success' : 'text-muted-foreground'}`}><span className={`grid size-6 place-items-center rounded-full ${active ? 'bg-primary/10' : done ? 'bg-success/10' : 'bg-muted'}`}>{active ? <LoaderCircle className="size-3.5 animate-spin" /> : done ? <Check className="size-3.5" /> : <span className="size-1.5 rounded-full bg-current" />}</span>{label}</div>
 }

@@ -20,9 +20,13 @@ async fn v2_publish_execution_query_recovery_and_gc_are_fenced_and_idempotent() 
         .expect("Runtime MySQL container should start");
     let port = container.get_host_port_ipv4(3306.tcp()).await.unwrap();
     let pool = connect_with_retry(port).await;
-    let observer = sqlx::mysql::MySqlPoolOptions::new().max_connections(1)
-        .connect(&format!("mysql://root:agentx-root-password@127.0.0.1:{port}/agentx_runtime"))
-        .await.unwrap();
+    let observer = sqlx::mysql::MySqlPoolOptions::new()
+        .max_connections(1)
+        .connect(&format!(
+            "mysql://root:agentx-root-password@127.0.0.1:{port}/agentx_runtime"
+        ))
+        .await
+        .unwrap();
     agentx_runtime_infrastructure::migrate_runtime_mysql(&pool)
         .await
         .unwrap();
@@ -37,10 +41,18 @@ async fn v2_publish_execution_query_recovery_and_gc_are_fenced_and_idempotent() 
         .with_exposed_port(6379.tcp())
         .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
         .with_mapped_port(0, 6379.tcp())
-        .start().await.unwrap();
-    let redis_port = redis_container.get_host_port_ipv4(6379.tcp()).await.unwrap();
+        .start()
+        .await
+        .unwrap();
+    let redis_port = redis_container
+        .get_host_port_ipv4(6379.tcp())
+        .await
+        .unwrap();
     let redis = redis::Client::open(format!("redis://127.0.0.1:{redis_port}/"))
-        .unwrap().get_connection_manager().await.unwrap();
+        .unwrap()
+        .get_connection_manager()
+        .await
+        .unwrap();
     let fixture = Fixture::new(pool, observer, redis);
     command_claim_returns_only_the_current_batch(&fixture).await;
     authentication_failures_do_not_write_receipts(&fixture).await;
@@ -219,22 +231,38 @@ async fn runtime_user_projection_orders_by_token_version(fixture: &Fixture) {
                 role_assignments: vec![],
             },
         };
-        let request = admission_request(fixture, epoch, target, &format!("user-epoch:{user_id}:{epoch}"));
+        let request = admission_request(
+            fixture,
+            epoch,
+            target,
+            &format!("user-epoch:{user_id}:{epoch}"),
+        );
         let receipt = apply_admission(
             State(fixture.state.clone()),
             publisher_headers("runtime.admission.apply"),
             Json(request),
-        ).await.unwrap().0;
+        )
+        .await
+        .unwrap()
+        .0;
         assert!(receipt.applied);
         let projected: (u64, String, String, bool) = sqlx::query_as(
             "SELECT token_version,status,department_name,tenant_query_enabled FROM runtime_user_admission WHERE tenant_id=? AND user_id=?",
         ).bind(fixture.tenant_id).bind(user_id).fetch_one(&fixture.state.pool).await.unwrap();
-        assert_eq!(projected, (
-            expected_version,
-            if expected_enabled { "active" } else { "disabled" }.into(),
-            format!("Department version {expected_version}"),
-            expected_enabled,
-        ));
+        assert_eq!(
+            projected,
+            (
+                expected_version,
+                if expected_enabled {
+                    "active"
+                } else {
+                    "disabled"
+                }
+                .into(),
+                format!("Department version {expected_version}"),
+                expected_enabled,
+            )
+        );
     }
 }
 
@@ -271,6 +299,7 @@ async fn execution_context_projection_changes_only_affect_future_executions(fixt
         fixture.tenant_id,
         fixture.application_id,
         InvocationCaller {
+            end_user: None,
             caller_type: "user",
             caller_id: user_id,
             token_version: Some(1),
@@ -317,6 +346,7 @@ async fn execution_context_projection_changes_only_affect_future_executions(fixt
         fixture.tenant_id,
         fixture.application_id,
         InvocationCaller {
+            end_user: None,
             caller_type: "user",
             caller_id: user_id,
             token_version: Some(2),
@@ -387,6 +417,7 @@ async fn execution_context_projection_changes_only_affect_future_executions(fixt
             fixture.tenant_id,
             fixture.application_id,
             InvocationCaller {
+                end_user: None,
                 caller_type: trigger_type,
                 caller_id: source_id,
                 token_version: None,
@@ -436,7 +467,10 @@ async fn trace_watermarks_are_atomic_under_concurrency(pool: &MySqlPool) {
 
     let mut held_execution = pool.begin().await.unwrap();
     sqlx::query("SELECT id FROM workflow_executions WHERE id=? FOR UPDATE")
-        .bind(execution_id).fetch_one(&mut *held_execution).await.unwrap();
+        .bind(execution_id)
+        .fetch_one(&mut *held_execution)
+        .await
+        .unwrap();
     let mut tasks = tokio::task::JoinSet::new();
     for index in 0..EVENT_COUNT {
         let pool = pool.clone();
@@ -461,7 +495,9 @@ async fn trace_watermarks_are_atomic_under_concurrency(pool: &MySqlPool) {
         while let Some(result) = tasks.join_next().await {
             sequences.push(result.unwrap());
         }
-    }).await.expect("Trace allocation must not wait for a locked Execution authority row");
+    })
+    .await
+    .expect("Trace allocation must not wait for a locked Execution authority row");
     held_execution.rollback().await.unwrap();
     sequences.sort_unstable();
     assert_eq!(sequences.len(), EVENT_COUNT as usize);
@@ -476,9 +512,17 @@ async fn trace_watermarks_are_atomic_under_concurrency(pool: &MySqlPool) {
     assert_eq!(watermark, *sequences.last().unwrap());
     assert_eq!(count, EVENT_COUNT);
     let mut rollback = pool.begin().await.unwrap();
-    agentx_v2_runtime::trace_delivery::enqueue(&mut rollback,
-        agentx_v2_runtime::trace_delivery::TraceDraft::execution(tenant_id,execution_id,"execution.rollback","running"))
-        .await.unwrap();
+    agentx_v2_runtime::trace_delivery::enqueue(
+        &mut rollback,
+        agentx_v2_runtime::trace_delivery::TraceDraft::execution(
+            tenant_id,
+            execution_id,
+            "execution.rollback",
+            "running",
+        ),
+    )
+    .await
+    .unwrap();
     rollback.rollback().await.unwrap();
     let after_rollback: (u64, u64) = sqlx::query_as("SELECT CAST(COALESCE(MAX(sequence_number),0) AS UNSIGNED),CAST(COUNT(*) AS UNSIGNED) FROM execution_events WHERE tenant_id=? AND execution_id=?")
         .bind(tenant_id).bind(execution_id).fetch_one(pool).await.unwrap();
@@ -1217,7 +1261,11 @@ async fn start_suspending_work_package_with_parameters(
     source.definition = suspension_definition(node_type, parameters);
     let compiled = compile_workflow_version(&source.definition, package_id).unwrap();
     source.spec = agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Debug {
-        source: agentx_runtime_contracts::WorkflowDesignSourceV1::DraftRevision { draft_id: uuid::Uuid::now_v7(), revision_id: uuid::Uuid::now_v7(), revision: 1 },
+        source: agentx_runtime_contracts::WorkflowDesignSourceV1::DraftRevision {
+            draft_id: uuid::Uuid::now_v7(),
+            revision_id: uuid::Uuid::now_v7(),
+            revision: 1,
+        },
         debug_plan: agentx_runtime_contracts::RuntimeDebugPlanV1::whole(&compiled),
     };
     let package = build_work_package(
@@ -1429,19 +1477,51 @@ async fn large_worker_results_are_externalized_and_verified(fixture: &Fixture) {
     // EXPLAIN. Use the text protocol with this fixed numeric parameter.
     let explain = format!(
         "EXPLAIN FORMAT=TRADITIONAL {}",
-        selector.replace('?', &agentx_runtime_contracts::INLINE_RESULT_LIMIT_BYTES.to_string())
+        selector.replace(
+            '?',
+            &agentx_runtime_contracts::INLINE_RESULT_LIMIT_BYTES.to_string()
+        )
     );
     let plan = sqlx::raw_sql(&explain)
-        .fetch_one(&fixture.state.pool).await.unwrap();
-    assert_eq!(plan.try_get::<String, _>("key").unwrap(), "idx_checkpoint_externalize");
-    assert!(plan.try_get::<String, _>("Extra").unwrap().contains("Using index"), "checkpoint discovery must not read payload pages");
+        .fetch_one(&fixture.state.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        plan.try_get::<String, _>("key").unwrap(),
+        "idx_checkpoint_externalize"
+    );
+    assert!(
+        plan.try_get::<String, _>("Extra")
+            .unwrap()
+            .contains("Using index"),
+        "checkpoint discovery must not read payload pages"
+    );
     let recovery_selector: String = sqlx::query_scalar("SELECT SQL_TEXT FROM performance_schema.prepared_statements_instances WHERE SQL_TEXT LIKE 'SELECT o.id FROM execution_outbox o FORCE INDEX(idx_execution_outbox_recovery)%' LIMIT 1")
         .fetch_one(&fixture.observer).await.unwrap();
-    let explain = format!("EXPLAIN FORMAT=TRADITIONAL {}", recovery_selector.replace('?', "100"));
-    let recovery_plan = sqlx::raw_sql(&explain).fetch_all(&fixture.state.pool).await.unwrap();
-    let outbox_plan = recovery_plan.iter().find(|row| row.try_get::<String, _>("table").unwrap() == "o").unwrap();
-    assert_eq!(outbox_plan.try_get::<String, _>("key").unwrap(), "idx_execution_outbox_recovery");
-    assert!(outbox_plan.try_get::<String, _>("Extra").unwrap().split(';').any(|part| part.trim() == "Using index"), "recovery discovery must not read historical payload pages");
+    let explain = format!(
+        "EXPLAIN FORMAT=TRADITIONAL {}",
+        recovery_selector.replace('?', "100")
+    );
+    let recovery_plan = sqlx::raw_sql(&explain)
+        .fetch_all(&fixture.state.pool)
+        .await
+        .unwrap();
+    let outbox_plan = recovery_plan
+        .iter()
+        .find(|row| row.try_get::<String, _>("table").unwrap() == "o")
+        .unwrap();
+    assert_eq!(
+        outbox_plan.try_get::<String, _>("key").unwrap(),
+        "idx_execution_outbox_recovery"
+    );
+    assert!(
+        outbox_plan
+            .try_get::<String, _>("Extra")
+            .unwrap()
+            .split(';')
+            .any(|part| part.trim() == "Using index"),
+        "recovery discovery must not read historical payload pages"
+    );
     let terminal_object_id: Uuid = sqlx::query_scalar(
         "SELECT terminal_result_object_id FROM workflow_executions WHERE tenant_id=? AND id=? AND terminal_result_json IS NULL",
     )

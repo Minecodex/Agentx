@@ -67,6 +67,19 @@
     "ApplicationRuntimePolicyV1": {
       "additionalProperties": false,
       "properties": {
+        "apiUserIdInput": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "environmentId": {
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "maximumJsonBytes": {
           "format": "uint64",
           "minimum": 0,

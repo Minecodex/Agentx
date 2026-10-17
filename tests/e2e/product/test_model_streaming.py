@@ -1,4 +1,3 @@
-# ruff: noqa: S608
 """Model streaming E2E (plan7 P7-B B6).
 
 Uses the extended echo-mcp behavior models (echo-slow-stream, echo-no-usage)
@@ -9,6 +8,7 @@ the final assistant message content on the same invocation.
 
 from __future__ import annotations
 
+# ruff: noqa: S608
 import base64
 import json
 import time
@@ -18,7 +18,7 @@ from typing import Any
 import httpx
 import pytest
 
-from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id, idempotent_headers, publish_fixture_version
 from tests.e2e.runtime.test_agent_attachments import (
     _access_token,
     _runtime_mysql,
@@ -255,13 +255,12 @@ def streaming_application(
             f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}", headers=headers
         )
         latest_draft.raise_for_status()
-        published = control.post(
-            f"/api/v1/workflows/{workflow_id}/versions",
-            headers=headers,
-            json={
-                "draftId": fixture_draft(control, workflow_id, headers)["id"],
-                "draftRevision": latest_draft.json()["revision"],
-            },
+        published = publish_fixture_version(
+            control,
+            workflow_id,
+            fixture_draft(control, workflow_id, headers)["id"],
+            latest_draft.json()["revision"],
+            headers,
         )
         assert published.status_code in (200, 201), published.text
         version_id = published.json()["id"]
@@ -269,8 +268,8 @@ def streaming_application(
         # workflow-level active deployment in the environment first.
         workflow_deploy = control.post(
             f"/api/v1/workflows/{workflow_id}/deployments",
-            headers=headers,
-            json={"environmentId": environment["id"], "workflowVersionId": version_id},
+            headers=idempotent_headers(headers),
+            json={"contentSource": "version", "environmentId": environment["id"], "workflowVersionId": version_id},
         )
         assert workflow_deploy.status_code in (200, 201), workflow_deploy.text
         application = control.post(
@@ -396,7 +395,7 @@ def test_stream_deltas_arrive_before_terminal_in_order(
                 "Authorization": f"Bearer {app['token']}",
                 "Idempotency-Key": f"stream-session-{time.time_ns()}",
             },
-            json={"title": None, "externalUserId": None},
+            json={"title": None, "input": {}},
         )
         assert session.status_code == 201, session.text
         session_id = session.json()["id"]
@@ -631,19 +630,22 @@ def test_vision_attachment_reaches_model_as_native_parts(
                 headers=headers,
             )
             latest.raise_for_status()
-            published = control.post(
-                f"/api/v1/workflows/{workflow_id}/versions",
-                headers=headers,
-                json={
-                    "draftId": fixture_draft(control, workflow_id, headers)["id"],
-                    "draftRevision": latest.json()["revision"],
-                },
+            published = publish_fixture_version(
+                control,
+                workflow_id,
+                fixture_draft(control, workflow_id, headers)["id"],
+                latest.json()["revision"],
+                headers,
             )
             assert published.status_code in (200, 201), published.text
             deploy = control.post(
                 f"/api/v1/workflows/{workflow_id}/deployments",
-                headers=headers,
-                json={"environmentId": environment_id, "workflowVersionId": published.json()["id"]},
+                headers=idempotent_headers(headers),
+                json={
+                    "contentSource": "version",
+                    "environmentId": environment_id,
+                    "workflowVersionId": published.json()["id"],
+                },
             )
             assert deploy.status_code in (200, 201), deploy.text
             application = control.post(
@@ -736,7 +738,7 @@ def test_vision_attachment_reaches_model_as_native_parts(
             session = gateway.post(
                 f"/gateway/v1/applications/{slug}/sessions",
                 headers={"Authorization": f"Bearer {token}", "Idempotency-Key": f"vision-s-{time.time_ns()}"},
-                json={"title": None, "externalUserId": None},
+                json={"title": None, "input": {}},
             )
             assert session.status_code == 201, session.text
             session_id = session.json()["id"]

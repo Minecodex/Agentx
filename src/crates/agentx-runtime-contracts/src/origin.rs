@@ -156,6 +156,8 @@ pub struct ExecutionNodeSnapshotV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExecutionContextSnapshotV1 {
+    pub end_user: Option<crate::ApplicationUserIdentityV1>,
+    pub environment_id: Option<Uuid>,
     pub id: Uuid,
     #[schemars(with = "String")]
     #[serde(with = "time::serde::rfc3339")]

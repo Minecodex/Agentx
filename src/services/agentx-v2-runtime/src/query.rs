@@ -151,6 +151,14 @@ pub async fn get_agent_session(
         usages,
         compaction,
         recovery,
+        memory_targets: crate::user_identity::agent_session_memory_targets(
+            &state.pool,
+            tenant_id,
+            &session_key,
+            &node_key,
+        )
+        .await
+        .map_err(RuntimeError::Internal)?,
     }))
 }
 
@@ -320,6 +328,17 @@ pub async fn clear_agent_session(
     }))
 }
 
+fn validate_memory_scope(
+    scope: &agentx_runtime_contracts::MemoryScopeV1,
+    tenant_id: Uuid,
+    application_id: Uuid,
+) -> RuntimeResult<()> {
+    if scope.tenant_id != tenant_id || scope.application_id != Some(application_id) {
+        return Err(RuntimeError::Unauthorized);
+    }
+    Ok(())
+}
+
 pub async fn clear_agent_subject_memory(
     State(state): State<RuntimeState>,
     headers: HeaderMap,
@@ -331,17 +350,13 @@ pub async fn clear_agent_subject_memory(
     if !claims.tenant_wide && !claims.application_ids.contains(&request.application_id) {
         return Err(RuntimeError::Unauthorized);
     }
-    let scope_hash = crate::worker_support::raw_hash(&json!({
-        "tenantId": request.tenant_id,
-        "applicationId": request.application_id,
-        "subjectId": claims.sub,
-        "memoryVersion": request.memory_resource_version_id,
-    }));
+    validate_memory_scope(&request.scope, request.tenant_id, request.application_id)?;
+    let scope_hash = request.scope.scope_hash();
     let clear_id = crate::worker_support::stable_id(
         request.tenant_id,
         format!(
-            "agent-subject-memory-clear:{}:{}",
-            scope_hash, request.idempotency_key
+            "agent-subject-memory-clear:{}:{}:{}",
+            scope_hash, request.memory_resource_id, request.idempotency_key
         )
         .as_bytes(),
     );
@@ -351,7 +366,7 @@ pub async fn clear_agent_subject_memory(
     );
     let mut tx = state.pool.begin().await?;
     if let Some(existing) = sqlx::query(
-        "SELECT clear_id,audit_id,scope_hash,status FROM agent_subject_memory_clears WHERE tenant_id=? AND idempotency_key=?",
+        "SELECT clear_id,audit_id,scope_hash,status,memory_connection_id FROM agent_subject_memory_clears WHERE tenant_id=? AND idempotency_key=?",
     )
     .bind(request.tenant_id)
     .bind(&request.idempotency_key)
@@ -359,7 +374,7 @@ pub async fn clear_agent_subject_memory(
     .await?
     {
         let existing_scope: String = existing.try_get("scope_hash")?;
-        if existing_scope != scope_hash {
+        if existing_scope != scope_hash || existing.try_get::<Uuid, _>("memory_connection_id")? != request.memory_resource_id {
             return Err(RuntimeError::Conflict(
                 agentx_runtime_contracts::RuntimePublishErrorCodeV1::IdempotencyConflict,
                 "Memory clear idempotency key is bound to another scope".into(),
@@ -380,23 +395,23 @@ pub async fn clear_agent_subject_memory(
     // provider adapter checks them before every Effect, so the clear is
     // applied atomically with its audit record and cannot be resurrected by a
     // retry or a stale Worker.
-    sqlx::query("INSERT INTO agent_subject_memory_clears(clear_id,audit_id,tenant_id,application_id,authenticated_subject_id,memory_resource_version_id,scope_hash,idempotency_key,status,applied_at) VALUES(?,?,?,?,?,?,?,?,'applied',UTC_TIMESTAMP(6))")
+    sqlx::query("INSERT INTO agent_subject_memory_clears(clear_id,audit_id,tenant_id,application_id,application_user_id,memory_connection_id,scope_hash,idempotency_key,status,applied_at) VALUES(?,?,?,?,?,?,?,?,'applied',UTC_TIMESTAMP(6))")
         .bind(clear_id)
         .bind(audit_id)
         .bind(request.tenant_id)
         .bind(request.application_id)
-        .bind(claims.sub)
-        .bind(request.memory_resource_version_id)
+        .bind(request.scope.user.subject_id())
+        .bind(request.memory_resource_id)
         .bind(&scope_hash)
         .bind(&request.idempotency_key)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("INSERT INTO agent_subject_memory_audit(audit_id,tenant_id,application_id,authenticated_subject_id,memory_resource_version_id,operation,scope_hash,result_hash) VALUES(?,?,?,?,?,'clear',?,NULL)")
+    sqlx::query("INSERT INTO agent_subject_memory_audit(audit_id,tenant_id,application_id,application_user_id,memory_connection_id,operation,scope_hash,result_hash) VALUES(?,?,?,?,?,'clear',?,NULL)")
         .bind(audit_id)
         .bind(request.tenant_id)
         .bind(request.application_id)
-        .bind(claims.sub)
-        .bind(request.memory_resource_version_id)
+        .bind(request.scope.user.subject_id())
+        .bind(request.memory_resource_id)
         .bind(&scope_hash)
         .execute(&mut *tx)
         .await?;
@@ -423,14 +438,16 @@ pub async fn search_agent_subject_memory(
     if !claims.tenant_wide && !claims.application_ids.contains(&request.application_id) {
         return Err(RuntimeError::Unauthorized);
     }
+    validate_memory_scope(&request.scope, request.tenant_id, request.application_id)?;
     let limit = request.limit.clamp(1, 100);
     let rows = sqlx::query(
-        "SELECT audit_id,operation,scope_hash,operation_id,created_at FROM agent_subject_memory_audit WHERE tenant_id=? AND application_id=? AND authenticated_subject_id=? AND memory_resource_version_id=? AND (? IS NULL OR CONCAT(DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%s.%fZ'),'|',HEX(audit_id))>?) ORDER BY created_at,audit_id LIMIT ?",
+        "SELECT audit_id,operation,scope_hash,operation_id,created_at FROM agent_subject_memory_audit WHERE tenant_id=? AND application_id=? AND application_user_id=? AND memory_connection_id=? AND scope_hash=? AND (? IS NULL OR CONCAT(DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%s.%fZ'),'|',HEX(audit_id))>?) ORDER BY created_at,audit_id LIMIT ?",
     )
     .bind(request.tenant_id)
     .bind(request.application_id)
-    .bind(claims.sub)
-    .bind(request.memory_resource_version_id)
+    .bind(request.scope.user.subject_id())
+    .bind(request.memory_resource_id)
+    .bind(request.scope.scope_hash())
     .bind(&request.after)
     .bind(&request.after)
     .bind(limit + 1)
@@ -501,8 +518,8 @@ pub async fn search_sessions(
     let limit = request.limit.clamp(1, 100);
     let statuses =
         serde_json::to_string(&request.statuses).map_err(|e| RuntimeError::Internal(e.into()))?;
-    let rows = sqlx::query("SELECT id,application_id,application_deployment_id,workflow_version_id,bundle_id,version_policy,external_user_id,title,status,version,updated_at FROM application_sessions WHERE tenant_id=? AND application_id=? AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(status))) AND (? IS NULL OR CONCAT(DATE_FORMAT(updated_at,'%Y-%m-%dT%H:%i:%s.%fZ'),'|',LOWER(HEX(id)))>?) ORDER BY updated_at,id LIMIT ?")
-        .bind(request.tenant_id).bind(application_id).bind(&statuses).bind(&statuses).bind(&request.after).bind(&request.after).bind(limit+1).fetch_all(&state.pool).await?;
+    let rows = sqlx::query("SELECT id,application_id,application_deployment_id,workflow_version_id,bundle_id,version_policy,external_user_id,title,status,version,updated_at,user_identity_json FROM application_sessions WHERE tenant_id=? AND application_id=? AND (? IS NULL OR JSON_UNQUOTE(JSON_EXTRACT(user_identity_json,'$.source'))=?) AND (? IS NULL OR BINARY external_user_id=BINARY ?) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(status))) AND (? IS NULL OR CONCAT(DATE_FORMAT(updated_at,'%Y-%m-%dT%H:%i:%s.%fZ'),'|',LOWER(HEX(id)))>?) ORDER BY updated_at,id LIMIT ?")
+        .bind(request.tenant_id).bind(application_id).bind(&request.user_source).bind(&request.user_source).bind(&request.external_user_id).bind(&request.external_user_id).bind(&statuses).bind(&statuses).bind(&request.after).bind(&request.after).bind(limit+1).fetch_all(&state.pool).await?;
     let mut items = rows
         .into_iter()
         .map(session_summary)
@@ -533,7 +550,7 @@ pub async fn get_session(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> RuntimeResult<Json<SessionDetailV1>> {
-    let row = sqlx::query("SELECT tenant_id,id,application_id,application_deployment_id,workflow_version_id,bundle_id,version_policy,status,version,updated_at,external_user_id,title FROM application_sessions WHERE id=?")
+    let row = sqlx::query("SELECT tenant_id,id,application_id,application_deployment_id,workflow_version_id,bundle_id,version_policy,status,version,updated_at,external_user_id,title,user_identity_json FROM application_sessions WHERE id=?")
         .bind(id).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)?;
     let tenant_id: Uuid = row.try_get("tenant_id")?;
     let claims = state
@@ -618,6 +635,12 @@ fn session_summary(
         }
     };
     Ok(SessionSummaryV1 {
+        end_user: row
+            .try_get::<Option<Value>, _>("user_identity_json")?
+            .filter(|value| !value.is_null())
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|error| RuntimeError::Internal(error.into()))?,
         session_id: row.try_get("id")?,
         application_id: row.try_get("application_id")?,
         application_deployment_id: row.try_get("application_deployment_id")?,

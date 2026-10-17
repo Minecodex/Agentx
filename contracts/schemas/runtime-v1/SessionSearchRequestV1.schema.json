@@ -20,6 +20,12 @@
         "null"
       ]
     },
+    "externalUserId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "limit": {
       "format": "uint32",
       "minimum": 0,
@@ -34,6 +40,12 @@
     "tenantId": {
       "format": "uuid",
       "type": "string"
+    },
+    "userSource": {
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "required": [

@@ -610,12 +610,7 @@ fn full_definition() -> Result<WorkflowDefinition> {
         .map(|value| value.parse::<u64>().context("invalid max total tokens"))
         .transpose()?
         .unwrap_or(2_000);
-    let memory_operation =
-        env::var("AGENTX_V2_FIXTURE_MEMORY_OPERATION").unwrap_or_else(|_| "read".into());
-    anyhow::ensure!(
-        matches!(memory_operation.as_str(), "read" | "write" | "manage"),
-        "AGENTX_V2_FIXTURE_MEMORY_OPERATION must be read, write or manage"
-    );
+    let memory_operation = "use".to_owned();
     let skill_version = id(SKILL_VERSION)?.to_string();
     let model_version = id(MODEL_VERSION)?.to_string();
     let memory_version = id(MEMORY_VERSION)?.to_string();
@@ -749,24 +744,7 @@ fn resource_fixtures(
     let mcp_transport = json!({"kind":"streamable_http","endpoint":format!("{echo}/mcp")});
     let mcp_credential = vault_reference(tenant, "model");
     let rag_credential = vault_reference(tenant, "rag");
-    let memory_access_mode =
-        env::var("AGENTX_V2_FIXTURE_MEMORY_ACCESS_MODE").unwrap_or_else(|_| "read_only".into());
-    anyhow::ensure!(
-        matches!(memory_access_mode.as_str(), "read_only" | "read_write"),
-        "AGENTX_V2_FIXTURE_MEMORY_ACCESS_MODE must be read_only or read_write"
-    );
-    let memory_operation =
-        env::var("AGENTX_V2_FIXTURE_MEMORY_OPERATION").unwrap_or_else(|_| "read".into());
-    anyhow::ensure!(
-        matches!(memory_operation.as_str(), "read" | "write" | "manage"),
-        "AGENTX_V2_FIXTURE_MEMORY_OPERATION must be read, write or manage"
-    );
-    let memory_operation_key = match memory_operation.as_str() {
-        "read" => "read",
-        "write" => "write",
-        "manage" => "manage",
-        _ => unreachable!(),
-    };
+    let memory_operation_key = "use";
     let model_context_window = if let Ok(value) = env::var("AGENTX_V2_FIXTURE_COMPACTION_THRESHOLD")
     {
         let threshold = value
@@ -857,7 +835,7 @@ fn resource_fixtures(
             MEMORY,
             MEMORY_VERSION,
             memory_operation_key,
-            json!({"endpoint":memory,"externalNamespace":"v2-04","resourceVersion":1,"accessMode":memory_access_mode}),
+            json!({"endpoint":memory,"resourceVersion":1}),
         )?,
         resource(
             "agent",
@@ -1005,8 +983,8 @@ async fn seed_workflows(
                     .map(|manifest| (node.id.clone(), manifest.clone()))
             })
             .collect::<std::collections::BTreeMap<_, _>>();
-        sqlx::query("INSERT INTO workflow_versions(id,tenant_id,workflow_id,version_number,source_draft_id,source_revision_id,source_revision,schema_version,definition_json,node_manifests_json,editor_json,content_hash,editor_hash,created_by) VALUES(?,?,?,?,?,?,?,'8.0',?,?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id")
-            .bind(version_id).bind(tenant).bind(workflow_id).bind(version_number).bind(draft_id).bind(revision_id).bind(revision).bind(value).bind(serde_json::to_value(manifests)?).bind(editor).bind(hash).bind(editor_hash).bind(user).execute(&mut **tx).await?;
+        sqlx::query("INSERT INTO workflow_versions(id,tenant_id,workflow_id,version_number,source_draft_id,source_revision_id,source_revision,schema_version,definition_json,node_manifests_json,editor_json,content_hash,editor_hash,created_by,updated_by,publication_status,published_at) VALUES(?,?,?,?,?,?,?,'8.0',?,?,?,?,?,?,?,'published',UTC_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE id=id")
+            .bind(version_id).bind(tenant).bind(workflow_id).bind(version_number).bind(draft_id).bind(revision_id).bind(revision).bind(value).bind(serde_json::to_value(manifests)?).bind(editor).bind(hash).bind(editor_hash).bind(user).bind(user).execute(&mut **tx).await?;
     }
     let deployment_sequence = sqlx::query_scalar::<_, u64>(
         "SELECT CAST(COALESCE((SELECT sequence_number FROM workflow_deployments WHERE id=?),(SELECT COALESCE(MAX(sequence_number),0)+1 FROM workflow_deployments WHERE tenant_id=? AND workflow_id=? AND environment_id=?)) AS UNSIGNED)",

@@ -2,6 +2,7 @@ import { LogIn, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { InspectorShell } from "../inspector-shell";
+import { ReadOnlyForm } from "../../forms/read-only-form";
 
 import { Button } from "../../../../shared/ui/button";
 import { Input } from "../../../../shared/ui/input";
@@ -35,10 +36,12 @@ export function StartPanel({
   start,
   onStartChange,
   onClose,
+  readOnly = false,
 }: {
   start: WorkflowStart;
   onStartChange: (value: ValueUpdater<WorkflowStart>) => void;
   onClose: () => void;
+  readOnly?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -48,7 +51,7 @@ export function StartPanel({
         <div className="min-w-0 flex-1"><strong className="block text-sm">{t("studio.interface.start")}</strong><span className="text-[10px] text-muted-foreground">{t("studio.interface.startDescription")}</span></div>
         <Button aria-label={t("common.close")} onClick={onClose} size="icon" variant="ghost"><X className="size-4" /></Button>
       </header>
-      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4"><StartForm start={start} onChange={onStartChange} /></div>
+      <ReadOnlyForm readOnly={readOnly} className="min-h-0 min-w-0 flex-1 space-y-6 overflow-y-auto p-4"><StartForm start={start} onChange={onStartChange} /></ReadOnlyForm>
     </InspectorShell>
   );
 }

@@ -46,7 +46,7 @@ pub(crate) async fn replace_draft_resources(
                 .and_then(|value| Uuid::parse_str(value).ok())
         {
             let target_workflow_id: Uuid = sqlx::query_scalar(
-                "SELECT workflow_id FROM workflow_versions WHERE tenant_id=? AND id=?",
+                "SELECT workflow_id FROM workflow_versions WHERE tenant_id=? AND id=? AND publication_status='published'",
             )
             .bind(tenant_id)
             .bind(version_id)
@@ -662,12 +662,12 @@ async fn external_snapshot(
         sqlx::query("SELECT r.external_resource_id external_name,r.version resource_version,c.id connection_id,c.provider,c.endpoint,c.version connection_version,c.credential_id,c.configuration_json FROM rag_resources r JOIN rag_connections c ON c.id=r.connection_id WHERE r.tenant_id=? AND r.id=? AND r.status='active' AND c.status='active'")
             .bind(tenant_id).bind(resource_id).fetch_optional(&state.pool).await?
     } else {
-        sqlx::query("SELECT n.external_namespace external_name,n.access_mode,n.version resource_version,c.id connection_id,NULL provider,c.endpoint,c.version connection_version,c.credential_id,c.configuration_json FROM memory_namespaces n JOIN memory_connections c ON c.id=n.connection_id WHERE n.tenant_id=? AND n.id=? AND n.status='active' AND c.status='active'")
+        sqlx::query("SELECT c.version resource_version,c.id connection_id,NULL provider,c.endpoint,c.version connection_version,c.credential_id,c.configuration_json FROM memory_connections c WHERE c.tenant_id=? AND c.id=? AND c.status='active'")
             .bind(tenant_id).bind(resource_id).fetch_optional(&state.pool).await?
     }.ok_or_else(|| ApiError::unprocessable("RESOURCE_UNAVAILABLE", "External resource or connection is unavailable"))?;
     let credential_id: Option<Uuid> = row.try_get("credential_id")?;
     let mut value = json!({"resourceVersion":row.try_get::<u64,_>("resource_version")?,
-        "connectionId":row.try_get::<Uuid,_>("connection_id")?,"provider":row.try_get::<Option<String>,_>("provider")?.unwrap_or_else(||"lightrag".into()),"endpoint":row.try_get::<String,_>("endpoint")?,
+        "connectionId":row.try_get::<Uuid,_>("connection_id")?,"provider":row.try_get::<Option<String>,_>("provider")?.unwrap_or_else(|| if rag { "lightrag" } else { "mem0" }.into()),"endpoint":row.try_get::<String,_>("endpoint")?,
         "connectionVersion":row.try_get::<u64,_>("connection_version")?,"credentialId":credential_id,
         "configuration":row.try_get::<Value,_>("configuration_json")?,
         "vaultSecretRef":optional_credential_snapshot(state,tenant_id,credential_id).await?});
@@ -675,9 +675,7 @@ async fn external_snapshot(
         value["resourceId"] = json!(resource_id);
         value["externalResourceId"] = json!(row.try_get::<String, _>("external_name")?);
     } else {
-        value["namespaceId"] = json!(resource_id);
-        value["externalNamespace"] = json!(row.try_get::<String, _>("external_name")?);
-        value["accessMode"] = json!(row.try_get::<String, _>("access_mode")?);
+        value["resourceId"] = json!(resource_id);
     }
     Ok(value)
 }
@@ -743,7 +741,7 @@ async fn credential_dependencies(
         ResourceType::Model => sqlx::query_scalar("SELECT d.credential_id FROM model_aliases a JOIN model_deployments d ON d.id=a.deployment_id WHERE a.tenant_id=? AND a.id=? AND d.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
         ResourceType::McpServer => sqlx::query_scalar("SELECT credential_id FROM mcp_server_versions WHERE tenant_id=? AND server_id=? AND id=? AND credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).bind(reference.resource_version_id).fetch_all(&state.pool).await?,
         ResourceType::Rag => sqlx::query_scalar("SELECT c.credential_id FROM rag_resources r JOIN rag_connections c ON c.id=r.connection_id WHERE r.tenant_id=? AND r.id=? AND c.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
-        ResourceType::Memory => sqlx::query_scalar("SELECT c.credential_id FROM memory_namespaces n JOIN memory_connections c ON c.id=n.connection_id WHERE n.tenant_id=? AND n.id=? AND c.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
+        ResourceType::Memory => sqlx::query_scalar("SELECT c.credential_id FROM memory_connections c WHERE c.tenant_id=? AND c.id=? AND c.credential_id IS NOT NULL").bind(tenant_id).bind(reference.resource_id).fetch_all(&state.pool).await?,
         _ => Vec::new(),
     };
     Ok(ids)

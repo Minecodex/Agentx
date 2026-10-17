@@ -1,4 +1,4 @@
-import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
+import { fixtureVersionId, fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
 import { expect, type APIResponse, type Page, test } from '@playwright/test'
 import { sandboxImageDigest } from './workflow-studio-editor-helpers'
 
@@ -70,7 +70,7 @@ async function saveDefinition(page: Page, token: string, workflowId: string, def
 }
 
 async function runFromStudio(page: Page, token: string, workflowId: string, input: Record<string, unknown>, expectedStatus: 'succeeded' | 'failed') {
-  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+  await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   const accepted = page.waitForResponse((value) => value.url().endsWith(`/workflows/${workflowId}/drafts/${fixtureDraftIdKnown(workflowId)}/debug-executions`) && value.request().method() === 'POST', { timeout: 60_000 })
   await page.locator('header').getByRole('button', { name: '运行', exact: true }).click()
@@ -372,7 +372,7 @@ test('M6 local built-ins execute branch, list and error-wiring workflows through
     }),
   ])
   const downloaded = await page.request.get(`/api/v1/executions/${binary.execution.id}/artifacts/${binaryOutput.files[0].artifactId}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
   })
   if (!downloaded.ok()) throw new Error(`download HTTP binary Artifact: ${downloaded.status()} ${await downloaded.text()}`)
   expect([...await downloaded.body()]).toEqual([0, 1, 2, 3, 0x7f, 0x80, 0xfe, 0xff])

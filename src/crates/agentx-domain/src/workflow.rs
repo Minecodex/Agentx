@@ -975,10 +975,7 @@ fn validate_agent_node(index: usize, node: &WorkflowNode, issues: &mut Vec<Defin
             }
             (Some("long_term_memory"), ResourceType::Memory) => {
                 long_term_memory_count += 1;
-                matches!(
-                    reference.operation,
-                    ResourceOperation::Read | ResourceOperation::Write | ResourceOperation::Manage
-                )
+                matches!(reference.operation, ResourceOperation::Use)
             }
             _ => false,
         };
@@ -1302,10 +1299,7 @@ fn reference_matches_node(node_type: &str, reference: &ResourceReference) -> boo
         ),
         "memory" => {
             reference.resource_type == ResourceType::Memory
-                && matches!(
-                    reference.operation,
-                    ResourceOperation::Read | ResourceOperation::Write
-                )
+                && reference.operation == ResourceOperation::Use
         }
         _ => false,
     }

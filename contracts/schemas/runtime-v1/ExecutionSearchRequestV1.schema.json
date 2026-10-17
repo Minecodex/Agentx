@@ -48,6 +48,12 @@
       },
       "type": "array"
     },
+    "externalUserId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "initiatorDepartmentIds": {
       "items": {
         "format": "uuid",
@@ -105,7 +111,27 @@
       },
       "type": "array"
     },
+    "userSource": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workflowDraftIds": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "type": "array"
+    },
     "workflowIds": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "workflowVersionIds": {
       "items": {
         "format": "uuid",
         "type": "string"
@@ -118,6 +144,8 @@
     "tenantId",
     "applicationIds",
     "workflowIds",
+    "workflowVersionIds",
+    "workflowDraftIds",
     "toolIds",
     "initiatorUserIds",
     "initiatorDepartmentIds",

@@ -204,7 +204,7 @@ impl DurableStatePort {
     pub(super) fn projection(
         &self,
         mode: agentx_agent_core::SessionPolicyModeV1,
-        trusted_subject: Option<agentx_agent_core::TrustedSubjectEvidenceV1>,
+        trusted_subject: Option<agentx_agent_core::ApplicationUserEvidenceV1>,
     ) -> Result<agentx_agent_core::AgentSessionProjectionV1, StatePortError> {
         let this = self.clone();
         tokio::task::block_in_place(|| {
@@ -633,17 +633,23 @@ pub(super) async fn session_identity(
     pool: &Pool<MySql>,
     claim: &ClaimedWorkerAttempt,
 ) -> anyhow::Result<SessionIdentity> {
-    // API-key invocations intentionally have no caller user identity. For a
-    // durable application session, the trusted subject is the authenticated
-    // user who created that session, never the client-provided external user
-    // label. User-triggered executions still take precedence.
-    let row = sqlx::query("SELECT e.application_id,i.session_id,COALESCE(e.initiator_user_id,s.created_by_user_id) AS trusted_subject FROM workflow_executions e LEFT JOIN application_invocations i ON i.tenant_id=e.tenant_id AND i.id=e.invocation_id LEFT JOIN application_sessions s ON s.tenant_id=i.tenant_id AND s.id=i.session_id WHERE e.tenant_id=? AND e.id=?")
+    let row = sqlx::query("SELECT e.application_id,i.session_id,s.execution_context_json FROM workflow_executions e LEFT JOIN application_invocations i ON i.tenant_id=e.tenant_id AND i.id=e.invocation_id JOIN execution_snapshots s ON s.tenant_id=e.tenant_id AND s.execution_id=e.id WHERE e.tenant_id=? AND e.id=?")
         .bind(claim.task.tenant_id).bind(claim.task.execution_id).fetch_optional(pool).await?;
     Ok(row
         .map(|row| SessionIdentity {
             application_id: row.try_get("application_id").ok(),
             session_id: row.try_get("session_id").ok().flatten(),
-            trusted_subject: row.try_get("trusted_subject").ok().flatten(),
+            trusted_subject: row
+                .try_get::<Value, _>("execution_context_json")
+                .ok()
+                .and_then(|context| context.get("endUser").cloned())
+                .and_then(|value| {
+                    serde_json::from_value::<agentx_runtime_contracts::ApplicationUserIdentityV1>(
+                        value,
+                    )
+                    .ok()
+                })
+                .map(|user| user.subject_id()),
         })
         .unwrap_or(SessionIdentity {
             application_id: None,

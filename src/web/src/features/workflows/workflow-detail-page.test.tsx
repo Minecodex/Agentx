@@ -15,12 +15,16 @@ describe('workflow release experience', () => {
   let workflow: typeof workflowResponse
   let versions: Array<typeof version1>
   let deployments: Array<typeof deployment1>
+  let environmentItems: typeof environments
+  let environmentFailure: boolean
 
   beforeEach(async () => {
     requests = []
     workflow = { ...workflowResponse }
     versions = [{ ...version2 }, { ...version1 }]
     deployments = [{ ...deployment1 }]
+    environmentItems = [...environments]
+    environmentFailure = false
     await i18n.changeLanguage('zh-CN')
     vi.mocked(useAuth).mockReturnValue({
       status: 'authenticated', user: undefined, changeToken: undefined,
@@ -31,7 +35,6 @@ describe('workflow release experience', () => {
       const path = new URL(String(input), 'http://agentx.test').pathname
       requests.push({ path, init })
       if (path === '/api/v1/workflows/workflow-1' && !init?.method) return jsonResponse(workflow)
-      if (path === '/api/v1/workflows/workflow-1/drafts') return jsonResponse([{id:'draft-1',name:'Draft',workflowId:'workflow-1',revision:18,status:'active',baseVersionId:null}])
       if (path === '/api/v1/workflows/workflow-1/versions' && init?.method === 'POST') {
         const created = { ...version2, id: 'version-3', versionNumber: 3, sourceRevision: 18, createdAt: '2026-08-22T03:00:00Z' }
         versions = [created, ...versions]
@@ -48,71 +51,95 @@ describe('workflow release experience', () => {
         return jsonResponse(created, 201)
       }
       if (path === '/api/v1/workflows/workflow-1/deployments') return jsonResponse(deployments)
-      if (path === '/api/v1/environments') return jsonResponse(environments)
+      if (path === '/api/v1/environments') return environmentFailure ? jsonResponse({message:'Environment service unavailable'}, 503) : jsonResponse(environmentItems)
       if (path === '/api/v1/workflows/workflow-1/members') return jsonResponse([{ userId: 'user-1', username: 'kakj', displayName: 'KA', memberRole: 'owner' }])
-      if (path === '/api/v1/workflows/workflow-1/drafts/draft-1/resource-validation') return jsonResponse({ valid: true, missingGrants: [] })
-      if (path === '/api/v1/users') return jsonResponse({ items: [], page: 1, pageSize: 100, total: 0 })
+      if (path.endsWith('/member-candidates')) return jsonResponse([])
       return jsonResponse({})
     }))
   })
 
-  it('shows draft, immutable version, and environment state as separate concepts', async () => {
-    await renderPage()
-    expect(await screen.findByRole('heading', { name: '订单审核助手' })).toBeInTheDocument()
-    expect(screen.getByText('草稿有未发布变更')).toBeInTheDocument()
-    expect(screen.getByText('当前草稿')).toBeInTheDocument()
-    expect(screen.getByText('最新不可变版本')).toBeInTheDocument()
-    expect(screen.getByText('Development 当前版本')).toBeInTheDocument()
-    expect(screen.getByText('Development 当前')).toBeInTheDocument()
-    expect(screen.getByText('未发布')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '保存为版本' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '查看发布记录' })).toBeInTheDocument()
+  it('shows version entry points and keeps member management in a dialog', async () => {
+    renderPage()
+    const row = await screen.findByTestId('workflow-version-2')
+    expect(within(row).getByRole('link', { name: '详情' })).toHaveAttribute('href', '/workflows/workflow-1/versions/version-2')
+    expect(within(row).getByRole('link', { name: '编辑' })).toHaveAttribute('href', '/workflows/workflow-1/versions/version-2/editor')
+    expect(screen.queryByRole('button', { name: '打开画布' })).not.toBeInTheDocument()
+    const header = screen.getByRole('heading', { name: workflowResponse.name }).closest('header')!
+    expect(within(header).getAllByRole('button').map(button => button.textContent)).toEqual(['成员管理', '新建画布'])
+    expect(screen.getByRole('button', { name: '新建画布' })).toBeEnabled()
+    expect(requests.some(item => item.path.endsWith('/members'))).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: '成员管理' }))
+    const dialog=await screen.findByRole('dialog', {name:'成员管理'})
+    expect(await within(dialog).findByText('KA')).toBeInTheDocument()
   })
 
-  it('requires choosing a draft for the header canvas action and keeps each draft link usable', async () => {
-    await renderPage(false)
-    expect(await screen.findByRole('button', { name: '打开画布' })).toBeDisabled()
-    expect(screen.getByRole('link', { name: '打开画布' })).toHaveAttribute('href', '/workflows/workflow-1/drafts/draft-1/editor')
-    fireEvent.click(screen.getByRole('combobox', { name: '选择当前草稿' }))
-    fireEvent.click(await screen.findByRole('option', { name: 'Draft · r18' }))
-    expect(screen.getByRole('button', { name: '打开画布' })).toBeEnabled()
+  it('publishes an exact saved draft in one idempotent request', async () => {
+    renderPage()
+    const row=await screen.findByTestId('workflow-version-2')
+    fireEvent.click(within(row).getByRole('button', {name:'发布'}))
+    const dialog=await screen.findByRole('dialog', {name:'发布到环境…'})
+    expect(within(dialog).getByRole('combobox', {name:'发布内容'})).toHaveTextContent('r18')
+    fireEvent.click(within(dialog).getByRole('button', {name:'发布到环境…'}))
+    await waitFor(()=>expect(requests.filter(item=>item.init?.method==='POST')).toHaveLength(1))
+    const post=requests.find(item=>item.init?.method==='POST')!
+    expect(post.path).toBe('/api/v1/workflows/workflow-1/deployments')
+    expect(JSON.parse(String(post.init?.body))).toEqual({environmentId:'environment-dev',workflowVersionId:'version-2',contentSource:'draft',expectedRevision:18})
+    expect(new Headers(post.init?.headers).get('Idempotency-Key')).toBeTruthy()
+    await waitFor(()=>expect(screen.queryByRole('dialog', {name:'发布到环境…'})).not.toBeInTheDocument())
   })
 
-  it('saves the current draft as a version before publishing it to an environment', async () => {
-    await renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: '发布到环境…' }))
+  it('blocks publishing the original version already active in the target environment', async () => {
+    renderPage()
+    const row=await screen.findByTestId('workflow-version-1')
+    fireEvent.click(within(row).getByRole('button', {name:'发布'}))
+    const dialog=await screen.findByRole('dialog', {name:'发布到环境…'})
+    expect(within(dialog).getByRole('button', {name:'发布到环境…'})).toBeDisabled()
+  })
+
+
+  it('explains missing environments and keeps the source dialog open when managing them', async () => {
+    environmentItems = []
+    renderPage()
+    fireEvent.click(within(await screen.findByTestId('workflow-version-2')).getByRole('button', { name: '发布' }))
     const dialog = await screen.findByRole('dialog', { name: '发布到环境…' })
-    expect(within(dialog).getByRole('combobox', { name: '发布内容' })).toHaveTextContent('当前草稿 r18（自动保存为 v3）')
-    fireEvent.click(within(dialog).getByRole('button', { name: '发布到环境…' }))
-
-    await waitFor(() => expect(requests.filter((item) => item.init?.method === 'POST').length).toBe(2))
-    const posts = requests.filter((item) => item.init?.method === 'POST')
-    expect(posts.map((item) => item.path)).toEqual(['/api/v1/workflows/workflow-1/versions', '/api/v1/workflows/workflow-1/deployments'])
-    expect(JSON.parse(String(posts[1].init?.body))).toEqual({ environmentId: 'environment-dev', workflowVersionId: 'version-3' })
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '发布到环境…' })).not.toBeInTheDocument())
-    await waitFor(() => expect(screen.queryByText('草稿有未发布变更')).not.toBeInTheDocument())
-    expect(screen.getByText('当前 v3 · 部署 #2')).toBeInTheDocument()
-  })
-
-  it('blocks publishing the version already active in the selected environment', async () => {
-    await renderPage()
-    const v1 = (await screen.findAllByText(/^v1$/)).find((element) => element.classList.contains('text-xs'))!
-    const row = v1.closest('div.flex.flex-wrap.items-center.gap-3.py-4') as HTMLElement
-    fireEvent.click(within(row).getByRole('button', { name: '发布到…' }))
-    const dialog = await screen.findByRole('dialog', { name: '发布到环境…' })
-    expect(within(dialog).getByText('v1 已经是 Development 的当前版本，无需重复发布。')).toBeInTheDocument()
+    expect(within(dialog).getByRole('combobox', { name: '目标环境' })).toBeDisabled()
+    expect(within(dialog).getByText('请先在环境管理中创建或启用环境，再返回这里发布。')).toBeInTheDocument()
+    expect(within(dialog).getByRole('link', { name: '管理环境' })).toHaveAttribute('href', '/environments')
+    expect(within(dialog).getByRole('link', { name: '管理环境' })).toHaveAttribute('target', '_blank')
     expect(within(dialog).getByRole('button', { name: '发布到环境…' })).toBeDisabled()
+    environmentItems = [...environments]
+    fireEvent.click(within(dialog).getByRole('button', { name: '重新加载环境' }))
+    await waitFor(() => expect(within(dialog).getByRole('combobox', { name: '目标环境' })).toHaveTextContent('Development'))
+    expect(within(dialog).getByRole('button', { name: '发布到环境…' })).toBeEnabled()
+  })
+
+  it('reports a failed environment query and selects the recovered environment after retry', async () => {
+    environmentFailure = true
+    renderPage()
+    fireEvent.click(within(await screen.findByTestId('workflow-version-2')).getByRole('button', { name: '发布' }))
+    const dialog = await screen.findByRole('dialog', { name: '发布到环境…' })
+    expect(await within(dialog).findByText('环境加载失败，请重试。')).toBeInTheDocument()
+    expect(within(dialog).queryByText('请先在环境管理中创建或启用环境，再返回这里发布。')).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: '发布到环境…' })).toBeDisabled()
+    environmentFailure = false
+    fireEvent.click(within(dialog).getByRole('button', { name: '重新加载环境' }))
+    await waitFor(() => expect(within(dialog).getByRole('combobox', { name: '目标环境' })).toHaveTextContent('Development'))
+    expect(within(dialog).getByRole('button', { name: '发布到环境…' })).toBeEnabled()
+  })
+
+  it('keeps archived versions readable while disabling editing', async () => {
+    versions[0].archived=true
+    renderPage()
+    const row=await screen.findByTestId('workflow-version-2')
+    expect(within(row).getByRole('button',{name:'编辑'})).toBeDisabled()
+    expect(within(row).getByRole('link',{name:'详情'})).toHaveAttribute('href')
+    expect(within(row).getByRole('button',{name:'发布'})).toBeEnabled()
   })
 })
 
-async function renderPage(selectDraft = true) {
+function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  const result = render(<QueryClientProvider client={queryClient}><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1']}><Routes><Route element={<WorkflowDetailPage />} path="/workflows/:workflowId" /></Routes></MemoryRouter></ToastProvider></QueryClientProvider>)
-  if (selectDraft) {
-    fireEvent.click(await screen.findByRole('combobox', {name:'选择当前草稿'}))
-    fireEvent.click(await screen.findByRole('option', {name:'Draft · r18'}))
-  }
-  return result
+  return render(<QueryClientProvider client={queryClient}><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1']}><Routes><Route element={<WorkflowDetailPage />} path="/workflows/:workflowId" /></Routes></MemoryRouter></ToastProvider></QueryClientProvider>)
 }
 
 const workflowResponse = {
@@ -122,12 +149,13 @@ const workflowResponse = {
 }
 
 const version1 = {
+  publicationStatus:'published',archived:false,hasDraft:false,draftRevision:12,updatedByName:'KA',updatedAt:'2026-08-21T09:00:00Z',
   id: 'version-1', workflowId: 'workflow-1', versionNumber: 1, sourceRevision: 12, schemaVersion: '8.0', contentHash: 'sha256:version-one',
   sourceDraftId:'draft-1',sourceRevisionId:'revision-1',baseVersionId:null,definition: {}, editorDocument: {}, createdBy: 'user-1', createdAt: '2026-08-21T09:00:00Z',
 }
 
 const version2 = {
-  ...version1, id: 'version-2', versionNumber: 2, sourceRevision: 16, contentHash: 'sha256:version-two', createdAt: '2026-08-22T01:00:00Z',
+  ...version1, hasDraft:true,draftRevision:18,id: 'version-2', versionNumber: 2, sourceRevision: 16, contentHash: 'sha256:version-two', createdAt: '2026-08-22T01:00:00Z',
 }
 
 const deployment1 = {

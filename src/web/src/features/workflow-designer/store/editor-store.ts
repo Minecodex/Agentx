@@ -285,7 +285,7 @@ export function createEditorStore(readOnly = false) {
         if (state.readOnly) {
           const graphChanged = persistedDocumentChanged(state, candidate, true);
           if (graphChanged) return state;
-          return {...next, dirty: false};
+          return {...next, dirty: state.dirty};
         }
         const changed = persistedDocumentChanged(state, candidate);
         return changed ? { ...next, localDocumentRevision: state.localDocumentRevision + 1 } : next;
@@ -316,6 +316,7 @@ export function createEditorStore(readOnly = false) {
       past: [],
       future: [],
       gestureSnapshot: undefined,
+      appliedCommands: {},
     })),
   onNodesChange: (changes) =>
     set((state) => {

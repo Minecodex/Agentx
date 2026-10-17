@@ -203,9 +203,6 @@ fn from_parts(
             RuntimeResourceKindV1::Memory,
             RuntimeResourceConfigurationV1::Memory {
                 endpoint: required_json_string(&snapshot, "endpoint")?,
-                namespace: required_json_string(&snapshot, "externalNamespace")?,
-                memory_version: resource_version.clone(),
-                access_mode: json_string(&snapshot, "accessMode").unwrap_or_else(|| "read".into()),
                 credential: optional_vault_reference(&snapshot)?,
             },
             vec![],

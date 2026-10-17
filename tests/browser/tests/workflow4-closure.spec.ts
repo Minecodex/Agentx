@@ -1,3 +1,4 @@
+import { publishFixtureVersion } from '../draft-fixtures'
 import { fixtureDraftId } from '../draft-fixtures'
 import { expect, type APIResponse, type Page, test } from '@playwright/test'
 
@@ -108,7 +109,7 @@ async function createWorkflow(page: Page, token: string, name: string, definitio
       edges: definition.connections.map((value) => ({ edgeId: value.id })),
     },
   })
-  const version = await request<Version>(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftId: await fixtureDraftId(page, workflow.id),  draftRevision: saved.revision })
+  const version = await publishFixtureVersion<Version>(page, token, workflow.id, saved.revision)
   return { workflow, version, draft: saved }
 }
 
@@ -123,11 +124,11 @@ async function reviseWorkflow(page: Page, token: string, workflowId: string, def
       edges: definition.connections.map((value) => ({ edgeId: value.id })),
     },
   })
-  return request<Version>(page, token, `/workflows/${workflowId}/versions`, 'POST', { draftId: await fixtureDraftId(page, workflowId),  draftRevision: saved.revision })
+  return publishFixtureVersion<Version>(page, token, workflowId, saved.revision)
 }
 
 async function deployApplication(page: Page, token: string, workflow: Workflow, version: Version, environmentId: string, slug: string) {
-  await request(page, token, `/workflows/${workflow.id}/deployments`, 'POST', { workflowVersionId: version.id, environmentId })
+  await request(page, token, `/workflows/${workflow.id}/deployments`, 'POST', {contentSource:'version', workflowVersionId: version.id, environmentId })
   const application = await request<Omit<Application, 'apiKey'>>(page, token, '/applications', 'POST', {
     workflowId: workflow.id,
     name: `${workflow.name} Application`,
@@ -343,7 +344,7 @@ test('Workflow 5.0 closes Composite, Context, Package, Multipart and cancellatio
   recursiveDefinition.end.outputs = {}
   const recursiveDraft = await request<Draft>(page, token, `/workflows/${child.workflow.id}/drafts/${await fixtureDraftId(page, child.workflow.id)}`)
   const recursiveSave = await page.request.put(`/api/v1/workflows/${child.workflow.id}/drafts/${await fixtureDraftId(page, child.workflow.id)}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
     data: {
       expectedRevision: recursiveDraft.revision,
       definition: recursiveDefinition,

@@ -1,3 +1,4 @@
+import { publishFixtureVersion } from '../draft-fixtures'
 import { fixtureDraftId } from '../draft-fixtures'
 import { createHmac } from 'node:crypto'
 import { expect, type Locator, type Page, test } from '@playwright/test'
@@ -7,7 +8,7 @@ const secret = 'agentx-e2e-channel-placeholder'
 const template = '回答：{{output.result}}\n发送者：{{output.requester}}'
 
 async function api(page: Page, token: string, path: string, method = 'GET', data?: unknown) {
-  const response = await page.request.fetch(`/api/v1${path}`, { method, data, headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.fetch(`/api/v1${path}`, { method, data, headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(response.ok(), `${method} ${path}: ${await response.text()}`).toBeTruthy()
   return response.json()
 }
@@ -37,10 +38,10 @@ async function fixture(page: Page, token: string) {
   definition.connections = [{ id: 'start-exit', sourceNodeId: '__start__', sourceHandle: 'main', targetNodeId: exit.id, targetHandle: 'main', order: 0 }]
   await api(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`, 'PUT', { expectedRevision: draft.revision, definition, editorDocument: { ...draft.editorDocument, edges: [{ edgeId: 'start-exit' }] } })
   const latest = await api(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
-  const version = await api(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftId: await fixtureDraftId(page, workflow.id),  draftRevision: latest.revision })
+  const version = await publishFixtureVersion(page, token, workflow.id, latest.revision)
   const environments = await api(page, token, '/environments')
   const environmentId = environments.find((item: { code: string }) => item.code === 'development').id
-  await api(page, token, `/workflows/${workflow.id}/deployments`, 'POST', { environmentId, workflowVersionId: version.id })
+  await api(page, token, `/workflows/${workflow.id}/deployments`, 'POST', {contentSource:'version', environmentId, workflowVersionId: version.id })
   return { workflow, version, environmentId }
 }
 
@@ -100,7 +101,7 @@ test('configures replies and required/optional mappings before deployment, edits
     [{ ...invalidBase, inputMappings: [...requiredMappings, { target: 'unknown', source: 'message.text', missingPolicy: 'error' }] }, 'WEBHOOK_MAPPING_TARGET_UNKNOWN'],
     [{ ...invalidBase, inputMappings: requiredMappings, reply: { enabled: true, outputField: 'unknown' } }, 'WEBHOOK_REPLY_OUTPUT_FIELD_UNKNOWN'],
   ] as const) {
-    const response = await page.request.post(`/api/v1/applications/${application.id}/webhooks`, { headers: { Authorization: `Bearer ${token}` }, data })
+    const response = await page.request.post(`/api/v1/applications/${application.id}/webhooks`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data })
     expect(response.status()).toBe(422)
     expect((await response.json()).code).toBe(code)
   }

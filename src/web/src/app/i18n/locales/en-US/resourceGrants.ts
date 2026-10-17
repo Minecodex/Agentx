@@ -40,11 +40,6 @@ const translations = {
   "operations": {
     "use": "Use", "view": "View", "read": "Read", "write": "Write", "execute": "Execute", "manage": "Manage"
   },
-  "validationReasons": {
-    "resource_missing_or_disabled": "Resource is missing or disabled",
-    "grant_revoked": "Grant was revoked",
-    "workflow_grant_missing": "Workflow service identity is missing a grant"
-  }
 } as const
 
 export default translations

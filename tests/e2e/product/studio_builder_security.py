@@ -12,6 +12,7 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 import httpx
 
+from tests.e2e.draft_fixtures import fixture_draft_id, idempotent_headers, publish_fixture_version
 from tests.e2e.runtime.test_agent_attachments import _access_token, _control_mysql, _runtime_mysql
 from tests.e2e.runtime.test_plugin_boundaries import _install
 from tests.e2e.support import run, run_playwright
@@ -54,7 +55,7 @@ def resolver_counterexamples(context, urls):
         workflow_id = uuid.UUID(workflow["id"])
         execution_count = f"SELECT COUNT(*) FROM workflow_executions WHERE workflow_id=UUID_TO_BIN('{workflow_id}')"  # noqa: S608 -- UUID is validated
         before = _runtime_mysql(context, execution_count)
-        path = f"/api/v1/workflows/{workflow['id']}/drafts/{workflow['createdDraftId']}"
+        path = f"/api/v1/workflows/{workflow['id']}/drafts/{fixture_draft_id(client, workflow['id'], headers)}"
         draft = client.get(path, headers=headers).json()
         for label, source in cases.items():
             entries = dict(template)
@@ -509,7 +510,7 @@ def revision_delete_race(context, urls, models):
             created = client.post(
                 "/api/v1/workflows", json={"name": f"P8 deletion race {index}", "visibility": "company"}
             ).json()
-            path = f"/api/v1/workflows/{created['id']}/drafts/{created['createdDraftId']}"
+            path = f"/api/v1/workflows/{created['id']}/drafts/{fixture_draft_id(client, created['id'], None)}"
             draft = client.get(path).json()
             definition = draft["definition"]
             definition["nodes"].insert(
@@ -576,9 +577,10 @@ def resource_request_isolation(context, urls, models):
         created.raise_for_status()
         workflow = created.json()
         root = f"/api/v1/workflows/{workflow['id']}"
-        second = client.post(root + "/drafts", json={"name": "Independent resources", "baseVersionId": None})
+        second = client.post(root + "/versions", headers=idempotent_headers())
         second.raise_for_status()
-        draft_ids = [workflow["createdDraftId"], second.json()["id"]]
+        second_context = client.post(root + f"/versions/{second.json()['id']}/edit").json()
+        draft_ids = [fixture_draft_id(client, workflow["id"]), second_context["document"]["id"]]
         model = models["alternate"]["id"]
 
         def option(draft):
@@ -615,7 +617,8 @@ def resource_request_isolation(context, urls, models):
             "/api/v1/workflows", json={"name": "P8 foreign resources", "visibility": "company"}
         ).json()
         denied = client.get(
-            root + "/resource-options", params={"draftId": foreign["createdDraftId"], "resourceType": "model"}
+            root + "/resource-options",
+            params={"draftId": fixture_draft_id(client, foreign["id"], None), "resourceType": "model"},
         )
         assert denied.status_code == 404, denied.text
         granted = client.post(
@@ -650,13 +653,13 @@ def tenant_boundary_isolation(context, urls):
         )
         created.raise_for_status()
         own = created.json()
-        own_draft = control.get(f"/api/v1/workflows/{own['id']}/drafts/{own['createdDraftId']}").json()
-        published = control.post(
-            f"/api/v1/workflows/{own['id']}/versions", json={"draftId": own["createdDraftId"], "draftRevision": 0}
-        )
+        own_draft = control.get(
+            f"/api/v1/workflows/{own['id']}/drafts/{fixture_draft_id(control, own['id'], None)}"
+        ).json()
+        published = publish_fixture_version(control, own["id"], fixture_draft_id(control, own["id"], None), 0, None)
         published.raise_for_status()
         own_workflow = str(uuid.UUID(own["id"]))
-        own_draft_id = str(uuid.UUID(own["createdDraftId"]))
+        own_draft_id = str(uuid.UUID(fixture_draft_id(control, own["id"], None)))
         own_version = str(uuid.UUID(published.json()["id"]))
         own_user = str(uuid.UUID(me["id"]))
         # UUIDs are generated/parsed above; no credentials or arbitrary SQL enter this fixture.
@@ -669,11 +672,11 @@ SELECT UUID_TO_BIN('{user}'),UUID_TO_BIN('{tenant}'),'foreign','foreign','Foreig
 INSERT INTO workflows(id,tenant_id,name,visibility,owner_user_id,owner_department_id)
 SELECT UUID_TO_BIN('{workflow}'),UUID_TO_BIN('{tenant}'),'Foreign Workflow','company',UUID_TO_BIN('{user}'),owner_department_id FROM workflows WHERE id=UUID_TO_BIN('{own_workflow}');
 INSERT INTO workflow_drafts(id,tenant_id,workflow_id,created_by,updated_by,schema_version,revision,definition_json,content_hash,editor_json,editor_hash)
-SELECT UUID_TO_BIN('{draft}'),UUID_TO_BIN('{tenant}'),UUID_TO_BIN('{workflow}'),UUID_TO_BIN('{user}'),UUID_TO_BIN('{user}'),schema_version,revision,definition_json,content_hash,editor_json,editor_hash FROM workflow_drafts WHERE id=UUID_TO_BIN('{own_draft_id}');
+SELECT UUID_TO_BIN('{draft}'),UUID_TO_BIN('{tenant}'),UUID_TO_BIN('{workflow}'),UUID_TO_BIN('{user}'),UUID_TO_BIN('{user}'),schema_version,0,definition_json,content_hash,editor_json,editor_hash FROM workflow_drafts WHERE id=UUID_TO_BIN('{own_draft_id}');
 INSERT INTO workflow_draft_revisions(id,tenant_id,workflow_id,draft_id,revision,schema_version,definition_json,resource_snapshot_json,content_hash,created_by,editor_json,editor_hash)
 SELECT UUID_TO_BIN('{revision}'),UUID_TO_BIN('{tenant}'),UUID_TO_BIN('{workflow}'),UUID_TO_BIN('{draft}'),revision,schema_version,definition_json,resource_snapshot_json,content_hash,UUID_TO_BIN('{user}'),editor_json,editor_hash FROM workflow_draft_revisions WHERE draft_id=UUID_TO_BIN('{own_draft_id}') AND revision=0;
-INSERT INTO workflow_versions(id,tenant_id,workflow_id,source_draft_id,source_revision_id,version_number,source_revision,schema_version,definition_json,node_manifests_json,content_hash,created_by,editor_json,editor_hash)
-SELECT UUID_TO_BIN('{version}'),UUID_TO_BIN('{tenant}'),UUID_TO_BIN('{workflow}'),UUID_TO_BIN('{draft}'),UUID_TO_BIN('{revision}'),1,0,schema_version,definition_json,node_manifests_json,content_hash,UUID_TO_BIN('{user}'),editor_json,editor_hash FROM workflow_versions WHERE id=UUID_TO_BIN('{own_version}');
+INSERT INTO workflow_versions(id,tenant_id,workflow_id,source_draft_id,source_revision_id,version_number,source_revision,schema_version,definition_json,node_manifests_json,content_hash,created_by,editor_json,editor_hash,updated_by,publication_status,working_draft_id)
+SELECT UUID_TO_BIN('{version}'),UUID_TO_BIN('{tenant}'),UUID_TO_BIN('{workflow}'),UUID_TO_BIN('{draft}'),UUID_TO_BIN('{revision}'),1,0,schema_version,definition_json,node_manifests_json,content_hash,UUID_TO_BIN('{user}'),editor_json,editor_hash,UUID_TO_BIN('{user}'),'published',UUID_TO_BIN('{draft}') FROM workflow_versions WHERE id=UUID_TO_BIN('{own_version}');
 COMMIT;
 SELECT COUNT(*) FROM workflow_versions WHERE tenant_id=UUID_TO_BIN('{tenant}') AND id=UUID_TO_BIN('{version}');""",  # noqa: S608 -- validated UUIDs in isolated test data only.
         )
@@ -707,8 +710,8 @@ SELECT COUNT(*) FROM workflow_versions WHERE tenant_id=UUID_TO_BIN('{tenant}') A
             (
                 "version_derive",
                 "POST",
-                f"/workflows/{own_workflow}/drafts",
-                {"name": "Forbidden", "baseVersionId": version},
+                f"/workflows/{own_workflow}/versions/{version}/edit",
+                {},
             ),
             ("version_execute", "POST", f"/workflow-versions/{version}/executions", {"input": {}}),
             (
@@ -728,7 +731,9 @@ SELECT COUNT(*) FROM workflow_versions WHERE tenant_id=UUID_TO_BIN('{tenant}') A
             assert response.status_code == 404, (name, response.status_code, response.text)
             statuses[name] = response.status_code
         unchanged = control.get(f"/api/v1/workflows/{own_workflow}/drafts/{own_draft_id}")
-        assert unchanged.status_code == 200 and unchanged.json()["revision"] == 0, unchanged.text
+        assert unchanged.status_code == 200 and unchanged.json()["revision"] == own_draft["revision"] + 1, (
+            unchanged.text
+        )
         assert (
             _control_mysql(context, f"SELECT revision FROM workflow_drafts WHERE id=UUID_TO_BIN('{draft}');").strip()  # noqa: S608 -- generated UUID.
             == "0"

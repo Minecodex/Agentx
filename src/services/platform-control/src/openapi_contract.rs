@@ -67,10 +67,60 @@ pub(crate) fn write(path: &Path) -> Result<()> {
         &mut contract,
         "StudioBuilderSessionV1",
     )?;
-    add_schema::<crate::workflow_api::WorkflowVersionResponse>(
+    add_schema::<crate::workflow_versions::WorkflowVersionResponse>(
         &mut contract,
         "WorkflowVersionResponse",
     )?;
+    add_schema::<crate::workflow_api::DraftResponse>(&mut contract, "DraftResponse")?;
+    add_schema::<crate::workflow_publishing::PublishWorkflowRequest>(
+        &mut contract,
+        "PublishWorkflowRequest",
+    )?;
+    add_schema::<crate::workflow_versions::RestoreRequest>(&mut contract, "RestoreVersionRequest")?;
+    add_schema::<crate::workflow_versions::ArchiveVersionRequest>(
+        &mut contract,
+        "ArchiveVersionRequest",
+    )?;
+    add_schema::<crate::external_resource_api::ConnectionResponse>(
+        &mut contract,
+        "ConnectionResponse",
+    )?;
+    add_schema::<crate::external_resource_api::UpdateMemoryConnectionRequest>(
+        &mut contract,
+        "UpdateMemoryConnectionRequest",
+    )?;
+    add_schema::<agentx_runtime_contracts::ApplicationUserIdentityV1>(
+        &mut contract,
+        "ApplicationUserIdentity",
+    )?;
+    add_schema::<crate::runtime_bff::AgentSubjectMemoryInput>(
+        &mut contract,
+        "AgentSubjectMemoryInput",
+    )?;
+    for path in [
+        "/api/v1/agent-subject-memory/audit",
+        "/api/v1/agent-subject-memory/clear",
+    ] {
+        contract["paths"][path] = serde_json::json!({"post":{
+            "security":[{"bearerAuth":[]}],
+            "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/AgentSubjectMemoryInput"}}}},
+            "responses":{"200":{"description":"Memory scope operation result","content":{"application/json":{"schema":{"type":"object"}}}}}
+        }});
+    }
+    add_schema::<agentx_runtime_contracts::InvocationSearchPageV1>(
+        &mut contract,
+        "ApplicationInvocationPageResponse",
+    )?;
+    contract["paths"]["/api/v1/applications/{id}/invocations"] = serde_json::json!({"get": {
+        "security":[{"bearerAuth":[]}],
+        "parameters":[
+            {"in":"path","name":"id","required":true,"schema":{"type":"string","format":"uuid"}},
+            {"in":"query","name":"externalUserId","schema":{"type":"string"}},
+            {"in":"query","name":"userSource","schema":{"type":"string","enum":["platform","channel","api_parameter"]}},
+            {"in":"query","name":"cursor","schema":{"type":"string"}}
+        ],
+        "responses":{"200":{"description":"Application invocation records","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApplicationInvocationPageResponse"}}}}}
+    }});
     let query = serde_json::to_value(schemars::schema_for!(crate::resource_api::OptionQuery))?;
     let mut parameters = vec![
         serde_json::json!({"in":"path","name":"id","required":true,"schema":{"type":"string","format":"uuid"}}),

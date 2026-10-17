@@ -40,6 +40,7 @@ CREATE TABLE application_deployments (
     sequence_number BIGINT UNSIGNED NOT NULL,
     input_schema_json JSON NOT NULL,
     output_schema_json JSON NOT NULL,
+    api_user_id_input VARCHAR(160) NULL,
     session_version_policy ENUM('pinned', 'follow_deployment', 'manual_upgrade') NOT NULL DEFAULT 'pinned',
     status ENUM('active', 'superseded') NOT NULL DEFAULT 'active',
     created_by BINARY(16) NOT NULL,
@@ -517,7 +518,7 @@ CREATE TABLE idempotency_records (
     tenant_id BINARY(16) NOT NULL,
     operation_key VARCHAR(128) NOT NULL,
     idempotency_key VARCHAR(128) NOT NULL,
-    request_hash CHAR(64) NOT NULL,
+    request_hash VARCHAR(80) NOT NULL,
     resource_id BINARY(16) NULL,
     response_json JSON NULL,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
@@ -645,22 +646,7 @@ CREATE TABLE memory_connections (
     KEY idx_memory_connections_tenant (tenant_id, status, updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE memory_namespaces (
-    id BINARY(16) NOT NULL,
-    tenant_id BINARY(16) NOT NULL,
-    connection_id BINARY(16) NOT NULL,
-    name VARCHAR(160) NOT NULL,
-    external_namespace VARCHAR(512) NOT NULL,
-    access_mode ENUM('read', 'read_write') NOT NULL DEFAULT 'read',
-    owner_department_id BINARY(16) NOT NULL,
-    status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
-    version BIGINT UNSIGNED NOT NULL DEFAULT 1,
-    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-    PRIMARY KEY (id),
-    UNIQUE KEY uq_memory_namespace_external (tenant_id, connection_id, external_namespace),
-    KEY idx_memory_namespaces_department (tenant_id, owner_department_id, status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 
 CREATE TABLE model_alias_deployment_history (
     id BINARY(16) NOT NULL,
@@ -1473,9 +1459,8 @@ CREATE TABLE workflow_draft_revisions (
 
 CREATE TABLE workflow_drafts (
     id BINARY(16) NOT NULL,
-    name VARCHAR(160) NOT NULL DEFAULT 'Draft',
+    generation BIGINT UNSIGNED NOT NULL DEFAULT 0,
     base_version_id BINARY(16) NULL,
-    status ENUM('active','archived') NOT NULL DEFAULT 'active',
     created_by BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
     workflow_id BINARY(16) NOT NULL,
@@ -1487,7 +1472,7 @@ CREATE TABLE workflow_drafts (
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
-    KEY idx_workflow_drafts (tenant_id, workflow_id, status, updated_at)
+    KEY idx_workflow_drafts (tenant_id, workflow_id, updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE workflow_environments (
@@ -1546,6 +1531,12 @@ CREATE TABLE workflow_version_resources (
 
 CREATE TABLE workflow_versions (
     id BINARY(16) NOT NULL,
+    publication_status ENUM('unpublished','published') NOT NULL DEFAULT 'unpublished',
+    archived BOOLEAN NOT NULL DEFAULT FALSE,
+    working_draft_id BINARY(16) NULL,
+    updated_by BINARY(16) NOT NULL,
+    published_at TIMESTAMP(6) NULL,
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     source_draft_id BINARY(16) NOT NULL,
     source_revision_id BINARY(16) NOT NULL,
     base_version_id BINARY(16) NULL,
@@ -1561,6 +1552,7 @@ CREATE TABLE workflow_versions (
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
     UNIQUE KEY uq_workflow_version_number (tenant_id, workflow_id, version_number),
+    UNIQUE KEY uq_workflow_working_draft (tenant_id, working_draft_id),
     UNIQUE KEY uq_version_identity (tenant_id, workflow_id, id),
     UNIQUE KEY uq_workflow_version_content (tenant_id, source_draft_id, source_revision, content_hash)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -1600,6 +1592,7 @@ ALTER TABLE workflow_draft_revisions
     ADD UNIQUE KEY uq_revision_source (tenant_id, workflow_id, draft_id, id, revision),
     ADD CONSTRAINT fk_revision_draft FOREIGN KEY (tenant_id, workflow_id, draft_id) REFERENCES workflow_drafts(tenant_id, workflow_id, id);
 ALTER TABLE workflow_versions
+    ADD CONSTRAINT fk_version_working_draft FOREIGN KEY (tenant_id, workflow_id, working_draft_id) REFERENCES workflow_drafts(tenant_id, workflow_id, id),
     ADD CONSTRAINT fk_version_draft FOREIGN KEY (tenant_id, workflow_id, source_draft_id) REFERENCES workflow_drafts(tenant_id, workflow_id, id),
     ADD CONSTRAINT fk_version_revision FOREIGN KEY (tenant_id, workflow_id, source_draft_id, source_revision_id, source_revision) REFERENCES workflow_draft_revisions(tenant_id, workflow_id, draft_id, id, revision),
     ADD CONSTRAINT fk_version_base FOREIGN KEY (tenant_id, workflow_id, base_version_id) REFERENCES workflow_versions(tenant_id, workflow_id, id);
@@ -1608,6 +1601,7 @@ ALTER TABLE workflow_drafts
 
 CREATE TABLE studio_builder_sessions (
     id BINARY(16) NOT NULL,
+    document_generation BIGINT UNSIGNED NOT NULL DEFAULT 0,
     tenant_id BINARY(16) NOT NULL,
     workflow_id BINARY(16) NOT NULL,
     draft_id BINARY(16) NOT NULL,
@@ -1619,7 +1613,7 @@ CREATE TABLE studio_builder_sessions (
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
-    UNIQUE KEY uq_studio_builder_binding (tenant_id,draft_id,user_id,editor_instance_id),
+    UNIQUE KEY uq_studio_builder_binding (tenant_id,draft_id,user_id,editor_instance_id,document_generation),
     KEY idx_studio_builder_workflow (tenant_id,workflow_id,draft_id),
     CONSTRAINT fk_builder_session_draft FOREIGN KEY(tenant_id,workflow_id,draft_id) REFERENCES workflow_drafts(tenant_id,workflow_id,id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

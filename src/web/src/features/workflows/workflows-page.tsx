@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Blocks, CloudCog, Plus } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -26,18 +26,18 @@ export function WorkflowsPage() {
   const { showToast } = useToast()
   const [open, setOpen] = useState(false)
   const query = useQuery({ queryKey: ['workflows'], queryFn: () => apiRequest<PageResponse<Workflow>>('/workflows?pageSize=100') })
+  const createOperation=useRef({payload:'',key:''})
   const create = useMutation({
-    mutationFn: (values: Record<string, string>) => apiRequest<Workflow>('/workflows', { method: 'POST', body: jsonBody({ name: values.name, description: values.description || null, visibility: values.visibility }) }),
+    mutationFn: (values: Record<string, string>) => { const body=jsonBody({ name: values.name, description: values.description || null, visibility: values.visibility }); if(createOperation.current.payload!==body)createOperation.current={payload:body,key:crypto.randomUUID()}; return apiRequest<Workflow>('/workflows', { method: 'POST', headers:{'Idempotency-Key':createOperation.current.key}, body }) },
     onSuccess: async (workflow) => { await queryClient.invalidateQueries({ queryKey: ['workflows'] }); showToast(t('workflows.created')); navigate(`/workflows/${workflow.id}`) },
   })
   const columns = useMemo<Array<ColumnDef<Workflow>>>(() => [
     { accessorKey: 'name', header: t('workflows.title'), cell: ({ row }) => <EntityCell detail={row.original.description ?? t('workflows.draftLabel')} icon={Blocks} name={row.original.name} /> },
     { accessorKey: 'status', header: t('common.status'), cell: ({ row }) => <StatusBadge status={row.original.status === 'active' ? 'active' : 'inactive'} /> },
-    { accessorKey: 'draftCount', header: t('workflows.drafts') },
     { accessorKey: 'latestVersion', header: t('workflows.latestVersion'), cell: ({ row }) => row.original.latestVersion ? `v${row.original.latestVersion}` : '—' },
     { accessorKey: 'ownerName', header: t('common.owner') },
     { accessorKey: 'updatedAt', header: t('common.updatedAt'), cell: ({ row }) => formatDateTime(row.original.updatedAt) },
-    { id: 'actions', header: '', cell: ({ row }) => <div className="flex gap-1"><Button asChild size="sm" variant="ghost"><Link to={`/workflows/${row.original.id}`}>{t('workflows.details')}</Link></Button><Button asChild size="sm" variant="ghost"><Link to={`/workflows/${row.original.id}`}>{t('workflows.openEditor')}</Link></Button><EntityDeleteButton canDelete={auth.hasPermission('workflow:delete')} deletePath={`/workflows/${row.original.id}`} entityId={row.original.id} entityName={row.original.name} entityType="workflow" onDeleted={async () => { await queryClient.invalidateQueries({ queryKey: ['workflows'] }); showToast(t('workflows.deleted')) }} /></div> },
+    { id: 'actions', header: '', cell: ({ row }) => <div className="flex gap-1"><Button asChild size="sm" variant="ghost"><Link to={`/workflows/${row.original.id}`}>{t('workflows.details')}</Link></Button><EntityDeleteButton canDelete={auth.hasPermission('workflow:delete')} deletePath={`/workflows/${row.original.id}`} entityId={row.original.id} entityName={row.original.name} entityType="workflow" onDeleted={async () => { await queryClient.invalidateQueries({ queryKey: ['workflows'] }); showToast(t('workflows.deleted')) }} /></div> },
   ], [auth, formatDateTime, queryClient, showToast, t])
   const fields: EntityFormField[] = [
     { name: 'name', label: t('workflows.workflowName'), required: true },

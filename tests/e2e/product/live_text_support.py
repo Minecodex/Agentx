@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 import httpx
 import pytest
 
-from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id, idempotent_headers, publish_fixture_version
 from tests.e2e.product.test_model_streaming import _grant_model_to_workflow, _stream_workflow
 from tests.e2e.product.test_provider_integration import _publish_application_deployment
 from tests.e2e.runtime.test_agent_attachments import _access_token
@@ -20,7 +20,7 @@ class Secret:
 
 
 def post(client: httpx.Client, path: str, payload: dict) -> dict:
-    response = client.post(f"/api/v1{path}", json=payload)
+    response = client.post(f"/api/v1{path}", json=payload, headers=idempotent_headers())
     assert response.status_code in (200, 201, 202), response.text
     return response.json()
 
@@ -48,11 +48,9 @@ def publish_version(control: httpx.Client, workflow_id: str, prompt: str) -> dic
     revision = control.get(
         f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, None)}"
     ).json()["revision"]
-    return post(
-        control,
-        f"/workflows/{workflow_id}/versions",
-        {"draftId": fixture_draft(control, workflow_id, None)["id"], "draftRevision": revision},
-    )
+    return publish_fixture_version(
+        control, workflow_id, fixture_draft(control, workflow_id, None)["id"], revision, None
+    ).json()
 
 
 @pytest.fixture(scope="session")
@@ -112,7 +110,7 @@ def live_application(installed_agentx, service_urls, run_id, existing_model, exi
         post(
             control,
             f"/workflows/{workflow_id}/deployments",
-            {"environmentId": environment["id"], "workflowVersionId": v2["id"]},
+            {"contentSource": "version", "environmentId": environment["id"], "workflowVersionId": v2["id"]},
         )
         app = post(
             control,

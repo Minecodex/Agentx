@@ -301,13 +301,24 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
     .await;
     assert_eq!(status, 201, "workflow response: {workflow}");
     let workflow_id = workflow["id"].as_str().unwrap();
+    let (_, editor_context) = request(
+        &app,
+        "POST",
+        &format!(
+            "/api/v1/workflows/{workflow_id}/versions/{}/edit",
+            workflow["createdVersionId"].as_str().unwrap()
+        ),
+        Some(&token),
+        None,
+    )
+    .await;
     builder_journal_does_not_reverse_core_locks(
         &state,
         &lock_observer,
         projection_tenant_id,
         Uuid::parse_str(bootstrap["user"]["id"].as_str().unwrap()).unwrap(),
         Uuid::parse_str(workflow_id).unwrap(),
-        Uuid::parse_str(workflow["createdDraftId"].as_str().unwrap()).unwrap(),
+        Uuid::parse_str(editor_context["document"]["id"].as_str().unwrap()).unwrap(),
     )
     .await;
     let service_identity_id = workflow["serviceIdentityId"].as_str().unwrap();
@@ -350,7 +361,7 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
         "GET",
         &format!(
             "/api/v1/workflows/{workflow_id}/drafts/{}",
-            workflow["createdDraftId"].as_str().unwrap()
+            editor_context["document"]["id"].as_str().unwrap()
         ),
         Some(&token),
         None,
@@ -381,7 +392,7 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
         "PUT",
         &format!(
             "/api/v1/workflows/{workflow_id}/drafts/{}",
-            workflow["createdDraftId"].as_str().unwrap()
+            editor_context["document"]["id"].as_str().unwrap()
         ),
         Some(&token),
         Some(json!({
@@ -392,15 +403,7 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
     )
     .await;
     assert_eq!(status, 200, "workflow draft save response: {saved_draft}");
-    let (status, version) = request(
-        &app,
-        "POST",
-        &format!("/api/v1/workflows/{workflow_id}/versions"),
-        Some(&token),
-        Some(json!({"draftId":draft["id"],"draftRevision":saved_draft["revision"]})),
-    )
-    .await;
-    assert_eq!(status, 201, "workflow version response: {version}");
+    let version = publish_fixture_version(&app, &token, workflow_id, &saved_draft).await;
     let version_run_key = Uuid::now_v7().to_string();
     let version_run_path = format!(
         "/api/v1/workflow-versions/{}/executions",
@@ -617,6 +620,17 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
         "resource workflow response: {resource_workflow}"
     );
     let resource_workflow_id = resource_workflow["id"].as_str().unwrap();
+    let (_, resource_editor_context) = request(
+        &app,
+        "POST",
+        &format!(
+            "/api/v1/workflows/{resource_workflow_id}/versions/{}/edit",
+            resource_workflow["createdVersionId"].as_str().unwrap()
+        ),
+        Some(&token),
+        None,
+    )
+    .await;
     let (status, model_options) = request(
         &app,
         "GET",
@@ -654,7 +668,7 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
         Some(&token),
         Some(json!({
             "resourceType":"model","resourceId":model["id"],"resourceVersionId":null,
-            "operation":"use","sourceNodeId":"model-node","sourceDraftId": resource_workflow["createdDraftId"], "sourceRevision":0,
+            "operation":"use","sourceNodeId":"model-node","sourceDraftId": resource_editor_context["document"]["id"], "sourceRevision":0,
             "message":"API-first resource closure"
         })),
     )
@@ -725,7 +739,7 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
         "GET",
         &format!(
             "/api/v1/workflows/{resource_workflow_id}/drafts/{}",
-            resource_workflow["createdDraftId"].as_str().unwrap()
+            resource_editor_context["document"]["id"].as_str().unwrap()
         ),
         Some(&token),
         None,
@@ -757,7 +771,7 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
         "PUT",
         &format!(
             "/api/v1/workflows/{resource_workflow_id}/drafts/{}",
-            resource_workflow["createdDraftId"].as_str().unwrap()
+            resource_editor_context["document"]["id"].as_str().unwrap()
         ),
         Some(&token),
         Some(json!({
@@ -770,15 +784,8 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
         status, 200,
         "resource draft save response: {resource_saved}"
     );
-    let (status, resource_version) = request(
-        &app,
-        "POST",
-        &format!("/api/v1/workflows/{resource_workflow_id}/versions"),
-        Some(&token),
-        Some(json!({"draftId":resource_draft["id"],"draftRevision":resource_saved["revision"]})),
-    )
-    .await;
-    assert_eq!(status, 201, "resource version response: {resource_version}");
+    let resource_version =
+        publish_fixture_version(&app, &token, resource_workflow_id, &resource_saved).await;
 
     let (status, skill) = request(
         &app,
@@ -1033,21 +1040,43 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
     assert_eq!(restored_admission["enabled"], true);
     assert_eq!(restored_admission["policyEpoch"], 4);
     assert!(!service_identity_id.is_empty());
+    crate::workflow_version_tests::verify_resource_restore(
+        &app,
+        &token,
+        &pool,
+        resource_workflow_id,
+        resource_version["id"].as_str().unwrap(),
+        &resource_editor_context["document"],
+    )
+    .await;
+    crate::workflow_version_tests::verify(&app, &token).await;
     runtime_server.abort();
     vault_server.abort();
 }
 
-async fn request(
+pub(crate) async fn request(
     app: &Router,
     method: &str,
     uri: &str,
     token: Option<&str>,
     body: Option<Value>,
 ) -> (u16, Value) {
+    request_with_key(app, method, uri, token, body, &Uuid::now_v7().to_string()).await
+}
+
+pub(crate) async fn request_with_key(
+    app: &Router,
+    method: &str,
+    uri: &str,
+    token: Option<&str>,
+    body: Option<Value>,
+    key: &str,
+) -> (u16, Value) {
     let mut builder = Request::builder()
         .method(method)
         .uri(uri)
-        .header("content-type", "application/json");
+        .header("content-type", "application/json")
+        .header("Idempotency-Key", key);
     if let Some(token) = token {
         builder = builder.header("authorization", format!("Bearer {token}"));
     }
@@ -1283,4 +1312,28 @@ async fn connect_with_retry(port: u16) -> sqlx::MySqlPool {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     panic!("connect to Control MySQL: {last_error:?}");
+}
+
+async fn publish_fixture_version(
+    app: &Router,
+    token: &str,
+    workflow: &str,
+    document: &Value,
+) -> Value {
+    let (_, environments) = request(app, "GET", "/api/v1/environments", Some(token), None).await;
+    let (status,deployment)=request(app,"POST",&format!("/api/v1/workflows/{workflow}/deployments"),Some(token),Some(json!({"environmentId":environments[0]["id"],"workflowVersionId":document["versionId"],"contentSource":if document["publicationStatus"]=="published" {"draft"} else {"version"},"expectedRevision":document["revision"]}))).await;
+    assert_eq!(status, 200, "publish: {deployment}");
+    let (status, version) = request(
+        app,
+        "GET",
+        &format!(
+            "/api/v1/workflows/{workflow}/versions/{}",
+            deployment["workflowVersionId"].as_str().unwrap()
+        ),
+        Some(token),
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "published version: {version}");
+    version
 }

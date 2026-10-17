@@ -33,7 +33,6 @@ const translations = {
   clearDescription: 'This removes the session entries, compaction summary, pending work, and unreferenced artifacts. The action is audited and cannot be undone.',
   clearSuccess: 'Agent session cleared',
   memoryAudit: 'Trusted subject memory audit',
-  memoryVersion: 'Memory resource version ID',
   loadAudit: 'Load audit',
   clearMemory: 'Clear subject memory',
 } as const

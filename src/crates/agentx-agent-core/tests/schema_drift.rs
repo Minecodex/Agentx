@@ -2,9 +2,9 @@ use std::{fs, path::PathBuf};
 
 use agentx_agent_core::{
     AgentBundleV2, AgentDefinitionV6, AgentManifestV2, AgentRunInputV1, AgentSessionEntryV1,
-    AgentSessionRegisterV1, AgentSessionStateV1, AgentSessionUsageV1, DurableOperationStateV1,
-    McpServerVersionV1, OperationRecordV1, SandboxProcessSessionContractV1, SubjectMemoryScopeV1,
-    TrustedSubjectEvidenceV1,
+    AgentSessionRegisterV1, AgentSessionStateV1, AgentSessionUsageV1, ApplicationUserEvidenceV1,
+    DurableOperationStateV1, McpServerVersionV1, OperationRecordV1,
+    SandboxProcessSessionContractV1,
 };
 use schemars::{JsonSchema, schema_for};
 use serde_json::Value;
@@ -31,8 +31,7 @@ fn generated_agent_core_contracts_have_no_drift() {
     assert_schema::<AgentSessionRegisterV1>("AgentSessionRegisterV1");
     assert_schema::<AgentSessionUsageV1>("AgentSessionUsageV1");
     assert_schema::<DurableOperationStateV1>("DurableOperationStateV1");
-    assert_schema::<TrustedSubjectEvidenceV1>("TrustedSubjectEvidenceV1");
-    assert_schema::<SubjectMemoryScopeV1>("SubjectMemoryScopeV1");
+    assert_schema::<ApplicationUserEvidenceV1>("ApplicationUserEvidenceV1");
     assert_schema::<OperationRecordV1>("OperationRecordV1");
     assert_schema::<SandboxProcessSessionContractV1>("SandboxProcessSessionContractV1");
     assert_schema::<McpServerVersionV1>("McpServerVersionV1");

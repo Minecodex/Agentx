@@ -61,7 +61,7 @@ const routes: RouteObject[] = [
   { path: 'login', element: <PublicRoute kind="login"><LoginPage /></PublicRoute> },
   { path: 'change-password', element: <PublicRoute kind="change-password"><ChangePasswordPage /></PublicRoute> },
   { path: '403', element: <Protected><ForbiddenPage /></Protected> },
-  { path: 'workflows/:workflowId/drafts/:draftId/editor', element: <Protected>{deferred(<RequirePermission permission="workflow:view"><WorkflowCanvas /></RequirePermission>)}</Protected> },
+  { path: 'workflows/:workflowId/versions/:versionId', element: <Protected>{deferred(<RequirePermission permission="workflow:view"><WorkflowCanvas readOnly /></RequirePermission>)}</Protected> },
   { path: 'workflows/:workflowId/versions/:versionId/editor', element: <Protected>{deferred(<RequirePermission permission="workflow:view"><WorkflowCanvas /></RequirePermission>)}</Protected> },
   {
     element: <Protected><EnterpriseLayout /></Protected>,

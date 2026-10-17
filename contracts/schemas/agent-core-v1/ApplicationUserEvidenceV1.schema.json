@@ -2,21 +2,21 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
-    "authenticatedSubjectId": {
-      "type": "string"
-    },
     "evidenceHash": {
       "type": "string"
     },
     "source": {
       "type": "string"
+    },
+    "userIdentityId": {
+      "type": "string"
     }
   },
   "required": [
-    "authenticatedSubjectId",
+    "userIdentityId",
     "source",
     "evidenceHash"
   ],
-  "title": "TrustedSubjectEvidenceV1",
+  "title": "ApplicationUserEvidenceV1",
   "type": "object"
 }

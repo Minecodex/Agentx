@@ -940,16 +940,16 @@
   },
   {
     "current_table": "memory_namespaces",
-    "decision": "control",
-    "control_replacement": "control.memory_namespaces",
+    "decision": "delete",
+    "control_replacement": null,
     "runtime_replacement": null,
-    "authoritative_writer": "control",
+    "authoritative_writer": "none; deleted",
     "allowed_readers": [
-      "control"
+      "none; deleted"
     ],
-    "cross_plane_contract": "none; same-plane access only",
-    "retention_and_delete_rule": "No history migration. Retention is owned by the replacement plane; deletion requires its owning task and reference checks.",
-    "owning_task": "V2D-001"
+    "cross_plane_contract": "none; memory connections are the only resource and Runtime derives personal scopes from execution snapshots",
+    "retention_and_delete_rule": "Deleted from the initial schema without history migration or compatibility endpoints.",
+    "owning_task": "plan8/10-application-user-memory"
   },
   {
     "current_table": "model_alias_deployment_history",

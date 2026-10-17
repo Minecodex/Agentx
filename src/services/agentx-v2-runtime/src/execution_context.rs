@@ -38,6 +38,11 @@ pub(crate) fn create_snapshot(input: NewExecutionContext<'_>) -> ExecutionContex
         .as_ref()
         .map(|_| ExecutionRolesSnapshotV1::from_assignments(input.origin.role_assignments.clone()));
     ExecutionContextSnapshotV1 {
+        end_user: input
+            .origin
+            .initiator_user_id
+            .map(agentx_runtime_contracts::ApplicationUserIdentityV1::platform),
+        environment_id: None,
         id: input.execution_id,
         started_at: input.started_at,
         parent_execution_id: input.parent_execution_id,

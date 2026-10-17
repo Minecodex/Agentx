@@ -28,7 +28,7 @@ pub(super) async fn dependency_hash(
                 let query = if item.resource_type == "rag" {
                     "SELECT version FROM rag_resources WHERE tenant_id=? AND id=?"
                 } else {
-                    "SELECT version FROM memory_namespaces WHERE tenant_id=? AND id=?"
+                    "SELECT version FROM memory_connections WHERE tenant_id=? AND id=?"
                 };
                 json!(
                     sqlx::query_scalar::<_, u64>(query)
@@ -117,7 +117,7 @@ pub(super) async fn is_current(
             return Ok(false);
         }
 
-        let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflows w JOIN workflow_service_identities si ON si.tenant_id=w.tenant_id AND si.workflow_id=w.id JOIN workflow_drafts d ON d.tenant_id=w.tenant_id AND d.workflow_id=w.id WHERE w.tenant_id=? AND w.id=? AND w.status='active' AND si.status='active' AND (? IS NULL OR (d.id=? AND d.revision=? AND d.status='active')))")
+        let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflows w JOIN workflow_service_identities si ON si.tenant_id=w.tenant_id AND si.workflow_id=w.id JOIN workflow_drafts d ON d.tenant_id=w.tenant_id AND d.workflow_id=w.id JOIN workflow_versions v ON v.tenant_id=d.tenant_id AND v.working_draft_id=d.id WHERE w.tenant_id=? AND w.id=? AND w.status='active' AND si.status='active' AND (? IS NULL OR (d.id=? AND d.revision=? AND v.archived=FALSE)))")
             .bind(tenant).bind(workflow).bind(request.try_get::<Option<Uuid>,_>("source_draft_id")?).bind(request.try_get::<Option<Uuid>,_>("source_draft_id")?)
             .bind(request.try_get::<Option<u64>,_>("source_revision")?).fetch_one(&mut **tx).await?;
         if !valid {
@@ -144,7 +144,7 @@ pub(super) async fn is_current(
             "mcp_tool" => "SELECT id FROM mcp_tools WHERE tenant_id=? AND id=? FOR SHARE",
             "skill" => "SELECT id FROM skills WHERE tenant_id=? AND id=? FOR SHARE",
             "rag" => "SELECT id FROM rag_resources WHERE tenant_id=? AND id=? FOR SHARE",
-            "memory" => "SELECT id FROM memory_namespaces WHERE tenant_id=? AND id=? FOR SHARE",
+            "memory" => "SELECT id FROM memory_connections WHERE tenant_id=? AND id=? FOR SHARE",
             "sandbox_profile" => {
                 "SELECT id FROM sandbox_profiles WHERE tenant_id=? AND id=? FOR SHARE"
             }

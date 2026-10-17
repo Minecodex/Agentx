@@ -198,7 +198,7 @@ pub async fn get_invocation(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> RuntimeResult<Json<InvocationDetailV1>> {
-    let row = sqlx::query("SELECT id,tenant_id,application_id,session_id,execution_id,bundle_id,admission_epoch,caller_type,status,request_hash,state_version,result_json,error_json,created_at,completed_at FROM application_invocations WHERE id=?")
+    let row = sqlx::query("SELECT id,tenant_id,application_id,session_id,execution_id,bundle_id,admission_epoch,caller_type,status,request_hash,state_version,result_json,error_json,created_at,completed_at,user_identity_json FROM application_invocations WHERE id=?")
         .bind(id).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)?;
     let tenant_id: Uuid = row.try_get("tenant_id")?;
     let request_hash = content_hash(&json!({"operation":"get_invocation","invocationId":id}))
@@ -434,6 +434,8 @@ async fn create_execution_snapshot(
 ) -> RuntimeResult<(Uuid, String, u64, u64)> {
     let apps = serde_json::to_string(&request.application_ids)?;
     let workflows = serde_json::to_string(&request.workflow_ids)?;
+    let versions = serde_json::to_string(&request.workflow_version_ids)?;
+    let drafts = serde_json::to_string(&request.workflow_draft_ids)?;
     let authorized_apps = serde_json::to_string(&claims.application_ids)?;
     let authorized_workflows = serde_json::to_string(&claims.workflow_ids)?;
     let tools = serde_json::to_string(&request.tool_ids)?;
@@ -456,8 +458,9 @@ async fn create_execution_snapshot(
         .as_ref()
         .map(|value| format!("%{}%", escape_like(value.trim())));
     let mut tx = state.pool.begin().await?;
-    let rows = sqlx::query("SELECT /*+ MAX_EXECUTION_TIME(5000) */ id,invocation_id,application_id,workflow_id,workflow_version_id,(SELECT JSON_EXTRACT(es.execution_context_json,'$.workflow.source') FROM execution_snapshots es WHERE es.tenant_id=workflow_executions.tenant_id AND es.execution_id=workflow_executions.id) workflow_source_json,session_id,parent_execution_id,bundle_id,trace_id,trigger_type,initiator_user_id,initiator_user_name,initiator_department_id,initiator_department_name,trigger_source_id,trigger_name,status,duration_ms,(SELECT CAST(COALESCE(SUM(rc.cost_micros),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_micros,(SELECT CASE WHEN COUNT(DISTINCT rc.cost_currency)=1 THEN MAX(rc.cost_currency) ELSE NULL END FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_currency,(SELECT CAST(COALESCE(SUM(rc.input_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) input_tokens,(SELECT CAST(COALESCE(SUM(rc.output_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) output_tokens,error_code,created_at,ended_at FROM workflow_executions WHERE tenant_id=? AND (?=TRUE OR (JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(application_id))) AND EXISTS(SELECT 1 FROM runtime_user_application_grants scope_app WHERE scope_app.tenant_id=workflow_executions.tenant_id AND scope_app.user_id=? AND scope_app.application_id=workflow_executions.application_id AND scope_app.status='active' AND scope_app.can_query=TRUE)) OR (JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(workflow_id))) AND EXISTS(SELECT 1 FROM runtime_user_workflow_grants scope_workflow WHERE scope_workflow.tenant_id=workflow_executions.tenant_id AND scope_workflow.user_id=? AND scope_workflow.workflow_id=workflow_executions.workflow_id AND scope_workflow.status='active'))) AND retention_deleted_at IS NULL AND (?='all' OR (?='stateless' AND session_id IS NULL) OR (?='session' AND session_id IS NOT NULL)) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(application_id)))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(workflow_id)))) AND (JSON_LENGTH(?)=0 OR EXISTS(SELECT 1 FROM runtime_calls tool_call WHERE tool_call.tenant_id=workflow_executions.tenant_id AND tool_call.execution_id=workflow_executions.id AND tool_call.call_kind='mcp_tool' AND JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(tool_call.resource_id))))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(initiator_user_id)))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(initiator_department_id)))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(trigger_type))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(status))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(error_code))) AND (? IS NULL OR LOWER(trigger_name) LIKE ?) AND (? IS NULL OR created_at>=?) AND (? IS NULL OR created_at<=?) AND (? IS NULL OR BIN_TO_UUID(id) LIKE ? OR BIN_TO_UUID(trace_id) LIKE ? OR error_code LIKE ?) ORDER BY created_at DESC,id DESC LIMIT 10001")
-        .bind(request.tenant_id).bind(claims.tenant_wide).bind(&authorized_apps).bind(claims.sub).bind(&authorized_workflows).bind(claims.sub)
+    let rows = sqlx::query("SELECT /*+ MAX_EXECUTION_TIME(5000) */ id,invocation_id,application_id,workflow_id,workflow_version_id,(SELECT JSON_EXTRACT(es.execution_context_json,'$.workflow.source') FROM execution_snapshots es WHERE es.tenant_id=workflow_executions.tenant_id AND es.execution_id=workflow_executions.id) workflow_source_json,(SELECT JSON_EXTRACT(us.execution_context_json,'$.endUser') FROM execution_snapshots us WHERE us.tenant_id=workflow_executions.tenant_id AND us.execution_id=workflow_executions.id) user_identity_json,session_id,parent_execution_id,bundle_id,trace_id,trigger_type,initiator_user_id,initiator_user_name,initiator_department_id,initiator_department_name,trigger_source_id,trigger_name,status,duration_ms,(SELECT CAST(COALESCE(SUM(rc.cost_micros),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_micros,(SELECT CASE WHEN COUNT(DISTINCT rc.cost_currency)=1 THEN MAX(rc.cost_currency) ELSE NULL END FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_currency,(SELECT CAST(COALESCE(SUM(rc.input_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) input_tokens,(SELECT CAST(COALESCE(SUM(rc.output_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) output_tokens,error_code,created_at,ended_at FROM workflow_executions WHERE tenant_id=? AND (? IS NULL OR EXISTS(SELECT 1 FROM execution_snapshots src WHERE src.tenant_id=workflow_executions.tenant_id AND src.execution_id=workflow_executions.id AND JSON_UNQUOTE(JSON_EXTRACT(src.execution_context_json,'$.endUser.source'))=?)) AND (? IS NULL OR EXISTS(SELECT 1 FROM execution_snapshots uid WHERE uid.tenant_id=workflow_executions.tenant_id AND uid.execution_id=workflow_executions.id AND BINARY JSON_UNQUOTE(JSON_EXTRACT(uid.execution_context_json,'$.endUser.externalUserId'))=BINARY ?)) AND (?=TRUE OR (JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(application_id))) AND EXISTS(SELECT 1 FROM runtime_user_application_grants scope_app WHERE scope_app.tenant_id=workflow_executions.tenant_id AND scope_app.user_id=? AND scope_app.application_id=workflow_executions.application_id AND scope_app.status='active' AND scope_app.can_query=TRUE)) OR (JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(workflow_id))) AND EXISTS(SELECT 1 FROM runtime_user_workflow_grants scope_workflow WHERE scope_workflow.tenant_id=workflow_executions.tenant_id AND scope_workflow.user_id=? AND scope_workflow.workflow_id=workflow_executions.workflow_id AND scope_workflow.status='active'))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(workflow_version_id))) OR EXISTS(SELECT 1 FROM execution_snapshots es WHERE es.tenant_id=workflow_executions.tenant_id AND es.execution_id=workflow_executions.id AND JSON_CONTAINS(?,JSON_EXTRACT(es.execution_context_json,'$.workflow.source.draftId')))) AND retention_deleted_at IS NULL AND (?='all' OR (?='stateless' AND session_id IS NULL) OR (?='session' AND session_id IS NOT NULL)) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(application_id)))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(workflow_id)))) AND (JSON_LENGTH(?)=0 OR EXISTS(SELECT 1 FROM runtime_calls tool_call WHERE tool_call.tenant_id=workflow_executions.tenant_id AND tool_call.execution_id=workflow_executions.id AND tool_call.call_kind='mcp_tool' AND JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(tool_call.resource_id))))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(initiator_user_id)))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(initiator_department_id)))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(trigger_type))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(status))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(error_code))) AND (? IS NULL OR LOWER(trigger_name) LIKE ?) AND (? IS NULL OR created_at>=?) AND (? IS NULL OR created_at<=?) AND (? IS NULL OR BIN_TO_UUID(id) LIKE ? OR BIN_TO_UUID(trace_id) LIKE ? OR error_code LIKE ?) ORDER BY created_at DESC,id DESC LIMIT 10001")
+        .bind(request.tenant_id).bind(&request.user_source).bind(&request.user_source).bind(&request.external_user_id).bind(&request.external_user_id).bind(claims.tenant_wide).bind(&authorized_apps).bind(claims.sub).bind(&authorized_workflows).bind(claims.sub)
+        .bind(&versions).bind(&versions).bind(&drafts)
         .bind(session_mode).bind(session_mode).bind(session_mode).bind(&apps).bind(&apps).bind(&workflows).bind(&workflows)
         .bind(&tools).bind(&tools).bind(&users).bind(&users).bind(&departments).bind(&departments)
         .bind(&trigger_types).bind(&trigger_types).bind(&statuses).bind(&statuses).bind(&error_codes).bind(&error_codes)
@@ -487,8 +490,8 @@ async fn create_invocation_snapshot(
     let apps = serde_json::to_string(&request.application_ids)?;
     let statuses = serde_json::to_string(&request.statuses)?;
     let mut tx = state.pool.begin().await?;
-    let rows = sqlx::query("SELECT /*+ MAX_EXECUTION_TIME(5000) */ id,application_id,session_id,execution_id,bundle_id,admission_epoch,caller_type,status,created_at,completed_at FROM application_invocations WHERE tenant_id=? AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(application_id)))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(status))) AND (? IS NULL OR created_at>=?) AND (? IS NULL OR created_at<=?) ORDER BY created_at DESC,id DESC LIMIT 10001")
-        .bind(request.tenant_id).bind(&apps).bind(&apps).bind(&statuses).bind(&statuses)
+    let rows = sqlx::query("SELECT /*+ MAX_EXECUTION_TIME(5000) */ id,application_id,session_id,execution_id,bundle_id,admission_epoch,caller_type,status,created_at,completed_at,user_identity_json FROM application_invocations WHERE tenant_id=? AND (? IS NULL OR JSON_UNQUOTE(JSON_EXTRACT(user_identity_json,'$.source'))=?) AND (? IS NULL OR BINARY JSON_UNQUOTE(JSON_EXTRACT(user_identity_json,'$.externalUserId'))=BINARY ?) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(BIN_TO_UUID(application_id)))) AND (JSON_LENGTH(?)=0 OR JSON_CONTAINS(?,JSON_QUOTE(status))) AND (? IS NULL OR created_at>=?) AND (? IS NULL OR created_at<=?) ORDER BY created_at DESC,id DESC LIMIT 10001")
+        .bind(request.tenant_id).bind(&request.user_source).bind(&request.user_source).bind(&request.external_user_id).bind(&request.external_user_id).bind(&apps).bind(&apps).bind(&statuses).bind(&statuses)
         .bind(request.created_after).bind(request.created_after).bind(request.created_before).bind(request.created_before).fetch_all(&mut *tx).await?;
     enforce_snapshot_budget(rows.len())?;
     let snapshot_id = Uuid::now_v7();
@@ -715,7 +718,7 @@ pub(crate) async fn authorize_execution_command(
 }
 
 async fn execution_row(state: &RuntimeState, id: Uuid) -> RuntimeResult<sqlx::mysql::MySqlRow> {
-    sqlx::query("SELECT id,tenant_id,invocation_id,application_id,workflow_id,workflow_version_id,(SELECT JSON_EXTRACT(es.execution_context_json,'$.workflow.source') FROM execution_snapshots es WHERE es.tenant_id=workflow_executions.tenant_id AND es.execution_id=workflow_executions.id) workflow_source_json,session_id,parent_execution_id,bundle_id,trace_id,trigger_type,initiator_user_id,initiator_user_name,initiator_department_id,initiator_department_name,trigger_source_id,trigger_name,status,duration_ms,(SELECT CAST(COALESCE(SUM(rc.cost_micros),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_micros,(SELECT CASE WHEN COUNT(DISTINCT rc.cost_currency)=1 THEN MAX(rc.cost_currency) ELSE NULL END FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_currency,(SELECT CAST(COALESCE(SUM(rc.input_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) input_tokens,(SELECT CAST(COALESCE(SUM(rc.output_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) output_tokens,error_code,created_at,ended_at,state_version,admission_epoch,CAST(COALESCE((SELECT MAX(t.sequence_number) FROM execution_events t WHERE t.tenant_id=workflow_executions.tenant_id AND t.execution_id=workflow_executions.id),0) AS UNSIGNED) trace_watermark,CAST((SELECT COUNT(*) FROM execution_events t WHERE t.tenant_id=workflow_executions.tenant_id AND t.execution_id=workflow_executions.id) AS UNSIGNED) trace_event_count,work_package_id,input_json,output_json,error_json,terminal_result_object_id,terminal_result_hash FROM workflow_executions WHERE id=? AND retention_deleted_at IS NULL")
+    sqlx::query("SELECT id,tenant_id,invocation_id,application_id,workflow_id,workflow_version_id,(SELECT JSON_EXTRACT(es.execution_context_json,'$.workflow.source') FROM execution_snapshots es WHERE es.tenant_id=workflow_executions.tenant_id AND es.execution_id=workflow_executions.id) workflow_source_json,(SELECT JSON_EXTRACT(us.execution_context_json,'$.endUser') FROM execution_snapshots us WHERE us.tenant_id=workflow_executions.tenant_id AND us.execution_id=workflow_executions.id) user_identity_json,session_id,parent_execution_id,bundle_id,trace_id,trigger_type,initiator_user_id,initiator_user_name,initiator_department_id,initiator_department_name,trigger_source_id,trigger_name,status,duration_ms,(SELECT CAST(COALESCE(SUM(rc.cost_micros),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_micros,(SELECT CASE WHEN COUNT(DISTINCT rc.cost_currency)=1 THEN MAX(rc.cost_currency) ELSE NULL END FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) cost_currency,(SELECT CAST(COALESCE(SUM(rc.input_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) input_tokens,(SELECT CAST(COALESCE(SUM(rc.output_tokens),0) AS UNSIGNED) FROM runtime_calls rc WHERE rc.tenant_id=workflow_executions.tenant_id AND rc.execution_id=workflow_executions.id) output_tokens,error_code,created_at,ended_at,state_version,admission_epoch,CAST(COALESCE((SELECT MAX(t.sequence_number) FROM execution_events t WHERE t.tenant_id=workflow_executions.tenant_id AND t.execution_id=workflow_executions.id),0) AS UNSIGNED) trace_watermark,CAST((SELECT COUNT(*) FROM execution_events t WHERE t.tenant_id=workflow_executions.tenant_id AND t.execution_id=workflow_executions.id) AS UNSIGNED) trace_event_count,work_package_id,input_json,output_json,error_json,terminal_result_object_id,terminal_result_hash FROM workflow_executions WHERE id=? AND retention_deleted_at IS NULL")
         .bind(id).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)
 }
 
@@ -730,6 +733,7 @@ fn execution_summary(row: &sqlx::mysql::MySqlRow) -> RuntimeResult<ExecutionSumm
         _ => None,
     };
     Ok(ExecutionSummaryV1 {
+        end_user: parsed_end_user(row)?,
         execution_id: row.try_get("id")?,
         invocation_id: row.try_get("invocation_id")?,
         application_id: row.try_get("application_id")?,
@@ -763,6 +767,7 @@ fn execution_summary(row: &sqlx::mysql::MySqlRow) -> RuntimeResult<ExecutionSumm
 
 fn invocation_summary(row: &sqlx::mysql::MySqlRow) -> RuntimeResult<InvocationSummaryV1> {
     Ok(InvocationSummaryV1 {
+        end_user: parsed_end_user(row)?,
         invocation_id: row.try_get("id")?,
         execution_id: row.try_get("execution_id")?,
         application_id: row.try_get("application_id")?,
@@ -838,12 +843,12 @@ async fn json_rows(
 }
 
 fn execution_filter_hash(request: &ExecutionSearchRequestV1) -> RuntimeResult<ContentHash> {
-    content_hash(&json!({"tenantId":request.tenant_id,"applicationIds":request.application_ids,"workflowIds":request.workflow_ids,"toolIds":request.tool_ids,"initiatorUserIds":request.initiator_user_ids,"initiatorDepartmentIds":request.initiator_department_ids,"triggerTypes":request.trigger_types,"triggerName":request.trigger_name,"statuses":request.statuses,"errorCodes":request.error_codes,"sessionMode":request.session_mode,"createdAfter":request.created_after,"createdBefore":request.created_before,"search":request.search}))
+    content_hash(&json!({"tenantId":request.tenant_id,"externalUserId":request.external_user_id,"userSource":request.user_source,"applicationIds":request.application_ids,"workflowIds":request.workflow_ids,"workflowVersionIds":request.workflow_version_ids,"workflowDraftIds":request.workflow_draft_ids,"toolIds":request.tool_ids,"initiatorUserIds":request.initiator_user_ids,"initiatorDepartmentIds":request.initiator_department_ids,"triggerTypes":request.trigger_types,"triggerName":request.trigger_name,"statuses":request.statuses,"errorCodes":request.error_codes,"sessionMode":request.session_mode,"createdAfter":request.created_after,"createdBefore":request.created_before,"search":request.search}))
         .map_err(|error| RuntimeError::Internal(error.into()))
 }
 
 fn invocation_filter_hash(request: &InvocationSearchRequestV1) -> RuntimeResult<ContentHash> {
-    content_hash(&json!({"tenantId":request.tenant_id,"applicationIds":request.application_ids,"statuses":request.statuses,"createdAfter":request.created_after,"createdBefore":request.created_before}))
+    content_hash(&json!({"tenantId":request.tenant_id,"externalUserId":request.external_user_id,"userSource":request.user_source,"applicationIds":request.application_ids,"statuses":request.statuses,"createdAfter":request.created_after,"createdBefore":request.created_before}))
         .map_err(|error| RuntimeError::Internal(error.into()))
 }
 
@@ -903,6 +908,8 @@ fn validate_execution_search(request: &ExecutionSearchRequestV1) -> RuntimeResul
     for values in [
         request.application_ids.len(),
         request.workflow_ids.len(),
+        request.workflow_version_ids.len(),
+        request.workflow_draft_ids.len(),
         request.tool_ids.len(),
         request.initiator_user_ids.len(),
         request.initiator_department_ids.len(),
@@ -958,6 +965,16 @@ impl From<serde_json::Error> for RuntimeError {
     }
 }
 
+fn parsed_end_user(
+    row: &sqlx::mysql::MySqlRow,
+) -> RuntimeResult<Option<agentx_runtime_contracts::ApplicationUserIdentityV1>> {
+    row.try_get::<Option<Value>, _>("user_identity_json")?
+        .filter(|value| !value.is_null())
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|error| RuntimeError::Internal(error.into()))
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -970,10 +987,14 @@ mod tests {
 
     fn request() -> ExecutionSearchRequestV1 {
         ExecutionSearchRequestV1 {
+            user_source: None,
+            external_user_id: None,
             api_version: 1,
             tenant_id: Uuid::from_u128(1),
             application_ids: vec![],
             workflow_ids: vec![],
+            workflow_version_ids: vec![],
+            workflow_draft_ids: vec![],
             tool_ids: vec![],
             initiator_user_ids: vec![],
             initiator_department_ids: vec![],

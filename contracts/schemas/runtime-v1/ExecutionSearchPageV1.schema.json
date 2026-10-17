@@ -1,5 +1,34 @@
 {
   "$defs": {
+    "ApplicationUserIdentityV1": {
+      "additionalProperties": false,
+      "description": "The end user a call acts for. API identities are declarations, not authentication.",
+      "properties": {
+        "externalUserId": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/ApplicationUserSourceV1"
+        },
+        "sourceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "sourceId",
+        "externalUserId"
+      ],
+      "type": "object"
+    },
+    "ApplicationUserSourceV1": {
+      "enum": [
+        "platform",
+        "channel",
+        "api_parameter"
+      ],
+      "type": "string"
+    },
     "ExecutionSummaryV1": {
       "additionalProperties": false,
       "properties": {
@@ -40,6 +69,16 @@
           "type": [
             "integer",
             "null"
+          ]
+        },
+        "endUser": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApplicationUserIdentityV1"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "errorCode": {

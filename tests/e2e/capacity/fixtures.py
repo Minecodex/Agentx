@@ -1,14 +1,14 @@
 """Create and publish the actual workflows used by capacity runs."""
-# ruff: noqa: S608 -- fixture UUIDs in the isolated E2E databases
 
 from __future__ import annotations
 
+# ruff: noqa: S608 -- fixture UUIDs in the isolated E2E databases
 import time
 from typing import Any
 
 import httpx
 
-from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id, idempotent_headers, publish_fixture_version
 from tests.e2e.product.test_channel_delivery import _development_environment_id, _publish_application
 from tests.e2e.runtime.test_agent_attachments import _access_token, _runtime_mysql
 from tests.e2e.workflow_fixtures import set_chain_definition
@@ -53,18 +53,16 @@ def capacity_application(context: dict[str, str], control_url: str, nodes: int) 
         latest = control.get(
             f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}", headers=headers
         ).json()
-        version = control.post(
-            f"/api/v1/workflows/{workflow_id}/versions",
-            headers=headers,
-            json={"draftId": fixture_draft(control, workflow_id, headers)["id"], "draftRevision": latest["revision"]},
+        version = publish_fixture_version(
+            control, workflow_id, fixture_draft(control, workflow_id, headers)["id"], latest["revision"], headers
         )
         version.raise_for_status()
         workflow = {"workflowId": workflow_id, "versionId": version.json()["id"]}
         environment = _development_environment_id(control, headers)
         deploy = control.post(
             f"/api/v1/workflows/{workflow_id}/deployments",
-            headers=headers,
-            json={"environmentId": environment, "workflowVersionId": workflow["versionId"]},
+            headers=idempotent_headers(headers),
+            json={"contentSource": "version", "environmentId": environment, "workflowVersionId": workflow["versionId"]},
         )
         deploy.raise_for_status()
         slug = f"capacity-{stamp}"

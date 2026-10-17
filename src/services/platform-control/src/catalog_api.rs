@@ -254,7 +254,7 @@ async fn list_provider_options(
     let mut next_cursor = None;
     let items = match provider.as_str() {
         "workflow_versions" => {
-            let rows = sqlx::query("SELECT v.id,v.workflow_id,v.version_number,v.definition_json,w.name FROM workflow_versions v JOIN workflows w ON w.tenant_id=v.tenant_id AND w.id=v.workflow_id WHERE v.tenant_id=? AND w.status='active' AND (?='%%' OR w.name LIKE ?) AND (w.owner_user_id=? OR w.visibility='company' OR EXISTS(SELECT 1 FROM workflow_members wm WHERE wm.tenant_id=w.tenant_id AND wm.workflow_id=w.id AND wm.user_id=?)) ORDER BY w.name,v.version_number DESC LIMIT ?")
+            let rows = sqlx::query("SELECT v.id,v.workflow_id,v.version_number,v.definition_json,w.name FROM workflow_versions v JOIN workflows w ON w.tenant_id=v.tenant_id AND w.id=v.workflow_id WHERE v.tenant_id=? AND v.publication_status='published' AND w.status='active' AND (?='%%' OR w.name LIKE ?) AND (w.owner_user_id=? OR w.visibility='company' OR EXISTS(SELECT 1 FROM workflow_members wm WHERE wm.tenant_id=w.tenant_id AND wm.workflow_id=w.id AND wm.user_id=?)) ORDER BY w.name,v.version_number DESC LIMIT ?")
                 .bind(actor.tenant_id).bind(&search).bind(&search).bind(actor.user_id).bind(actor.user_id).bind(limit).fetch_all(&state.pool).await?;
             let definitions = rows
                 .iter()

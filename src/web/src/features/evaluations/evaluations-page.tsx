@@ -7,7 +7,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '../../app/providers/auth-provider'
 import { apiRequest, jsonBody } from '../../shared/api/client'
-import type { Dataset, DatasetVersion, EvaluationProfile, EvaluationRun, PageResponse, Workflow, WorkflowVersion } from '../../shared/api/types'
+import type { Dataset, DatasetVersion, EvaluationProfile, EvaluationRun, PageResponse, Workflow, WorkflowVersionSummary } from '../../shared/api/types'
 import { EntityCell } from '../../shared/components/entity-cell'
 import { EntityDeleteButton } from '../../shared/components/entity-delete-button'
 import { EntityFormDialog, type EntityFormField } from '../../shared/components/entity-form-dialog'
@@ -36,7 +36,7 @@ export function EvaluationsPage() {
   const activeTab = searchParams.get('tab') === 'profiles' ? 'profiles' : 'runs'
   const runs = useQuery({ queryKey: ['evaluations'], queryFn: () => apiRequest<EvaluationRun[]>('/evaluations') })
   const profiles = useQuery({ queryKey: ['evaluation-profiles'], enabled: auth.hasPermission('evaluation_profile:view'), queryFn: () => apiRequest<EvaluationProfile[]>('/evaluation-profiles') })
-  const workflowVersions = useQuery({ queryKey: ['evaluation-workflow-versions'], queryFn: async () => { const workflows = await apiRequest<PageResponse<Workflow>>('/workflows?pageSize=100&status=active'); const values = await Promise.all(workflows.items.map(async (workflow) => (await apiRequest<WorkflowVersion[]>(`/workflows/${workflow.id}/versions`)).map((version) => ({ id: version.id, label: `${workflow.name} · v${version.versionNumber}` })))); return values.flat() } })
+  const workflowVersions = useQuery({ queryKey: ['evaluation-workflow-versions'], queryFn: async () => { const workflows = await apiRequest<PageResponse<Workflow>>('/workflows?pageSize=100&status=active'); const values = await Promise.all(workflows.items.map(async (workflow) => (await apiRequest<WorkflowVersionSummary[]>(`/workflows/${workflow.id}/versions`)).filter(version=>version.publicationStatus==='published').map((version) => ({ id: version.id, label: `${workflow.name} · v${version.versionNumber}` })))); return values.flat() } })
   const datasetVersions = useQuery({ queryKey: ['evaluation-dataset-versions'], queryFn: async () => { const datasets = await apiRequest<PageResponse<Dataset>>('/datasets?pageSize=100&status=active'); const values = await Promise.all(datasets.items.map(async (dataset) => (await apiRequest<DatasetVersion[]>(`/datasets/${dataset.id}/versions`)).map((version) => ({ id: version.id, label: `${dataset.name} · v${version.versionNumber}` })))); return values.flat() } })
   const createRun = useMutation({
     mutationFn: (values: Record<string, string>) => apiRequest<EvaluationRun>('/evaluations', { method: 'POST', body: jsonBody({ name: values.name, workflowVersionId: values.workflowVersionId, datasetVersionId: values.datasetVersionId, evaluationProfileVersionId: values.profileVersionId, parameters: JSON.parse(values.parameters || '{}') }) }),
