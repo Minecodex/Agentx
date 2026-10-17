@@ -128,7 +128,9 @@ async function reviseWorkflow(page: Page, token: string, workflowId: string, def
 }
 
 async function deployApplication(page: Page, token: string, workflow: Workflow, version: Version, environmentId: string, slug: string) {
-  await request(page, token, `/workflows/${workflow.id}/deployments`, 'POST', {contentSource:'version', workflowVersionId: version.id, environmentId })
+  await request(page, token, `/workflows/${workflow.id}/deployments`, 'POST', {
+    contentSource: 'version', workflowVersionId: version.id, environmentId,
+  }, false, { 'Idempotency-Key': crypto.randomUUID() })
   const application = await request<Omit<Application, 'apiKey'>>(page, token, '/applications', 'POST', {
     workflowId: workflow.id,
     name: `${workflow.name} Application`,
