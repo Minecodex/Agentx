@@ -144,7 +144,9 @@ def test_shared_resource_auth_refreshes_only_live_test_identities(monkeypatch, s
 
 @pytest.mark.parametrize("scale_fails", [False, True])
 @pytest.mark.parametrize("container_field", ["containers", "initContainers"])
-def test_development_restore_preserves_running_pod_images_and_rolls_back_scale_failure(monkeypatch, scale_fails, container_field):
+def test_development_restore_preserves_running_pod_images_and_rolls_back_scale_failure(
+    monkeypatch, scale_fails, container_field
+):
     from tests.e2e import conftest as harness
 
     configured = "docker.io/acme/provider@sha256:" + "a" * 64
@@ -154,10 +156,12 @@ def test_development_restore_preserves_running_pod_images_and_rolls_back_scale_f
         "spec": {
             "replicas": 1,
             "selector": {"matchLabels": {"app": "provider"}},
-            "template": {"spec": {
-                "containers": [{"name": "provider", "image": configured}],
-                "initContainers": [{"name": "migrate", "image": configured}],
-            }},
+            "template": {
+                "spec": {
+                    "containers": [{"name": "provider", "image": configured}],
+                    "initContainers": [{"name": "migrate", "image": configured}],
+                }
+            },
         },
     }
     state = {"image": running, "replicas": 1}

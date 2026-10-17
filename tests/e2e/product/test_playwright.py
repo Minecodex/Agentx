@@ -107,9 +107,7 @@ def _assert_execution_context_snapshot(installed_agentx: dict[str, str], evidenc
     }
 
 
-def _verify_trace_degradation(
-    environment: dict[str, str], root: str, namespace: str, evidence_path: Path
-) -> None:
+def _verify_trace_degradation(environment: dict[str, str], root: str, namespace: str, evidence_path: Path) -> None:
     execution_id = json.loads(evidence_path.read_text(encoding="utf-8"))["executionId"]
     trace_environment = {**environment, "AGENTX_E2E_DEGRADED_EXECUTION_ID": execution_id}
     run(("kubectl", "-n", namespace, "scale", "statefulset/clickhouse", "--replicas=0"), timeout=60)

@@ -68,7 +68,10 @@ def test_trace_ancestry_markdown_and_collapsible_node_content(installed_agentx, 
         agent_run.raise_for_status()
         agent_execution = agent_run.json()["executionId"]
         _assert_execution_succeeded(
-            installed_agentx, control, dict(control.headers), _wait_execution(control, dict(control.headers), agent_execution)
+            installed_agentx,
+            control,
+            dict(control.headers),
+            _wait_execution(control, dict(control.headers), agent_execution),
         )
         trace = _wait_trace(control, dict(control.headers), agent_execution)
         _assert_agent_ancestry(trace)
@@ -95,9 +98,16 @@ def test_trace_ancestry_markdown_and_collapsible_node_content(installed_agentx, 
         report_run.raise_for_status()
         report_execution = report_run.json()["executionId"]
         _assert_execution_succeeded(
-            installed_agentx, control, dict(control.headers), _wait_execution(control, dict(control.headers), report_execution)
+            installed_agentx,
+            control,
+            dict(control.headers),
+            _wait_execution(control, dict(control.headers), report_execution),
         )
-    write_report(installed_agentx, "trace-presentation.json", {"agentExecutionId": agent_execution, "reportExecutionId": report_execution, "trace": trace})
+    write_report(
+        installed_agentx,
+        "trace-presentation.json",
+        {"agentExecutionId": agent_execution, "reportExecutionId": report_execution, "trace": trace},
+    )
     environment = {
         **os.environ,
         "AGENTX_E2E_RUN_ID": run_id,
@@ -114,4 +124,6 @@ def test_trace_ancestry_markdown_and_collapsible_node_content(installed_agentx, 
     )
     execution_evidence = Path(installed_agentx["artifact_dir"]) / "trace-execution.json"
     execution_evidence.write_text(json.dumps({"executionId": report_execution}), encoding="utf-8")
-    _verify_trace_degradation(environment, installed_agentx["root"], installed_agentx["runtime_namespace"], execution_evidence)
+    _verify_trace_degradation(
+        environment, installed_agentx["root"], installed_agentx["runtime_namespace"], execution_evidence
+    )
