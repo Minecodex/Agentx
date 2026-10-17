@@ -15,7 +15,7 @@ from tests.e2e.draft_fixtures import fixture_draft_id
 from tests.e2e.product.test_playwright import (
     _build_canvas_plugin_v2,
     _run_playwright,
-    _verify_plugin_trace_degradation,
+    _verify_trace_degradation,
 )
 from tests.e2e.runtime.test_plugins import _login, _wait_admission_delivery, _wait_execution
 from tests.e2e.runtime.test_runtime import _runtime_mysql
@@ -321,4 +321,4 @@ def test_plugin_publish_versions_and_historical_trace(
         "AGENTX_PLUGIN_EXECUTION_OUTPUT": str(evidence),
     }
     _run_playwright("canvas-plugin-history", ("tests/canvas-plugins.spec.ts",), environment, root)
-    _verify_plugin_trace_degradation(environment, root, installed_agentx["runtime_namespace"], evidence)
+    _verify_trace_degradation(environment, root, installed_agentx["runtime_namespace"], evidence)

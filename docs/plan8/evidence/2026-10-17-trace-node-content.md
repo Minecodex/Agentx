@@ -19,6 +19,7 @@
 | Runtime 单元测试 | 170 项通过；2 个既有渠道凭证探针忽略 |
 | 类型、构建与检查 | Web TypeScript/Vite、前端 lint、浏览器 TypeScript、Rust 格式与 Clippy、Python Ruff 通过 |
 | 测试基础设施契约 | 20 项通过；覆盖普通容器、初始化容器镜像覆盖的恢复，以及缩容中断回滚 |
+| PR 完整验收与收集 | 212 项 acceptance 通过，154 个 E2E 场景收集成功；Python Ruff 检查及格式检查通过 |
 | 临时 Kubernetes 首轮业务回归 | `trace-node-1017b`：1 个 pytest 场景及 3 个 Playwright 场景通过；17 个 Span 无缺失父节点，3 个实际 Runtime Call 的父链与时间范围正确 |
 | 最终降级/恢复回归 | `trace-node-1017c`：1 个 pytest 场景、5 个浏览器场景通过，无失败或跳过；覆盖 ClickHouse 停用、权威节点数据保留及恢复后的高级瀑布 |
 
