@@ -143,7 +143,10 @@ def test_shared_resource_auth_refreshes_only_live_test_identities(monkeypatch, s
 
 
 @pytest.mark.parametrize("scale_fails", [False, True])
-def test_development_restore_preserves_running_pod_images_and_rolls_back_scale_failure(monkeypatch, scale_fails):
+@pytest.mark.parametrize("container_field", ["containers", "initContainers"])
+def test_development_restore_preserves_running_pod_images_and_rolls_back_scale_failure(
+    monkeypatch, scale_fails, container_field
+):
     from tests.e2e import conftest as harness
 
     configured = "docker.io/acme/provider@sha256:" + "a" * 64
@@ -153,7 +156,12 @@ def test_development_restore_preserves_running_pod_images_and_rolls_back_scale_f
         "spec": {
             "replicas": 1,
             "selector": {"matchLabels": {"app": "provider"}},
-            "template": {"spec": {"containers": [{"name": "provider", "image": configured}]}},
+            "template": {
+                "spec": {
+                    "containers": [{"name": "provider", "image": configured}],
+                    "initContainers": [{"name": "migrate", "image": configured}],
+                }
+            },
         },
     }
     state = {"image": running, "replicas": 1}
@@ -166,11 +174,15 @@ def test_development_restore_preserves_running_pod_images_and_rolls_back_scale_f
         if command[3:5] == ("get", "deployment"):
             payload = {"items": [deployment]}
         elif command[3:5] == ("get", "pods"):
+            pod_spec = {
+                field: [{**container, "image": state["image"] if field == container_field else configured}]
+                for field, (container,) in deployment["spec"]["template"]["spec"].items()
+            }
             payload = {
                 "items": [
                     {
                         "metadata": {"name": "provider-pod"},
-                        "spec": {"containers": [{"name": "provider", "image": state["image"]}]},
+                        "spec": pod_spec,
                     }
                 ]
             }
@@ -181,7 +193,7 @@ def test_development_restore_preserves_running_pod_images_and_rolls_back_scale_f
                 raise RuntimeError("scale transport failed")
         elif command[3:5] == ("patch", "pod"):
             patch = json.loads(command[-1])
-            assert patch[0] == {"op": "test", "path": "/spec/containers/0/image", "value": configured}
+            assert patch[0] == {"op": "test", "path": f"/spec/{container_field}/0/image", "value": configured}
             state["image"] = patch[1]["value"]
         elif command[3:5] == ("rollout", "status"):
             assert state == {"image": running, "replicas": 1}

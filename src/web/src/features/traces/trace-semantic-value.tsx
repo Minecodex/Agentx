@@ -2,7 +2,9 @@ import { Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '../../shared/ui/button'
+import { MarkdownContent } from '../../shared/ui/markdown-content'
 import { cn } from '../../shared/lib/cn'
+import { TraceJsonValue } from './trace-json-value'
 
 type ItemValue = { json: unknown; binary?: Record<string, unknown>; lineage?: unknown[]; metadata?: Record<string, unknown> }
 type PortGroup = { port: string; items: ItemValue[] }
@@ -24,12 +26,12 @@ export function SemanticFields({ value, className, onDownloadArtifact }: { value
   if (!entries.length) return <p className="text-xs text-muted-foreground">{t('trace.emptyObject')}</p>
   return <dl className={cn('grid gap-2.5', className)}>{entries.map(([key, field]) => <div className="grid grid-cols-[minmax(92px,128px)_minmax(0,1fr)] items-start gap-3" key={key}>
     <dt className="break-words text-[10px] text-muted-foreground">{key}</dt>
-    <dd className={cn('min-w-0 break-words text-xs', key === 'text' || key === 'result' || key === 'answer' ? 'font-medium text-primary' : 'text-foreground')}><Value onDownloadArtifact={onDownloadArtifact} value={field} /></dd>
+    <dd className="min-w-0 break-words text-xs text-foreground"><Value onDownloadArtifact={onDownloadArtifact} value={field} /></dd>
   </div>)}</dl>
 }
 
 export function JsonBlock({ value, className }: { value: unknown; className?: string }) {
-  return <pre className={cn('overflow-auto whitespace-pre-wrap break-all rounded-lg border border-border bg-background p-3 font-mono text-[10px] leading-5 text-muted-foreground', className)}>{JSON.stringify(value, null, 2)}</pre>
+  return <TraceJsonValue className={className} value={value} />
 }
 
 export function primaryText(value: unknown): string | undefined {
@@ -65,7 +67,7 @@ function Value({ value, onDownloadArtifact }: { value: unknown; onDownloadArtifa
   const { t } = useTranslation()
   if (value === null) return <span className="text-muted-foreground">null</span>
   if (value === undefined) return <span className="text-muted-foreground">—</span>
-  if (typeof value === 'string') return <span className="whitespace-pre-wrap">{value}</span>
+  if (typeof value === 'string') return <MarkdownContent>{value}</MarkdownContent>
   if (typeof value === 'number' || typeof value === 'boolean') return <span>{String(value)}</span>
   if (isRecord(value) && typeof value.artifactId === 'string' && onDownloadArtifact) return <Button onClick={() => onDownloadArtifact(value.artifactId as string)} size="sm" variant="secondary"><Download className="size-3.5" />{t('trace.downloadArtifact')}</Button>
   if (isRecord(value) && isUsage(value)) return <span>{t('trace.usageValue', { input: value.inputTokens ?? 0, output: value.outputTokens ?? 0, total: value.totalTokens ?? 0 })}</span>

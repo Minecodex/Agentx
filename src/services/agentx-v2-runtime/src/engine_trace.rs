@@ -256,16 +256,23 @@ pub(crate) async fn finish_cancelled_spans(
         trace.node_execution_id = Some(node_id);
         enqueue_best_effort(tx, trace).await;
     }
-    for row in sqlx::query("SELECT r.id,r.node_execution_id,r.attempt_id,r.status,r.input_tokens,r.output_tokens,r.cost_micros,i.id iteration_id FROM runtime_calls r LEFT JOIN agent_iterations i ON i.agent_run_id=r.agent_run_id AND i.iteration_index=r.iteration_index WHERE r.tenant_id=? AND r.execution_id=? AND r.status IN ('cancelled','outcome_unknown')")
+    for row in sqlx::query("SELECT id,node_execution_id,attempt_id,agent_run_id,iteration_index,plugin_parent_span_entity_id,status,input_tokens,output_tokens,cost_micros FROM runtime_calls WHERE tenant_id=? AND execution_id=? AND status IN ('cancelled','outcome_unknown')")
         .bind(tenant_id).bind(execution_id).fetch_all(&mut **tx).await?
     {
         let call_id: Uuid = row.try_get("id")?;
         let attempt_id: Uuid = row.try_get("attempt_id")?;
-        let iteration_id = row.try_get::<Option<Uuid>, _>("iteration_id")?;
+        let run_id = row.try_get::<Option<Uuid>, _>("agent_run_id")?;
+        let turn = row.try_get::<u32, _>("iteration_index")?;
+        let iteration_id = run_id.filter(|_| turn > 0).map(|id| crate::worker_support::agent_turn_entity_id(id, turn));
+        let parent = row.try_get::<Option<Uuid>, _>("plugin_parent_span_entity_id")?
+            .map(|id| (id, agentx_runtime_contracts::TraceSpanKindV1::PluginOperation))
+            .or_else(|| iteration_id.map(|id| (id, agentx_runtime_contracts::TraceSpanKindV1::AgentIteration)))
+            .or_else(|| run_id.map(|id| (id, agentx_runtime_contracts::TraceSpanKindV1::AgentRun)))
+            .unwrap_or((attempt_id, agentx_runtime_contracts::TraceSpanKindV1::Attempt));
         let status: String = row.try_get("status")?;
         let mut trace = TraceDraft::span(
             tenant_id, execution_id, call_id,
-            Some(iteration_id.map_or((attempt_id, agentx_runtime_contracts::TraceSpanKindV1::Attempt), |id| (id, agentx_runtime_contracts::TraceSpanKindV1::AgentIteration))),
+            Some(parent),
             agentx_runtime_contracts::TraceSpanKindV1::RuntimeCall,
             "Runtime call",
             agentx_runtime_contracts::TraceEventKindV1::Finished,
@@ -273,6 +280,7 @@ pub(crate) async fn finish_cancelled_spans(
         );
         trace.node_execution_id = row.try_get("node_execution_id").ok();
         trace.attempt_id = Some(attempt_id);
+        trace.agent_run_id = run_id;
         trace.agent_iteration_id = iteration_id;
         trace.runtime_call_id = Some(call_id);
         trace.input_tokens = row.try_get("input_tokens").ok();

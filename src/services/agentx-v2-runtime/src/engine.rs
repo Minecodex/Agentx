@@ -1053,6 +1053,7 @@ pub async fn claim_worker_attempt(
         context,
         plugin: compiled_node.plugin.clone(),
         trace_parent_span_entity_id: None,
+        agent_trace_turn: None,
     }))
 }
 

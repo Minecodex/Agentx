@@ -828,6 +828,7 @@ test('M6 Studio creates, debugs, versions and publishes a manifest-driven Workfl
   await details.getByRole('tab', { name: 'Trace' }).click()
   await expect(details.getByRole('heading', { name: '输入与解析参数' })).toBeVisible({ timeout: 30_000 })
   await expect(details.getByRole('heading', { name: '语义输出' })).toBeVisible()
+  await details.getByRole('button', { name: '语义输出', exact: true }).click()
   await expect(details).toContainText('Run the workflow from the Studio.')
   const runtimeRail = page.getByTestId('runtime-rail')
   type ExecutionEvent = { sequence: number; eventType: string; status: string }

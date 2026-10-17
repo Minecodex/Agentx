@@ -634,6 +634,7 @@ async fn agent_worker_runs_a_bounded_tool_loop_and_persists_usage(fixture: &Fixt
         context: json!({}),
         plugin: None,
         trace_parent_span_entity_id: None,
+        agent_trace_turn: None,
     };
     let worker = test_worker(fixture, StubWorkerMode::Agent(model_calls.clone()));
     let mut unsupported_contract_claim = claim.clone();
@@ -830,6 +831,7 @@ async fn application_session_agent_restores_context_across_executions(fixture: &
             context: json!({}),
             plugin: None,
             trace_parent_span_entity_id: None,
+            agent_trace_turn: None,
         };
         let output = worker.execute(&claim).await;
         assert_eq!(output.status, WorkerResultStatusV1::Succeeded);

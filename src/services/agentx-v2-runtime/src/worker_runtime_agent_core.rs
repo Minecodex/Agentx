@@ -7,6 +7,7 @@ mod memory;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use agentx_agent_core::{
     AgentCore, AgentCoreError, AgentMessageV1, AgentRunInputV1, AgentRunResultV1, CoreEventV1,
@@ -325,6 +326,10 @@ pub(super) async fn execute(
         }
     }
     let counters = Arc::new(BudgetCounters::default());
+    let active_turn = Arc::new(AtomicU32::new(0));
+    let mut trace_claim = claim.clone();
+    trace_claim.agent_trace_turn = Some(active_turn.clone());
+    let claim = &trace_claim;
     let mut model_port = ProviderModelPort::new(
         worker,
         claim,
@@ -372,7 +377,11 @@ pub(super) async fn execute(
         Err(result) => return result,
     };
     let budget_config = effective_agent_budget(&claim.node_parameters);
-    let mut events = EventCollector::new(
+    let mut events = AgentEventSink::new(
+        worker,
+        claim,
+        run_id,
+        active_turn,
         budget_config
             .get("maxTraceEvents")
             .and_then(Value::as_u64)
@@ -446,23 +455,9 @@ pub(super) async fn execute(
         tracing::warn!(%error, "Agent runtime resource release failed after Agent run");
     }
     match result {
-        Ok(result) => {
-            finish(
-                worker,
-                claim,
-                run_id,
-                &result,
-                &model_port,
-                tools.call_index,
-                &events,
-            )
-            .await
-        }
+        Ok(result) => finish(worker, run_id, &result, &model_port, tools.call_index).await,
         Err(error) => {
             let (code, message, unknown) = core_error(error);
-            worker
-                .emit_agent_core_events(run_id, claim, &events.events)
-                .await;
             let _ = sqlx::query("UPDATE agent_runs SET status='failed',stop_reason=?,ended_at=UTC_TIMESTAMP(6) WHERE id=?")
                 .bind(&code).bind(run_id).execute(&worker.pool).await;
             worker
@@ -493,12 +488,10 @@ fn is_rate_limit_error(detail: &str) -> bool {
 
 async fn finish(
     worker: &RuntimeWorker,
-    claim: &ClaimedWorkerAttempt,
     run_id: Uuid,
     result: &AgentRunResultV1,
     model_port: &ProviderModelPort<'_>,
     tool_call_count: u32,
-    events: &EventCollector,
 ) -> WorkerExecution {
     let reason = format!("{:?}", result.terminal_reason).to_lowercase();
     // The terminal enum name alone ("modelerror") hides the provider detail.
@@ -536,9 +529,6 @@ async fn finish(
     if let Err(error) = update {
         tracing::error!(%error, %run_id, "Agent Core run settlement failed");
     }
-    worker
-        .emit_agent_core_events(run_id, claim, &events.events)
-        .await;
     worker
         .emit_agent_span(
             run_id,
@@ -741,24 +731,55 @@ fn agent_messages(agent: &Value, key: &str) -> Vec<AgentMessageV1> {
         .unwrap_or_default()
 }
 
-struct EventCollector {
-    events: Vec<CoreEventV1>,
+struct AgentEventSink<'a> {
+    worker: &'a RuntimeWorker,
+    claim: &'a ClaimedWorkerAttempt,
+    run_id: Uuid,
+    active_turn: Arc<AtomicU32>,
+    event_count: usize,
     max_events: usize,
 }
-impl EventCollector {
-    fn new(max_events: usize) -> Self {
+impl<'a> AgentEventSink<'a> {
+    fn new(
+        worker: &'a RuntimeWorker,
+        claim: &'a ClaimedWorkerAttempt,
+        run_id: Uuid,
+        active_turn: Arc<AtomicU32>,
+        max_events: usize,
+    ) -> Self {
         Self {
-            events: Vec::new(),
+            worker,
+            claim,
+            run_id,
+            active_turn,
+            event_count: 0,
             max_events: max_events.max(1),
         }
     }
 }
-impl EventPort for EventCollector {
+impl EventPort for AgentEventSink<'_> {
     fn publish(&mut self, event: CoreEventV1) -> Result<(), EventPortError> {
-        if self.events.len() >= self.max_events {
+        if self.event_count >= self.max_events {
             return Err(EventPortError("AGENT_EVENT_BACKPRESSURE".into()));
         }
-        self.events.push(event);
+        if let CoreEventV1::TurnStarted { turn } = &event {
+            self.active_turn.store(*turn, Ordering::Relaxed);
+        }
+        // Persist at the lifecycle boundary, before the next model/tool effect.
+        // The emitter is best effort: Trace storage cannot fail the Agent run.
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.worker.emit_agent_core_event(
+                self.run_id,
+                self.claim,
+                &event,
+                self.event_count,
+                self.active_turn.load(Ordering::Relaxed),
+            ));
+        });
+        if matches!(event, CoreEventV1::TurnEnded { .. }) {
+            self.active_turn.store(0, Ordering::Relaxed);
+        }
+        self.event_count += 1;
         Ok(())
     }
 }

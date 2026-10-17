@@ -40,12 +40,20 @@ export function TraceNodeDetails({ executionId, node, active = true, onDownloadA
   const details = useMemo(() => new Map(detailQueries.flatMap((query) => query.data ? [[query.data.span.spanId, query.data] as const] : [])), [detailQueries])
   const resolved = [...details.values()].map((detail) => contentPreview(detail, 'resolved_parameters')).find((value) => value !== undefined)
   return <div className="border-t border-border">
-    <div className="grid grid-cols-2 max-[760px]:grid-cols-1">
-      <section className="min-w-0 p-4 max-[760px]:border-b max-[760px]:border-border"><h3 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('trace.businessInputAndParameters')}</h3><div className="space-y-4"><div><h4 className="mb-2 text-[10px] text-muted-foreground">{t('trace.upstreamItems')}</h4><TraceSemanticValue empty={t('trace.authoritativeInputEmpty')} onDownloadArtifact={onDownloadArtifact} value={node.input} /></div><div><h4 className="mb-2 text-[10px] text-muted-foreground">{t('trace.resolvedParameters')}</h4>{resolved !== undefined ? <TraceSemanticValue value={resolved} /> : <DiagnosticPending detailQueries={detailQueries} trace={trace} />}</div></div></section>
-      <section className="min-w-0 border-l border-border p-4 max-[760px]:border-l-0"><h3 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('trace.semanticOutput')}</h3><TraceSemanticValue empty={node.errorCode ? `${node.errorCode}: ${node.errorMessage ?? ''}` : t('trace.authoritativeOutputEmpty')} onDownloadArtifact={onDownloadArtifact} value={node.output} /></section>
+    <div className="divide-y divide-border" data-testid="trace-node-io">
+      <NodeContentSection title={t('trace.businessInputAndParameters')}><div className="space-y-4"><div><h4 className="mb-2 text-xs text-muted-foreground">{t('trace.upstreamItems')}</h4><TraceSemanticValue empty={t('trace.authoritativeInputEmpty')} onDownloadArtifact={onDownloadArtifact} value={node.input} /></div><details className="rounded-lg border border-border p-3"><summary className="cursor-pointer text-xs font-medium text-muted-foreground">{t('trace.resolvedParameters')}</summary><div className="mt-3">{resolved !== undefined ? <TraceSemanticValue value={resolved} /> : <DiagnosticPending detailQueries={detailQueries} trace={trace} />}</div></details></div></NodeContentSection>
+      <NodeContentSection title={t('trace.semanticOutput')}><TraceSemanticValue empty={node.errorCode ? `${node.errorCode}: ${node.errorMessage ?? ''}` : t('trace.authoritativeOutputEmpty')} onDownloadArtifact={onDownloadArtifact} value={node.output} /></NodeContentSection>
     </div>
     <section className="border-t border-border bg-muted/20 p-4"><div className="mb-3 flex items-center gap-2"><h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('trace.internalProcess')}</h3><span className="text-[10px] text-muted-foreground">{t('trace.internalProcessHint')}</span></div><InternalSpans details={details} executionId={executionId} onDownloadArtifact={onDownloadArtifact} trace={trace} /></section>
   </div>
+}
+
+function NodeContentSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const [expanded, setExpanded] = useState(false)
+  return <section className="min-w-0">
+    <h3><button aria-expanded={expanded} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-xs font-semibold outline-none hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30" onClick={() => setExpanded((current) => !current)} type="button">{title}<ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-180')} /></button></h3>
+    {expanded && <div className="px-4 pb-4">{children}</div>}
+  </section>
 }
 
 function InternalSpans({ trace, details, executionId, onDownloadArtifact }: { trace: ReturnType<typeof useExecutionTrace>; details: Map<string, TraceSpanDetail>; executionId: string; onDownloadArtifact?: (artifactId: string) => void }) {

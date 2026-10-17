@@ -1,4 +1,5 @@
 const translations = {
+  jsonItems: '{{count}} items', jsonProperties: '{{count}} properties',
   loading: 'Loading trace…', unavailable: 'Trace is temporarily unavailable', delayed: 'Trace is syncing. Showing spans received so far.', degraded: 'Trace ingestion conflicts were detected; diagnostics may be incomplete.',
   search: 'Search spans, IDs, or errors', filterKind: 'Filter span kind', allKinds: 'All kinds', errorsOnly: 'Errors only', expandAll: 'Expand all', zoom: 'Zoom', loaded: '{{loaded}} / {{total}} loaded', loadMore: 'Load more', noMatches: 'No matching spans',
   tree: 'Trace hierarchy waterfall', hierarchy: 'Call hierarchy', status: 'Status', duration: 'Duration', totalDuration: 'Total duration', timeline: 'Timeline', expand: 'Expand', collapse: 'Collapse', selectSpan: 'Select a span to inspect details', loadingDetail: 'Loading span details…',

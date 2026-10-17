@@ -199,6 +199,8 @@ Workflow Studio 底部 Trace、独立执行详情和 Node Inspector 复用 `feat
 
 高级调用瀑布复用分页 Query Hook、`TraceWaterfall` 和 `TraceDetail`。Span 数据只保存在 TanStack Query Cache，不复制到 Zustand。瀑布保留筛选匹配项的祖先上下文，支持层级折叠、类型/异常筛选、搜索、50%–200% 时间轴缩放、键盘 treegrid 操作和继续加载；默认选择首个失败 Span，其次运行中 Span，最后选择 Execution 根 Span。详情按 Span 类型与 `contentKind` 动态生成页签，纯生命周期 Span 不显示误导性的空输入/输出。运行中宽度按当前时间刷新，终态只使用服务端耗时。
 
+节点详情中的“输入与解析参数”和“语义输出”上下排列，各自默认收起并通过标题按钮展开，解析参数继续独立折叠。语义字符串复用共享 `MarkdownContent` 渲染标题、列表、代码与 GFM 表格，保持普通正文颜色并沿用禁用原始 HTML 的规则。结构化 JSON 使用有界滚动、类型着色及可折叠的对象/数组树，嵌套数据仅在展开时挂载；原始 JSON 中的字符串保持字面值，不作为 Markdown 执行。
+
 桌面端Node Inspector固定384px；Trace高级详情列在执行轨道内按可用宽度布局，低于1120px后移到瀑布下方。Studio 首次进入 Trace 页签时，执行轨道扩展到最多 560px（同时受视口 80% 上限约束），但不缩小用户手动设置的更大高度；用户继续向上拖动时最高可占视口的 4/5。轨道自身裁剪溢出，内部节点视图、瀑布和详情各自滚动，避免详情遮挡画布或相邻面板。选择 Node 或子 Span 时联动画布节点。Node Inspector 直接复用单节点语义详情，不再自行搜索 Span 后套通用详情。独立执行详情使用 Trace 和 Recovery 两个主视图并默认显示 Trace；Recovery 只保留 Checkpoint、Wait、Approval、Side Effect、事件与 Fork，删除重复的节点 Outline 和输入输出面板。
 
 ## 10. 路由

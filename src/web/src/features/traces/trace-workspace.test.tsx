@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { i18n } from '../../app/i18n'
@@ -49,9 +49,19 @@ describe('Trace workspace', () => {
     expect(screen.getByTestId('trace-node-card')).toHaveTextContent('2.00 s')
     expect(screen.getByTestId('trace-node-card')).toHaveTextContent('$0.001200')
     expect(screen.getByTestId('trace-node-card').querySelector('button')).toHaveClass('grid-cols-[minmax(160px,1fr)_auto_auto]')
-    expect(screen.getByTestId('trace-node-card')).toHaveTextContent('2 个 Item')
-    expect(screen.getByTestId('trace-node-card')).toHaveTextContent('我是 kakj。')
-    expect(screen.getByTestId('trace-node-card')).toHaveTextContent('8 input · 12 output · 20 total')
+    const card = within(screen.getByTestId('trace-node-card'))
+    expect(card.queryByText('2 个 Item')).not.toBeInTheDocument()
+    expect(card.getByRole('button', { name: '输入与解析参数' })).toHaveAttribute('aria-expanded', 'false')
+    expect(card.getByRole('button', { name: '语义输出' })).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(card.getByRole('button', { name: '输入与解析参数' }))
+    expect(card.getByText('2 个 Item')).toBeInTheDocument()
+    fireEvent.click(card.getByRole('button', { name: '语义输出' }))
+    expect(card.getByText('我是 kakj。')).toBeInTheDocument()
+    expect(card.getByText('8 input · 12 output · 20 total')).toBeInTheDocument()
+    expect(screen.getByTestId('trace-node-io')).toHaveClass('divide-y')
+    fireEvent.click(card.getByRole('button', { name: '输入与解析参数' }))
+    expect(card.queryByText('2 个 Item')).not.toBeInTheDocument()
+    expect(card.getByText('我是 kakj。')).toBeInTheDocument()
     expect(screen.getByTestId('trace-node-view')).toHaveClass('h-full', 'min-h-0', 'overflow-auto')
     expect(screen.getByTestId('trace-node-view').firstElementChild).toHaveClass('before:left-6', 'before:bg-border')
     expect(await screen.findAllByText('Trace 暂不可用；节点的权威输入输出仍可查看。')).not.toHaveLength(0)

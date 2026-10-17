@@ -81,6 +81,10 @@ pub(crate) fn memory_secret_header(
     }
 }
 
+pub(crate) fn agent_turn_entity_id(run_id: Uuid, turn: u32) -> Uuid {
+    stable_id(run_id, format!("turn-{turn}").as_bytes())
+}
+
 pub(crate) fn stable_id(namespace: Uuid, label: &[u8]) -> Uuid {
     let mut hasher = Sha256::new();
     hasher.update(namespace.as_bytes());

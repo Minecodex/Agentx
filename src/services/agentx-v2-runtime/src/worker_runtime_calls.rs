@@ -111,7 +111,7 @@ impl RuntimeWorker {
         .bind(claim.task.attempt_id)
         .bind((claim.node_type == "agent").then(|| stable_id(claim.task.attempt_id, b"agent-run")))
         .bind(claim.trace_parent_span_entity_id)
-        .bind(if claim.node_type == "agent" { call_index / 2 } else { 0 })
+        .bind(claim.agent_trace_turn.as_ref().map_or(0, |turn| turn.load(std::sync::atomic::Ordering::Relaxed)))
         .bind(call_index)
         .bind(kind)
         .bind(idempotency_key)
@@ -210,10 +210,10 @@ impl RuntimeWorker {
             .try_get::<Option<Uuid>, _>("agent_run_id")
             .ok()
             .flatten();
-        let agent_iteration_id = agent_run_id.map(|run_id| {
-            let index = row.try_get::<u32, _>("iteration_index").unwrap_or_default();
-            stable_id(run_id, format!("iteration-{index}").as_bytes())
-        });
+        let turn = row.try_get::<u32, _>("iteration_index").unwrap_or_default();
+        let agent_iteration_id = agent_run_id
+            .filter(|_| turn > 0)
+            .map(|run_id| crate::worker_support::agent_turn_entity_id(run_id, turn));
         let plugin_parent = row
             .try_get::<Option<Uuid>, _>("plugin_parent_span_entity_id")
             .ok()
@@ -232,6 +232,9 @@ impl RuntimeWorker {
                         agentx_runtime_contracts::TraceSpanKindV1::AgentIteration,
                     )
                 })
+            })
+            .or_else(|| {
+                agent_run_id.map(|id| (id, agentx_runtime_contracts::TraceSpanKindV1::AgentRun))
             })
             .unwrap_or((
                 attempt_id,

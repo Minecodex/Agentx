@@ -25,6 +25,8 @@ Workflow Trace 使用真实 Span 生命周期，而不是由查询端从 Runtime
 
 每个 Runtime 实体通过 `deterministic_uuid(entityId, "agentx-trace-span-v1:<kind>")` 生成稳定 Span ID。同一 Span 的 `started`、`updated`、`finished` 事件复用该 ID；`occurredAt` 是状态变化发生的业务时间，不由 Outbox、Redis Relay 或 ClickHouse Consumer 改写。重试创建新的 Attempt 实体及 Span，取消、超时、失败、等待恢复和 Outcome Unknown 都必须关闭相关活动 Span。
 
+Agent Core 的生命周期事件在发生时由 Worker 直接写入既有 Trace Outbox，不在整次运行结束后批量补发。Turn Span 和该轮 Runtime Call 共用 `stable_id(agentRunId, "turn-<实际轮次>")` 实体标识；Worker 仅在 `TurnStarted` 到 `TurnEnded` 之间共享活动轮次并在预留调用时冻结，禁止从调用序号或模型/工具数量推断轮次。轮次外的上下文准备、压缩和资源清理调用直接属于 Agent Run，不生成不存在的第零轮父 Span。Trace 写入仍是尽力诊断，失败不改变业务结果。
+
 节点自动重试以状态机的 `attemptNumber` 为准；每次 Attempt 使用独立幂等键和 Span，`waitBetweenTriesMs` 映射为派发 Outbox 的 `available_at`，Node Span 在重试期间保持打开并发出 `retry_scheduled/retry_started` 更新。Worker operation deadline、Sandbox TTL、Execution 取消分别产生 `timed_out`、`sandbox.timed_out`、`sandbox.cancelled` 终止事件，后续 Reaper 清理不得把已有取消/超时终态覆盖成成功。
 
 Start/End 是 `boundary` Span，不创建虚假的 Node Execution。Start Boundary 关联 Workflow 输入，End Boundary 关联最终输出和 End 字符串转换记录；Execution 根 Span 自身同样保留 `workflow_input/workflow_output`，因此高级瀑布稳定呈现 `Workflow → Start / Nodes / End`。字符串转换使用所属 Attempt 或 End Boundary 的 `conversion_record` Event，不创建额外 Span。
