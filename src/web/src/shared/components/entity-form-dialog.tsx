@@ -39,9 +39,10 @@ type Props = {
   open: boolean
   submitLabel: string
   title: string
+  wide?: boolean
 }
 
-export function EntityFormDialog({ cancelLabel, fields, onClose, onSubmit, open, submitLabel, title }: Props) {
+export function EntityFormDialog({ cancelLabel, fields, onClose, onSubmit, open, submitLabel, title, wide: wideLayout }: Props) {
   const { t } = useTranslation()
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((field) => [field.name, field.defaultValue ?? ''])))
   const [error, setError] = useState('')
@@ -89,9 +90,9 @@ export function EntityFormDialog({ cancelLabel, fields, onClose, onSubmit, open,
     } finally { setPending(false) }
   }
   const focusFirstError = (errors: Record<string, string>) => requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>(`[name="${CSS.escape(Object.keys(errors)[0] ?? '')}"]`)?.focus())
-  const wide = fields.length > 6
+  const wide = wideLayout ?? fields.length > 6
   return <Dialog onOpenChange={(value) => { if (!value) onClose() }} open={open}>
-    <DialogContent className={wide ? 'w-[min(920px,calc(100vw-48px))] p-6' : 'p-6'} title={title}>
+    <DialogContent className={wide ? 'w-[min(920px,calc(100vw-48px))] p-6 [&>div]:max-h-[calc(100dvh-82px)]' : 'p-6 [&>div]:max-h-[calc(100dvh-82px)]'} title={title}>
       <h2 className="text-lg font-semibold">{title}</h2>
       <form className={wide ? 'mt-5 grid grid-cols-2 gap-x-5 gap-y-4' : 'mt-5 space-y-4'} noValidate onSubmit={(event) => void submit(event)} ref={formRef}>
         {fields.map((field) => (field.visible?.(values) ?? true) ? <FieldContainer asLabel={!field.render} className={(field.type === 'textarea' || field.type === 'checkbox' || field.render) && wide ? 'col-span-2 block text-xs' : 'block text-xs'} key={field.name}>
