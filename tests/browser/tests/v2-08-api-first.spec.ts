@@ -101,7 +101,9 @@ test('V2-08 API-first empty-domain closure creates product facts without SQL fix
   const version = await publishFixtureVersion<{ id: string }>(page, token, workflow.id, saved.revision)
   const environment = (await request<Environment[]>(page, token, '/environments')).find((item) => item.code === 'development')
   expect(environment).toBeTruthy()
-  await request(page, token, `/workflows/${workflow.id}/deployments`, 'POST', {contentSource:'version', workflowVersionId: version.id, environmentId: environment!.id })
+  await request(page, token, `/workflows/${workflow.id}/deployments`, 'POST', {
+    contentSource: 'version', workflowVersionId: version.id, environmentId: environment!.id,
+  }, false, { 'Idempotency-Key': `v2-08-workflow-deployment-${suffix}` })
 
   const application = await request<{ id: string; slug: string }>(page, token, '/applications', 'POST', {
     workflowId: workflow.id, name: `V2-08 Application ${suffix}`, slug: `v2-08-${suffix}`,

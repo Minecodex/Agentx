@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -302,7 +306,7 @@ def test_hosted_image_builder_includes_every_local_provider_fixture(monkeypatch)
     assert required <= selected, f"fixture images omitted from the build: {required - selected}"
 
 
-def test_hosted_ci_keeps_core_system_e2e_and_defers_dedicated_environment_acceptance():
+def test_hosted_ci_runs_cluster_acceptance_only_for_full_release_validation():
     workflow = yaml.safe_load(Path(".github/workflows/quality.yml").read_text())
     assert workflow["concurrency"]["cancel-in-progress"] == "${{ !inputs.full }}"
     assert "github.sha" in workflow["concurrency"]["group"]
@@ -313,17 +317,25 @@ def test_hosted_ci_keeps_core_system_e2e_and_defers_dedicated_environment_accept
                 assert step["with"]["ref"] == "${{ inputs.ref || github.sha }}"
     assert "kubernetes-e2e-windows" not in quality
     linux = quality["kubernetes-e2e-linux"]
-    assert linux["runs-on"] == "ubuntu-24.04" and "if" not in linux
-    assert "kubernetes-e2e-linux" in quality["ci-gate"]["needs"]
+    assert linux["runs-on"] == "ubuntu-24.04"
+    assert linux["if"] == quality["canvas-performance-linux"]["if"] == "${{ inputs.full }}"
+    assert set(quality["ci-gate"]["needs"]) == {
+        "python-helm",
+        "frontend",
+        "kubernetes-e2e-linux",
+        "canvas-performance-linux",
+    }
     matrix = quality["python-helm"]["strategy"]["matrix"]["os"]
     assert "windows-latest" in matrix
     release = yaml.safe_load(Path(".github/workflows/agentxctl-release.yml").read_text())["jobs"]
     assert release["source-ci"]["uses"] == "./.github/workflows/quality.yml"
     assert release["source-ci"]["with"]["full"] is True
+    assert release["source-ci"]["with"]["ref"] == "${{ inputs.tag || github.ref }}"
+    assert release["build"]["needs"] == "source-ci"
     assert set(release["release-gate"]["needs"]) == {"source-ci", "build"}
     assert release["release-gate"]["if"] == "always()"
     suite = next(step["run"] for step in linux["steps"] if "pytest tests/e2e" in step.get("run", ""))
-    assert "--ci-profile pr" in suite and "--ci-profile release" in suite
+    assert "--ci-profile release" in suite and "--ci-profile pr" not in suite
     assert "--minikube" in suite
     for path in Path(".github/workflows").glob("*.yml"):
         workflow = path.read_text()
@@ -332,3 +344,34 @@ def test_hosted_ci_keeps_core_system_e2e_and_defers_dedicated_environment_accept
     # The original real-provider credential handling remains enforced by the
     # independent acceptance fixture test above; hosted CI cannot certify it.
     assert "publish" not in release
+
+
+@pytest.mark.parametrize("full", [False, True])
+@pytest.mark.parametrize("job", ["python-helm", "frontend", "kubernetes-e2e-linux", "canvas-performance-linux"])
+@pytest.mark.parametrize("result", ["success", "failure", "cancelled", "skipped"])
+def test_ci_gate_rejects_failed_jobs_and_only_allows_expected_release_skips(full, job, result):
+    gate = yaml.safe_load(Path(".github/workflows/quality.yml").read_text())["jobs"]["ci-gate"]
+    assert gate["if"] == "${{ always() }}"
+    results = {
+        "python-helm": {"result": "success"},
+        "frontend": {"result": "success"},
+        "kubernetes-e2e-linux": {"result": "success" if full else "skipped"},
+        "canvas-performance-linux": {"result": "success" if full else "skipped"},
+    }
+    results[job]["result"] = result
+    script = next(step["run"] for step in gate["steps"] if "JOB_RESULTS" in step.get("env", {}))
+    lines = script.splitlines()
+    assert lines[0] == "python3 - <<'PY'" and lines[-1] == "PY"
+    completed = subprocess.run(
+        [sys.executable, "-c", "\n".join(lines[1:-1])],
+        env={**os.environ, "JOB_RESULTS": json.dumps(results), "FULL_ACCEPTANCE": "true" if full else "false"},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    allowed_skip = not full and job in {"kubernetes-e2e-linux", "canvas-performance-linux"} and result == "skipped"
+    if result == "success" or allowed_skip:
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+    else:
+        assert completed.returncode == 1, completed.stdout + completed.stderr
