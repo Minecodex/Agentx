@@ -30,9 +30,6 @@ import { channelFieldError, channelInputs, channelSchemas, defaultChannelMapping
 import { ChannelConnectionStatus } from './channel-connection-status'
 import { ApplicationInvocations } from './application-invocations'
 import { DeploymentUserInput } from './deployment-user-input'
-import type { JsonSchema } from '../../shared/components/schema-form'
-import { scheduleFields } from './schedule-form'
-import { scheduleInput } from './schedule-input-values'
 
 type DialogKind = 'edit' | 'deployment' | 'key' | 'webhook' | 'webhookEdit' | 'schedule' | 'scheduleEdit' | 'sessionUpgrade' | null
 type KeyAction = { keyId: string; action: 'rotate' | 'revoke' } | null
@@ -102,7 +99,7 @@ export function ApplicationDetailPage() {
       if (kind === 'webhookEdit' && selectedWebhook) return apiRequest<ApplicationWebhook>(`/applications/${id}/webhooks/${selectedWebhook.id}`, { method: 'PATCH', body: jsonBody({ name: values.name, status: selectedWebhook.status, providerType: values.providerType, channelMode: effectiveChannelMode(values), channelConfig: buildChannelConfig(templates.data ?? [], values), reply: buildReplyConfig(values, channelSchema?.output, t), ...channelInputs(values, channelSchema?.input, t), version: selectedWebhook.version }) })
       if (kind === 'sessionUpgrade' && selectedSession) return apiRequest<ApplicationSession>(`/sessions/${selectedSession.id}/upgrade`, { method: 'POST', body: jsonBody({ workflowVersionId: values.workflowVersionId, version: selectedSession.version }) })
       const path = kind === 'scheduleEdit' && selectedSchedule ? `/applications/${id}/schedules/${selectedSchedule.id}` : `/applications/${id}/schedules`
-      return apiRequest<ApplicationSchedule>(path, { method: kind === 'scheduleEdit' ? 'PATCH' : 'POST', body: jsonBody({ name: values.name, cronExpression: values.cron, timezone: values.timezone, input: scheduleInput(values.input, channelSchema?.input as JsonSchema | undefined), misfirePolicy: values.misfirePolicy, ...(kind === 'scheduleEdit' ? { status: values.status, version: selectedSchedule?.version } : {}) }) })
+      return apiRequest<ApplicationSchedule>(path, { method: kind === 'scheduleEdit' ? 'PATCH' : 'POST', body: jsonBody({ name: values.name, cronExpression: values.cron, timezone: values.timezone, input: JSON.parse(values.input), misfirePolicy: values.misfirePolicy, ...(kind === 'scheduleEdit' ? { status: values.status, version: selectedSchedule?.version } : {}) }) })
     },
     onSuccess: async (result, variables) => {
       if (result && typeof result === 'object' && 'secret' in result && typeof result.secret === 'string' && variables.kind !== 'webhook') setShownSecret(result.secret)
@@ -152,10 +149,6 @@ export function ApplicationDetailPage() {
   const endpointActive = Boolean(selectedChannel && channelEndpointActive(selectedChannel))
   const deployButton = auth.hasPermission('application:manage') ? <PrerequisiteAction description={t('applications.prerequisites.deploymentDescription')} loading={versions.isLoading || environments.isLoading} onReady={() => setDialog('deployment')} requirements={[{ key: 'workflow-version', label: t('applications.prerequisites.workflowVersion'), met: Boolean(versions.data?.length), href: `/workflows/${value.workflowId}`, actionLabel: t('applications.prerequisites.goWorkflows') }, { key: 'environment', label: t('applications.prerequisites.activeEnvironment'), met: Boolean(environments.data?.some((item) => item.status === 'active')) }]} size="sm"><Plus className="size-4" />{t('applications.deploy')}</PrerequisiteAction> : undefined
   const schedule = selectedSchedule
-  const scheduleSchemaFailed = deployments.isError || (!activeDeployment && (versions.isError || latestDefinition.isError))
-  const scheduleButton = (item?: ApplicationSchedule) => auth.hasPermission('application:manage') && <PrerequisiteAction aria-label={item ? t('common.edit') : t('common.create')} description={t('applications.scheduleSchemaMissing')} loading={channelSchemaLoading} onReady={() => { setSelectedSchedule(item ?? null); setDialog(item ? 'scheduleEdit' : 'schedule') }} requirements={[scheduleSchemaFailed
-    ? { key: 'schema', label: t('common.loadFailed'), met: false, actionLabel: t('common.retry'), onAction: () => { void deployments.refetch(); void versions.refetch(); if (latestPublished) void latestDefinition.refetch() } }
-    : { key: 'schema', label: t('applications.prerequisites.workflowVersion'), met: Boolean(channelSchema), href: `/workflows/${value.workflowId}`, actionLabel: t('applications.prerequisites.goWorkflows') }]} size={item ? 'icon' : 'sm'} variant={item ? 'ghost' : 'primary'}>{item ? <Edit3 className="size-4" /> : <><Plus className="size-4" />{t('common.create')}</>}</PrerequisiteAction>
   const fields: Record<Exclude<DialogKind, null>, EntityFormField[]> = {
     edit: [
       { name: 'name', label: t('common.name'), required: true, defaultValue: value.name },
@@ -184,8 +177,8 @@ export function ApplicationDetailPage() {
       { name: 'fixedInputs', label: t('applications.fixedInputs'), defaultValue: JSON.stringify(selectedWebhook?.fixedInputs ?? {}, null, 2), render: ({ value: fixed, values, update }) => <FixedInputsEditor mappings={values.inputMappings} schema={channelSchema?.input} value={fixed} onChange={update} /> },
       ...replyConfigFields(t, channelSchema?.output, selectedWebhook?.reply ?? null),
     ],
-    schedule: scheduleFields(t, channelSchema?.input as JsonSchema | undefined),
-    scheduleEdit: scheduleFields(t, channelSchema?.input as JsonSchema | undefined, schedule),
+    schedule: scheduleFields(t),
+    scheduleEdit: scheduleFields(t, schedule),
     sessionUpgrade: [{ name: 'workflowVersionId', label: t('evaluations.workflowVersion'), type: 'select', defaultValue: selectedSession?.workflowVersionId ?? '', required: true, options: (versions.data ?? []).map((item) => ({ value: item.id, label: `v${item.versionNumber}` })) }],
   }
   return <PageContainer>
@@ -210,7 +203,7 @@ export function ApplicationDetailPage() {
       </TabsContent>
       <TabsContent className="pt-5" value="triggers">
         {value.runtimeConfigRevision > value.publishedRuntimeConfigRevision && <div className="mb-4"><StatusBadge label={t('applications.pendingPublish')} status="pending" /></div>}
-        <Section action={scheduleButton()} title={t('applications.schedules')}>{schedules.data?.map((item) => <Row action={<div className="flex gap-1">{scheduleButton(item)}<EntityDeleteButton canDelete={auth.hasPermission('application:delete')} deletePath={`/applications/${id}/schedules/${item.id}`} entityId={item.id} entityName={item.name} entityType="application_schedule" onDeleted={async () => { await queryClient.invalidateQueries({ queryKey: ['application-schedules', id] }); showToast(t('applications.deleted')) }} /></div>} detail={`${item.cronExpression} · ${item.timezone}`} key={item.id} status={localizedValue(t, 'applications', item.status)} title={item.name} />)}</Section>
+        <Section action={auth.hasPermission('application:manage') && <Button onClick={() => { setSelectedSchedule(null); setDialog('schedule') }} size="sm"><Plus className="size-4" />{t('common.create')}</Button>} title={t('applications.schedules')}>{schedules.data?.map((item) => <Row action={<div className="flex gap-1">{auth.hasPermission('application:manage') && <Button aria-label={t('common.edit')} onClick={() => { setSelectedSchedule(item); setDialog('scheduleEdit') }} size="icon" variant="ghost"><Edit3 className="size-4" /></Button>}<EntityDeleteButton canDelete={auth.hasPermission('application:delete')} deletePath={`/applications/${id}/schedules/${item.id}`} entityId={item.id} entityName={item.name} entityType="application_schedule" onDeleted={async () => { await queryClient.invalidateQueries({ queryKey: ['application-schedules', id] }); showToast(t('applications.deleted')) }} /></div>} detail={`${item.cronExpression} · ${item.timezone}`} key={item.id} status={localizedValue(t, 'applications', item.status)} title={item.name} />)}</Section>
       </TabsContent>
       <TabsContent className="pt-5" value="invocations"><ApplicationInvocations applicationId={value.id} /></TabsContent>
       <TabsContent className="pt-5" value="sessions"><Section action={auth.hasPermission('application:invoke') ? <Button asChild size="sm" variant="secondary"><Link to={`/playground?applicationId=${value.id}&mode=conversation`}><ExternalLink className="size-4" />{t('applications.openPlayground')}</Link></Button> : undefined} title={t('applications.playground.sessions')}><p className="py-3 text-xs text-muted-foreground">{t('applications.sessionDescription')}</p><Input aria-label={t('applications.userFilter')} className="mb-3 max-w-xs" placeholder={t('applications.userFilter')} value={sessionUserFilter} onChange={event => setSessionUserFilter(event.target.value)} /><UserSourceFilter value={sessionUserSource} onChange={setSessionUserSource} />{sessions.data?.map((item) => <Row action={<div className="flex gap-1">{auth.hasPermission('application:invoke') && <Button asChild size="sm" variant="ghost"><Link to={`/playground?applicationId=${value.id}&mode=conversation&sessionId=${item.id}`}>{t('applications.openSession')}</Link></Button>}{item.versionPolicy === 'manual_upgrade' && auth.hasPermission('application:manage') && <Button onClick={() => { setSelectedSession(item); setDialog('sessionUpgrade') }} size="sm" variant="ghost">{t('applications.upgrade')}</Button>}</div>} detail={<><span>{localizedValue(t, 'applications', item.versionPolicy)} · {item.workflowVersionId ?? '—'}</span><span className="ml-3"><EndUserLabel user={item.endUser} /></span></>} key={item.id} status={<StatusBadge label={localizedValue(t, 'applications', item.status)} status={item.status === 'active' ? 'active' : 'inactive'} />} title={item.title ?? item.id} />)}{!sessions.isLoading && sessions.data?.length === 0 && <p className="border-t border-border py-8 text-center text-xs text-muted-foreground">{t('applications.noApplicationSessions')}</p>}</Section></TabsContent>
@@ -270,6 +263,17 @@ function providerLabel(provider?: string) {
 
 function modeLabel(t: (key: string) => string, mode?: string) {
   return mode === 'stream' ? t('applications.channelModeStream') : t('applications.channelModeCallback')
+}
+
+function scheduleFields(t: (key: string) => string, value?: ApplicationSchedule | null): EntityFormField[] {
+  return [
+    { name: 'name', label: t('common.name'), required: true, defaultValue: value?.name ?? '' },
+    { name: 'cron', label: 'Cron', defaultValue: value?.cronExpression ?? '0 9 * * 1', required: true },
+    { name: 'timezone', label: t('applications.timezone'), defaultValue: value?.timezone ?? 'Asia/Shanghai', required: true },
+    { name: 'misfirePolicy', label: t('applications.misfirePolicy'), type: 'select', defaultValue: value?.misfirePolicy ?? 'fire_once', required: true, options: ['fire_once', 'skip'].map((item) => ({ value: item, label: t(`applications.${item}`) })) },
+    { name: 'input', label: t('applications.input'), type: 'textarea', defaultValue: JSON.stringify(value?.input ?? {}, null, 2), required: true },
+    ...(value ? [{ name: 'status', label: t('common.status'), type: 'select' as const, defaultValue: value.status, required: true, options: ['active', 'disabled'].map((item) => ({ value: item, label: t(`applications.${item}`) })) }] : []),
+  ]
 }
 
 function Section({ title, action, children }: { title: string; action?: React.ReactNode; children?: React.ReactNode }) { return <Card className="overflow-hidden"><div className="flex min-h-14 items-center justify-between border-b border-border px-5"><h2 className="text-sm font-semibold">{title}</h2>{action}</div><div className="px-5">{children || <p className="py-8 text-center text-xs text-muted-foreground">—</p>}</div></Card> }
