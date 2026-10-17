@@ -41,15 +41,13 @@ fn knowledge_and_independent_error_exit_compile_with_port_specific_mappings() {
             .iter()
             .any(|issue| issue.code == "BINDING_REQUIRED")
     );
-    let mut duplicate = definition.clone();
-    let reference = duplicate.nodes[0].resource_references[0].clone();
-    duplicate.nodes[0].resource_references.push(reference);
-    assert!(
-        compiler
-            .validate_draft(&duplicate, &CompileContext::default())
-            .iter()
-            .any(|issue| issue.code == "BINDING_MULTIPLE_NOT_ALLOWED")
-    );
+    let mut multiple = definition.clone();
+    let mut reference = multiple.nodes[0].resource_references[0].clone();
+    reference.resource_id = uuid::Uuid::from_u128(42);
+    multiple.nodes[0].resource_references.push(reference);
+    compiler
+        .compile(&multiple, &CompileContext::default())
+        .unwrap();
     let mut wrong = definition;
     wrong.nodes[0].resource_references[0].operation = agentx_domain::ResourceOperation::Write;
     assert!(

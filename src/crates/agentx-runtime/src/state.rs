@@ -455,6 +455,17 @@ impl ExecutionMachine {
         message: &str,
         retryable: bool,
     ) -> Result<(), MachineError> {
+        self.fail_with_details(id, code, message, retryable, json!({}))
+    }
+
+    pub fn fail_with_details(
+        &mut self,
+        id: NodeExecutionId,
+        code: &str,
+        message: &str,
+        retryable: bool,
+        details: serde_json::Value,
+    ) -> Result<(), MachineError> {
         self.ensure_active()?;
         let (node_index, should_retry, policy, generation) = {
             let activation = self
@@ -525,7 +536,7 @@ impl ExecutionMachine {
                     json: json!({
                         "code":code,
                         "message":message,
-                        "details":{},
+                        "details":details,
                         "sourceNodeId":self.workflow.nodes[node_index].id,
                         "nodeExecutionId":id,
                         "retryable":retryable

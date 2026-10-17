@@ -66,7 +66,7 @@ def test_real_lightrag_unavailable_restart_and_invalid_auth_are_observable(
     state = boundary_state
     control = live_providers["control"]
     namespace = cpu_embedding_service["namespace"]
-    path = f"/api/v1/knowledge/resources/{live_providers['ragId']}"
+    path = f"/api/v1/knowledge/queries/{live_providers['ragId']}"
     deployment = ("kubectl", "-n", namespace, "scale", "deployment/lightrag")
     run((*deployment, "--replicas=0"), timeout=60)
     run(
@@ -85,14 +85,7 @@ def test_real_lightrag_unavailable_restart_and_invalid_auth_are_observable(
     )
     try:
         failed = control.post(f"{path}/retrieval-test", json={"query": "水星计划", "topK": 5})
-        assert failed.status_code in {502, 503} and failed.json().get("code"), failed.text
-        marker = f"recovered-orbit-{state['runId']}"
-        uploaded = control.post(
-            f"{path}/documents",
-            files={"file": ("restart-recovery.txt", f"The recovery release code is {marker}.".encode(), "text/plain")},
-        )
-        assert uploaded.status_code == 202, uploaded.text
-        document = uploaded.json()
+        assert failed.status_code == 422 and failed.json().get("code"), failed.text
         run(
             (
                 "kubectl",
@@ -119,18 +112,8 @@ def test_real_lightrag_unavailable_restart_and_invalid_auth_are_observable(
     finally:
         run((*deployment, "--replicas=1"), timeout=60)
         run(("kubectl", "-n", namespace, "rollout", "status", "deployment/lightrag", "--timeout=600s"), timeout=630)
-    deadline = time.monotonic() + 360
-    while True:
-        response = control.get(f"{path}/documents")
-        assert response.status_code == 200, response.text
-        document = next(d for d in response.json() if d["id"] == document["id"])
-        assert document["status"] != "failed", document
-        if document["status"] == "indexed":
-            break
-        assert time.monotonic() < deadline, document
-        time.sleep(1)
-    recovered = control.post(f"{path}/retrieval-test", json={"query": "recovery release code", "topK": 5})
-    assert recovered.status_code == 200 and marker in recovered.text, recovered.text
+    recovered = control.post(f"{path}/retrieval-test", json={"query": "水星计划唯一发布代号", "topK": 5})
+    assert recovered.status_code == 200 and live_indexed_document["marker"] in recovered.text, recovered.text
     wrong = post(
         control,
         "/credentials",
@@ -154,28 +137,15 @@ def test_real_lightrag_unavailable_restart_and_invalid_auth_are_observable(
             "configuration": {},
         },
     )
-    original = get(control, f"/knowledge/resources/{live_providers['ragId']}")
-    resource = post(
-        control,
-        "/knowledge/resources",
-        {
-            "name": f"Boundary wrong RAG resource {state['runId']}",
-            "connectionId": connection["id"],
-            "externalResourceId": original["externalResourceId"],
-            "ownerDepartmentId": state["me"]["departmentId"],
-        },
-    )
-    rejected = control.post(
-        f"/api/v1/knowledge/resources/{resource['id']}/retrieval-test", json={"query": "release code", "topK": 5}
-    )
+    rejected = control.get(f"/api/v1/knowledge/connections/{connection['id']}/catalog")
     assert rejected.status_code == 422 and rejected.json()["code"] == "PROVIDER_REJECTED", rejected.text
     report(
         state,
         "remaining-lightrag-recovery",
         {
             "unavailable": failed.json(),
-            "documentId": document["id"],
-            "controlRestartRecoveredIndex": True,
+            "documentId": live_indexed_document["documentId"],
+            "controlRestartPreservesExternalContent": True,
             "retrievalRecovered": True,
             "badCredentialRefused": rejected.json(),
         },

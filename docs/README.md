@@ -37,7 +37,9 @@ Agentx 是一个采用 n8n 式画布交互、但使用 Agentx 原生 Workflow/No
 | [plan6/README.md](plan6/README.md) | 画布插件：动态 React UI、TypeScript/Node.js、权威动态契约、调用隔离、文件流和 Trace；SDK/RPC 2 的最新修复与验证范围见 [P6-11](plan6/evidence/p6-11-runtime-boundaries.md) |
 | [plan7/README.md](plan7/README.md) | 产品最后一公里与生产收口（对比 n8n/Dify 后立项）：IM 渠道出站回复闭环、LLM 流式与多模态透传、评测与 Insights 补全、P0 生产认证收口、知识库管理面 |
 | [plan8/README.md](plan8/README.md) | 画布 AI 编辑与历史验收；当前版本生命周期、版本列表和还原规则见 [版本与画布管理](plan8/09-version-canvases.md) |
+| [plan8/11-knowledge-connections.md](plan8/11-knowledge-connections.md) | 外部知识连接、查询配置、统一授权与多来源检索 |
 | [plan8/10-application-user-memory.md](plan8/10-application-user-memory.md) | 应用用户参数映射、会话归属与固定读写记忆连接 |
+| [plan8/evidence/2026-10-17-application-business-closure.md](plan8/evidence/2026-10-17-application-business-closure.md) | AI 工作流四能力、API 用户记忆隔离、文件往返及平台测试集造数的本地验收 |
 | [planv2/evidence/egress-gateway.md](planv2/evidence/egress-gateway.md) | SaaS 受控公网出口、真实模型、密钥轮换、稳定性、滚动升级和生产 CNI 未关闭门禁证据 |
 | [plan/m2-task-list.md](plan/m2-task-list.md) | M2 Workflow 控制面与资源中心的详细实施批次和任务清单 |
 | [plan/m2.1-resource-redesign.md](plan/m2.1-resource-redesign.md) | M2.1 MCP、Skill Workspace、Kubernetes Addon 与全局 E2E 重构任务 |

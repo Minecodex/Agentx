@@ -1,32 +1,41 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Library, Plus } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-
 import { useAuth } from '../../app/providers/auth-provider'
-import { apiRequest, jsonBody } from '../../shared/api/client'
-import type { Credential, Department, ExternalConnection, Knowledge, PageResponse } from '../../shared/api/types'
+import { apiRequest } from '../../shared/api/client'
+import type { ExternalConnection, HealthCheck } from '../../shared/api/types'
+import { ConfirmDialog } from '../../shared/components/confirm-dialog'
 import { EntityCell } from '../../shared/components/entity-cell'
-import { EntityDeleteButton } from '../../shared/components/entity-delete-button'
-import { EntityFormDialog, type EntityFormField } from '../../shared/components/entity-form-dialog'
 import { ListPage } from '../../shared/components/list-page'
 import { StatusBadge } from '../../shared/components/status-badge'
 import { Button } from '../../shared/ui/button'
 import { useToast } from '../../shared/ui/toast'
+import { ConnectionForm } from './connection-form'
 
 export function KnowledgePage() {
-  const { t } = useTranslation(); const auth = useAuth(); const queryClient = useQueryClient(); const { showToast } = useToast(); const [open, setOpen] = useState<'new' | 'existing'>()
-  const resources = useQuery({ queryKey: ['knowledge'], queryFn: () => apiRequest<PageResponse<Knowledge>>('/knowledge/resources?pageSize=100') })
+  const { t } = useTranslation(); const auth = useAuth(); const client = useQueryClient(); const { showToast } = useToast()
+  const [editing, setEditing] = useState<ExternalConnection | 'new'>()
+  const [removing, setRemoving] = useState<ExternalConnection>()
   const connections = useQuery({ queryKey: ['knowledge-connections'], queryFn: () => apiRequest<ExternalConnection[]>('/knowledge/connections') })
-  const departments = useQuery({ queryKey: ['departments'], queryFn: () => apiRequest<Department[]>('/departments') })
-  const credentials = useQuery({ queryKey: ['credentials', 'options'], queryFn: () => apiRequest<PageResponse<Credential>>('/credentials?pageSize=100&status=active') })
-  const create = useMutation({ mutationFn: async (values: Record<string, string>) => { const connectionId = values.connectionId || (await apiRequest<ExternalConnection>('/knowledge/connections', { method: 'POST', body: jsonBody({ name: values.connectionName, provider: values.provider || 'lightrag', endpoint: values.endpoint, healthPath: values.healthPath, credentialId: values.credential || null, ownerDepartmentId: values.department, configuration: {} }) })).id; return apiRequest<Knowledge>('/knowledge/resources', { method: 'POST', body: jsonBody({ connectionId, name: values.name, externalResourceId: values.externalResourceId, ownerDepartmentId: values.department }) }) }, onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['knowledge'] }), queryClient.invalidateQueries({ queryKey: ['knowledge-connections'] })]); showToast(t('knowledge.created')) } })
-  const columns = useMemo<Array<ColumnDef<Knowledge>>>(() => [
-    { accessorKey: 'name', header: t('knowledge.title'), cell: ({ row }) => <EntityCell detail={row.original.connectionName} icon={Library} name={row.original.name} /> }, { accessorKey: 'externalResourceId', header: t('knowledge.externalId') }, { accessorKey: 'grantCount', header: t('knowledge.workflows') }, { accessorKey: 'syncStatus', header: t('knowledge.sync'), cell: ({ row }) => <StatusBadge status={row.original.syncStatus === 'synced' ? 'synced' : row.original.syncStatus === 'syncing' ? 'syncing' : row.original.syncStatus === 'failed' ? 'failed' : 'pending'} /> }, { accessorKey: 'status', header: t('common.status'), cell: ({ row }) => <StatusBadge status={row.original.status === 'active' ? 'active' : 'inactive'} /> }, { id: 'actions', header: '', cell: ({ row }) => <div className="flex gap-1"><Button asChild size="sm" variant="ghost"><Link to={`/knowledge/${row.original.id}`}>{t('knowledge.details')}</Link></Button><EntityDeleteButton canDelete={auth.hasPermission('knowledge:delete')} deletePath={`/knowledge/resources/${row.original.id}`} entityId={row.original.id} entityName={row.original.name} entityType="knowledge" onDeleted={async () => { await queryClient.invalidateQueries({ queryKey: ['knowledge'] }); showToast(t('knowledge.deleted')) }} /></div> },
-  ], [auth, queryClient, showToast, t])
-  const newFields: EntityFormField[] = [{ name: 'connectionName', label: t('knowledge.connectionName'), required: true }, { name: 'provider', label: t('knowledge.provider'), type: 'select', defaultValue: 'lightrag', required: true, options: [{ value: 'lightrag', label: t('knowledge.providerLightRag') }, { value: 'ragflow', label: t('knowledge.providerRagflow') }] }, { name: 'endpoint', label: t('knowledge.endpoint'), required: true }, { name: 'healthPath', label: t('knowledge.healthPath'), defaultValue: '/health', required: true }, { name: 'credential', label: t('knowledge.credential'), type: 'select', options: [{ value: '', label: t('knowledge.noCredential') }, ...(credentials.data?.items ?? []).map((item) => ({ value: item.id, label: item.name }))] }, { name: 'department', label: t('knowledge.department'), type: 'select', required: true, options: (departments.data ?? []).map((item) => ({ value: item.id, label: item.name })) }, { name: 'name', label: t('knowledge.resourceName'), required: true }, { name: 'externalResourceId', label: t('knowledge.externalId'), required: true }]
-  const existingFields: EntityFormField[] = [{ name: 'connectionId', label: t('knowledge.connection'), type: 'select', required: true, options: (connections.data ?? []).map((item) => ({ value: item.id, label: item.name })) }, { name: 'department', label: t('knowledge.department'), type: 'select', required: true, options: (departments.data ?? []).map((item) => ({ value: item.id, label: item.name })) }, { name: 'name', label: t('knowledge.resourceName'), required: true }, { name: 'externalResourceId', label: t('knowledge.externalId'), required: true }]
-  return <><ListPage loading={resources.isLoading} error={resources.error} action={auth.hasPermission('knowledge:manage') ? <div className="flex gap-2">{Boolean(connections.data?.length) && <Button onClick={() => setOpen('existing')} variant="secondary">{t('knowledge.addResource')}</Button>}<Button onClick={() => setOpen('new')}><Plus className="size-4" />{t('knowledge.create')}</Button></div> : undefined} columns={columns} data={resources.data?.items ?? []} description={t('knowledge.description')} getSearchText={(row) => `${row.name} ${row.connectionName} ${row.externalResourceId}`} getStatus={(row) => row.status === 'active' ? 'active' : 'inactive'} searchPlaceholder={t('knowledge.search')} statusOptions={[{ value: 'active', label: t('common.active') }, { value: 'inactive', label: t('common.inactive') }]} title={t('knowledge.title')} />{open && <EntityFormDialog cancelLabel={t('common.cancel')} fields={open === 'new' ? newFields : existingFields} onClose={() => setOpen(undefined)} onSubmit={(values) => create.mutateAsync(values).then(() => undefined)} open submitLabel={t('common.save')} title={open === 'new' ? t('knowledge.create') : t('knowledge.addResource')} />}</>
+  const refresh = async () => { await client.invalidateQueries({ queryKey: ['knowledge-connections'] }) }
+  const test = useMutation({ mutationFn: (id: string) => apiRequest<HealthCheck>(`/knowledge/connections/${id}/test-connection`, { method: 'POST' }), onSuccess: value => showToast(`${t(value.status === 'healthy' ? 'knowledge.healthy' : 'knowledge.unhealthy')} · ${value.latencyMs ?? 0} ms`), onError: (e: Error) => showToast(e.message) })
+  const remove = useMutation({ mutationFn: () => apiRequest(`/knowledge/connections/${removing!.id}`, { method: 'DELETE' }), onSuccess: async () => { setRemoving(undefined); await refresh(); showToast(t('knowledge.deleted')) }, onError: (e: Error) => showToast(e.message) })
+  const columns: ColumnDef<ExternalConnection>[] = [
+    { accessorKey: 'name', header: t('knowledge.connectionName'), cell: ({ row }) => <EntityCell icon={Library} name={row.original.name} detail={row.original.provider ?? ''} /> },
+    { accessorKey: 'endpoint', header: t('knowledge.endpoint') },
+    { accessorKey: 'status', header: t('common.status'), cell: ({ row }) => <StatusBadge status={row.original.status === 'active' ? 'active' : 'inactive'} /> },
+    { id: 'actions', header: '', cell: ({ row }) => <div className="flex justify-end gap-1">
+      <Button asChild size="sm" variant="ghost"><Link to={`/knowledge/${row.original.id}`}>{t('knowledge.details')}</Link></Button>
+      {auth.hasPermission('knowledge:manage') && <><Button size="sm" variant="ghost" onClick={() => setEditing(row.original)}>{t('common.edit')}</Button><Button size="sm" variant="ghost" disabled={test.isPending || row.original.status !== 'active'} onClick={() => test.mutate(row.original.id)}>{t('knowledge.connectionTest')}</Button></>}
+      {auth.hasPermission('knowledge:delete') && <Button size="sm" variant="ghost" className="text-danger" onClick={() => setRemoving(row.original)}>{t('common.delete')}</Button>}
+    </div> },
+  ]
+  return <>
+    <ListPage title={t('knowledge.title')} description={t('knowledge.description')} loading={connections.isLoading} error={connections.error} columns={columns} data={connections.data ?? []} getSearchText={row => `${row.name} ${row.provider} ${row.endpoint}`} searchPlaceholder={t('knowledge.search')} getStatus={row => row.status === 'active' ? 'active' : 'inactive'} statusOptions={[{ value: 'active', label: t('common.active') }, { value: 'inactive', label: t('common.inactive') }]} action={auth.hasPermission('knowledge:manage') ? <Button onClick={() => setEditing('new')}><Plus className="size-4" />{t('knowledge.create')}</Button> : undefined} />
+    {editing && <ConnectionForm connection={editing === 'new' ? undefined : editing} onClose={() => setEditing(undefined)} onSaved={refresh} />}
+    <ConfirmDialog open={Boolean(removing)} title={t('common.delete')} description={t('knowledge.deleteConnectionDescription', { name: removing?.name })} cancelLabel={t('common.cancel')} confirmLabel={t('common.delete')} pending={remove.isPending} onClose={() => setRemoving(undefined)} onConfirm={() => remove.mutateAsync().then(() => undefined)} />
+  </>
 }

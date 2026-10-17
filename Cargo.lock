@@ -276,6 +276,7 @@ dependencies = [
  "anyhow",
  "base64",
  "ed25519-dalek",
+ "futures",
  "ipnet",
  "jsonwebtoken",
  "rand 0.8.7",
@@ -286,6 +287,7 @@ dependencies = [
  "sha2",
  "thiserror 2.0.19",
  "time",
+ "url",
  "uuid",
 ]
 

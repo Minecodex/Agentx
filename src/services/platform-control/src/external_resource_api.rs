@@ -1,5 +1,5 @@
 use agentx_api_types::PageResponse;
-use agentx_runtime_contracts::RuntimeResourceProbeV1;
+use agentx_runtime_contracts::{RuntimeResourceProbeV1, rag::RagScope};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -26,15 +26,25 @@ pub fn routes() -> Router<ControlApiState> {
             get(list_rag_connections).post(create_rag_connection),
         )
         .route(
+            "/api/v1/knowledge/connections/{id}",
+            get(get_rag_connection)
+                .patch(update_rag_connection)
+                .delete(delete_rag_connection),
+        )
+        .route(
+            "/api/v1/knowledge/connections/{id}/catalog",
+            get(crate::knowledge_provider::catalog),
+        )
+        .route(
             "/api/v1/knowledge/connections/{id}/test-connection",
             post(test_rag_connection),
         )
         .route(
-            "/api/v1/knowledge/resources",
+            "/api/v1/knowledge/connections/{id}/queries",
             get(list_knowledge).post(create_knowledge),
         )
         .route(
-            "/api/v1/knowledge/resources/{id}",
+            "/api/v1/knowledge/queries/{id}",
             get(get_knowledge)
                 .patch(update_knowledge)
                 .delete(delete_knowledge),
@@ -77,45 +87,53 @@ pub(crate) struct ConnectionResponse {
     status: String,
     version: u64,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct CreateConnectionRequest {
+pub(crate) struct CreateConnectionRequest {
     name: String,
     provider: Option<String>,
     endpoint: String,
     health_path: Option<String>,
     credential_id: Option<Uuid>,
     owner_department_id: Uuid,
+    #[serde(default = "empty_configuration")]
     configuration: Value,
 }
-#[derive(Serialize)]
+fn empty_configuration() -> Value {
+    serde_json::json!({})
+}
+#[derive(Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
-struct KnowledgeResponse {
+pub(crate) struct KnowledgeResponse {
     id: Uuid,
     connection_id: Uuid,
     connection_name: String,
     name: String,
-    external_resource_id: String,
+    description: String,
+    scope: RagScope,
     owner_department_id: Uuid,
-    sync_status: String,
     status: String,
     grant_count: u64,
     version: u64,
     #[serde(with = "time::serde::rfc3339")]
+    #[schemars(with = "String")]
     updated_at: OffsetDateTime,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct CreateKnowledgeRequest {
-    connection_id: Uuid,
+pub(crate) struct CreateKnowledgeRequest {
     name: String,
-    external_resource_id: String,
+    description: String,
+    scope: RagScope,
     owner_department_id: Uuid,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct UpdateRequest {
+pub(crate) struct UpdateRequest {
     name: String,
+    description: String,
+    scope: RagScope,
+    owner_department_id: Uuid,
     status: String,
     version: u64,
 }
@@ -153,7 +171,18 @@ async fn test_rag_connection(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<HealthResponse>> {
     actor.require("knowledge:manage")?;
-    test_connection(&state, &actor, "rag_connections", "rag", id).await
+    let started = std::time::Instant::now();
+    crate::knowledge_provider::connection_provider(&state, &actor, id)
+        .await?
+        .catalog(&state)
+        .await?;
+    Ok(Json(HealthResponse {
+        status: "healthy".into(),
+        latency_ms: Some(started.elapsed().as_millis() as u64),
+        error_code: None,
+        error_message: None,
+        checked_at: OffsetDateTime::now_utc(),
+    }))
 }
 async fn list_memory_connections(
     State(state): State<ControlApiState>,
@@ -184,11 +213,22 @@ async fn test_memory_connection(
 async fn list_knowledge(
     State(state): State<ControlApiState>,
     actor: Actor,
+    Path(connection_id): Path<Uuid>,
     Query(query): Query<ListQuery>,
 ) -> ApiResult<Json<PageResponse<KnowledgeResponse>>> {
     actor.require("knowledge:view")?;
+    require_connection(&state, &actor, "rag_connections", connection_id).await?;
     let (page, page_size, search, status) = list_values(query);
-    let (rows, total) = knowledge_rows(&state, &actor, &search, &status, page, page_size).await?;
+    let (rows, total) = knowledge_rows(
+        &state,
+        &actor,
+        connection_id,
+        &search,
+        &status,
+        page,
+        page_size,
+    )
+    .await?;
     Ok(Json(PageResponse {
         items: rows
             .into_iter()
@@ -202,23 +242,27 @@ async fn list_knowledge(
 async fn create_knowledge(
     State(state): State<ControlApiState>,
     actor: Actor,
+    Path(connection_id): Path<Uuid>,
     Json(input): Json<CreateKnowledgeRequest>,
 ) -> ApiResult<(StatusCode, Json<KnowledgeResponse>)> {
     actor.require("knowledge:manage")?;
     require_department_scope(&state, &actor, input.owner_department_id).await?;
-    require_connection(&state, &actor, "rag_connections", input.connection_id).await?;
-    let provider: String =
-        sqlx::query_scalar("SELECT provider FROM rag_connections WHERE tenant_id=? AND id=?")
-            .bind(actor.tenant_id)
-            .bind(input.connection_id)
-            .fetch_one(&state.pool)
-            .await?;
-    if provider == "lightrag" {
-        agentx_runtime_contracts::rag::validate_lightrag_workspace(&input.external_resource_id)
-            .map_err(|error| ApiError::bad_request(error.code, error.message))?;
-    }
+    require_connection(&state, &actor, "rag_connections", connection_id).await?;
+    crate::knowledge_provider::validate_scope(&state, &actor, connection_id, &input.scope).await?;
+    validate_description(&input.description)?;
     let id = Uuid::now_v7();
-    sqlx::query("INSERT INTO rag_resources(id,tenant_id,connection_id,name,external_resource_id,owner_department_id) VALUES(?,?,?,?,?,?)").bind(id).bind(actor.tenant_id).bind(input.connection_id).bind(required_name(&input.name)?).bind(required_external(&input.external_resource_id)?).bind(input.owner_department_id).execute(&state.pool).await.map_err(|error|map_external_error(error,"KNOWLEDGE_EXTERNAL_RESOURCE_ID_EXISTS"))?;
+    let mut tx = state.pool.begin().await?;
+    // Serialize query creation with connection deletion.
+    sqlx::query("SELECT id FROM rag_connections WHERE tenant_id=? AND id=? FOR UPDATE")
+        .bind(actor.tenant_id)
+        .bind(connection_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Connection"))?;
+    sqlx::query("INSERT INTO rag_resources(id,tenant_id,connection_id,name,description,scope_json,owner_department_id) VALUES(?,?,?,?,?,?,?)")
+        .bind(id).bind(actor.tenant_id).bind(connection_id).bind(required_name(&input.name)?).bind(input.description).bind(serde_json::to_value(input.scope).map_err(ApiError::internal)?).bind(input.owner_department_id)
+        .execute(&mut *tx).await.map_err(|e|map_external_error(e,"KNOWLEDGE_NAME_EXISTS"))?;
+    tx.commit().await?;
     Ok((
         StatusCode::CREATED,
         Json(load_knowledge(&state, actor.tenant_id, id).await?),
@@ -242,7 +286,14 @@ async fn update_knowledge(
     actor.require("knowledge:manage")?;
     require_resource(&state, &actor, "rag_resources", id).await?;
     validate_status(&input.status)?;
-    let changed=sqlx::query("UPDATE rag_resources SET name=?,status=?,version=version+1 WHERE tenant_id=? AND id=? AND version=?").bind(required_name(&input.name)?).bind(input.status).bind(actor.tenant_id).bind(id).bind(input.version).execute(&state.pool).await?;
+    require_department_scope(&state, &actor, input.owner_department_id).await?;
+    validate_description(&input.description)?;
+    let current = load_knowledge(&state, actor.tenant_id, id).await?;
+    crate::knowledge_provider::validate_scope(&state, &actor, current.connection_id, &input.scope)
+        .await?;
+    let changed = sqlx::query("UPDATE rag_resources SET name=?,description=?,scope_json=?,owner_department_id=?,status=?,version=version+1 WHERE tenant_id=? AND id=? AND version=?")
+        .bind(required_name(&input.name)?).bind(input.description).bind(serde_json::to_value(input.scope).map_err(ApiError::internal)?).bind(input.owner_department_id).bind(input.status).bind(actor.tenant_id).bind(id).bind(input.version)
+        .execute(&state.pool).await.map_err(|e|map_external_error(e,"KNOWLEDGE_NAME_EXISTS"))?;
     if changed.rows_affected() != 1 {
         return Err(ApiError::conflict(
             "KNOWLEDGE_VERSION_CONFLICT",
@@ -256,7 +307,7 @@ async fn delete_knowledge(
     actor: Actor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    actor.require("knowledge:manage")?;
+    actor.require("knowledge:delete")?;
     delete_resource(&state, &actor, "rag", "rag_resources", id, None).await
 }
 
@@ -276,7 +327,13 @@ async fn create_connection(
             "Connection endpoint must use HTTP or HTTPS",
         ));
     }
-    let health = input.health_path.unwrap_or_else(|| "/health".into());
+    let health = input.health_path.unwrap_or_else(|| {
+        if input.provider.as_deref() == Some("ragflow") {
+            "/v1/system/healthz".into()
+        } else {
+            "/health".into()
+        }
+    });
     if !health.starts_with('/') || health.len() > 512 {
         return Err(ApiError::bad_request(
             "INVALID_HEALTH_PATH",
@@ -433,22 +490,23 @@ async fn test_connection(
 async fn knowledge_rows(
     state: &ControlApiState,
     actor: &Actor,
+    connection_id: Uuid,
     search: &str,
     status: &str,
     page: u32,
     page_size: u32,
 ) -> ApiResult<(Vec<MySqlRow>, i64)> {
     if actor.roles.iter().any(|role| role == "company_admin") {
-        let rows=sqlx::query("SELECT r.id,r.connection_id,c.name connection_name,r.name,r.external_resource_id,r.owner_department_id,r.sync_status,r.status,r.version,r.updated_at,(SELECT COUNT(*) FROM resource_grants g WHERE g.tenant_id=r.tenant_id AND g.resource_type='rag' AND g.resource_id=r.id AND g.subject_type='workflow_service_identity') grant_count FROM rag_resources r JOIN rag_connections c ON c.tenant_id=r.tenant_id AND c.id=r.connection_id WHERE r.tenant_id=? AND (?='' OR r.status=?) AND (?='%%' OR r.name LIKE ?) ORDER BY r.updated_at DESC,r.id DESC LIMIT ? OFFSET ?").bind(actor.tenant_id).bind(status).bind(status).bind(search).bind(search).bind(page_size).bind(u64::from((page-1)*page_size)).fetch_all(&state.pool).await?;
-        let total=sqlx::query_scalar("SELECT COUNT(*) FROM rag_resources r WHERE r.tenant_id=? AND (?='' OR r.status=?) AND (?='%%' OR r.name LIKE ?)").bind(actor.tenant_id).bind(status).bind(status).bind(search).bind(search).fetch_one(&state.pool).await?;
+        let rows=sqlx::query("SELECT r.id,r.connection_id,c.name connection_name,r.name,r.description,r.scope_json,r.owner_department_id,r.status,r.version,r.updated_at,(SELECT COUNT(*) FROM resource_grants g WHERE g.tenant_id=r.tenant_id AND g.resource_type='rag' AND g.resource_id=r.id) grant_count FROM rag_resources r JOIN rag_connections c ON c.tenant_id=r.tenant_id AND c.id=r.connection_id WHERE r.tenant_id=? AND r.connection_id=? AND (?='' OR r.status=?) AND (?='%%' OR r.name LIKE ?) ORDER BY r.updated_at DESC,r.id DESC LIMIT ? OFFSET ?").bind(actor.tenant_id).bind(connection_id).bind(status).bind(status).bind(search).bind(search).bind(page_size).bind(u64::from((page-1)*page_size)).fetch_all(&state.pool).await?;
+        let total=sqlx::query_scalar("SELECT COUNT(*) FROM rag_resources r WHERE r.tenant_id=? AND r.connection_id=? AND (?='' OR r.status=?) AND (?='%%' OR r.name LIKE ?)").bind(actor.tenant_id).bind(connection_id).bind(status).bind(status).bind(search).bind(search).fetch_one(&state.pool).await?;
         Ok((rows, total))
     } else {
-        let rows=sqlx::query("SELECT r.id,r.connection_id,c.name connection_name,r.name,r.external_resource_id,r.owner_department_id,r.sync_status,r.status,r.version,r.updated_at,(SELECT COUNT(*) FROM resource_grants g WHERE g.tenant_id=r.tenant_id AND g.resource_type='rag' AND g.resource_id=r.id AND g.subject_type='workflow_service_identity') grant_count FROM rag_resources r JOIN rag_connections c ON c.tenant_id=r.tenant_id AND c.id=r.connection_id WHERE r.tenant_id=? AND EXISTS(SELECT 1 FROM department_closure dc WHERE dc.tenant_id=r.tenant_id AND dc.ancestor_id=? AND dc.descendant_id=r.owner_department_id) AND (?='' OR r.status=?) AND (?='%%' OR r.name LIKE ?) ORDER BY r.updated_at DESC,r.id DESC LIMIT ? OFFSET ?").bind(actor.tenant_id).bind(actor.department_id).bind(status).bind(status).bind(search).bind(search).bind(page_size).bind(u64::from((page-1)*page_size)).fetch_all(&state.pool).await?;
-        let total=sqlx::query_scalar("SELECT COUNT(*) FROM rag_resources r WHERE r.tenant_id=? AND EXISTS(SELECT 1 FROM department_closure dc WHERE dc.tenant_id=r.tenant_id AND dc.ancestor_id=? AND dc.descendant_id=r.owner_department_id) AND (?='' OR r.status=?) AND (?='%%' OR r.name LIKE ?)").bind(actor.tenant_id).bind(actor.department_id).bind(status).bind(status).bind(search).bind(search).fetch_one(&state.pool).await?;
+        let rows=sqlx::query("SELECT r.id,r.connection_id,c.name connection_name,r.name,r.description,r.scope_json,r.owner_department_id,r.status,r.version,r.updated_at,(SELECT COUNT(*) FROM resource_grants g WHERE g.tenant_id=r.tenant_id AND g.resource_type='rag' AND g.resource_id=r.id) grant_count FROM rag_resources r JOIN rag_connections c ON c.tenant_id=r.tenant_id AND c.id=r.connection_id WHERE r.tenant_id=? AND r.connection_id=? AND EXISTS(SELECT 1 FROM department_closure dc WHERE dc.tenant_id=r.tenant_id AND dc.ancestor_id=? AND dc.descendant_id=r.owner_department_id) AND (?='' OR r.status=?) AND (?='%%' OR r.name LIKE ?) ORDER BY r.updated_at DESC,r.id DESC LIMIT ? OFFSET ?").bind(actor.tenant_id).bind(connection_id).bind(actor.department_id).bind(status).bind(status).bind(search).bind(search).bind(page_size).bind(u64::from((page-1)*page_size)).fetch_all(&state.pool).await?;
+        let total=sqlx::query_scalar("SELECT COUNT(*) FROM rag_resources r WHERE r.tenant_id=? AND r.connection_id=? AND EXISTS(SELECT 1 FROM department_closure dc WHERE dc.tenant_id=r.tenant_id AND dc.ancestor_id=? AND dc.descendant_id=r.owner_department_id) AND (?='' OR r.status=?) AND (?='%%' OR r.name LIKE ?)").bind(actor.tenant_id).bind(connection_id).bind(actor.department_id).bind(status).bind(status).bind(search).bind(search).fetch_one(&state.pool).await?;
         Ok((rows, total))
     }
 }
-async fn require_connection(
+pub(crate) async fn require_connection(
     state: &ControlApiState,
     actor: &Actor,
     table: &str,
@@ -585,21 +643,6 @@ async fn delete_resource(
             "Resource is referenced",
         ));
     }
-    if table == "rag_resources" {
-        let documents: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM knowledge_documents WHERE tenant_id=? AND rag_resource_id=?",
-        )
-        .bind(actor.tenant_id)
-        .bind(id)
-        .fetch_one(&mut *tx)
-        .await?;
-        if documents != 0 {
-            return Err(ApiError::conflict(
-                "RESOURCE_REFERENCED",
-                "Delete knowledge documents before deleting their resource",
-            ));
-        }
-    }
     let sql = match table {
         "rag_resources" => "DELETE FROM rag_resources WHERE tenant_id=? AND id=?",
         "memory_connections" => "DELETE FROM memory_connections WHERE tenant_id=? AND id=?",
@@ -613,7 +656,7 @@ async fn delete_resource(
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
-async fn require_department_scope(
+pub(crate) async fn require_department_scope(
     state: &ControlApiState,
     actor: &Actor,
     id: Uuid,
@@ -670,7 +713,7 @@ async fn load_knowledge(
     tenant: Uuid,
     id: Uuid,
 ) -> ApiResult<KnowledgeResponse> {
-    let row=sqlx::query("SELECT r.id,r.connection_id,c.name connection_name,r.name,r.external_resource_id,r.owner_department_id,r.sync_status,r.status,r.version,r.updated_at,(SELECT COUNT(*) FROM resource_grants g WHERE g.tenant_id=r.tenant_id AND g.resource_type='rag' AND g.resource_id=r.id AND g.subject_type='workflow_service_identity') grant_count FROM rag_resources r JOIN rag_connections c ON c.tenant_id=r.tenant_id AND c.id=r.connection_id WHERE r.tenant_id=? AND r.id=?").bind(tenant).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Knowledge resource"))?;
+    let row=sqlx::query("SELECT r.id,r.connection_id,c.name connection_name,r.name,r.description,r.scope_json,r.owner_department_id,r.status,r.version,r.updated_at,(SELECT COUNT(*) FROM resource_grants g WHERE g.tenant_id=r.tenant_id AND g.resource_type='rag' AND g.resource_id=r.id) grant_count FROM rag_resources r JOIN rag_connections c ON c.tenant_id=r.tenant_id AND c.id=r.connection_id WHERE r.tenant_id=? AND r.id=?").bind(tenant).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Knowledge resource"))?;
     Ok(knowledge_from_row(row)?)
 }
 fn connection_from_row(row: MySqlRow) -> Result<ConnectionResponse, sqlx::Error> {
@@ -693,9 +736,10 @@ fn knowledge_from_row(row: MySqlRow) -> Result<KnowledgeResponse, sqlx::Error> {
         connection_id: row.try_get("connection_id")?,
         connection_name: row.try_get("connection_name")?,
         name: row.try_get("name")?,
-        external_resource_id: row.try_get("external_resource_id")?,
+        description: row.try_get("description")?,
+        scope: serde_json::from_value(row.try_get("scope_json")?)
+            .map_err(|error| sqlx::Error::Decode(Box::new(error)))?,
         owner_department_id: row.try_get("owner_department_id")?,
-        sync_status: row.try_get("sync_status")?,
         status: row.try_get("status")?,
         grant_count: row.try_get::<i64, _>("grant_count")? as u64,
         version: row.try_get("version")?,
@@ -722,29 +766,20 @@ fn validate_status(value: &str) -> ApiResult<()> {
         ))
     }
 }
-fn required_external(value: &str) -> ApiResult<String> {
-    let value = value.trim();
-    if value.is_empty() || value.len() > 512 {
-        Err(ApiError::bad_request(
-            "INVALID_EXTERNAL_REFERENCE",
-            "External reference must contain 1 to 512 bytes",
-        ))
-    } else {
-        Ok(value.to_owned())
+fn validate_description(value: &str) -> ApiResult<()> {
+    if value.chars().count() > 2000 {
+        return Err(ApiError::bad_request(
+            "INVALID_DESCRIPTION",
+            "Purpose must be at most 2000 characters",
+        ));
     }
+    Ok(())
 }
 fn map_external_error(error: sqlx::Error, code: &'static str) -> ApiError {
     match &error {
         sqlx::Error::Database(database) if database.is_unique_violation() => {
-            let field = match code {
-                "KNOWLEDGE_EXTERNAL_RESOURCE_ID_EXISTS" => "externalResourceId",
-                _ => "name",
-            };
-            ApiError::conflict(code, "External resource reference already exists").with_field_error(
-                field,
-                code,
-                "External resource reference already exists",
-            )
+            ApiError::conflict(code, "Query name already exists in this connection")
+                .with_field_error("name", code, "Query name already exists in this connection")
         }
         _ => ApiError::from(error),
     }
@@ -760,6 +795,137 @@ async fn get_memory_connection(
     Ok(Json(
         load_connection(&state, actor.tenant_id, "memory_connections", id).await?,
     ))
+}
+
+async fn get_rag_connection(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<ConnectionResponse>> {
+    actor.require("knowledge:view")?;
+    require_connection(&state, &actor, "rag_connections", id).await?;
+    Ok(Json(
+        load_connection(&state, actor.tenant_id, "rag_connections", id).await?,
+    ))
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct UpdateRagConnectionRequest {
+    name: String,
+    provider: String,
+    endpoint: String,
+    credential_id: Option<Uuid>,
+    owner_department_id: Uuid,
+    status: String,
+    version: u64,
+}
+
+async fn update_rag_connection(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Path(id): Path<Uuid>,
+    Json(input): Json<UpdateRagConnectionRequest>,
+) -> ApiResult<Json<ConnectionResponse>> {
+    actor.require("knowledge:manage")?;
+    require_connection(&state, &actor, "rag_connections", id).await?;
+    require_department_scope(&state, &actor, input.owner_department_id).await?;
+    require_credential(&state, actor.tenant_id, input.credential_id).await?;
+    validate_status(&input.status)?;
+    let endpoint = Url::parse(&input.endpoint)
+        .map_err(|_| ApiError::bad_request("INVALID_ENDPOINT", "Connection endpoint is invalid"))?;
+    if !matches!(endpoint.scheme(), "http" | "https")
+        || !matches!(input.provider.as_str(), "lightrag" | "ragflow")
+    {
+        return Err(ApiError::bad_request(
+            "INVALID_CONNECTION",
+            "Select an HTTP endpoint and a supported provider",
+        ));
+    }
+    crate::resource_api::require_knowledge_credential(&state, &actor, input.credential_id).await?;
+    let current = load_connection(&state, actor.tenant_id, "rag_connections", id).await?;
+    if current.endpoint != input.endpoint
+        || current.provider.as_deref() != Some(&input.provider)
+        || current.credential_id != input.credential_id
+    {
+        let scopes: Vec<Value> = sqlx::query_scalar(
+            "SELECT scope_json FROM rag_resources WHERE tenant_id=? AND connection_id=?",
+        )
+        .bind(actor.tenant_id)
+        .bind(id)
+        .fetch_all(&state.pool)
+        .await?;
+        if !scopes.is_empty() {
+            let provider = crate::knowledge_provider::Provider::new(
+                &state,
+                actor.tenant_id,
+                &input.provider,
+                &input.endpoint,
+                input.credential_id,
+            )
+            .await?;
+            let catalog = provider.catalog(&state).await?;
+            for scope in scopes {
+                crate::knowledge_provider::scope_in_catalog(
+                    &serde_json::from_value(scope).map_err(ApiError::internal)?,
+                    &input.provider,
+                    &catalog,
+                )?;
+            }
+        }
+    }
+    let health = if input.provider == "ragflow" {
+        "/v1/system/healthz"
+    } else {
+        "/health"
+    };
+    let changed = sqlx::query("UPDATE rag_connections SET name=?,provider=?,endpoint=?,health_path=?,credential_id=?,owner_department_id=?,status=?,version=version+1 WHERE tenant_id=? AND id=? AND version=?")
+        .bind(required_name(&input.name)?).bind(input.provider).bind(input.endpoint).bind(health).bind(input.credential_id).bind(input.owner_department_id).bind(input.status).bind(actor.tenant_id).bind(id).bind(input.version).execute(&state.pool).await?;
+    if changed.rows_affected() != 1 {
+        return Err(ApiError::conflict(
+            "KNOWLEDGE_VERSION_CONFLICT",
+            "Connection changed",
+        ));
+    }
+    Ok(Json(
+        load_connection(&state, actor.tenant_id, "rag_connections", id).await?,
+    ))
+}
+
+async fn delete_rag_connection(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    actor.require("knowledge:delete")?;
+    require_connection(&state, &actor, "rag_connections", id).await?;
+    let mut tx = state.pool.begin().await?;
+    sqlx::query("SELECT id FROM rag_connections WHERE tenant_id=? AND id=? FOR UPDATE")
+        .bind(actor.tenant_id)
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Connection"))?;
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM rag_resources WHERE tenant_id=? AND connection_id=?",
+    )
+    .bind(actor.tenant_id)
+    .bind(id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if count > 0 {
+        return Err(ApiError::conflict(
+            "RESOURCE_REFERENCED",
+            "Delete the connection's query configurations first",
+        ));
+    }
+    sqlx::query("DELETE FROM rag_connections WHERE tenant_id=? AND id=?")
+        .bind(actor.tenant_id)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -841,8 +1007,7 @@ mod tests {
     use super::*;
     #[test]
     fn validates_external_contract() {
-        assert!(required_external("namespace").is_ok());
-        assert!(required_external("").is_err());
+        assert!(validate_description("Query purpose").is_ok());
         assert!(validate_status("active").is_ok());
     }
 }

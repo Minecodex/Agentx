@@ -560,7 +560,7 @@ async fn create_runtime_invocation_tx_inner(
             RuntimeError::InvalidRequest("INPUT_SCHEMA_VALIDATION_FAILED", error.to_string())
         })?;
     let input_artifact_ids =
-        validate_invocation_artifacts(tx, tenant_id, &input, &spec.input_contract).await?;
+        validate_input_artifacts(tx, tenant_id, &input, &spec.input_contract).await?;
     let invocation_id = Uuid::now_v7();
     let execution_id = Uuid::now_v7();
     let started_at = OffsetDateTime::now_utc();
@@ -594,14 +594,7 @@ async fn create_runtime_invocation_tx_inner(
         .bind(origin.initiator_user_id).bind(&origin.initiator_user_name).bind(origin.initiator_department_id).bind(&origin.initiator_department_name).bind(origin.trigger_source_id).bind(&origin.trigger_name)
         .bind(started_at)
         .bind(&input).execute(&mut **tx).await?;
-    for artifact_id in input_artifact_ids {
-        sqlx::query("INSERT IGNORE INTO artifact_references(tenant_id,artifact_id,owner_type,owner_id,reference_role) VALUES(?,?,'execution',?,'input')")
-            .bind(tenant_id)
-            .bind(artifact_id)
-            .bind(execution_id.to_string())
-            .execute(&mut **tx)
-            .await?;
-    }
+    reference_execution_input_artifacts(tx, tenant_id, execution_id, &input_artifact_ids).await?;
     let compiled_ir = serde_json::to_value(&spec.compiled_ir)
         .map_err(|error| RuntimeError::Internal(error.into()))?;
     let resource_snapshot = serde_json::to_value(&spec.resources)
@@ -907,7 +900,24 @@ struct ArtifactInputConstraint {
     max_total_size_bytes: Option<u64>,
 }
 
-async fn validate_invocation_artifacts(
+pub(crate) async fn reference_execution_input_artifacts(
+    tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
+    tenant_id: Uuid,
+    execution_id: Uuid,
+    artifact_ids: &[Uuid],
+) -> RuntimeResult<()> {
+    for artifact_id in artifact_ids {
+        sqlx::query("INSERT IGNORE INTO artifact_references(tenant_id,artifact_id,owner_type,owner_id,reference_role) VALUES(?,?,'execution',?,'input')")
+            .bind(tenant_id)
+            .bind(artifact_id)
+            .bind(execution_id.to_string())
+            .execute(&mut **tx)
+            .await?;
+    }
+    Ok(())
+}
+
+pub(crate) async fn validate_input_artifacts(
     tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
     tenant_id: Uuid,
     input: &Value,
@@ -991,6 +1001,10 @@ fn collect_artifact_constraints(
         .get("x-agentx-artifact")
         .and_then(Value::as_bool)
         .unwrap_or(false)
+        || schema
+            .get("x-agentx-artifact-array")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
     {
         let references = if schema
             .get("x-agentx-artifact-array")
@@ -1373,9 +1387,38 @@ async fn process_cancel_command(
 
 #[cfg(test)]
 mod tests {
-    use super::{project_chat_message_input, validate_runtime_chat_mapping};
+    use super::{
+        collect_artifact_constraints, project_chat_message_input, validate_runtime_chat_mapping,
+    };
     use agentx_runtime_contracts::ChatMappingV1;
     use serde_json::json;
+
+    #[test]
+    fn an_artifact_array_marker_also_enforces_reference_validation() {
+        let id = uuid::Uuid::now_v7();
+        let schema = json!({"type":"object","properties":{
+            "files":{"type":"array","x-agentx-artifact-array":true}
+        }});
+        let mut constraints = Vec::new();
+        collect_artifact_constraints(
+            &json!({"files":[{"artifactId":id}]}),
+            &schema,
+            "input",
+            &mut constraints,
+        )
+        .unwrap();
+        assert_eq!(constraints.len(), 1);
+        assert_eq!(constraints[0].artifact_ids, vec![id]);
+        assert!(
+            collect_artifact_constraints(
+                &json!({"files":[{"fileName":"missing-id.csv"}]}),
+                &schema,
+                "input",
+                &mut Vec::new(),
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn chat_message_is_projected_only_to_explicitly_mapped_fields() {

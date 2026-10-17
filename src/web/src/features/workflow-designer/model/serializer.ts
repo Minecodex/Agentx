@@ -45,7 +45,7 @@ export function serializeStudio(document: StudioDocument): { definition: Workflo
     start: { inputs: document.start.inputs, contexts: Object.fromEntries(Object.entries(document.start.contexts).map(([name, field]) => [name, {...field,title:field.title ?? null,description:field.description ?? null,maxSize:field.maxSize ?? null}])) },
     settings: { ...document.settings, timeoutMs: document.settings.timeoutMs ?? null },
       nodes: nodes.map(node => node.data.editorKind === 'action'
-        ? { id: node.id, key: node.data.key, type: node.data.nodeType, typeVersion: node.data.typeVersion, name: node.data.label, disabled: node.data.disabled, parentId: node.data.parentId, protected: false, parameters: node.data.parameters, contextWrites: node.data.contextWrites, resourceReferences: node.data.resourceReferences, settings: normalizedNodeSettings(node.data.settings) }
+        ? { id: node.id, key: node.data.key, type: node.data.nodeType, typeVersion: node.data.typeVersion, name: node.data.label, disabled: node.data.disabled, parentId: node.data.parentId, protected: false, parameters: node.data.parameters, contextWrites: node.data.contextWrites, resourceReferences: normalizedResourceReferences(node.data.resourceReferences), settings: normalizedNodeSettings(node.data.settings) }
         : { id: node.id, key: node.data.key, type: EXIT_NODE_TYPE, typeVersion: 1, name: node.data.label, disabled: false, protected: node.data.protected, parameters: node.data.parameters as unknown as Record<string, unknown>, contextWrites: [], resourceReferences: [], settings: normalizedNodeSettings({}) }),
       connections,
       end: document.end,
@@ -59,6 +59,16 @@ export function serializeStudio(document: StudioDocument): { definition: Workflo
       viewport: document.viewport,
     },
   }
+}
+
+function normalizedResourceReferences(references: WorkflowDefinition['nodes'][number]['resourceReferences']) {
+  // Match the Rust Definition contract: absent optional fields are omitted.
+  // Picker options use null for unversioned resources; hashing must not retain it.
+  return references.map(({ bindingRole, resourceVersionId, ...reference }) => ({
+    ...reference,
+    ...(bindingRole == null ? {} : { bindingRole }),
+    ...(resourceVersionId == null ? {} : { resourceVersionId }),
+  }))
 }
 
 function normalizeEditor(value: unknown): EditorDocument {

@@ -25,102 +25,97 @@ async function login(page: Page) {
   return ((await (await response).json()) as { accessToken: string }).accessToken
 }
 
-async function createKnowledge(page: Page, token: string, stamp: string) {
-  const departments = (await (await page.request.get('/api/v1/departments?pageSize=100', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })).json()) as unknown as Array<{ id: string }>
-  const department = departments[0]
-  void stamp
-  // create connection + resource via API (UI form is covered by m2.1 spec)
-  // The e2e LightRAG fixture enforces its fixture API key on insert/query.
-  const credential = await page.request.post('/api/v1/credentials', {
-    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
-    data: { name: `E2E Knowledge Key ${stamp}`, credentialType: 'bearer', secret: process.env.AGENTX_E2E_LIGHTRAG_API_KEY ?? 'agentx-v2-04-rag-key', ownerDepartmentId: department.id },
-  })
-  if (credential.status() !== 201 && credential.status() !== 200) throw new Error(`credential: ${credential.status()} ${await credential.text()}`)
-  const credentialId = ((await credential.json()) as { id: string }).id
-  const connection = await page.request.post('/api/v1/knowledge/connections', {
-    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
-    data: { name: `E2E Management Connection ${stamp}`, provider: 'lightrag', endpoint: process.env.AGENTX_E2E_LIGHTRAG_BASE_URL ?? 'http://lightrag:9621', healthPath: '/health', credentialId, ownerDepartmentId: department.id, configuration: {} },
-  })
-  if (connection.status() !== 201 && connection.status() !== 200) throw new Error(`connection: ${connection.status()} ${await connection.text()}`)
-  const connectionId = ((await connection.json()) as { id: string }).id
-  const resource = await page.request.post('/api/v1/knowledge/resources', {
-    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
-    data: { connectionId, name: `E2E Management Resource ${stamp}`, externalResourceId: `e2e_mgmt_${stamp}`, ownerDepartmentId: department.id },
-  })
-  if (resource.status() !== 201 && resource.status() !== 200) throw new Error(`resource: ${resource.status()} ${await resource.text()}`)
-  const created = (await resource.json()) as { id: string }
-  return { connectionId, resourceId: created.id, departmentId: department.id }
+async function choose(page: Page, label: string, value: string) {
+  await page.getByRole('dialog').getByRole('combobox', { name: label, exact: true }).click()
+  await page.getByRole('option', { name: value, exact: true }).click()
 }
 
-async function uploadDocument(page: Page, token: string, resourceId: string, name: string, content: string) {
-  const form = new FormData()
-  form.append('file', new File([content], name, { type: 'text/markdown' }))
-  const response = await page.request.post(`/api/v1/knowledge/resources/${resourceId}/documents`, {
-    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
-    timeout: 90_000,
-    multipart: { file: { name, mimeType: 'text/markdown', buffer: Buffer.from(content) } },
-  })
-  return response
-}
-
-test.describe.serial('Knowledge management', () => {
-  test('upload, index, list and hit-test a document', async ({ page }, testInfo) => {
-    test.setTimeout(600_000)
-    const token = await login(page)
-    const stamp = `${Date.now()}`
-    const { resourceId } = await createKnowledge(page, token, stamp)
-
-    // Upload a markdown document through the API (multipart).
-    const content = `# E2E Knowledge Document\n\nThe secret codename for release ${stamp} is sapphire-orbit-${stamp}.`
-    const upload = await uploadDocument(page, token, resourceId, `e2e-doc-${stamp}.md`, content)
-    expect(upload.status()).toBe(202)
-    const uploadBody = await upload.json() as { id: string; status: string }
-    expect(['uploading', 'indexing']).toContain(uploadBody.status)
-    let document: { status: string; externalDocumentId: string; id: string } | undefined
-    await expect.poll(async () => {
-      const response = await page.request.get(`/api/v1/knowledge/resources/${resourceId}/documents`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
-      expect(response.status()).toBe(200)
-      document = (await response.json()).find((item: { id: string }) => item.id === uploadBody.id)
-      if (document?.status === 'failed') throw new Error(JSON.stringify(document))
-      return document?.status
-    }, { timeout: 300_000 }).toBe('indexed')
-    expect(document?.externalDocumentId).toBeTruthy()
-    const fileSource = `agentx_${uploadBody.id.replaceAll('-', '')}.txt`
-
-    // Detail page: documents section lists the indexed document.
-    await page.goto(`/knowledge/${resourceId}`)
-    await expect(page.getByRole('heading', { name: '文档管理' })).toBeVisible()
-    await expect(page.getByText(`e2e-doc-${stamp}.md`)).toBeVisible()
-    await expect(page.getByText('已索引')).toBeVisible()
-
-    // Duplicate upload is rejected with a stable error code.
-    const duplicate = await uploadDocument(page, token, resourceId, `e2e-doc-${stamp}.md`, content)
-    expect([422, 409]).toContain(duplicate.status())
-
-    // Hit-testing: LightRAG indexing continues in the background after the
-    // documents/text ack, so poll the retrieval-test until chunks land.
-    let result: { documents?: Array<Record<string, unknown>> } | undefined
-    const retrievalDeadline = Date.now() + 180_000
-    while (Date.now() < retrievalDeadline) {
-      const retrieval = await page.request.post(`/api/v1/knowledge/resources/${resourceId}/retrieval-test`, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        data: { query: `release codename ${stamp}`, topK: 5 },
-        timeout: 30_000,
-      })
-      if (!retrieval.ok()) throw new Error(`retrieval: ${retrieval.status()} ${await retrieval.text()}`)
-      const body = (await retrieval.json()) as { documents?: Array<Record<string, unknown>> }
-      if ((body.documents?.length ?? 0) > 0) { result = body; break }
-      await page.waitForTimeout(5_000)
+for (const provider of ['ragflow', 'lightrag'] as const) test(`${provider} connection and query CRUD, grants, external documents and retrieval dialog`, async ({ page }, info) => {
+  const token = await login(page)
+  const headers = { Authorization: `Bearer ${token}` }
+  const departments = await (await page.request.get('/api/v1/departments', { headers })).json()
+  const name = `Knowledge ${provider} ${Date.now()}`
+  await page.goto('/knowledge')
+  await page.getByRole('button', { name: '新建连接', exact: true }).click()
+  let form = page.getByRole('dialog')
+  await form.getByLabel('连接名称').fill(name)
+  await choose(page, '服务协议', provider === 'ragflow' ? 'RAGFlow' : 'LightRAG')
+  await form.getByLabel('服务地址').fill(process.env.AGENTX_E2E_KNOWLEDGE_ENDPOINT!)
+  await choose(page, '所属部门', departments[0].name)
+  await expect(form.getByText('资源名称', { exact: true })).toHaveCount(0)
+  await expect(form.getByText('外部资源 ID', { exact: true })).toHaveCount(0)
+  await form.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(form).toBeHidden()
+  const row = page.getByRole('row').filter({ hasText: name })
+  await row.getByRole('button', { name: '测试连接', exact: true }).click()
+  await expect(page.getByText(/^连接正常 ·/)).toBeVisible()
+  await row.getByRole('link', { name: '详情', exact: true }).click()
+  const connectionId = page.url().split('/').at(-1)!
+  await page.getByRole('button', { name: '新建查询', exact: true }).click()
+  form = page.getByRole('dialog')
+  await form.getByLabel('查询名称').fill(`${name} query`)
+  await form.getByLabel('用途说明').fill('Launch and support questions')
+  if (provider === 'ragflow') {
+    await form.getByRole('checkbox', { name: /Product documentation/ }).check()
+    await form.getByRole('checkbox', { name: /Support handbook/ }).check()
+  } else await choose(page, '工作区', '默认工作区')
+  await form.getByRole('button', { name: '保存', exact: true }).click()
+  const grants = page.getByRole('dialog', { name: `管理“${name} query”的授权`, exact: true })
+  await expect(grants).toBeVisible()
+  await choose(page, '授权对象类型', '部门')
+  await choose(page, '授权对象', departments[0].name)
+  await grants.getByRole('button', { name: '添加授权', exact: true }).click()
+  await expect(grants.getByRole('button', { name: '撤销授权', exact: true })).toBeVisible()
+  await grants.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(page.getByRole('heading', { name: `${name} query`, exact: true })).toBeVisible()
+  await expect(page.getByText(/1 条授权/)).toBeVisible()
+  const queries = await (await page.request.get(`/api/v1/knowledge/connections/${connectionId}/queries`, { headers })).json()
+  const query = queries.items[0]
+  expect(query.scope).toEqual(provider === 'ragflow' ? { kind: 'ragflow', datasetIds: ['dataset-a', 'dataset-b'] } : { kind: 'lightrag', workspace: '' })
+  const protectedDelete = await page.request.delete(`/api/v1/knowledge/connections/${connectionId}`, { headers })
+  expect(protectedDelete.status()).toBe(409)
+  await page.getByRole('button', { name: '外部文档', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('Launch guide')
+  await expect(page.getByRole('dialog').getByRole('button', { name: /上传|删除/ })).toHaveCount(0)
+  await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click()
+  await page.getByRole('button', { name: '检索测试', exact: true }).click()
+  form = page.getByRole('dialog')
+  for (const text of [provider === 'ragflow' ? 'fixture-partial' : 'launch code', 'fixture-empty', 'fixture-error']) {
+    await form.getByPlaceholder('输入查询内容验证检索').fill(text)
+    await form.getByRole('button', { name: '执行', exact: true }).click()
+    if (text === 'fixture-empty') await expect(form).toContainText('没有命中片段')
+    else if (text === 'fixture-error') await expect(form.getByRole('alert')).toBeVisible()
+    else {
+      await expect(form).toContainText('sapphire-orbit')
+      if (provider === 'ragflow') await expect(form).toContainText('部分来源失败')
     }
-    expect(result?.documents?.length ?? 0).toBeGreaterThan(0)
-    expect(JSON.stringify(result)).toContain(fileSource)
-
-    // UI: hit-test panel renders chunk and score.
-    await page.goto(`/knowledge/${resourceId}`)
-    await expect(page.getByRole('heading', { name: '检索测试' })).toBeVisible()
-    await page.getByPlaceholder('输入查询内容验证检索').fill(`release codename ${stamp}`)
-    await page.getByRole('button', { name: '执行' }).click()
-    await expect(page.getByText(fileSource)).toBeVisible({ timeout: 120_000 })
-    await page.screenshot({ path: testInfo.outputPath('knowledge-hit-testing.png'), fullPage: true })
-  })
+    await page.screenshot({ path: info.outputPath(`${provider}-${text}.png`), fullPage: true })
+  }
+  await form.getByRole('button', { name: '取消', exact: true }).click()
+  await page.getByRole('button', { name: '编辑', exact: true }).click()
+  form = page.getByRole('dialog')
+  await form.getByLabel('用途说明').fill('Updated query purpose')
+  await form.getByRole('checkbox', { name: /保存后配置授权/ }).uncheck()
+  await form.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(form).toBeHidden()
+  await expect(page.getByText('Updated query purpose', { exact: true })).toBeVisible()
+  for (const language of ['English', '简体中文']) {
+    await page.getByRole('button', { name: /^(语言|Language)$/ }).click()
+    await page.getByRole('menuitemradio', { name: language, exact: true }).click()
+    for (const dark of [true, false]) {
+      await page.getByRole('button', { name: /^(主题|Theme)$/ }).click()
+      await page.getByRole('menuitemradio', { name: language === 'English' ? dark ? 'Dark' : 'Light' : dark ? '深色' : '浅色', exact: true }).click()
+      await page.screenshot({ path: info.outputPath(`${provider}-${language}-${dark}.png`), fullPage: true })
+    }
+  }
+  await page.getByRole('button', { name: '编辑连接', exact: true }).click()
+  await choose(page, '状态', '停用')
+  await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.getByRole('button', { name: '检索测试', exact: true })).toBeDisabled()
+  const removed = await page.request.delete(`/api/v1/knowledge/queries/${query.id}`, { headers })
+  expect(removed.status()).toBe(204)
+  await page.goto('/knowledge')
+  await page.getByRole('row').filter({ hasText: name }).getByRole('button', { name: '删除', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click()
+  await expect(page.getByRole('row').filter({ hasText: name })).toHaveCount(0)
 })

@@ -204,52 +204,28 @@ function enumLabelsFor(panel: ActionPanelProps, name: string, schema: JsonSchema
 }
 
 export function ResourceSelectorFields({ panel }: { panel: ActionPanelProps }) {
-  return (
-    <>
-      {resourceSelectors(panel.manifest)
-        .filter((selector) => !selector.bindingRole)
-        .map((selector) => (
-          <ResourceSelect
-            fieldPath="resourceReferences"
-            key={`${selector.resourceType}-${selector.operation}`}
-            label={selector.label ?? selector.resourceType.replaceAll("_", " ")}
-            onChange={(resourceId, versionId) =>
-              panel.onChange({
-                resourceReferences: [
-                  ...panel.data.resourceReferences.filter(
-                    (reference) =>
-                      reference.bindingRole || reference.resourceType !== selector.resourceType,
-                  ),
-                  {
-                    resourceType: selector.resourceType,
-                    resourceId,
-                    resourceVersionId: versionId,
-                    operation: selector.operation,
-                  },
-                ],
-              })
-            }
-            options={resourceOptionsFor(panel.resources, selector.resourceType, selector.operation)}
-            onAuthorize={panel.onResourceAuthorize}
-            onRequest={panel.onResourceRequest}
-            sourceNodeId={panel.sourceNodeId}
-            required={selector.required}
-            optionsMissing={Boolean(
-              selector.required &&
-                !resourceOptionsFor(panel.resources, selector.resourceType, selector.operation)
-                  .length,
-            )}
-            testId={`resource-selector-${selector.resourceType}`}
-            value={
-              panel.data.resourceReferences.find(
-                (reference) =>
-                  !reference.bindingRole && reference.resourceType === selector.resourceType,
-              )?.resourceId
-            }
-          />
-        ))}
-    </>
-  );
+  const { t } = useTranslation();
+  return <>{resourceSelectors(panel.manifest).filter(selector => !selector.bindingRole).map(selector => {
+    const selected = panel.data.resourceReferences.filter(reference => !reference.bindingRole && reference.resourceType === selector.resourceType);
+    const options = resourceOptionsFor(panel.resources, selector.resourceType, selector.operation);
+    return <div className="space-y-2" key={`${selector.resourceType}-${selector.operation}`}>
+      {selector.multiple && selected.map(reference => <div className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-xs" key={reference.resourceId}>
+        <span>{options.find(option => option.value === reference.resourceId)?.metadata?.connectionName} / {options.find(option => option.value === reference.resourceId)?.label ?? reference.resourceId}</span>
+        <Button aria-label={t("studio.inspector.clearResource")} size="icon" variant="ghost" onClick={() => panel.onChange({ resourceReferences: panel.data.resourceReferences.filter(item => item !== reference) })}><Trash2 className="size-3" /></Button>
+      </div>)}
+      <ResourceSelect fieldPath="resourceReferences" label={selector.resourceType === "rag" ? t("knowledge.queries") : selector.label ?? selector.resourceType.replaceAll("_", " ")}
+        onChange={(resourceId, versionId) => {
+          if (selector.multiple && selected.some(reference => reference.resourceId === resourceId)) return;
+          panel.onChange({ resourceReferences: [
+            ...panel.data.resourceReferences.filter(reference => selector.multiple || reference.bindingRole || reference.resourceType !== selector.resourceType),
+            { resourceType: selector.resourceType, resourceId, resourceVersionId: versionId, operation: selector.operation },
+          ] });
+        }}
+        options={options} onAuthorize={panel.onResourceAuthorize} onRequest={panel.onResourceRequest} sourceNodeId={panel.sourceNodeId}
+        required={selector.required} optionsMissing={Boolean(selector.required && !options.length)} testId={`resource-selector-${selector.resourceType}`}
+        value={selector.multiple ? undefined : selected[0]?.resourceId} />
+    </div>;
+  })}</>;
 }
 
 export function BindingSlotResourceFields({ panel }: { panel: ActionPanelProps }) {
@@ -643,6 +619,7 @@ export function PanelField({
 }
 
 type ResourceSelector = {
+  multiple?: boolean;
   bindingRole?: string;
   resourceType: ResourceType;
   operation: "view" | "use" | "read" | "write" | "manage";

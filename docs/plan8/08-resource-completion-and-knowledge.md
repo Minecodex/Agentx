@@ -1,3 +1,5 @@
+> 知识库管理与检索部分已由 [连接、查询配置与多来源检索](../plan8/11-knowledge-connections.md) 取代。本页保留历史设计与验收背景。
+
 # 资源补全、独立知识检索与错误出口
 
 状态：done（本次功能范围）。此前 17 个系统场景与发布记录见 [验收报告](evidence/2026-10-16-knowledge-and-resources.md)。真实 LightRAG no_results、用户身份投影恢复与失败执行可见性已修复；错误出口优先复用，并通过 9 个增量系统场景分轮验收及原工作流真实运行，见 [后续修复报告](evidence/2026-10-16-empty-results-and-execution-visibility.md)。容量压测按用户要求 deferred。

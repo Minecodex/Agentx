@@ -101,7 +101,11 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route(
             "/health",
-            get(|| async { AxumJson(serde_json::json!({ "status": "ready" })) }),
+            get(|| async {
+                AxumJson(
+                    serde_json::json!({ "status": "ready", "configuration": {"workspace":""} }),
+                )
+            }),
         )
         .route(
             "/models",
@@ -116,6 +120,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/embeddings", post(embeddings))
         .route("/query/data", post(knowledge::lightrag))
         .route("/api/v1/retrieval", post(knowledge::ragflow))
+        .route("/api/v1/datasets", get(knowledge::datasets))
+        .route("/api/v1/datasets/{id}/documents", get(knowledge::documents))
+        .route("/documents/paginated", post(knowledge::documents))
         .route("/v1/plan5/items", post(plan5_items))
         .route("/v1/plan5/delay", get(plan5_delay))
         .route("/v1/plan5/binary", get(plan5_binary))

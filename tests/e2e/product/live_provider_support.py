@@ -201,11 +201,13 @@ def live_providers(
             )
             rag = post(
                 control,
-                "/knowledge/resources",
+                f"/knowledge/connections/{rag_connection['id']}/queries",
                 {
                     "name": f"P7 live knowledge {run_id}",
-                    "connectionId": rag_connection["id"],
-                    "externalResourceId": f"p7_live_{run_id.replace('-', '_')}",
+                    "description": "Live externally maintained project documentation",
+                    "scope": control.get(f"/api/v1/knowledge/connections/{rag_connection['id']}/catalog").json()[0][
+                        "scope"
+                    ],
                     "ownerDepartmentId": app["departmentId"],
                 },
             )
@@ -233,6 +235,7 @@ def live_providers(
             )
             memory_resource = memory_connection
             yield {
+                "namespace": namespace,
                 "ragId": rag["id"],
                 "ragCredentialId": rag_credential["id"],
                 "memoryId": memory_resource["id"],

@@ -393,8 +393,19 @@ pub async fn get_execution_artifact(
     Path((id, artifact_id)): Path<(Uuid, Uuid)>,
 ) -> RuntimeResult<Response> {
     let claims = authorize_execution(&state, &headers, id, "execution_artifact").await?;
+    let response = execution_artifact_response(&state, claims.tenant_id, id, artifact_id).await?;
+    complete_query_receipt(&state, claims.jti, "OK").await?;
+    Ok(response)
+}
+
+pub(crate) async fn execution_artifact_response(
+    state: &RuntimeState,
+    tenant_id: Uuid,
+    id: Uuid,
+    artifact_id: Uuid,
+) -> RuntimeResult<Response> {
     let row = sqlx::query("SELECT a.content_type,a.size_bytes,a.sha256,a.storage_key FROM artifacts a JOIN artifact_references r ON r.tenant_id=a.tenant_id AND r.artifact_id=a.id WHERE a.tenant_id=? AND a.id=? AND a.deleted_at IS NULL AND (r.owner_id=? OR EXISTS(SELECT 1 FROM node_executions n WHERE n.tenant_id=a.tenant_id AND n.execution_id=? AND r.owner_id=BIN_TO_UUID(n.id))) LIMIT 1")
-        .bind(claims.tenant_id).bind(artifact_id).bind(id.to_string()).bind(id).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)?;
+        .bind(tenant_id).bind(artifact_id).bind(id.to_string()).bind(id).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)?;
     let content_type: String = row.try_get("content_type")?;
     let size_bytes: u64 = row.try_get("size_bytes")?;
     let sha256: String = row.try_get("sha256")?;
@@ -409,7 +420,6 @@ pub async fn get_execution_artifact(
     if bytes.len() as u64 != size_bytes || format!("{:x}", Sha256::digest(&bytes)) != sha256 {
         return Err(RuntimeError::Unavailable);
     }
-    complete_query_receipt(&state, claims.jti, "OK").await?;
     Response::builder()
         .header(
             header::CONTENT_TYPE,

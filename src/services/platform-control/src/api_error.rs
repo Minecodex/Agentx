@@ -19,6 +19,7 @@ pub struct ApiError {
     message: String,
     field_errors: Vec<FieldError>,
     retry_after_seconds: Option<u64>,
+    details: Option<serde_json::Value>,
 }
 
 pub fn invalid_credentials() -> ApiError {
@@ -81,6 +82,11 @@ impl ApiError {
         self
     }
 
+    pub fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
+        self
+    }
+
     pub fn internal(error: impl std::fmt::Display) -> Self {
         tracing::error!(error = %error, "Control API request failed");
         #[cfg(test)]
@@ -99,6 +105,7 @@ impl ApiError {
             message: message.into(),
             field_errors: Vec::new(),
             retry_after_seconds: None,
+            details: None,
         }
     }
 }
@@ -113,7 +120,7 @@ impl IntoResponse for ApiError {
                 message: self.message,
                 request_id,
                 field_errors: self.field_errors,
-                details: None,
+                details: self.details,
             }),
         )
             .into_response();

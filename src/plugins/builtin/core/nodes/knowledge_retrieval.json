@@ -3,7 +3,7 @@
   "nodeType": "knowledge_retrieval",
   "version": 1,
   "displayName": "Knowledge Retrieval",
-  "description": "Retrieve document chunks and existing attachment sources from an authorized knowledge resource.",
+  "description": "Search all selected knowledge queries across connections, with ranked results and explicit source status.",
   "category": "ai",
   "keywords": [
     "knowledge",
@@ -13,7 +13,7 @@
   "localizations": {
     "en-US": {
       "displayName": "Knowledge Retrieval",
-      "description": "Retrieve document chunks and existing attachment sources.",
+      "description": "Search selected query configurations across connections, with ranked results and explicit source status.",
       "keywords": [
         "knowledge",
         "retrieval",
@@ -34,7 +34,7 @@
     },
     "zh-CN": {
       "displayName": "知识检索",
-      "description": "检索知识片段、文档来源和已有附件引用。",
+      "description": "跨连接检索所选查询配置，返回融合排名、文档来源和逐来源状态。",
       "keywords": [
         "knowledge",
         "retrieval",
@@ -130,7 +130,9 @@
     "required": [
       "text",
       "documents",
-      "files"
+      "files",
+      "partial",
+      "sources"
     ],
     "properties": {
       "text": {
@@ -142,10 +144,6 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "knowledgeResourceId": {
-              "type": "string",
-              "format": "uuid"
-            },
             "documentId": {
               "type": [
                 "string",
@@ -173,25 +171,112 @@
             "content": {
               "type": "string"
             },
-            "score": {
-              "type": [
-                "number",
-                "null"
-              ]
-            },
             "metadata": {
               "type": "object"
+            },
+            "queryIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "fusionScore": {
+              "type": "number"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "queryIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "connectionId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "connectionVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "scope": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "ragflow"
+                          },
+                          "datasetIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "minItems": 1
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "datasetIds"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "lightrag"
+                          },
+                          "workspace": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "workspace"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "rawScore": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "rank": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "queryIds",
+                  "connectionId",
+                  "connectionVersion",
+                  "scope",
+                  "rawScore",
+                  "rank"
+                ],
+                "additionalProperties": false
+              }
             }
           },
           "required": [
-            "knowledgeResourceId",
             "documentId",
             "chunkId",
             "title",
             "uri",
             "content",
-            "score",
-            "metadata"
+            "metadata",
+            "queryIds",
+            "fusionScore",
+            "sources"
           ]
         }
       },
@@ -201,10 +286,6 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "knowledgeResourceId": {
-              "type": "string",
-              "format": "uuid"
-            },
             "documentId": {
               "type": [
                 "string",
@@ -234,18 +315,208 @@
                 "string",
                 "null"
               ]
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "queryIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "connectionId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "connectionVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "scope": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "ragflow"
+                          },
+                          "datasetIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "minItems": 1
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "datasetIds"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "lightrag"
+                          },
+                          "workspace": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "workspace"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "rawScore": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "rank": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "queryIds",
+                  "connectionId",
+                  "connectionVersion",
+                  "scope",
+                  "rawScore",
+                  "rank"
+                ],
+                "additionalProperties": false
+              }
             }
           },
           "required": [
-            "knowledgeResourceId",
             "documentId",
             "referenceId",
             "uri",
             "name",
-            "contentType"
+            "contentType",
+            "sources"
           ]
         },
         "description": "External attachment source references, not platform Artifacts or downloaded originals."
+      },
+      "partial": {
+        "type": "boolean"
+      },
+      "sources": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "queryIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "connectionId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "connectionVersion": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "scope": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "ragflow"
+                    },
+                    "datasetIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "minItems": 1
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "datasetIds"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "lightrag"
+                    },
+                    "workspace": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "workspace"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "status": {
+              "enum": [
+                "succeeded",
+                "failed"
+              ]
+            },
+            "elapsedMs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "error": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ]
+                }
+              ]
+            }
+          },
+          "required": [
+            "queryIds",
+            "connectionId",
+            "connectionVersion",
+            "scope",
+            "status",
+            "elapsedMs",
+            "error"
+          ],
+          "additionalProperties": false
+        }
       }
     }
   },
@@ -319,7 +590,8 @@
       {
         "resourceType": "rag",
         "operation": "read",
-        "required": true
+        "required": true,
+        "multiple": true
       }
     ],
     "canvas": {

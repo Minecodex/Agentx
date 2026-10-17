@@ -1,6 +1,6 @@
 //! Shared RAG provider protocol (plan7 P7-E): request construction and
 //! response normalization for LightRAG and RAGFlow, used by the runtime
-//! worker, the agent attachment slots and the control-plane document indexer
+//! worker, Agent attachment tools and Control retrieval tests
 //! so the protocol cannot drift between surfaces.
 
 use serde_json::{Value, json};
@@ -8,30 +8,74 @@ use serde_json::{Value, json};
 pub const RAG_PROVIDER_LIGHT_RAG: &str = "lightrag";
 pub const RAG_PROVIDER_RAGFLOW: &str = "ragflow";
 
-pub fn validate_lightrag_workspace(namespace: &str) -> Result<(), RagProtocolError> {
-    if namespace.is_empty()
-        || namespace.len() > 128
-        || !namespace
-            .bytes()
-            .all(|value| value.is_ascii_alphanumeric() || value == b'_')
-    {
-        return Err(RagProtocolError::new(
-            "RAG_WORKSPACE_INVALID",
-            "LightRAG workspaces must contain 1 to 128 ASCII letters, digits or underscores",
-        ));
-    }
-    Ok(())
+/// A query freezes an external content scope, never an Agentx index.
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Deserialize,
+    serde::Serialize,
+    schemars::JsonSchema,
+)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum RagScope {
+    Ragflow {
+        #[serde(rename = "datasetIds")]
+        dataset_ids: Vec<String>,
+    },
+    Lightrag {
+        workspace: String,
+    },
 }
 
-/// Pure protocol failure; surfaces carry it in their own error shapes.
+impl RagScope {
+    pub fn provider(&self) -> &'static str {
+        match self {
+            Self::Ragflow { .. } => RAG_PROVIDER_RAGFLOW,
+            Self::Lightrag { .. } => RAG_PROVIDER_LIGHT_RAG,
+        }
+    }
+
+    pub fn validate(&self, provider: &str) -> Result<(), RagProtocolError> {
+        if self.provider() != provider {
+            return Err(RagProtocolError::new(
+                "RAG_SCOPE_INVALID",
+                "Scope does not match the connection provider",
+            ));
+        }
+        if let Self::Ragflow { dataset_ids } = self {
+            if dataset_ids.is_empty()
+                || dataset_ids
+                    .iter()
+                    .any(|id| id.trim().is_empty() || id.len() > 512)
+                || dataset_ids
+                    .iter()
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .len()
+                    != dataset_ids.len()
+            {
+                return Err(RagProtocolError::new(
+                    "RAG_SCOPE_INVALID",
+                    "Select distinct, nonempty dataset IDs",
+                ));
+            }
+        }
+        // Empty is the real default workspace. Discovery, not a fabricated
+        // naming rule or request header, establishes which instance owns it.
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RagProtocolError {
     pub code: &'static str,
     pub message: String,
 }
-
 impl RagProtocolError {
-    fn new(code: &'static str, message: impl Into<String>) -> Self {
+    pub fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
@@ -39,21 +83,56 @@ impl RagProtocolError {
     }
 }
 
-fn rag_query_text(payload: &Value) -> String {
-    payload
-        .get("query")
-        .or_else(|| payload.get("question"))
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .unwrap_or_else(|| payload.to_string())
+/// One physical source per request: RAGFlow datasets may use incompatible
+/// embedding models. LightRAG's workspace is fixed by the server instance.
+pub fn rag_query_request(
+    scope: &RagScope,
+    query: &str,
+) -> Result<(String, Value, &'static str), RagProtocolError> {
+    scope.validate(scope.provider())?;
+    match scope {
+        RagScope::Ragflow { dataset_ids } if dataset_ids.len() == 1 => Ok((
+            "api/v1/retrieval".into(),
+            json!({"question":query,"dataset_ids":dataset_ids,"top_k":1024,"page":1,"page_size":20}),
+            "authorization",
+        )),
+        RagScope::Ragflow { .. } => Err(RagProtocolError::new(
+            "RAG_SCOPE_INVALID",
+            "Resolve each dataset before retrieval",
+        )),
+        RagScope::Lightrag { .. } => Ok((
+            "query/data".into(),
+            json!({"query":query,"mode":"naive","top_k":20,"chunk_top_k":20}),
+            "x-api-key",
+        )),
+    }
 }
 
-fn rag_top_k(payload: &Value) -> u64 {
-    payload
-        .get("topK")
-        .or_else(|| payload.get("top_k"))
-        .and_then(Value::as_u64)
-        .unwrap_or(5)
+pub fn validate_retrieval_input(query: &str, top_k: u64) -> Result<(), RagProtocolError> {
+    if query.trim().is_empty() || query.chars().count() > 2000 || !(1..=20).contains(&top_k) {
+        return Err(RagProtocolError::new(
+            "INVALID_RETRIEVAL_QUERY",
+            "Enter a query up to 2000 characters and Top K between 1 and 20",
+        ));
+    }
+    Ok(())
+}
+
+/// Verify the instance identity before using its fixed-workspace endpoints.
+pub fn validate_instance_scope(scope: &RagScope, health: &Value) -> Result<(), RagProtocolError> {
+    if let RagScope::Lightrag { workspace } = scope {
+        if health
+            .pointer("/configuration/workspace")
+            .and_then(Value::as_str)
+            != Some(workspace)
+        {
+            return Err(RagProtocolError::new(
+                "RAG_WORKSPACE_CHANGED",
+                "The instance no longer exposes the bound workspace",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn json_text(value: &Value) -> String {
@@ -63,90 +142,15 @@ fn json_text(value: &Value) -> String {
         .unwrap_or_else(|| value.to_string())
 }
 
-/// Builds the provider-specific HTTP request. Returns the URL path, the JSON
-/// body and the header name carrying the secret. Unknown operations are
-/// rejected explicitly: LightRAG historically folded them into `/query`,
-/// which silently mis-signals delete-style intents (plan7 05 §3.2).
-pub fn rag_query_request(
-    provider: &str,
-    operation: &str,
-    namespace: &str,
-    index_version: &str,
-    input: &Value,
-) -> Result<(String, Value, &'static str), RagProtocolError> {
-    if provider == RAG_PROVIDER_RAGFLOW {
-        if !matches!(operation, "query" | "retrieve") {
-            return Err(RagProtocolError::new(
-                "RAG_OPERATION_UNSUPPORTED",
-                "RAGFlow knowledge connections support query only",
-            ));
-        }
-        let dataset_ids: Vec<String> = namespace
-            .split(',')
-            .map(str::trim)
-            .filter(|candidate| !candidate.is_empty())
-            .map(str::to_owned)
-            .collect();
-        if dataset_ids.is_empty() {
-            return Err(RagProtocolError::new(
-                "RAG_DATASET_REQUIRED",
-                "RAGFlow knowledge resource must reference at least one dataset id",
-            ));
-        }
-        return Ok((
-            "api/v1/retrieval".into(),
-            json!({
-                "question": rag_query_text(input),
-                "dataset_ids": dataset_ids,
-                "top_k": rag_top_k(input),
-            }),
-            "authorization",
-        ));
-    }
-    if provider != RAG_PROVIDER_LIGHT_RAG {
-        return Err(RagProtocolError::new(
-            "RAG_PROVIDER_UNSUPPORTED",
-            "Unknown RAG provider",
-        ));
-    }
-    validate_lightrag_workspace(namespace)?;
-    if !matches!(operation, "query" | "insert" | "retrieve") {
-        return Err(RagProtocolError::new(
-            "RAG_OPERATION_UNSUPPORTED",
-            format!("LightRAG protocol does not support the {operation} operation here"),
-        ));
-    }
-    let mut body = if input.is_object() {
-        input.clone()
-    } else {
-        json!({"query": input, "mode": "naive"})
-    };
-    if let Some(object) = body.as_object_mut() {
-        if let Some(top_k) = object.remove("topK") {
-            object.insert("top_k".into(), top_k);
-        }
-        // The resource binding owns isolation; caller input cannot select a
-        // different provider workspace or a different frozen index version.
-        object.insert("workspace".into(), json!(namespace));
-        object.insert("indexVersion".into(), json!(index_version));
-    }
-    if operation == "retrieve" {
-        body["mode"] = json!("naive");
-        body["chunk_top_k"] = json!(rag_top_k(input));
-    }
-    let path = if operation == "insert" {
-        "documents/text"
-    } else if operation == "retrieve" {
-        "query/data"
-    } else {
-        "query"
-    };
-    Ok((path.into(), body, "x-api-key"))
-}
-
 /// Structured retrieval does not generate an answer or invent hit scores.
 pub fn finalize_retrieval_value(provider: &str, value: Value) -> Result<Value, RagProtocolError> {
     if provider == RAG_PROVIDER_RAGFLOW {
+        if value.get("code").and_then(Value::as_i64) != Some(0) {
+            return Err(RagProtocolError::new(
+                "PROVIDER_REJECTED",
+                "RAGFlow rejected retrieval",
+            ));
+        }
         let has_chunks = value.pointer("/data/chunks").is_some_and(Value::is_array);
         let normalized = finalize_rag_value(provider, value)?;
         if !has_chunks {
@@ -235,26 +239,33 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn lightrag_requests_keep_the_workspace_contract() {
-        let (path, body, header) = rag_query_request(
-            RAG_PROVIDER_LIGHT_RAG,
-            "query",
-            "ns_1",
-            "v3",
-            &json!({"query": "hello", "workspace": "other_department", "indexVersion": "latest"}),
+    fn scope_is_structured_and_lightrag_never_claims_to_route_workspaces() {
+        let scope = RagScope::Lightrag {
+            workspace: String::new(),
+        };
+        let (path, body, header) = rag_query_request(&scope, "hello").unwrap();
+        assert_eq!(path, "query/data");
+        assert_eq!(header, "x-api-key");
+        assert!(body.get("workspace").is_none());
+        assert!(body.get("indexVersion").is_none());
+        assert!(
+            serde_json::from_value::<RagScope>(
+                json!({"kind":"lightrag","workspace":"","namespace":"fake"})
+            )
+            .is_err()
+        );
+        let scope = RagScope::Ragflow {
+            dataset_ids: vec!["a".into(), "b".into()],
+        };
+        assert!(rag_query_request(&scope, "hello").is_err());
+        let (_, body, _) = rag_query_request(
+            &RagScope::Ragflow {
+                dataset_ids: vec!["a".into()],
+            },
+            "hello",
         )
         .unwrap();
-        assert_eq!(path, "query");
-        assert_eq!(header, "x-api-key");
-        assert_eq!(body["workspace"], json!("ns_1"));
-        assert_eq!(body["indexVersion"], json!("v3"));
-    }
-
-    #[test]
-    fn lightrag_delete_is_rejected_instead_of_becoming_a_query() {
-        let error = rag_query_request(RAG_PROVIDER_LIGHT_RAG, "delete", "ns", "v1", &json!({}))
-            .unwrap_err();
-        assert_eq!(error.code, "RAG_OPERATION_UNSUPPORTED");
+        assert_eq!(body["page_size"], 20);
     }
 
     #[test]

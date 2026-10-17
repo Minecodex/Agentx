@@ -139,37 +139,22 @@ Agent 加载 Skill 指令时同时向模型提供被冻结的 `skillVersionId`�
 
 ## 6. RAG
 
-知识库接入按连接上的 `provider` 字段区分协议适配器，平台层使用统一接口：
+知识库采用“外部连接 → 查询配置 → Workflow 使用”模型。Agentx 管理接入、部门可见性、授权和检索，外部平台管理文档与索引。管理面不提供上传、删除文档或索引任务。
 
-- query
-- retrieve
-- insert
-- delete
-- healthCheck
+连接只包含名称、协议、Endpoint、凭证和所属部门，支持 CRUD、停用和连接测试。连接详情管理多条查询；每条查询独立设置业务名称、用途、结构化内容范围、所属部门、状态和统一授权。同一外部范围可以对应不同授权的查询。查询仍属于 `rag` 资源，运行授权包含凭证依赖。
 
-已实现的 Provider：
+- RAGFlow：从 `/api/v1/datasets` 发现真实数据集，查询可多选 Dataset，不提供目录过滤。每个 Dataset 单独调用 `/api/v1/retrieval`，避免不同 embedding 模型混用。Bearer 认证。
+- LightRAG：从认证后的 `/health` 读取实例的 `configuration.workspace`，空字符串表示真实默认工作区。每条查询只能选择该实例返回的工作区。检索调用 `/query/data`，使用 `naive` 结构化结果和 `x-api-key`。其他实例另建连接，不通过 namespace、请求参数或 header 切换 workspace。
 
-- `lightrag`（默认）：`POST {endpoint}/query`，`x-api-key` 认证，外部资源 ID 为 workspace，支持 query 与 insert。
-- `ragflow`：`POST {endpoint}/api/v1/retrieval`，`Authorization: Bearer <API Key>` 认证，外部资源 ID 为 dataset id（多个以逗号分隔），支持 query；RAGFlow 的 `{code, data}` 响应包映射为统一 documents 结构，`code != 0` 时按 `PROVIDER_REJECTED` 失败并透出 Provider 消息。健康检查路径需指向 RAGFlow 实际返回 200 的路径（如 `/v1/system/healthz`）。
+Agent 每条查询派生独立知识工具，描述包含业务名称和用途。独立知识检索节点每次执行所有已选查询，支持跨连接多选。运行包冻结查询与连接版本、结构化范围和凭证版本；内容使用外部服务当前索引。
 
-生产环境 Provider 端点必须使用 HTTPS（egress 策略仅对集群内白名单 Service 放行明文 HTTP）；白名单通过 `global.network.egressGateway.httpProviderServices` 配置，默认只包含 E2E fixture（echo-mcp、echo-node、lightrag、mem0），自建明文 HTTP Provider（如集群内 RAGFlow）需要显式加入。
+共享检索模块按连接与实际来源合并重复请求，最多并发 4，每来源最多 20 个候选；使用 RRF（常数 60）合并排名，最终 Top K 默认 5、允许 1–20。结果保留 `text/documents/files`，增加 `partial/sources`；每个命中保留查询标识、连接、Dataset/workspace、原始分数和融合分数。附件仍为外部来源引用，不授予平台 Artifact 权限。
 
-授权范围：
+授权在请求前统一校验，授权失败直接拒绝。部分来源成功时返回成功来源结果并明确标记失败来源；成功但无命中也算成功；全部失败走错误出口。查询测试弹窗复用相同执行器，显示命中、来源、耗时和错误。
 
-- Connection
-- Workspace
-- Knowledge Base 或 Collection
-- Read 或 Write
-- Department
-- Workflow
+接口以 `/knowledge/connections`、`/connections/{id}/catalog`、`/connections/{id}/queries`、`/queries/{id}`、`/queries/{id}/documents` 和 `/queries/{id}/retrieval-test` 为边界。删除查询只影响 Agentx 配置，保留 Workflow/Skill 引用保护；有查询的连接不能删除。旧 resources 路径不保留别名。
 
-RAG 节点的 Trace 包含查询、召回结果引用、Score、耗时和错误。
-
-知识库管理面（plan7 P7-E）：
-
-- LightRAG 资源支持文档上传→外部索引→状态跟踪→hit-testing 最小闭环。上传走 `POST /api/v1/knowledge/resources/{id}/documents`（multipart；text/plain、text/markdown、text/csv、application/json；8 MiB/文件、200 篇/资源、256 MiB 总量；同 sha256 去重）；索引由 Control 直连 LightRAG `documents/text`（同步、60s 超时），状态机 uploading→indexing→indexed/failed，`rag_resources.sync_status` 随之激活。
-- RAGFlow 资源保持外部自管：文档区显示占位说明，写路径维持 `RAG_OPERATION_UNSUPPORTED`；hit-testing 同样支持（`POST .../retrieval-test`，query + topK 1..=20，结果归一 documents/citations/recordIds，历史落 `rag_retrieval_tests`）。
-- 协议构造与响应归一单源于 `agentx-runtime-contracts::rag`（runtime worker、Agent 附件槽与 Control 共用；未支持的操作显式拒绝，delete 不再静默映射为查询）。
+生产 Provider 端点使用 HTTPS；集群白名单 HTTP 端点由 `global.network.egressGateway.httpProviderServices` 明确配置。实现和验收规范见 [知识连接与多来源检索](plan8/11-knowledge-connections.md)。
 
 ## 7. Memory
 
@@ -259,6 +244,15 @@ Session Context 按 `tenantId + applicationDeploymentId + sessionId` 隔离，�
 - 获取 SSE Stream
 - Webhook Trigger
 - 预上传 Artifact 和 Multipart 文字加文件
+
+应用 API 调用方可使用当前有效的 API Key，通过
+`GET /gateway/v1/invocations/{id}/artifacts/{artifact_id}` 下载调用输出中明确引用的文件。
+下载同时校验应用调用权限、输出引用和执行的 Artifact 归属，读取后核对大小与 SHA-256。
+内部 Trace、工具中间结果等未出现在调用输出中的 Artifact 不通过此接口开放。
+Runtime 启动执行时，统一依据冻结的 Start 输入 Schema 校验附件并保存执行引用，
+使画布调试、应用调用和其他执行入口使用相同的附件归属规则；文件保留期限继续由现有 Retention 管理。
+调试台上传向参数表单返回 `artifactId/fileName/contentType/sizeBytes/sha256`，
+不向附件输入添加消息分段字段；对话发送时单独根据 Content-Type 确定消息的 `partType`。
 
 调用请求需要支持：
 

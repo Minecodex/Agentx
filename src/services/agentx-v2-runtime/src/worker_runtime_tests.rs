@@ -603,9 +603,6 @@ fn valid_empty_provider_results_remain_successful() {
             json!({"content":[],"isError":false}),
         )),
         super::output::memory_execution_output(WorkerExecution::succeeded(json!({"results":[]}))),
-        super::output::rag_execution_output(WorkerExecution::succeeded(
-            json!({"documents":[],"text":""}),
-        )),
         openai_execution_output(
             WorkerExecution::succeeded(
                 json!({"choices":[{"message":{"role":"assistant","content":""},"finish_reason":"stop"}]}),
@@ -617,12 +614,6 @@ fn valid_empty_provider_results_remain_successful() {
                 json!({"output":{"stdout":"","stderr":"","exitCode":0,"structuredOutput":{},"files":[]}}),
             ),
             &json!({"outputSchema":{"type":"object"}}),
-        ),
-        super::output::finalize_retrieval_response(
-            "lightrag",
-            WorkerExecution::succeeded(
-                json!({"status":"failure","data":{},"metadata":{"failure_reason":"no_results"}}),
-            ),
         ),
     ];
     for result in results {
@@ -641,7 +632,6 @@ fn empty_result_normalization_preserves_real_failures() {
     for normalize in [
         super::output::tool_execution_output,
         super::output::memory_execution_output,
-        super::output::rag_execution_output,
     ] {
         let result = normalize(WorkerExecution::failed(
             "PROVIDER_UNAVAILABLE",

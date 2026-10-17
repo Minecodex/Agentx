@@ -241,17 +241,6 @@
     "owning_task": "V2Q-002"
   },
   {
-    "table": "knowledge_documents",
-    "plane": "control",
-    "authoritative_writer": "platform-control knowledge document use cases",
-    "allowed_readers": [
-      "platform-control publisher snapshot projection"
-    ],
-    "cross_plane_contract": "knowledge document upload and indexing status",
-    "retention_and_delete_rule": "deleted with the rag resource retention sweep; artifacts unregister references",
-    "owning_task": "plan7 P7-E"
-  },
-  {
     "table": "observability_consumer_health",
     "plane": "observability",
     "authoritative_writer": "observability trace consumer",

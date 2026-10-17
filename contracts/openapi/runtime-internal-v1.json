@@ -153,16 +153,27 @@
               "documentId": {
                 "type": "string"
               },
-              "knowledgeResourceId": {
-                "format": "uuid",
-                "type": "string"
-              },
-              "score": {
+              "fusionScore": {
                 "format": "double",
                 "type": [
                   "number",
                   "null"
                 ]
+              },
+              "knowledgeResourceId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "queryIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "sources": {
+                "items": true,
+                "type": "array"
               },
               "title": {
                 "type": [
@@ -180,7 +191,9 @@
             "required": [
               "knowledgeResourceId",
               "documentId",
-              "chunkId"
+              "chunkId",
+              "sources",
+              "queryIds"
             ],
             "type": "object"
           },
@@ -206,12 +219,6 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "artifactRefs": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "citations": {
             "items": {
               "$ref": "#/$defs/AgentKnowledgeCitationV1"
@@ -224,8 +231,19 @@
             },
             "type": "array"
           },
+          "files": {
+            "items": true,
+            "type": "array"
+          },
+          "partial": {
+            "type": "boolean"
+          },
           "promptBoundary": {
             "type": "string"
+          },
+          "sources": {
+            "items": true,
+            "type": "array"
           },
           "truncated": {
             "type": "boolean"
@@ -235,11 +253,13 @@
           }
         },
         "required": [
+          "partial",
+          "sources",
+          "files",
           "documents",
           "citations",
           "trust",
           "promptBoundary",
-          "artifactRefs",
           "truncated"
         ],
         "title": "AgentKnowledgeSearchResultV1",
@@ -1845,6 +1865,48 @@
             ],
             "type": "object"
           },
+          "RagScope": {
+            "description": "A query freezes an external content scope, never an Agentx index.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "datasetIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "const": "ragflow",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "datasetIds"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "lightrag",
+                    "type": "string"
+                  },
+                  "workspace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "workspace"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "ReplayPolicyV1": {
             "enum": [
               "safe",
@@ -2148,6 +2210,15 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "connectionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "connectionVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -2158,29 +2229,41 @@
                       }
                     ]
                   },
-                  "endpoint": {
+                  "description": {
                     "type": "string"
                   },
-                  "indexVersion": {
+                  "endpoint": {
                     "type": "string"
                   },
                   "kind": {
                     "const": "rag",
                     "type": "string"
                   },
-                  "namespace": {
+                  "name": {
                     "type": "string"
                   },
                   "provider": {
-                    "default": "lightrag",
                     "type": "string"
+                  },
+                  "queryVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "$ref": "#/$defs/RagScope"
                   }
                 },
                 "required": [
                   "kind",
+                  "provider",
                   "endpoint",
-                  "namespace",
-                  "indexVersion"
+                  "connectionId",
+                  "connectionVersion",
+                  "queryVersion",
+                  "name",
+                  "description",
+                  "scope"
                 ],
                 "type": "object"
               },
@@ -8448,6 +8531,48 @@
             ],
             "type": "string"
           },
+          "RagScope": {
+            "description": "A query freezes an external content scope, never an Agentx index.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "datasetIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "const": "ragflow",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "datasetIds"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "lightrag",
+                    "type": "string"
+                  },
+                  "workspace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "workspace"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "ReadinessPolicy": {
             "enum": [
               "any",
@@ -9072,6 +9197,15 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "connectionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "connectionVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -9082,29 +9216,41 @@
                       }
                     ]
                   },
-                  "endpoint": {
+                  "description": {
                     "type": "string"
                   },
-                  "indexVersion": {
+                  "endpoint": {
                     "type": "string"
                   },
                   "kind": {
                     "const": "rag",
                     "type": "string"
                   },
-                  "namespace": {
+                  "name": {
                     "type": "string"
                   },
                   "provider": {
-                    "default": "lightrag",
                     "type": "string"
+                  },
+                  "queryVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "$ref": "#/$defs/RagScope"
                   }
                 },
                 "required": [
                   "kind",
+                  "provider",
                   "endpoint",
-                  "namespace",
-                  "indexVersion"
+                  "connectionId",
+                  "connectionVersion",
+                  "queryVersion",
+                  "name",
+                  "description",
+                  "scope"
                 ],
                 "type": "object"
               },
@@ -11556,6 +11702,48 @@
             ],
             "type": "object"
           },
+          "RagScope": {
+            "description": "A query freezes an external content scope, never an Agentx index.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "datasetIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "const": "ragflow",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "datasetIds"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "lightrag",
+                    "type": "string"
+                  },
+                  "workspace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "workspace"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "RuntimeEnvironmentCredentialReferenceV1": {
             "additionalProperties": false,
             "properties": {
@@ -11850,6 +12038,15 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "connectionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "connectionVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -11860,29 +12057,41 @@
                       }
                     ]
                   },
-                  "endpoint": {
+                  "description": {
                     "type": "string"
                   },
-                  "indexVersion": {
+                  "endpoint": {
                     "type": "string"
                   },
                   "kind": {
                     "const": "rag",
                     "type": "string"
                   },
-                  "namespace": {
+                  "name": {
                     "type": "string"
                   },
                   "provider": {
-                    "default": "lightrag",
                     "type": "string"
+                  },
+                  "queryVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "$ref": "#/$defs/RagScope"
                   }
                 },
                 "required": [
                   "kind",
+                  "provider",
                   "endpoint",
-                  "namespace",
-                  "indexVersion"
+                  "connectionId",
+                  "connectionVersion",
+                  "queryVersion",
+                  "name",
+                  "description",
+                  "scope"
                 ],
                 "type": "object"
               },
@@ -13981,6 +14190,48 @@
             ],
             "type": "string"
           },
+          "RagScope": {
+            "description": "A query freezes an external content scope, never an Agentx index.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "datasetIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "const": "ragflow",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "datasetIds"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "lightrag",
+                    "type": "string"
+                  },
+                  "workspace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "workspace"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "ReadinessPolicy": {
             "enum": [
               "any",
@@ -14605,6 +14856,15 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "connectionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "connectionVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -14615,29 +14875,41 @@
                       }
                     ]
                   },
-                  "endpoint": {
+                  "description": {
                     "type": "string"
                   },
-                  "indexVersion": {
+                  "endpoint": {
                     "type": "string"
                   },
                   "kind": {
                     "const": "rag",
                     "type": "string"
                   },
-                  "namespace": {
+                  "name": {
                     "type": "string"
                   },
                   "provider": {
-                    "default": "lightrag",
                     "type": "string"
+                  },
+                  "queryVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "$ref": "#/$defs/RagScope"
                   }
                 },
                 "required": [
                   "kind",
+                  "provider",
                   "endpoint",
-                  "namespace",
-                  "indexVersion"
+                  "connectionId",
+                  "connectionVersion",
+                  "queryVersion",
+                  "name",
+                  "description",
+                  "scope"
                 ],
                 "type": "object"
               },
@@ -17134,6 +17406,48 @@
             ],
             "type": "string"
           },
+          "RagScope": {
+            "description": "A query freezes an external content scope, never an Agentx index.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "datasetIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "const": "ragflow",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "datasetIds"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "lightrag",
+                    "type": "string"
+                  },
+                  "workspace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "workspace"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "ReadinessPolicy": {
             "enum": [
               "any",
@@ -17990,6 +18304,15 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "connectionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "connectionVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -18000,29 +18323,41 @@
                       }
                     ]
                   },
-                  "endpoint": {
+                  "description": {
                     "type": "string"
                   },
-                  "indexVersion": {
+                  "endpoint": {
                     "type": "string"
                   },
                   "kind": {
                     "const": "rag",
                     "type": "string"
                   },
-                  "namespace": {
+                  "name": {
                     "type": "string"
                   },
                   "provider": {
-                    "default": "lightrag",
                     "type": "string"
+                  },
+                  "queryVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "$ref": "#/$defs/RagScope"
                   }
                 },
                 "required": [
                   "kind",
+                  "provider",
                   "endpoint",
-                  "namespace",
-                  "indexVersion"
+                  "connectionId",
+                  "connectionVersion",
+                  "queryVersion",
+                  "name",
+                  "description",
+                  "scope"
                 ],
                 "type": "object"
               },
@@ -19329,6 +19664,48 @@
             ],
             "type": "object"
           },
+          "RagScope": {
+            "description": "A query freezes an external content scope, never an Agentx index.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "datasetIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "const": "ragflow",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "datasetIds"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "lightrag",
+                    "type": "string"
+                  },
+                  "workspace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "workspace"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "RuntimeEnvironmentCredentialReferenceV1": {
             "additionalProperties": false,
             "properties": {
@@ -19623,6 +20000,15 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "connectionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "connectionVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -19633,29 +20019,41 @@
                       }
                     ]
                   },
-                  "endpoint": {
+                  "description": {
                     "type": "string"
                   },
-                  "indexVersion": {
+                  "endpoint": {
                     "type": "string"
                   },
                   "kind": {
                     "const": "rag",
                     "type": "string"
                   },
-                  "namespace": {
+                  "name": {
                     "type": "string"
                   },
                   "provider": {
-                    "default": "lightrag",
                     "type": "string"
+                  },
+                  "queryVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "$ref": "#/$defs/RagScope"
                   }
                 },
                 "required": [
                   "kind",
+                  "provider",
                   "endpoint",
-                  "namespace",
-                  "indexVersion"
+                  "connectionId",
+                  "connectionVersion",
+                  "queryVersion",
+                  "name",
+                  "description",
+                  "scope"
                 ],
                 "type": "object"
               },
@@ -23566,6 +23964,48 @@
             ],
             "type": "object"
           },
+          "RagScope": {
+            "description": "A query freezes an external content scope, never an Agentx index.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "datasetIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "const": "ragflow",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "datasetIds"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "lightrag",
+                    "type": "string"
+                  },
+                  "workspace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "workspace"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "RuntimeEnvironmentCredentialReferenceV1": {
             "additionalProperties": false,
             "properties": {
@@ -23817,6 +24257,15 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "connectionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "connectionVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -23827,29 +24276,41 @@
                       }
                     ]
                   },
-                  "endpoint": {
+                  "description": {
                     "type": "string"
                   },
-                  "indexVersion": {
+                  "endpoint": {
                     "type": "string"
                   },
                   "kind": {
                     "const": "rag",
                     "type": "string"
                   },
-                  "namespace": {
+                  "name": {
                     "type": "string"
                   },
                   "provider": {
-                    "default": "lightrag",
                     "type": "string"
+                  },
+                  "queryVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "$ref": "#/$defs/RagScope"
                   }
                 },
                 "required": [
                   "kind",
+                  "provider",
                   "endpoint",
-                  "namespace",
-                  "indexVersion"
+                  "connectionId",
+                  "connectionVersion",
+                  "queryVersion",
+                  "name",
+                  "description",
+                  "scope"
                 ],
                 "type": "object"
               },
@@ -24431,6 +24892,48 @@
             ],
             "type": "object"
           },
+          "RagScope": {
+            "description": "A query freezes an external content scope, never an Agentx index.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "datasetIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "const": "ragflow",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "datasetIds"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "lightrag",
+                    "type": "string"
+                  },
+                  "workspace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "workspace"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "RuntimeEnvironmentCredentialReferenceV1": {
             "additionalProperties": false,
             "properties": {
@@ -24725,6 +25228,15 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "connectionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "connectionVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -24735,29 +25247,41 @@
                       }
                     ]
                   },
-                  "endpoint": {
+                  "description": {
                     "type": "string"
                   },
-                  "indexVersion": {
+                  "endpoint": {
                     "type": "string"
                   },
                   "kind": {
                     "const": "rag",
                     "type": "string"
                   },
-                  "namespace": {
+                  "name": {
                     "type": "string"
                   },
                   "provider": {
-                    "default": "lightrag",
                     "type": "string"
+                  },
+                  "queryVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "$ref": "#/$defs/RagScope"
                   }
                 },
                 "required": [
                   "kind",
+                  "provider",
                   "endpoint",
-                  "namespace",
-                  "indexVersion"
+                  "connectionId",
+                  "connectionVersion",
+                  "queryVersion",
+                  "name",
+                  "description",
+                  "scope"
                 ],
                 "type": "object"
               },
@@ -27363,6 +27887,48 @@
             ],
             "type": "string"
           },
+          "RagScope": {
+            "description": "A query freezes an external content scope, never an Agentx index.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "datasetIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "const": "ragflow",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "datasetIds"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "lightrag",
+                    "type": "string"
+                  },
+                  "workspace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "workspace"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "ReadinessPolicy": {
             "enum": [
               "any",
@@ -28219,6 +28785,15 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "connectionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "connectionVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -28229,29 +28804,41 @@
                       }
                     ]
                   },
-                  "endpoint": {
+                  "description": {
                     "type": "string"
                   },
-                  "indexVersion": {
+                  "endpoint": {
                     "type": "string"
                   },
                   "kind": {
                     "const": "rag",
                     "type": "string"
                   },
-                  "namespace": {
+                  "name": {
                     "type": "string"
                   },
                   "provider": {
-                    "default": "lightrag",
                     "type": "string"
+                  },
+                  "queryVersion": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "$ref": "#/$defs/RagScope"
                   }
                 },
                 "required": [
                   "kind",
+                  "provider",
                   "endpoint",
-                  "namespace",
-                  "indexVersion"
+                  "connectionId",
+                  "connectionVersion",
+                  "queryVersion",
+                  "name",
+                  "description",
+                  "scope"
                 ],
                 "type": "object"
               },

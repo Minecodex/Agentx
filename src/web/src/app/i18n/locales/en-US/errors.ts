@@ -38,7 +38,7 @@ const translations = {
     "SKILL_PATH_EXISTS": "An entry already exists at this workspace path.",
     "SANDBOX_PROFILE_NAME_EXISTS": "A Sandbox Profile with this name already exists.",
     "DATASET_CASE_KEY_EXISTS": "A Test Case with this key already exists in the Dataset.",
-    "KNOWLEDGE_EXTERNAL_RESOURCE_ID_EXISTS": "This external knowledge resource ID already exists for the selected connection.",
+    "KNOWLEDGE_NAME_EXISTS": "A query with this name already exists in the selected connection.",
     "SANDBOX_PROFILE_CONFIGURATION_EXISTS": "This Sandbox Profile configuration already exists.",
     "SKILL_DUPLICATE_PATH": "The workspace ZIP contains duplicate paths.",
     "UNKNOWN_NODE_VERSION": "Node version {{nodeTypeVersion}} is unavailable in the Node Catalog.",

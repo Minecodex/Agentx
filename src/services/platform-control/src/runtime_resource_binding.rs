@@ -191,10 +191,19 @@ fn from_parts(
         "rag" => (
             RuntimeResourceKindV1::Rag,
             RuntimeResourceConfigurationV1::Rag {
-                provider: json_string(&snapshot, "provider").unwrap_or_else(|| "lightrag".into()),
+                provider: required_json_string(&snapshot, "provider")?,
                 endpoint: required_json_string(&snapshot, "endpoint")?,
-                namespace: required_json_string(&snapshot, "externalResourceId")?,
-                index_version: resource_version.clone(),
+                connection_id: json_uuid(&snapshot, "connectionId")
+                    .context("RAG connection ID missing")?,
+                connection_version: snapshot["connectionVersion"]
+                    .as_u64()
+                    .context("RAG connection version missing")?,
+                query_version: snapshot["resourceVersion"]
+                    .as_u64()
+                    .context("RAG query version missing")?,
+                name: required_json_string(&snapshot, "name")?,
+                description: required_json_string(&snapshot, "description")?,
+                scope: serde_json::from_value(snapshot["scope"].clone())?,
                 credential: optional_vault_reference(&snapshot)?,
             },
             vec![],
@@ -491,6 +500,35 @@ mod tests {
     use uuid::Uuid;
 
     use super::{from_parts, optional_json_scalar_string, optional_vault_reference};
+
+    #[test]
+    fn knowledge_binding_freezes_query_connection_scope_and_credential_versions() {
+        for scope in [
+            json!({"kind":"ragflow","datasetIds":["team-a","team-b"]}),
+            json!({"kind":"lightrag","workspace":""}),
+        ] {
+            let snapshot = json!({"provider":scope["kind"],"endpoint":"https://knowledge.test",
+                "connectionId":Uuid::from_u128(11),"connectionVersion":3,"resourceVersion":7,
+                "name":"Customer support","description":"Resolve support tickets","scope":scope,
+                "vaultSecretRef":{"mount":"secret","path":"knowledge-key","key":"value","version":9}});
+            let hash = agentx_runtime_contracts::content_hash(&snapshot).unwrap();
+            let binding = from_parts(
+                "rag",
+                Uuid::from_u128(1),
+                Some(Uuid::from_u128(2)),
+                snapshot,
+                hash,
+            )
+            .unwrap();
+            let encoded = serde_json::to_value(&binding.configuration).unwrap();
+            assert_eq!(encoded["scope"], scope);
+            assert_eq!(encoded["queryVersion"], 7);
+            assert_eq!(encoded["connectionVersion"], 3);
+            assert_eq!(encoded["credential"]["version"], 9);
+            assert!(encoded.get("namespace").is_none());
+            assert_eq!(binding.state_epoch, 7);
+        }
+    }
 
     #[test]
     fn null_optional_versions_are_absent() {

@@ -94,7 +94,7 @@ export function EntityFormDialog({ cancelLabel, fields, onClose, onSubmit, open,
     <DialogContent className={wide ? 'w-[min(920px,calc(100vw-48px))] p-6' : 'p-6'} title={title}>
       <h2 className="text-lg font-semibold">{title}</h2>
       <form className={wide ? 'mt-5 grid grid-cols-2 gap-x-5 gap-y-4' : 'mt-5 space-y-4'} noValidate onSubmit={(event) => void submit(event)} ref={formRef}>
-        {fields.map((field) => (field.visible?.(values) ?? true) ? <label className={(field.type === 'textarea' || field.type === 'checkbox' || field.render) && wide ? 'col-span-2 block text-xs' : 'block text-xs'} key={field.name}>
+        {fields.map((field) => (field.visible?.(values) ?? true) ? <FieldContainer asLabel={!field.render} className={(field.type === 'textarea' || field.type === 'checkbox' || field.render) && wide ? 'col-span-2 block text-xs' : 'block text-xs'} key={field.name}>
           {field.type !== 'checkbox' && <span className="mb-2 block font-medium">{field.label}{field.required && <span aria-hidden="true" className="ml-1 text-danger">*</span>}</span>}
           {field.render ? field.render({ value: values[field.name] ?? '', values, update: (value) => update(field.name, value), error: fieldErrors[field.name] })
             : field.type === 'checkbox' ? <span className="flex items-start gap-3 rounded-lg border border-border/70 bg-muted/30 p-3"><input aria-describedby={fieldErrors[field.name] ? `${field.name}-error` : undefined} aria-invalid={Boolean(fieldErrors[field.name])} aria-label={field.label} aria-required={field.required} checked={values[field.name] === 'true'} className="mt-0.5 size-4 shrink-0 accent-primary" name={field.name} onChange={(event) => update(field.name, String(event.target.checked))} type="checkbox" /><span><span className="block font-medium">{field.label}{field.required && <span aria-hidden="true" className="ml-1 text-danger">*</span>}</span>{field.description && <span className="mt-1 block text-[11px] leading-5 text-muted-foreground">{field.description}</span>}</span></span>
@@ -103,10 +103,14 @@ export function EntityFormDialog({ cancelLabel, fields, onClose, onSubmit, open,
               : <Input aria-describedby={fieldErrors[field.name] ? `${field.name}-error` : undefined} aria-invalid={Boolean(fieldErrors[field.name])} aria-label={field.label} max={field.max} maxLength={field.maxLength} min={field.type === 'number' ? (field.min ?? 0) : undefined} name={field.name} onChange={(event) => update(field.name, event.target.value)} placeholder={field.placeholder} required={field.required} step={field.step} type={field.type ?? 'text'} value={values[field.name]} />}
           {field.description && field.type !== 'checkbox' && <span className="mt-1.5 block text-[11px] text-muted-foreground">{field.description}</span>}
           {fieldErrors[field.name] && <span className="mt-1.5 block text-xs text-danger" id={`${field.name}-error`}>{fieldErrors[field.name]}</span>}
-        </label> : null)}
+        </FieldContainer> : null)}
         {error && <p className={wide ? 'col-span-2 rounded-lg border border-danger/20 bg-danger/10 p-3 text-xs text-danger' : 'rounded-lg border border-danger/20 bg-danger/10 p-3 text-xs text-danger'}>{error}</p>}
         <div className={wide ? 'col-span-2 flex justify-end gap-2' : 'flex justify-end gap-2'}><Button onClick={onClose} type="button" variant="ghost">{cancelLabel}</Button><Button disabled={pending} type="submit">{submitLabel}</Button></div>
       </form>
     </DialogContent>
   </Dialog>
+}
+
+function FieldContainer({ asLabel, children, className }: { asLabel: boolean; children: ReactNode; className: string }) {
+  return asLabel ? <label className={className}>{children}</label> : <div className={className}>{children}</div>
 }

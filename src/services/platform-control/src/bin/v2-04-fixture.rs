@@ -827,7 +827,7 @@ fn resource_fixtures(
             RAG,
             RAG_VERSION,
             "read",
-            json!({"endpoint":rag,"externalResourceId":"v2_04","resourceVersion":1,"vaultSecretRef":rag_credential}),
+            json!({"provider":"lightrag","endpoint":rag,"connectionId":RAG,"connectionVersion":1,"scope":{"kind":"lightrag","workspace":""},"name":"Knowledge","description":"Search external documentation","resourceVersion":1,"vaultSecretRef":rag_credential}),
         )?,
         resource(
             "agent",

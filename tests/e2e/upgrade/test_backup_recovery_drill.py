@@ -46,7 +46,7 @@ _SCHEMA_SENTINELS = [
     ("0001", "workflows"),
     ("0008", "application_webhooks"),
     ("0010", "application_runtime_trigger_revisions"),
-    ("0013", "knowledge_documents"),
+    ("0013", "knowledge_retrieval_tests"),
 ]
 
 

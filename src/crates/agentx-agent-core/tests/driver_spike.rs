@@ -129,6 +129,96 @@ struct FakeModel {
     requests: Vec<ModelRequestV1>,
 }
 
+#[test]
+fn terminating_tool_failure_stops_model_turns_and_survives_settlement_crashes() {
+    for message_saved in [false, true] {
+        let mut input = input(false);
+        input.attachment_tools = vec![ToolDefinitionV1 {
+            name: "knowledge_search_project".into(),
+            description: "Project knowledge".into(),
+            input_schema: json!({"type":"object"}),
+            origin: ToolOriginV1::Knowledge,
+            replay_policy: ReplayPolicyV1::Safe,
+        }];
+        let details =
+            json!({"code":"KNOWLEDGE_ALL_SOURCES_FAILED","sources":[{"status":"failed"}]});
+        let mut tools = FakeTools {
+            calls: vec![],
+            result: Some(Ok(ToolResultV1 {
+                content: details.to_string(),
+                structured_result: Some(details.clone()),
+                artifact_refs: vec![],
+                truncated: false,
+                is_error: true,
+                terminate: true,
+            })),
+        };
+        let mut model = FakeModel {
+            responses: VecDeque::from([
+                response(
+                    "assistant-1",
+                    "",
+                    vec![ToolCallV1 {
+                        call_id: "search-1".into(),
+                        name: "knowledge_search_project".into(),
+                        arguments: json!({"query":"project"}),
+                    }],
+                ),
+                response("assistant-2", "must not answer after failure", vec![]),
+            ]),
+            requests: vec![],
+        };
+        let mut state = MemoryState::default();
+        let mut events = Events::default();
+        let mut budget = budget(BudgetDecision::Continue);
+        let first = AgentCore::run(
+            &input,
+            &mut model,
+            &mut tools,
+            &mut state,
+            &mut events,
+            &FixedClock,
+            &mut budget,
+        )
+        .unwrap();
+        assert_eq!(first.terminal_reason, TerminalReasonV1::ToolError);
+        assert_eq!(model.requests.len(), 1);
+        assert_eq!(tools.calls.len(), 1);
+        // Recreate either crash window after durable settlement but before
+        // terminal commit: before and after persisting the tool message.
+        let saved = state.state.as_mut().unwrap();
+        saved.terminal = None;
+        if !message_saved {
+            saved.messages.retain(|m| m.role != MessageRole::ToolResult);
+        }
+        input.fencing_token += 1;
+        let resumed = AgentCore::run(
+            &input,
+            &mut model,
+            &mut tools,
+            &mut state,
+            &mut events,
+            &FixedClock,
+            &mut budget,
+        )
+        .unwrap();
+        assert_eq!(resumed.terminal_reason, TerminalReasonV1::ToolError);
+        assert_eq!(resumed.state.terminal, Some(TerminalReasonV1::ToolError));
+        assert!(resumed.state.messages.iter().any(|message| {
+            message.role == MessageRole::ToolResult
+                && message.tool_call_id.as_deref() == Some("search-1")
+                && message.content.as_text() == Some(details.to_string().as_str())
+        }));
+        let OperationPhaseV1::SettledSuccess { result } = &resumed.state.operation.unwrap().phase
+        else {
+            panic!("durable result missing")
+        };
+        assert_eq!(result["structuredResult"], details);
+        assert_eq!(model.requests.len(), 1);
+        assert_eq!(tools.calls.len(), 1);
+    }
+}
+
 impl ModelPort for FakeModel {
     fn invoke(
         &mut self,

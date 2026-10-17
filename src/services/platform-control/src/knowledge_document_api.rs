@@ -1,494 +1,208 @@
-//! Knowledge document management and hit-testing (plan7 P7-E): upload →
-//! external index → status tracking → retrieval test. Indexing and retrieval
-//! talk to the provider directly from Control over the dependencies network
-//! path using the shared RAG protocol, with credentials read from the frozen
-//! Vault snapshot.
-
-use std::time::Instant;
-
+//! Read-only external documents and query-scoped retrieval tests.
+use crate::{
+    api_error::{ApiError, ApiResult},
+    control_api::{Actor, ControlApiState},
+    knowledge_provider::{Provider, protocol_error},
+};
+use agentx_runtime_contracts::{
+    rag::{RagScope, rag_query_request, validate_instance_scope, validate_retrieval_input},
+    retrieval::{QueryScope, resolve_sources, retrieve},
+};
 use axum::{
     Json,
-    extract::{Multipart, Path, State},
-    http::StatusCode,
+    extract::{Path, Query, State},
 };
-use serde::Serialize;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use sqlx::Row;
 use uuid::Uuid;
 
-use agentx_application::{ArtifactStore, ArtifactWrite};
-use agentx_control_infrastructure::artifact::MySqlControlArtifactStore;
-use agentx_domain::TenantId;
-
-use crate::api_error::{ApiError, ApiResult};
-use crate::control_api::{Actor, ControlApiState};
-
-const MAX_DOCUMENT_SIZE: usize = 8 * 1024 * 1024;
-const MAX_DOCUMENTS_PER_RESOURCE: u64 = 200;
-const MAX_TOTAL_BYTES_PER_RESOURCE: u64 = 256 * 1024 * 1024;
-const CONTENT_TYPE_ALLOWLIST: &[&str] = &[
-    "text/plain",
-    "text/markdown",
-    "text/csv",
-    "application/json",
-];
-
 pub fn routes() -> axum::Router<ControlApiState> {
     axum::Router::new()
         .route(
-            "/api/v1/knowledge/resources/{id}/documents",
-            axum::routing::get(list_documents).post(upload_document),
+            "/api/v1/knowledge/queries/{id}/documents",
+            axum::routing::get(list_documents),
         )
         .route(
-            "/api/v1/knowledge/resources/{id}/documents/{document_id}",
-            axum::routing::delete(delete_document),
-        )
-        .route(
-            "/api/v1/knowledge/resources/{id}/retrieval-test",
+            "/api/v1/knowledge/queries/{id}/retrieval-test",
             axum::routing::post(retrieval_test),
         )
-        .layer(axum::extract::DefaultBodyLimit::max(
-            MAX_DOCUMENT_SIZE + 1024 * 1024,
-        ))
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct KnowledgeDocumentResponse {
-    id: Uuid,
-    rag_resource_id: Uuid,
-    name: String,
-    content_type: String,
-    size_bytes: u64,
-    external_document_id: Option<String>,
-    status: String,
-    error_code: Option<String>,
-    error_message: Option<String>,
-    indexed_at: Option<String>,
-    version: u64,
-    created_at: String,
-}
-
-async fn require_resource(
+async fn resource(
     state: &ControlApiState,
     actor: &Actor,
-    resource_id: Uuid,
-) -> ApiResult<sqlx::mysql::MySqlRow> {
+    id: Uuid,
+) -> ApiResult<(Provider, QueryScope)> {
     actor.require("knowledge:view")?;
-    crate::external_resource_api::require_resource(state, actor, "rag_resources", resource_id)
+    crate::external_resource_api::require_resource(state, actor, "rag_resources", id).await?;
+    let row = sqlx::query("SELECT r.scope_json,c.id connection_id,c.version connection_version,c.provider,c.endpoint,c.credential_id FROM rag_resources r JOIN rag_connections c ON c.tenant_id=r.tenant_id AND c.id=r.connection_id WHERE r.tenant_id=? AND r.id=? AND r.status='active' AND c.status='active'")
+        .bind(actor.tenant_id).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::unprocessable("RESOURCE_UNAVAILABLE", "Query or connection is disabled"))?;
+    let scope: RagScope =
+        serde_json::from_value(row.try_get("scope_json")?).map_err(ApiError::internal)?;
+    crate::resource_api::require_knowledge_credential(state, actor, row.try_get("credential_id")?)
         .await?;
-    let row = sqlx::query(
-        "SELECT r.id,r.name,r.external_resource_id,r.sync_status,r.version,c.provider,c.endpoint,c.health_path,c.credential_id FROM rag_resources r JOIN rag_connections c ON c.tenant_id=r.tenant_id AND c.id=r.connection_id WHERE r.tenant_id=? AND r.id=?",
+    let provider = Provider::new(
+        state,
+        actor.tenant_id,
+        row.try_get("provider")?,
+        row.try_get("endpoint")?,
+        row.try_get("credential_id")?,
     )
-    .bind(actor.tenant_id)
-    .bind(resource_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| ApiError::not_found("Knowledge resource"))?;
-    Ok(row)
-}
-
-async fn upload_document(
-    State(state): State<ControlApiState>,
-    actor: Actor,
-    Path(resource_id): Path<Uuid>,
-    mut multipart: Multipart,
-) -> ApiResult<(StatusCode, Json<KnowledgeDocumentResponse>)> {
-    actor.require("knowledge:manage")?;
-    let resource = require_resource(&state, &actor, resource_id).await?;
-    let provider: String = resource.try_get("provider")?;
-    if provider != "lightrag" {
-        return Err(ApiError::unprocessable(
-            "RAG_OPERATION_UNSUPPORTED",
-            "RAGFlow knowledge resources manage documents externally",
-        ));
-    }
-    let mut upload = None;
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|_| ApiError::bad_request("INVALID_MULTIPART", "Upload is invalid"))?
-    {
-        if field.name() == Some("file") && upload.is_none() {
-            let name = field
-                .file_name()
-                .unwrap_or("document")
-                .chars()
-                .take(255)
-                .collect::<String>();
-            let content_type = field.content_type().unwrap_or("text/plain").to_owned();
-            let bytes = field.bytes().await.map_err(ApiError::internal)?.to_vec();
-            upload = Some((name, content_type, bytes));
-        }
-    }
-    let (name, content_type, bytes) = upload
-        .ok_or_else(|| ApiError::bad_request("FILE_REQUIRED", "Multipart file is required"))?;
-    if !CONTENT_TYPE_ALLOWLIST.contains(&content_type.as_str()) {
-        return Err(ApiError::unprocessable(
-            "KNOWLEDGE_DOCUMENT_TYPE_UNSUPPORTED",
-            "Knowledge documents accept text, markdown, CSV and JSON",
-        ));
-    }
-    if std::str::from_utf8(&bytes)
-        .ok()
-        .is_none_or(|text| text.trim().is_empty())
-    {
-        return Err(ApiError::bad_request(
-            "KNOWLEDGE_DOCUMENT_INVALID",
-            "Knowledge documents must contain non-empty UTF-8 text",
-        ));
-    }
-    if bytes.len() > MAX_DOCUMENT_SIZE {
-        return Err(ApiError::unprocessable(
-            "KNOWLEDGE_DOCUMENT_TOO_LARGE",
-            "Knowledge documents are limited to 8 MiB",
-        ));
-    }
-    let store = MySqlControlArtifactStore::new(state.pool.clone(), state.control_objects.clone());
-    let mut snapshot =
-        crate::knowledge_indexing::snapshot(&state, actor.tenant_id, &resource, 0).await?;
-    let stored = ArtifactStore::put(
-        &store,
-        ArtifactWrite {
-            tenant_id: TenantId::from_uuid(actor.tenant_id),
-            content_type: content_type.clone(),
-            content: bytes.clone(),
+    .await?;
+    scope.validate(&provider.kind).map_err(protocol_error)?;
+    Ok((
+        provider,
+        QueryScope {
+            query_id: id,
+            connection_id: row.try_get("connection_id")?,
+            connection_version: row.try_get("connection_version")?,
+            scope,
         },
-    )
-    .await
-    .map_err(ApiError::internal)?;
-    let document_id = Uuid::now_v7();
-    let mut tx = state.pool.begin().await?;
-    let current_version: u64 = sqlx::query_scalar(
-        "SELECT version FROM rag_resources WHERE tenant_id=? AND id=? FOR UPDATE",
-    )
-    .bind(actor.tenant_id)
-    .bind(resource_id)
-    .fetch_one(&mut *tx)
-    .await?;
-    let counts = sqlx::query(
-        "SELECT COUNT(*) document_count,CAST(COALESCE(SUM(size_bytes),0) AS SIGNED) total_bytes FROM knowledge_documents WHERE tenant_id=? AND rag_resource_id=?",
-    )
-    .bind(actor.tenant_id)
-    .bind(resource_id)
-    .fetch_one(&mut *tx)
-    .await?;
-    if counts.try_get::<i64, _>("document_count")? >= MAX_DOCUMENTS_PER_RESOURCE as i64 {
-        return Err(ApiError::unprocessable(
-            "KNOWLEDGE_DOCUMENT_LIMIT",
-            "Knowledge resources hold at most 200 documents",
-        ));
-    }
-    if counts.try_get::<i64, _>("total_bytes")? + bytes.len() as i64
-        > MAX_TOTAL_BYTES_PER_RESOURCE as i64
-    {
-        return Err(ApiError::unprocessable(
-            "KNOWLEDGE_DOCUMENT_LIMIT",
-            "Knowledge resources hold at most 256 MiB of documents",
-        ));
-    }
-    let duplicate: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM knowledge_documents WHERE tenant_id=? AND rag_resource_id=? AND sha256=?",
-    )
-    .bind(actor.tenant_id)
-    .bind(resource_id)
-    .bind(sha256_hex(&bytes))
-    .fetch_optional(&mut *tx)
-    .await?;
-    if duplicate.is_some() {
-        return Err(ApiError::unprocessable(
-            "KNOWLEDGE_DOCUMENT_DUPLICATED",
-            "The same document content already exists on this knowledge resource",
-        ));
-    }
-    snapshot["index_version"] = json!(current_version);
-    sqlx::query(
-        "INSERT INTO knowledge_documents(id,tenant_id,rag_resource_id,name,content_type,size_bytes,sha256,artifact_id,index_snapshot_json,status,created_by) VALUES(?,?,?,?,?,?,?,?,?, 'uploading',?)",
-    )
-    .bind(document_id)
-    .bind(actor.tenant_id)
-    .bind(resource_id)
-    .bind(&name)
-    .bind(&content_type)
-    .bind(bytes.len() as u64)
-    .bind(stored.sha256.trim_start_matches("sha256:"))
-    .bind(stored.id.as_uuid())
-    .bind(&snapshot)
-    .bind(actor.user_id)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query(
-        "INSERT INTO artifact_references(tenant_id,artifact_id,owner_type,owner_id,reference_role) VALUES(?,?,'knowledge_document',?,'source') ON DUPLICATE KEY UPDATE reference_role=VALUES(reference_role)",
-    )
-    .bind(actor.tenant_id)
-    .bind(stored.id.as_uuid())
-    .bind(document_id.to_string())
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query("UPDATE rag_resources SET sync_status='syncing' WHERE tenant_id=? AND id=?")
-        .bind(actor.tenant_id)
-        .bind(resource_id)
-        .execute(&mut *tx)
-        .await?;
-    tx.commit().await?;
-    let document = load_document(&state, actor.tenant_id, document_id).await?;
-    Ok((StatusCode::ACCEPTED, Json(document)))
+    ))
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    let digest = Sha256::digest(bytes);
-    format!("{digest:x}")
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DocumentsQuery {
+    #[serde(default = "first_page")]
+    page: u32,
+    #[serde(default = "page_size")]
+    page_size: u32,
+    dataset_id: Option<String>,
 }
-
-async fn load_document(
-    state: &ControlApiState,
-    tenant_id: Uuid,
-    document_id: Uuid,
-) -> ApiResult<KnowledgeDocumentResponse> {
-    let row = sqlx::query(
-        "SELECT id,rag_resource_id,name,content_type,size_bytes,external_document_id,status,error_code,error_message,DATE_FORMAT(indexed_at,'%Y-%m-%dT%H:%i:%s.%fZ') indexed_at,version,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%s.%fZ') created_at FROM knowledge_documents WHERE tenant_id=? AND id=?",
-    )
-    .bind(tenant_id)
-    .bind(document_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| ApiError::not_found("Knowledge document"))?;
-    document_from_row(row)
+fn first_page() -> u32 {
+    1
 }
-
-fn document_from_row(row: sqlx::mysql::MySqlRow) -> ApiResult<KnowledgeDocumentResponse> {
-    Ok(KnowledgeDocumentResponse {
-        id: row.try_get("id")?,
-        rag_resource_id: row.try_get("rag_resource_id")?,
-        name: row.try_get("name")?,
-        content_type: row.try_get("content_type")?,
-        size_bytes: row.try_get("size_bytes")?,
-        external_document_id: row.try_get("external_document_id")?,
-        status: row.try_get("status")?,
-        error_code: row.try_get("error_code")?,
-        error_message: row.try_get("error_message")?,
-        indexed_at: row.try_get::<Option<String>, _>("indexed_at")?,
-        version: row.try_get("version")?,
-        created_at: row.try_get("created_at")?,
-    })
+fn page_size() -> u32 {
+    20
 }
 
 async fn list_documents(
     State(state): State<ControlApiState>,
     actor: Actor,
-    Path(resource_id): Path<Uuid>,
-) -> ApiResult<Json<Vec<KnowledgeDocumentResponse>>> {
-    require_resource(&state, &actor, resource_id).await?;
-    let rows = sqlx::query(
-        "SELECT id,rag_resource_id,name,content_type,size_bytes,external_document_id,status,error_code,error_message,DATE_FORMAT(indexed_at,'%Y-%m-%dT%H:%i:%s.%fZ') indexed_at,version,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%s.%fZ') created_at FROM knowledge_documents WHERE tenant_id=? AND rag_resource_id=? ORDER BY created_at DESC",
-    )
-    .bind(actor.tenant_id)
-    .bind(resource_id)
-    .fetch_all(&state.pool)
-    .await?;
-    let items = rows
-        .into_iter()
-        .map(document_from_row)
-        .collect::<ApiResult<Vec<_>>>()?;
-    Ok(Json(items))
-}
-
-async fn delete_document(
-    State(state): State<ControlApiState>,
-    actor: Actor,
-    Path((resource_id, document_id)): Path<(Uuid, Uuid)>,
-) -> ApiResult<StatusCode> {
-    actor.require("knowledge:manage")?;
-    require_resource(&state, &actor, resource_id).await?;
-    let mut tx = state.pool.begin().await?;
-    sqlx::query("SELECT id FROM rag_resources WHERE tenant_id=? AND id=? FOR UPDATE")
-        .bind(actor.tenant_id)
-        .bind(resource_id)
-        .fetch_one(&mut *tx)
-        .await?;
-    let status: String = sqlx::query_scalar("SELECT status FROM knowledge_documents WHERE tenant_id=? AND rag_resource_id=? AND id=? FOR UPDATE")
-        .bind(actor.tenant_id).bind(resource_id).bind(document_id).fetch_optional(&mut *tx).await?.ok_or_else(||ApiError::not_found("Knowledge document"))?;
-    if matches!(status.as_str(), "uploading" | "indexing") {
-        return Err(ApiError::conflict(
-            "KNOWLEDGE_DOCUMENT_BUSY",
-            "Wait for indexing to finish before removing its source record",
-        ));
+    Path(id): Path<Uuid>,
+    Query(input): Query<DocumentsQuery>,
+) -> ApiResult<Json<Value>> {
+    let (provider, query) = resource(&state, &actor, id).await?;
+    if query.scope.provider() == "lightrag" {
+        let health = provider
+            .request(&state, reqwest::Method::GET, "health", None)
+            .await
+            .map_err(protocol_error)?;
+        validate_instance_scope(&query.scope, &health).map_err(protocol_error)?;
     }
-    sqlx::query("DELETE FROM artifact_references WHERE tenant_id=? AND owner_type='knowledge_document' AND owner_id=?")
-        .bind(actor.tenant_id).bind(document_id.to_string()).execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM knowledge_documents WHERE tenant_id=? AND rag_resource_id=? AND id=?")
-        .bind(actor.tenant_id)
-        .bind(resource_id)
-        .bind(document_id)
-        .execute(&mut *tx)
-        .await?;
-    // Removing the platform source record does not change the external index
-    // or its Runtime snapshot. Keep the resource's index version unchanged.
-    crate::knowledge_indexing::refresh_resource_status(&mut tx, actor.tenant_id, resource_id)
-        .await?;
-    tx.commit().await?;
-    Ok(StatusCode::NO_CONTENT)
+    let page = input.page.max(1);
+    let page_size = input.page_size.clamp(10, 100);
+    let (value, scope) = match &query.scope {
+        RagScope::Ragflow { dataset_ids } => {
+            let dataset = input.dataset_id.as_ref().unwrap_or(&dataset_ids[0]);
+            if !dataset_ids.contains(dataset) {
+                return Err(ApiError::forbidden("Dataset is outside this query scope"));
+            }
+            let mut url = reqwest::Url::parse("http://provider/api/v1/datasets/")
+                .map_err(ApiError::internal)?;
+            url.path_segments_mut()
+                .unwrap()
+                .pop_if_empty()
+                .push(dataset)
+                .push("documents");
+            let path = format!("{}?page={page}&page_size={page_size}", url.path());
+            (
+                provider
+                    .request(&state, reqwest::Method::GET, &path, None)
+                    .await
+                    .map_err(protocol_error)?,
+                RagScope::Ragflow {
+                    dataset_ids: vec![dataset.clone()],
+                },
+            )
+        }
+        scope => (
+            provider
+                .request(
+                    &state,
+                    reqwest::Method::POST,
+                    "documents/paginated",
+                    Some(&json!({"page":page,"page_size":page_size})),
+                )
+                .await
+                .map_err(protocol_error)?,
+            scope.clone(),
+        ),
+    };
+    let docs = if provider.kind == "ragflow" {
+        value.pointer("/data/docs")
+    } else {
+        value.get("documents")
+    }
+    .and_then(Value::as_array)
+    .ok_or_else(|| {
+        ApiError::unprocessable("PROVIDER_REJECTED", "Provider omitted document list")
+    })?;
+    let items = docs.iter().map(|doc|json!({"id":doc["id"],"name":doc.get("name").or_else(||doc.get("file_path")),"status":doc.get("status").or_else(||doc.get("run")),"scope":scope,"connectionId":query.connection_id})).collect::<Vec<_>>();
+    let total = if provider.kind == "ragflow" {
+        value.pointer("/data/total")
+    } else {
+        value.pointer("/pagination/total_count")
+    }
+    .and_then(Value::as_u64)
+    .unwrap_or(items.len() as u64);
+    Ok(Json(
+        json!({"items":items,"page":page,"pageSize":page_size,"total":total}),
+    ))
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct RetrievalTestRequest {
+pub(crate) struct RetrievalTestRequest {
     query: String,
     #[serde(default = "default_top_k")]
-    top_k: u32,
+    top_k: usize,
 }
-
-fn default_top_k() -> u32 {
+fn default_top_k() -> usize {
     5
 }
-
 async fn retrieval_test(
     State(state): State<ControlApiState>,
     actor: Actor,
-    Path(resource_id): Path<Uuid>,
-    Json(request): Json<RetrievalTestRequest>,
+    Path(id): Path<Uuid>,
+    Json(input): Json<RetrievalTestRequest>,
 ) -> ApiResult<Json<Value>> {
     actor.require("knowledge:manage")?;
-    let resource = require_resource(&state, &actor, resource_id).await?;
-    let query = request.query.trim();
-    if query.is_empty() || query.len() > 2000 {
-        return Err(ApiError::bad_request(
-            "INVALID_RETRIEVAL_QUERY",
-            "Query must be 1..=2000 characters",
-        ));
-    }
-    let top_k = request.top_k.clamp(1, 20);
-    let provider: String = resource.try_get("provider")?;
-    let endpoint: String = resource.try_get("endpoint")?;
-    let namespace: String = resource.try_get("external_resource_id")?;
-    let index_version: u64 = resource.try_get("version")?;
-    let input = json!({"query": query, "top_k": top_k});
-    let (path, body, secret_header) = agentx_runtime_contracts::rag::rag_query_request(
-        &provider,
-        "retrieve",
-        &namespace,
-        &index_version.to_string(),
-        &input,
-    )
-    .map_err(|error| ApiError::unprocessable(error.code, error.message))?;
-    let secret = vault_secret(&state, &actor, resource.try_get("credential_id")?).await?;
-    let started = Instant::now();
-    let url = format!("{}/{}", endpoint.trim_end_matches('/'), path);
-    validate_dependencies_http(&url)?;
-    let mut builder = state
-        .http
-        .post(&url)
-        .timeout(std::time::Duration::from_secs(20))
-        .json(&body);
-    if provider == "lightrag" {
-        builder = builder.header("LIGHTRAG-WORKSPACE", &namespace);
-    }
-    if let Some(secret) = secret.as_deref() {
-        builder = match secret_header {
-            "authorization" => builder.bearer_auth(secret),
-            _ => builder.header("x-api-key", secret),
-        };
-    }
-    let response = builder.send().await.map_err(|_| {
-        ApiError::unavailable("PROVIDER_UNAVAILABLE", "Knowledge provider is unreachable")
-    })?;
-    let status = response.status();
-    let payload: Value = response.json().await.map_err(|_| {
-        ApiError::unprocessable(
-            "PROVIDER_REJECTED",
-            "Knowledge provider returned an unreadable response",
-        )
-    })?;
-    let duration_ms = started.elapsed().as_millis() as u64;
-    if !status.is_success() {
-        record_retrieval_test(
-            &state,
-            &actor,
-            resource_id,
-            query,
-            top_k,
-            0,
-            Some("PROVIDER_REJECTED"),
-            duration_ms,
-        )
-        .await;
-        return Err(ApiError::unprocessable(
-            "PROVIDER_REJECTED",
-            format!("Knowledge provider returned HTTP {status}"),
-        ));
-    }
-    let normalized = agentx_runtime_contracts::rag::finalize_retrieval_value(&provider, payload)
-        .map_err(|error| ApiError::unprocessable(error.code, error.message))?;
-    let hits = normalized
-        .get("documents")
-        .and_then(Value::as_array)
-        .map(Vec::len)
-        .unwrap_or(0) as u32;
-    record_retrieval_test(
-        &state,
-        &actor,
-        resource_id,
-        query,
-        top_k,
-        hits,
-        None,
-        duration_ms,
-    )
+    validate_retrieval_input(&input.query, input.top_k as u64).map_err(protocol_error)?;
+    let (provider, query) = resource(&state, &actor, id).await?;
+    let sources = resolve_sources(&[query]).map_err(protocol_error)?;
+    let started = std::time::Instant::now();
+    let result = retrieve(sources, input.top_k, |_, source| {
+        let provider = &provider;
+        let state = &state;
+        let query = &input.query;
+        async move {
+            if source.scope.provider() == "lightrag" {
+                let health = provider
+                    .request(state, reqwest::Method::GET, "health", None)
+                    .await?;
+                validate_instance_scope(&source.scope, &health)?;
+            }
+            let (path, body, _) = rag_query_request(&source.scope, query)?;
+            provider
+                .request(state, reqwest::Method::POST, &path, Some(&body))
+                .await
+        }
+    })
     .await;
-    Ok(Json(normalized))
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn record_retrieval_test(
-    state: &ControlApiState,
-    actor: &Actor,
-    resource_id: Uuid,
-    query: &str,
-    top_k: u32,
-    hit_count: u32,
-    error_code: Option<&str>,
-    duration_ms: u64,
-) {
-    let _ = sqlx::query(
-        "INSERT INTO rag_retrieval_tests(id,tenant_id,rag_resource_id,query,top_k,hit_count,error_code,duration_ms,created_by) VALUES(?,?,?,?,?,?,?,?,?)",
-    )
-    .bind(Uuid::now_v7())
-    .bind(actor.tenant_id)
-    .bind(resource_id)
-    .bind(query.chars().take(2000).collect::<String>())
-    .bind(top_k)
-    .bind(hit_count)
-    .bind(error_code)
-    .bind(duration_ms)
-    .bind(actor.user_id)
-    .execute(&state.pool)
-    .await;
-}
-
-async fn vault_secret(
-    state: &ControlApiState,
-    actor: &Actor,
-    credential_id: Option<Uuid>,
-) -> ApiResult<Option<String>> {
-    let reference =
-        crate::knowledge_indexing::credential_snapshot(state, actor.tenant_id, credential_id)
-            .await?;
-    crate::knowledge_indexing::read_secret(state, &reference)
-        .await
-        .map_err(|_| ApiError::unavailable("VAULT_UNAVAILABLE", "Credential could not be read"))
-}
-
-/// Control may only reach cluster-internal dependency endpoints over plain
-/// HTTP; the NetworkPolicy carries the enforced allowlist.
-fn validate_dependencies_http(url: &str) -> ApiResult<()> {
-    let parsed = reqwest::Url::parse(url)
-        .map_err(|_| ApiError::bad_request("INVALID_ENDPOINT", "Knowledge endpoint is invalid"))?;
-    if parsed.scheme() != "http" && parsed.scheme() != "https" {
-        return Err(ApiError::bad_request(
-            "INVALID_ENDPOINT",
-            "Knowledge endpoint must use http or https",
-        ));
-    }
-    Ok(())
+    let elapsed = started.elapsed().as_millis() as u64;
+    let hits = result
+        .as_ref()
+        .ok()
+        .and_then(|v| v["documents"].as_array())
+        .map_or(0, Vec::len);
+    sqlx::query("INSERT INTO rag_retrieval_tests(id,tenant_id,rag_resource_id,query,top_k,hit_count,error_code,duration_ms,created_by) VALUES(?,?,?,?,?,?,?,?,?)")
+        .bind(Uuid::now_v7()).bind(actor.tenant_id).bind(id).bind(&input.query).bind(input.top_k as u32).bind(hits as u32).bind(result.as_ref().err().map(|e|e.code)).bind(elapsed).bind(actor.user_id).execute(&state.pool).await?;
+    let mut result = result.map_err(|e| {
+        ApiError::unprocessable(e.code, e.message).with_details(json!({"sources":e.sources}))
+    })?;
+    result["elapsedMs"] = json!(elapsed);
+    Ok(Json(result))
 }

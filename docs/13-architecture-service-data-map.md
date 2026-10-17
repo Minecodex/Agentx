@@ -90,3 +90,7 @@ Run `20260818-final4` 已验证三域空库部署、151/151 公共 API、产品�
 ## Studio Builder 的服务映射
 
 Control 的 studio_builder_* 模块注入同一个 agentx-agent-core，拥有设计会话、编辑回执、租户模型授权和对象权限。Runtime Gateway 仅接受绑定来源的设计模型 Effect，复用 Vault/Egress/价格与 Quota；Sandbox Manager 使用 sandbox_design_leases 承载无资源、无网络的契约解析，同一 Workflow 静态解析批次可复用短期容器，每个节点使用新进程；批次关闭或租约超时立即清理。Workflow Worker 继续消费不可变业务快照，不读 Control 草稿、不承担 Builder 编辑任务。
+
+## 外部知识服务边界
+
+Control 管理连接与 `rag` 查询配置，发现真实 Dataset/workspace，提供只读外部文档浏览和查询测试。Runtime 使用冻结范围与凭证执行，外部系统维护内容与索引。`agentx-runtime-contracts::rag` 负责协议，`retrieval` 负责来源展开、并发 4、RRF、去重和逐来源状态。不存在知识上传、Artifact 源文件或索引调度器。详见 [知识连接与多来源检索](plan8/11-knowledge-connections.md)。

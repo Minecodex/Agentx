@@ -57,9 +57,9 @@ pub(crate) mod stream;
 #[cfg(test)]
 use output::system_prompt;
 use output::{
-    apply_model_price, finalize_rag_response, memory_execution_output,
-    openai_chat_request_streaming, openai_execution_output, provider_usage_detail,
-    rag_execution_output, rag_query_request, sandbox_execution_output, tool_execution_output,
+    apply_model_price, memory_execution_output, openai_chat_request_streaming,
+    openai_execution_output, provider_usage_detail, sandbox_execution_output,
+    tool_execution_output,
 };
 
 pub struct WorkerExecution {
@@ -761,36 +761,11 @@ impl RuntimeWorker {
                     )
                     .await;
             }
-            RuntimeResourceConfigurationV1::Rag {
-                provider,
-                endpoint,
-                namespace,
-                index_version,
-                credential,
-            } => {
-                let operation = claim
-                    .node_parameters
-                    .get("operation")
-                    .and_then(Value::as_str)
-                    .unwrap_or("query");
+            RuntimeResourceConfigurationV1::Rag { .. } => {
                 let payload = claim.node_parameters.get("input").cloned().unwrap_or(input);
-                let (path, body, secret_header) = match rag_query_request(
-                    provider,
-                    operation,
-                    namespace,
-                    index_version,
-                    &payload,
-                ) {
-                    Ok(built) => built,
-                    Err(failed) => return failed,
-                };
-                (
-                    "rag",
-                    format!("{}/{}", endpoint.trim_end_matches('/'), path),
-                    body,
-                    credential.as_ref(),
-                    secret_header,
-                )
+                return self
+                    .execute_knowledge_queries(claim, &[binding], &payload, call_index)
+                    .await;
             }
             RuntimeResourceConfigurationV1::Memory { .. } => {
                 return self.call_memory(claim, binding, input, call_index).await;
@@ -853,17 +828,6 @@ impl RuntimeWorker {
             .await;
         match binding.resource_kind {
             RuntimeResourceKindV1::Mcp => tool_execution_output(execution),
-            RuntimeResourceKindV1::Rag => {
-                let provider = match &binding.configuration {
-                    RuntimeResourceConfigurationV1::Rag { provider, .. } => provider.clone(),
-                    _ => "lightrag".into(),
-                };
-                if claim.node_type == "knowledge_retrieval" {
-                    knowledge::finalize(&provider, execution)
-                } else {
-                    rag_execution_output(finalize_rag_response(&provider, execution))
-                }
-            }
             RuntimeResourceKindV1::Memory => memory_execution_output(execution),
             _ => execution,
         }
@@ -1116,11 +1080,6 @@ impl RuntimeWorker {
         };
         let mut endpoint = endpoint.to_owned();
         let mut headers = HeaderMap::new();
-        if kind == "rag" && binding.is_some_and(|binding| matches!(&binding.configuration, RuntimeResourceConfigurationV1::Rag { provider, .. } if provider == "lightrag")) {
-            if let Some(workspace) = request.get("workspace").and_then(Value::as_str) {
-                headers.insert("LIGHTRAG-WORKSPACE", reqwest::header::HeaderValue::from_str(workspace).expect("validated LightRAG workspace"));
-            }
-        }
         let mut secret_redactions = Vec::new();
         headers.insert(
             "Idempotency-Key",
@@ -1347,21 +1306,23 @@ impl RuntimeWorker {
                     }
                 })
             }
-            RuntimeHttpTransport::Provider if kind == "http" => self.provider.request_json(
-                request
-                    .get("method")
-                    .and_then(Value::as_str)
-                    .unwrap_or("GET"),
-                &endpoint,
-                context,
-                std::time::Duration::from_millis(claim.timeout_ms),
-                headers,
-                (!matches!(
-                    request.get("method").and_then(Value::as_str),
-                    Some("GET" | "DELETE")
-                ))
-                .then(|| request.get("body").unwrap_or(&Value::Null)),
-            ),
+            RuntimeHttpTransport::Provider if matches!(kind, "http" | "rag_health") => {
+                self.provider.request_json(
+                    request
+                        .get("method")
+                        .and_then(Value::as_str)
+                        .unwrap_or("GET"),
+                    &endpoint,
+                    context,
+                    std::time::Duration::from_millis(claim.timeout_ms),
+                    headers,
+                    (!matches!(
+                        request.get("method").and_then(Value::as_str),
+                        Some("GET" | "DELETE")
+                    ))
+                    .then(|| request.get("body").unwrap_or(&Value::Null)),
+                )
+            }
             RuntimeHttpTransport::Provider => self.provider.post_json(
                 &endpoint,
                 context,

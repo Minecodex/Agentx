@@ -39,7 +39,7 @@ pub(super) fn validate_binding_slots(
                     message: format!("Select the required {resource_type} resource"),
                 });
             }
-            if count > 1 {
+            if count > 1 && selector["multiple"] != true {
                 issues.push(CompileIssue {
                     code: "BINDING_MULTIPLE_NOT_ALLOWED".into(),
                     path: format!("nodes[{definition_index}].resourceReferences"),

@@ -38,6 +38,34 @@ def studio_provider(installed_agentx: dict[str, str]) -> str:
             )
     run(("kubectl", "-n", namespace, "apply", "-f", "-"), input_text=yaml.safe_dump_all(documents))
     run(("kubectl", "-n", namespace, "rollout", "status", "deployment/echo-mcp", "--timeout=300s"), timeout=330)
+    # Catalog discovery and retrieval tests run in Control. Only this isolated
+    # fixture needs its nonstandard 8090 port on that direct provider path.
+    peer = {
+        "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": namespace}},
+        "podSelector": {"matchLabels": {"app.kubernetes.io/name": "echo-mcp"}},
+    }
+    control_peer = {
+        "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": installed_agentx["control_namespace"]}},
+        "podSelector": {"matchLabels": {"app.kubernetes.io/name": "platform-control"}},
+    }
+    for target, name, selector, direction, rules in (
+        (
+            installed_agentx["control_namespace"],
+            "knowledge-fixture-egress",
+            control_peer["podSelector"],
+            "Egress",
+            {"to": [peer]},
+        ),
+        (namespace, "knowledge-fixture-ingress", peer["podSelector"], "Ingress", {"from": [control_peer]}),
+    ):
+        rules["ports"] = [{"protocol": "TCP", "port": 8090}]
+        policy = {
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "NetworkPolicy",
+            "metadata": {"name": name},
+            "spec": {"podSelector": selector, "policyTypes": [direction], direction.lower(): [rules]},
+        }
+        run(("kubectl", "-n", target, "apply", "-f", "-"), input_text=yaml.safe_dump(policy))
     return f"http://echo-mcp.{namespace}.svc:8090/v1"
 
 

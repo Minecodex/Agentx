@@ -75,7 +75,41 @@ describe('application playground sessions', () => {
     expect(await screen.findByText('tiny.png')).toBeVisible()
     fireEvent.change(composer, { target: { value: 'Describe this image' } })
     fireEvent.click(screen.getByRole('button', { name: '发送' }))
-    await waitFor(() => expect(submitted?.parts).toEqual(expect.arrayContaining([{ partType: 'image', artifactId: 'image-1', content: expect.objectContaining({ type: 'image', contentType: 'image/png' }) }])))
+    await waitFor(() => expect(submitted?.parts).toEqual(expect.arrayContaining([{ partType: 'image', artifactId: 'image-1', content: expect.objectContaining({ contentType: 'image/png' }) }])))
+  })
+
+  it('submits uploaded files to strict parameter schemas without adding message part fields', async () => {
+    let submitted: { input: { prompt: string; attachments: unknown[] } } | undefined
+    const uploaded = { artifactId: 'csv-1', contentType: 'text/csv', sizeBytes: 8, sha256: 'csv-sha' }
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), 'http://agentx.test').pathname
+      if (path === '/api/v1/applications') return jsonResponse({ items: [application()], page: 1, pageSize: 100, total: 1 })
+      if (path === '/api/v1/executions') return jsonResponse({ items: [], page: 1, pageSize: 20, total: 0 })
+      if (path === '/api/v1/applications/app-1/deployments') return jsonResponse([{
+        ...deployment(), inputSchema: {
+          type: 'object', properties: {
+            prompt: { type: 'string', title: '问题' },
+            attachments: {
+              type: 'array', title: '文件', 'x-agentx-artifact': true, 'x-agentx-artifact-array': true,
+              items: { type: 'object', properties: { artifactId: { type: 'string' }, fileName: { type: 'string' }, contentType: { type: 'string' }, sizeBytes: { type: 'integer' }, sha256: { type: 'string' } }, additionalProperties: false },
+            },
+          }, required: ['prompt', 'attachments'], additionalProperties: false,
+        },
+      }])
+      if (path === '/gateway/v1/artifacts') return jsonResponse(uploaded)
+      if (path === '/gateway/v1/applications/support/invocations' && init?.method === 'POST') {
+        submitted = JSON.parse(String(init.body))
+        return jsonResponse({ id: 'file-invocation', status: 'completed' })
+      }
+      if (path === '/gateway/v1/invocations/file-invocation') return jsonResponse({ id: 'file-invocation', status: 'completed' })
+      return jsonResponse([])
+    }))
+    renderPlayground('/playground?applicationId=app-1&mode=parameters')
+    fireEvent.change(await screen.findByLabelText('问题'), { target: { value: '分析订单' } })
+    fireEvent.change(screen.getByLabelText('文件'), { target: { files: [new File(['订单,558'], '订单.csv', { type: 'text/csv' })] } })
+    expect(await screen.findByText('订单.csv')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '运行测试' }))
+    await waitFor(() => expect(submitted?.input).toEqual({ prompt: '分析订单', attachments: [{ ...uploaded, fileName: '订单.csv' }] }))
   })
 
   it('opens mapping configuration from the settings action and keeps publishing state', async () => {

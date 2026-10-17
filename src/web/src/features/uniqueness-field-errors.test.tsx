@@ -10,7 +10,7 @@ import { useAuth } from '../app/providers/auth-provider'
 import { ToastProvider } from '../shared/ui/toast'
 import { ApplicationsPage } from './applications/applications-page'
 import { DatasetDetailPage } from './datasets/dataset-detail-page'
-import { KnowledgePage } from './knowledge/knowledge-page'
+import { QueryForm } from './knowledge/query-form'
 import { McpServersPage } from './mcp/mcp-servers-page'
 import { MemoryPage } from './memory/memory-page'
 import { ModelsPage } from './models/models-page'
@@ -194,11 +194,19 @@ describe('resource page uniqueness field errors', () => {
     expect(await within(form).findByText('测试集中已存在相同的用例 Key。')).toBeInTheDocument()
   })
 
-  it('shows Knowledge external resource ID conflicts', async () => {
-    stubFetch(externalResourceHandler('knowledge', 'KNOWLEDGE_EXTERNAL_RESOURCE_ID_EXISTS', 'externalResourceId'))
-    renderPage(<KnowledgePage />)
-    const form = await openExternalResourceForm('接入知识库', '外部资源 ID')
-    expect(await within(form).findByText('所选连接下已存在相同的外部知识资源 ID。')).toBeInTheDocument()
+  it('shows a query name conflict within its connection', async () => {
+    stubFetch((path, init) => {
+      if (path.endsWith('/catalog')) return jsonResponse([{ id: 'dataset-a', name: 'Product documentation', scope: { kind: 'ragflow', datasetIds: ['dataset-a'] } }])
+      if (path.endsWith('/queries') && init?.method === 'POST') return fieldConflict('KNOWLEDGE_NAME_EXISTS', 'name')
+      if (path.endsWith('/departments')) return jsonResponse([rootDepartment])
+      return jsonResponse([])
+    })
+    renderPage(<QueryForm connection={{ id: 'connection-1', name: 'Docs', provider: 'ragflow', endpoint: 'https://kb.example', credentialId: null, ownerDepartmentId: rootDepartment.id, status: 'active', version: 1, healthPath: '/health', configuration: {} }} onClose={() => undefined} onSaved={async () => undefined} />)
+    const form = await screen.findByRole('dialog')
+    fireEvent.change(within(form).getByLabelText('查询名称'), { target: { value: 'Product query' } })
+    fireEvent.click(await within(form).findByRole('checkbox', { name: /Product documentation/ }))
+    fireEvent.click(within(form).getByRole('button', { name: '保存' }))
+    expect(await within(form).findByText('同一连接下已存在相同的查询名称。')).toBeInTheDocument()
   })
 
   it('creates a single read/write Memory connection without namespace fields', async () => {
@@ -254,27 +262,4 @@ function fieldConflict(code: string, field: string) {
 function choose(container: HTMLElement, label: string, option: string) {
   fireEvent.click(within(container).getByRole('combobox', { name: label }))
   fireEvent.click(screen.getByRole('option', { name: option }))
-}
-
-function externalResourceHandler(kind: 'knowledge', code: string, field: string): FetchHandler {
-  return (path, init) => {
-    if (path.endsWith(`/${kind}/connections`) && init?.method === 'POST') return jsonResponse({ id: 'connection-1' }, 201)
-    if (path.endsWith(`/${kind}/connections`)) return jsonResponse([])
-    const suffix = '/knowledge/resources'
-    if (path.endsWith(suffix) && init?.method === 'POST') return fieldConflict(code, field)
-    if (path.endsWith('/departments')) return jsonResponse([rootDepartment])
-    return jsonResponse(emptyPage)
-  }
-}
-
-async function openExternalResourceForm(button: string, uniqueLabel: string) {
-  fireEvent.click(await screen.findByRole('button', { name: button }))
-  const form = await screen.findByRole('dialog')
-  fireEvent.change(within(form).getByLabelText('连接名称'), { target: { value: 'Connection' } })
-  fireEvent.change(within(form).getByLabelText('Endpoint'), { target: { value: 'https://example.test' } })
-  choose(form, '所属部门', '公司')
-  fireEvent.change(within(form).getByLabelText('资源名称'), { target: { value: 'Resource' } })
-  fireEvent.change(within(form).getByLabelText(uniqueLabel), { target: { value: 'external-id' } })
-  fireEvent.click(within(form).getByRole('button', { name: '保存' }))
-  return form
 }
