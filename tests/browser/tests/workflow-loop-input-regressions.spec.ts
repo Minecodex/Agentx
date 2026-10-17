@@ -1,4 +1,4 @@
-import { fixtureDraftId } from '../draft-fixtures'
+import { fixtureVersionId } from '../draft-fixtures'
 import { expect, type Page, test } from '@playwright/test'
 
 const password = 'agentx-e2e-admin-password'
@@ -28,7 +28,7 @@ async function createWorkflow(page: Page) {
   await dialog.getByLabel('工作流名称').fill(`Loop interaction ${Date.now()}`)
   await dialog.getByRole('button', { name: '保存' }).click()
   await expect(page).toHaveURL(/\/workflows\/[0-9a-f-]+$/)
-  await page.goto(`/workflows/${page.url().split('/').at(-1)}/drafts/${await fixtureDraftId(page, page.url().split('/').at(-1)!)}/editor`)
+  await page.goto(`/workflows/${page.url().split('/').at(-1)}/versions/${await fixtureVersionId(page, page.url().split('/').at(-1)!)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
 }
 

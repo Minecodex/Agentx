@@ -28,14 +28,14 @@ async function expectExecutionSucceeded(page: Page, timeout: number) {
 }
 
 async function executionNodes(page: Page, token: string, execution: string) {
-  const response = await page.request.get(`/api/v1/executions/${execution}/nodes`, { headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.get(`/api/v1/executions/${execution}/nodes`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(response.ok()).toBeTruthy()
   return response.json() as Promise<{ items: Array<{ nodeName: string, errorCode?: string, output: { main?: Array<{ json: unknown }> } }> }>
 }
 
 async function expectRuntimeTrace(page: Page, token: string, execution: string, _eventType: string, resourceType: string) {
   await expect.poll(async () => {
-    const response = await page.request.get(`/api/v1/executions/${execution}/trace`, { headers: { Authorization: `Bearer ${token}` } })
+    const response = await page.request.get(`/api/v1/executions/${execution}/trace`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
     if (!response.ok()) return null
     const trace = await response.json() as { spans: Array<{ spanKind: string, spanName: string, status: string, resourceType?: string }> }
     return trace.spans.find((span) => span.spanKind === 'runtime_call' && span.resourceType === resourceType) ?? null
@@ -46,7 +46,7 @@ test('M5 Agent uses the deterministic model and authorized MCP tool with a persi
   const token = await login(page)
   const execution = await runFixture(page, 'M5 Agent MCP Fixture')
   await expectExecutionSucceeded(page, 120_000)
-  const response = await page.request.get(`/api/v1/executions/${execution}/runtime-details`, { headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.get(`/api/v1/executions/${execution}/runtime-details`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(response.ok()).toBeTruthy()
   const details = await response.json() as { agentRuns: Array<{ status: string, stopReason: string, modelCallCount: number, toolCallCount: number }>, iterations: unknown[], calls: Array<{ callKind: string, requestFingerprint: string }> }
   expect(details.agentRuns).toHaveLength(1)
@@ -62,7 +62,7 @@ test('M5 Agent repeated tool calls stop before another external request', async 
   const token = await login(page)
   const execution = await runFixture(page, 'M5 Agent Loop Fixture')
   await expectExecutionSucceeded(page, 120_000)
-  const details = await (await page.request.get(`/api/v1/executions/${execution}/runtime-details`, { headers: { Authorization: `Bearer ${token}` } })).json() as { agentRuns: Array<{ status: string, stopReason: string, toolCallCount: number }>, calls: Array<{ callKind: string }> }
+  const details = await (await page.request.get(`/api/v1/executions/${execution}/runtime-details`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })).json() as { agentRuns: Array<{ status: string, stopReason: string, toolCallCount: number }>, calls: Array<{ callKind: string }> }
   expect(details.agentRuns[0]).toMatchObject({ status: 'failed', stopReason: 'repeated_tool_call', toolCallCount: 2 })
   expect(details.calls.filter((call) => call.callKind === 'mcp_tool')).toHaveLength(2)
 })
@@ -95,7 +95,7 @@ test('M5 RAG write with read scope fails before reaching the Addon', async ({ pa
   const nodes = await executionNodes(page, token, execution)
   expect(nodes.items.find((node) => node.nodeName === 'M5 RAG Read Scope')?.errorCode).toBe('RAG_WRITE_DENIED')
   await expect.poll(async () => {
-    const response = await page.request.get(`/api/v1/executions/${execution}/trace`, { headers: { Authorization: `Bearer ${token}` } })
+    const response = await page.request.get(`/api/v1/executions/${execution}/trace`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
     if (!response.ok()) return null
     const trace = await response.json() as { spans: Array<{ spanKind: string, resourceType?: string, errorCode?: string, status: string }> }
     return trace.spans.find((span) => span.spanKind === 'runtime_call' && span.resourceType === 'rag') ?? null
@@ -106,11 +106,11 @@ test('M5 Code runs in OpenSandbox, returns the semantic Code contract, and termi
   const token = await login(page)
   const execution = await runFixture(page, 'M5 Code Fixture')
   await expectExecutionSucceeded(page, 180_000)
-  const nodes = await (await page.request.get(`/api/v1/executions/${execution}/nodes`, { headers: { Authorization: `Bearer ${token}` } })).json() as { items: Array<{ nodeName: string, output: { main?: Array<{ json: { stdout?: string, stderr?: string, exitCode?: number, structuredOutput?: unknown, files?: unknown[], partial?: boolean } }> } }> }
+  const nodes = await (await page.request.get(`/api/v1/executions/${execution}/nodes`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })).json() as { items: Array<{ nodeName: string, output: { main?: Array<{ json: { stdout?: string, stderr?: string, exitCode?: number, structuredOutput?: unknown, files?: unknown[], partial?: boolean } }> } }> }
   const code = nodes.items.find((node) => node.nodeName === 'M5 Python Code')
   expect(code?.output.main?.[0].json.stdout).toContain('m5-sandbox-ok')
   expect(code?.output.main?.[0].json).toMatchObject({ stderr: expect.any(String), exitCode: 0, files: expect.any(Array), partial: false })
-  const details = await (await page.request.get(`/api/v1/executions/${execution}/runtime-details`, { headers: { Authorization: `Bearer ${token}` } })).json() as { sandboxes: Array<{ status: string, sandboxId: string, terminationAttempts: number, expiresAt: string }> }
+  const details = await (await page.request.get(`/api/v1/executions/${execution}/runtime-details`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })).json() as { sandboxes: Array<{ status: string, sandboxId: string, terminationAttempts: number, expiresAt: string }> }
   expect(details.sandboxes).toHaveLength(1)
   expect(details.sandboxes[0]).toMatchObject({ status: 'terminated', terminationAttempts: 0 })
   expect(details.sandboxes[0].sandboxId).toBeTruthy()
@@ -130,7 +130,7 @@ test('M5 command runners, Credential files, and network policies use isolated Sa
   for (const [workflow, nodeName, stdout, hasArtifact] of fixtures) {
     const execution = await runFixture(page, workflow)
     await expectExecutionSucceeded(page, 180_000)
-    const nodes = await (await page.request.get(`/api/v1/executions/${execution}/nodes`, { headers: { Authorization: `Bearer ${token}` } })).json() as { items: Array<{ nodeName: string, output: { main?: Array<{ json: { stdout?: string, files?: unknown[] } }> } }> }
+    const nodes = await (await page.request.get(`/api/v1/executions/${execution}/nodes`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })).json() as { items: Array<{ nodeName: string, output: { main?: Array<{ json: { stdout?: string, files?: unknown[] } }> } }> }
     const code = nodes.items.find((node) => node.nodeName === nodeName)
     expect(code?.output.main?.[0].json.stdout).toContain(stdout)
     if (workflow === 'M5 Network Deny Fixture') {
@@ -146,7 +146,7 @@ test('M5 partial Sandbox output is bounded and linked to full Trace Artifacts', 
   const token = await login(page)
   const execution = await runFixture(page, 'M5 Partial Output Fixture')
   await expectExecutionSucceeded(page, 180_000)
-  const nodes = await (await page.request.get(`/api/v1/executions/${execution}/nodes`, { headers: { Authorization: `Bearer ${token}` } })).json() as { items: Array<{ nodeName: string, output: { main?: Array<{ json: { stdout?: string, stderr?: string, files?: Array<{ artifactId: string, fileName: string, contentType: string, sizeBytes: number, sha256: string }>, partial?: boolean } }> } }> }
+  const nodes = await (await page.request.get(`/api/v1/executions/${execution}/nodes`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })).json() as { items: Array<{ nodeName: string, output: { main?: Array<{ json: { stdout?: string, stderr?: string, files?: Array<{ artifactId: string, fileName: string, contentType: string, sizeBytes: number, sha256: string }>, partial?: boolean } }> } }> }
   const output = nodes.items.find((node) => node.nodeName === 'M5 Partial Output Code')?.output.main?.[0]
   expect(output?.json.partial).toBe(true)
   expect(output?.json.stdout?.length).toBeLessThanOrEqual(32)
@@ -157,12 +157,12 @@ test('M5 partial Sandbox output is bounded and linked to full Trace Artifacts', 
   }
 
   await expect.poll(async () => {
-    const response = await page.request.get(`/api/v1/executions/${execution}/trace`, { headers: { Authorization: `Bearer ${token}` } })
+    const response = await page.request.get(`/api/v1/executions/${execution}/trace`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
     if (!response.ok()) return null
     const trace = await response.json() as { spans: Array<{ spanId: string, spanKind: string }> }
     const sandbox = trace.spans.find((span) => span.spanKind === 'sandbox')
     if (!sandbox) return null
-    const detail = await page.request.get(`/api/v1/executions/${execution}/trace/spans/${sandbox.spanId}`, { headers: { Authorization: `Bearer ${token}` } })
+    const detail = await page.request.get(`/api/v1/executions/${execution}/trace/spans/${sandbox.spanId}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
     return detail.ok() ? detail.json() : null
   }, { timeout: 30_000 }).toMatchObject({ span: { spanKind: 'sandbox', status: 'succeeded' } })
 })

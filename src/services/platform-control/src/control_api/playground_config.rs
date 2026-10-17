@@ -269,31 +269,8 @@ fn validate_chat_mapping(
             ));
         }
     }
-    let mapped = [
-        &mapping.question_input,
-        mapping
-            .file_input
-            .as_ref()
-            .unwrap_or(&mapping.question_input),
-    ];
-    for required in input_schema
-        .get("required")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-    {
-        if !mapped.iter().any(|field| field.as_str() == required)
-            && !input_properties
-                .get(required)
-                .is_some_and(|schema| schema.get("default").is_some())
-        {
-            return Err(ApiError::unprocessable(
-                "PLAYGROUND_REQUIRED_INPUT_HAS_NO_DEFAULT",
-                format!("Required input '{required}' is not mapped and has no default value"),
-            ));
-        }
-    }
+    // Other required inputs are supplied once when creating the Session.
+    // Runtime validates the merged initial inputs and each message projection.
     Ok(())
 }
 
@@ -363,7 +340,7 @@ mod tests {
     }
 
     #[test]
-    fn mapping_rejects_sensitive_answers_and_unmapped_required_inputs() {
+    fn mapping_accepts_session_business_inputs_and_rejects_sensitive_answers() {
         let input = json!({"type":"object","properties":{
             "prompt":{"type":"string"},
             "documents":{"type":"object","x-agentx-artifact":true},
@@ -378,6 +355,6 @@ mod tests {
             "answer":{"type":"string"},
             "reports":{"type":"object","x-agentx-artifact":true}
         }});
-        assert!(validate_chat_mapping(&mapping(), &input, &safe).is_err());
+        assert!(validate_chat_mapping(&mapping(), &input, &safe).is_ok());
     }
 }

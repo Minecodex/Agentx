@@ -57,7 +57,12 @@ def _control_mysql(installed_agentx: dict[str, str], query: str) -> str:
     ).stdout.strip()
 
 
-def _wait_admission_outbox(installed_agentx: dict[str, str], timeout: float = 120.0) -> None:
+def _wait_admission_outbox(
+    installed_agentx: dict[str, str],
+    timeout: float = 120.0,
+    *,
+    workflow_id: str = "018f0000-0000-7000-8000-000000000401",
+) -> None:
     """Wait until Control and Runtime have applied the latest admission epoch."""
     deadline = time.monotonic() + timeout
     query = (
@@ -75,18 +80,19 @@ def _wait_admission_outbox(installed_agentx: dict[str, str], timeout: float = 12
                 installed_agentx,
                 "SELECT COALESCE(MAX(CAST(JSON_UNQUOTE(JSON_EXTRACT(payload_json, '$.policyEpoch')) AS UNSIGNED)), 0) "
                 "FROM outbox WHERE event_type='ServiceIdentityAdmissionChanged' "
-                "AND aggregate_type='workflow_admission';",
+                "AND aggregate_type='workflow_admission' "
+                f"AND JSON_UNQUOTE(JSON_EXTRACT(payload_json, '$.workflowId'))='{workflow_id}';",
             )
             projection = _runtime_mysql(
                 installed_agentx,
                 "SELECT CASE WHEN EXISTS("
                 "SELECT 1 FROM service_identity_projection "
-                "WHERE workflow_id=UUID_TO_BIN('018f0000-0000-7000-8000-000000000401') "
+                f"WHERE workflow_id=UUID_TO_BIN('{workflow_id}') "
                 f"AND policy_epoch >= {int(expected_epoch)}"
                 ") AND NOT EXISTS("
                 "SELECT 1 FROM resource_grant_projection rg "
                 "JOIN service_identity_projection si ON si.identity_id=rg.subject_id "
-                "WHERE si.workflow_id=UUID_TO_BIN('018f0000-0000-7000-8000-000000000401') "
+                f"WHERE si.workflow_id=UUID_TO_BIN('{workflow_id}') "
                 f"AND rg.policy_epoch < {int(expected_epoch)} AND rg.status='active'"
                 ") THEN 1 ELSE 0 END;",
             )

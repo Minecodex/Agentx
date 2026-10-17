@@ -393,8 +393,6 @@ fn images(root: &Path, args: Images) -> Result<()> {
             if let Ok(index) = std::env::var("PIP_INDEX_URL") {
                 command.args(["--build-arg", &format!("PIP_INDEX_URL={index}")]);
             }
-        } else if service == "mem0-server" {
-            command.args(["-f", "deploy/docker/mem0.Dockerfile"]);
         } else {
             command
                 .args(["-f", "deploy/docker/backend.Dockerfile", "--build-arg"])

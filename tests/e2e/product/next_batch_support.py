@@ -79,7 +79,7 @@ def publish_application(control, workflow, version, slug):
     post(
         control,
         f"/workflows/{workflow}/deployments",
-        {"environmentId": environment["id"], "workflowVersionId": version},
+        {"contentSource": "version", "environmentId": environment["id"], "workflowVersionId": version},
     )
     app = post(control, "/applications", {"workflowId": workflow, "name": slug, "slug": slug, "visibility": "company"})
     deployment = _publish_application_deployment(control, dict(control.headers), app["id"], version, environment["id"])

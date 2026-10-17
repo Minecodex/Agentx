@@ -45,17 +45,7 @@ def agent_resources(client, owner, endpoint):
             "configuration": {},
         },
     )
-    memory = post(
-        client,
-        "/memory/namespaces",
-        {
-            "name": "P8 Memory",
-            "connectionId": connection["id"],
-            "externalNamespace": "p8_knowledge",
-            "accessMode": "read_write",
-            "ownerDepartmentId": owner,
-        },
-    )
+    memory = connection
     skill = post(
         client,
         "/skills",

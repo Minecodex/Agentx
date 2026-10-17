@@ -52,11 +52,10 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "externalUserId": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "input": {
+            "additionalProperties": true,
+            "default": {},
+            "type": "object"
           },
           "title": {
             "type": [
@@ -113,6 +112,35 @@
       },
       "InvocationResponse": {
         "$defs": {
+          "ApplicationUserIdentityV1": {
+            "additionalProperties": false,
+            "description": "The end user a call acts for. API identities are declarations, not authentication.",
+            "properties": {
+              "externalUserId": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/components/schemas/InvocationResponse/$defs/ApplicationUserSourceV1"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "sourceId",
+              "externalUserId"
+            ],
+            "type": "object"
+          },
+          "ApplicationUserSourceV1": {
+            "enum": [
+              "platform",
+              "channel",
+              "api_parameter"
+            ],
+            "type": "string"
+          },
           "WebhookProviderV1": {
             "enum": [
               "agentx",
@@ -147,6 +175,16 @@
           },
           "createdAt": {
             "type": "string"
+          },
+          "endUser": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InvocationResponse/$defs/ApplicationUserIdentityV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "error": true,
           "executionId": {
@@ -187,7 +225,13 @@
           "status": {
             "type": "string"
           },
-          "triggerContext": true
+          "triggerContext": true,
+          "userIdentityDiagnostic": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         },
         "required": [
           "id",
@@ -328,6 +372,35 @@
       },
       "SessionResponse": {
         "$defs": {
+          "ApplicationUserIdentityV1": {
+            "additionalProperties": false,
+            "description": "The end user a call acts for. API identities are declarations, not authentication.",
+            "properties": {
+              "externalUserId": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/components/schemas/SessionResponse/$defs/ApplicationUserSourceV1"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "sourceId",
+              "externalUserId"
+            ],
+            "type": "object"
+          },
+          "ApplicationUserSourceV1": {
+            "enum": [
+              "platform",
+              "channel",
+              "api_parameter"
+            ],
+            "type": "string"
+          },
           "SessionVersionPolicyV1": {
             "enum": [
               "pinned",
@@ -353,6 +426,16 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "endUser": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionResponse/$defs/ApplicationUserIdentityV1"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "externalUserId": {

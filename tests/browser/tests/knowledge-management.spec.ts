@@ -26,25 +26,25 @@ async function login(page: Page) {
 }
 
 async function createKnowledge(page: Page, token: string, stamp: string) {
-  const departments = (await (await page.request.get('/api/v1/departments?pageSize=100', { headers: { Authorization: `Bearer ${token}` } })).json()) as unknown as Array<{ id: string }>
+  const departments = (await (await page.request.get('/api/v1/departments?pageSize=100', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })).json()) as unknown as Array<{ id: string }>
   const department = departments[0]
   void stamp
   // create connection + resource via API (UI form is covered by m2.1 spec)
   // The e2e LightRAG fixture enforces its fixture API key on insert/query.
   const credential = await page.request.post('/api/v1/credentials', {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
     data: { name: `E2E Knowledge Key ${stamp}`, credentialType: 'bearer', secret: process.env.AGENTX_E2E_LIGHTRAG_API_KEY ?? 'agentx-v2-04-rag-key', ownerDepartmentId: department.id },
   })
   if (credential.status() !== 201 && credential.status() !== 200) throw new Error(`credential: ${credential.status()} ${await credential.text()}`)
   const credentialId = ((await credential.json()) as { id: string }).id
   const connection = await page.request.post('/api/v1/knowledge/connections', {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
     data: { name: `E2E Management Connection ${stamp}`, provider: 'lightrag', endpoint: process.env.AGENTX_E2E_LIGHTRAG_BASE_URL ?? 'http://lightrag:9621', healthPath: '/health', credentialId, ownerDepartmentId: department.id, configuration: {} },
   })
   if (connection.status() !== 201 && connection.status() !== 200) throw new Error(`connection: ${connection.status()} ${await connection.text()}`)
   const connectionId = ((await connection.json()) as { id: string }).id
   const resource = await page.request.post('/api/v1/knowledge/resources', {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
     data: { connectionId, name: `E2E Management Resource ${stamp}`, externalResourceId: `e2e_mgmt_${stamp}`, ownerDepartmentId: department.id },
   })
   if (resource.status() !== 201 && resource.status() !== 200) throw new Error(`resource: ${resource.status()} ${await resource.text()}`)
@@ -56,7 +56,7 @@ async function uploadDocument(page: Page, token: string, resourceId: string, nam
   const form = new FormData()
   form.append('file', new File([content], name, { type: 'text/markdown' }))
   const response = await page.request.post(`/api/v1/knowledge/resources/${resourceId}/documents`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
     timeout: 90_000,
     multipart: { file: { name, mimeType: 'text/markdown', buffer: Buffer.from(content) } },
   })
@@ -78,7 +78,7 @@ test.describe.serial('Knowledge management', () => {
     expect(['uploading', 'indexing']).toContain(uploadBody.status)
     let document: { status: string; externalDocumentId: string; id: string } | undefined
     await expect.poll(async () => {
-      const response = await page.request.get(`/api/v1/knowledge/resources/${resourceId}/documents`, { headers: { Authorization: `Bearer ${token}` } })
+      const response = await page.request.get(`/api/v1/knowledge/resources/${resourceId}/documents`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
       expect(response.status()).toBe(200)
       document = (await response.json()).find((item: { id: string }) => item.id === uploadBody.id)
       if (document?.status === 'failed') throw new Error(JSON.stringify(document))

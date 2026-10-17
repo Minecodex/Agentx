@@ -242,13 +242,31 @@ pub(crate) async fn session_row(
     let draft =
         crate::workflow_api::load_draft(state, actor.tenant_id, workflow, row.try_get("draft_id")?)
             .await?;
-    if write && draft.status != "active" {
+    if write
+        && (draft.archived || row.try_get::<u64, _>("document_generation")? != draft.generation)
+    {
         return Err(ApiError::conflict(
             "DRAFT_READ_ONLY",
-            "An archived draft is read only",
+            "The version is archived or this editor binding has expired",
         ));
     }
     Ok(row)
+}
+
+async fn lock_binding(
+    tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
+    actor: &Actor,
+    row: &sqlx::mysql::MySqlRow,
+) -> ApiResult<()> {
+    crate::workflow_versions::lock_workflow(tx, actor, row.try_get("workflow_id")?).await?;
+    let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM studio_builder_sessions s JOIN workflow_drafts d ON d.tenant_id=s.tenant_id AND d.id=s.draft_id JOIN workflow_versions v ON v.tenant_id=d.tenant_id AND v.working_draft_id=d.id WHERE s.tenant_id=? AND s.id=? AND s.document_generation=d.generation AND v.archived=FALSE)").bind(actor.tenant_id).bind(row.try_get::<Uuid,_>("id")?).fetch_one(&mut **tx).await?;
+    if !valid {
+        return Err(ApiError::conflict(
+            "EDITOR_BINDING_STALE",
+            "Reload the version before editing",
+        ));
+    }
+    Ok(())
 }
 
 async fn create_session(
@@ -259,11 +277,19 @@ async fn create_session(
 ) -> ApiResult<Json<Value>> {
     actor.require("workflow:edit")?;
     crate::workflow_api::require_workflow_access(&state, &actor, workflow, true).await?;
+    let mut tx = state.pool.begin().await?;
+    crate::workflow_versions::lock_workflow(&mut tx, &actor, workflow).await?;
     let value = crate::workflow_api::load_draft(&state, actor.tenant_id, workflow, draft).await?;
-    if value.status != "active" {
+    if value.archived {
         return Err(ApiError::conflict(
             "DRAFT_READ_ONLY",
-            "An archived draft is read only",
+            "The version is archived or this editor binding has expired",
+        ));
+    }
+    if input.snapshot.server_revision != value.revision {
+        return Err(ApiError::conflict(
+            "DRAFT_REVISION_CONFLICT",
+            "Reload the document before binding an editor",
         ));
     }
     verify_snapshot(&input.snapshot)?;
@@ -272,10 +298,11 @@ async fn create_session(
         session_id: id.to_string(),
         ..Default::default()
     };
-    sqlx::query("INSERT INTO studio_builder_sessions(id,tenant_id,workflow_id,draft_id,user_id,editor_instance_id,snapshot_json,state_json) VALUES(?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id")
-        .bind(id).bind(actor.tenant_id).bind(workflow).bind(draft).bind(actor.user_id).bind(input.snapshot.editor_instance_id).bind(serde_json::to_value(&input.snapshot).map_err(ApiError::internal)?).bind(serde_json::to_value(core).map_err(ApiError::internal)?).execute(&state.pool).await?;
-    let id: Uuid = sqlx::query_scalar("SELECT id FROM studio_builder_sessions WHERE tenant_id=? AND draft_id=? AND user_id=? AND editor_instance_id=?")
-        .bind(actor.tenant_id).bind(draft).bind(actor.user_id).bind(input.snapshot.editor_instance_id).fetch_one(&state.pool).await?;
+    sqlx::query("INSERT INTO studio_builder_sessions(id,tenant_id,workflow_id,draft_id,user_id,editor_instance_id,snapshot_json,state_json,document_generation) VALUES(?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id")
+        .bind(id).bind(actor.tenant_id).bind(workflow).bind(draft).bind(actor.user_id).bind(input.snapshot.editor_instance_id).bind(serde_json::to_value(&input.snapshot).map_err(ApiError::internal)?).bind(serde_json::to_value(core).map_err(ApiError::internal)?).bind(value.generation).execute(&mut *tx).await?;
+    let id: Uuid = sqlx::query_scalar("SELECT id FROM studio_builder_sessions WHERE tenant_id=? AND draft_id=? AND user_id=? AND editor_instance_id=? AND document_generation=?")
+        .bind(actor.tenant_id).bind(draft).bind(actor.user_id).bind(input.snapshot.editor_instance_id).bind(value.generation).fetch_one(&mut *tx).await?;
+    tx.commit().await?;
     get_session(State(state), actor, Path(id)).await
 }
 
@@ -288,7 +315,7 @@ async fn get_session(
     let runs = sqlx::query("SELECT id,status,model_alias_id,setting_version,created_at FROM studio_builder_runs WHERE tenant_id=? AND session_id=? ORDER BY created_at DESC LIMIT 20")
         .bind(actor.tenant_id).bind(session).fetch_all(&state.pool).await?.into_iter().map(|row| Ok(json!({"id":row.try_get::<Uuid,_>("id")?,"status":row.try_get::<String,_>("status")?,"modelAliasId":row.try_get::<Uuid,_>("model_alias_id")?,"settingVersion":row.try_get::<u64,_>("setting_version")?}))).collect::<Result<Vec<_>,sqlx::Error>>()?;
     Ok(Json(
-        json!({"id":session,"draftId":row.try_get::<Uuid,_>("draft_id")?,"snapshot":row.try_get::<Value,_>("snapshot_json")?,"runs":runs,"canEdit":crate::workflow_api::require_workflow_access(&state,&actor,row.try_get("workflow_id")?,true).await.is_ok() && crate::workflow_api::load_draft(&state,actor.tenant_id,row.try_get("workflow_id")?,row.try_get("draft_id")?).await?.status=="active"}),
+        json!({"id":session,"draftId":row.try_get::<Uuid,_>("draft_id")?,"snapshot":row.try_get::<Value,_>("snapshot_json")?,"runs":runs,"canEdit":crate::workflow_api::require_workflow_access(&state,&actor,row.try_get("workflow_id")?,true).await.is_ok() && session_row(&state,&actor,session,true).await.is_ok()}),
     ))
 }
 
@@ -298,9 +325,10 @@ async fn sync_snapshot(
     Path(session): Path<Uuid>,
     Json(snapshot): Json<StudioEditorSnapshotV1>,
 ) -> ApiResult<Json<Value>> {
-    session_row(&state, &actor, session, true).await?;
+    let binding = session_row(&state, &actor, session, true).await?;
     verify_snapshot(&snapshot)?;
     let mut tx = state.pool.begin().await?;
+    lock_binding(&mut tx, &actor, &binding).await?;
     let row = sqlx::query("SELECT snapshot_json,editor_instance_id FROM studio_builder_sessions WHERE tenant_id=? AND id=? FOR UPDATE").bind(actor.tenant_id).bind(session).fetch_one(&mut *tx).await?;
     let old: StudioEditorSnapshotV1 =
         serde_json::from_value(row.try_get("snapshot_json")?).map_err(ApiError::internal)?;
@@ -469,6 +497,7 @@ async fn create_run(
     )
     .await?;
     let mut tx = state.pool.begin().await?;
+    lock_binding(&mut tx, &actor, &row).await?;
     sqlx::query("SELECT version FROM tenant_settings WHERE tenant_id=? FOR UPDATE")
         .bind(actor.tenant_id)
         .fetch_one(&mut *tx)
@@ -577,6 +606,7 @@ async fn acknowledge(
     let session_data = session_row(&state, &actor, session, true).await?;
     verify_snapshot(&input.snapshot)?;
     let mut tx = state.pool.begin().await?;
+    lock_binding(&mut tx, &actor, &session_data).await?;
     lock_effect_run(&mut tx, actor.tenant_id, session, input.command_id).await?;
     let effect = sqlx::query("SELECT e.*,r.status run_status FROM studio_builder_effects e JOIN studio_builder_runs r ON r.id=e.run_id AND r.tenant_id=e.tenant_id WHERE e.tenant_id=? AND e.session_id=? AND e.id=? FOR UPDATE").bind(actor.tenant_id).bind(session).bind(input.command_id).fetch_optional(&mut *tx).await?.ok_or_else(||ApiError::not_found("Editor command"))?;
     let receipt = serde_json::to_value(&input).map_err(ApiError::internal)?;
@@ -677,6 +707,7 @@ async fn answer(
         terminate: false,
     };
     let mut tx = state.pool.begin().await?;
+    lock_binding(&mut tx, &actor, &row).await?;
     lock_effect_run(&mut tx, actor.tenant_id, session, input.question_id).await?;
     let effect = sqlx::query("SELECT e.run_id,e.status,e.result_json,r.status run_status FROM studio_builder_effects e JOIN studio_builder_runs r ON r.tenant_id=e.tenant_id AND r.id=e.run_id WHERE e.tenant_id=? AND e.session_id=? AND e.id=? AND e.tool_name='ask_user' FOR UPDATE").bind(actor.tenant_id).bind(session).bind(input.question_id).fetch_optional(&mut *tx).await?.ok_or_else(||ApiError::not_found("Builder question"))?;
     let result_json = serde_json::to_value(result).map_err(ApiError::internal)?;

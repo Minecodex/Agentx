@@ -1,4 +1,3 @@
-# ruff: noqa: S608
 """plan7 P7-D6 backup and recovery drills (V2K-005).
 
 Real PITR drill against the installed Control MySQL: business write -> backup
@@ -15,6 +14,7 @@ recorded.
 
 from __future__ import annotations
 
+# ruff: noqa: S608
 import json
 import time
 from pathlib import Path
@@ -24,6 +24,7 @@ import httpx
 import pytest
 
 from tests.e2e.capacity.collector import redis_command
+from tests.e2e.draft_fixtures import idempotent_headers
 from tests.e2e.product.test_channel_delivery import (
     _access_token,
     _development_environment_id,
@@ -209,8 +210,12 @@ def recovery_probe_channel(installed_agentx: dict[str, str], service_urls: dict[
         environment_id = _development_environment_id(control, headers)
         deploy = control.post(
             f"/api/v1/workflows/{workflow['workflowId']}/deployments",
-            headers=headers,
-            json={"environmentId": environment_id, "workflowVersionId": workflow["versionId"]},
+            headers=idempotent_headers(headers),
+            json={
+                "contentSource": "version",
+                "environmentId": environment_id,
+                "workflowVersionId": workflow["versionId"],
+            },
         )
         assert deploy.status_code in (200, 201), deploy.text
         application = control.post(

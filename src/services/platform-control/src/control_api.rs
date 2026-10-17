@@ -271,7 +271,7 @@ fn routes() -> Router<ControlApiState> {
         .merge(crate::model_api::routes())
         .merge(crate::studio_builder_setting::routes())
         .merge(crate::studio_builder_api::routes())
-        .merge(crate::workflow_drafts::routes())
+        .merge(crate::workflow_versions::routes())
         .merge(crate::operations_api::routes())
         .merge(crate::external_resource_api::routes())
         .merge(crate::knowledge_document_api::routes())
@@ -881,6 +881,7 @@ async fn require_application(state: &ControlApiState, actor: &Actor, id: Uuid) -
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DeploymentResponse {
+    api_user_id_input: Option<String>,
     id: Uuid,
     application_id: Uuid,
     workflow_version_id: Uuid,
@@ -902,6 +903,7 @@ struct DeploymentResponse {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateDeploymentRequest {
+    api_user_id_input: Option<String>,
     workflow_version_id: Uuid,
     environment_id: Uuid,
     session_version_policy: String,
@@ -958,6 +960,7 @@ struct UpgradeSessionRequest {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SessionResponse {
+    end_user: Option<agentx_runtime_contracts::ApplicationUserIdentityV1>,
     id: Uuid,
     application_id: Uuid,
     application_deployment_id: Uuid,
@@ -1013,7 +1016,7 @@ async fn create_deployment(
             "Session version policy is invalid",
         ));
     }
-    let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM applications a JOIN workflow_versions wv ON wv.workflow_id=a.workflow_id AND wv.tenant_id=a.tenant_id JOIN workflow_deployment_heads h ON h.tenant_id=a.tenant_id AND h.workflow_id=a.workflow_id AND h.environment_id=? JOIN workflow_deployments wd ON wd.id=h.active_deployment_id AND wd.workflow_version_id=wv.id WHERE a.id=? AND a.tenant_id=? AND wv.id=?)")
+    let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM applications a JOIN workflow_versions wv ON wv.workflow_id=a.workflow_id AND wv.tenant_id=a.tenant_id JOIN workflow_deployment_heads h ON h.tenant_id=a.tenant_id AND h.workflow_id=a.workflow_id AND h.environment_id=? JOIN workflow_deployments wd ON wd.id=h.active_deployment_id AND wd.workflow_version_id=wv.id WHERE a.id=? AND a.tenant_id=? AND wv.id=? AND wv.publication_status='published')")
         .bind(input.environment_id).bind(id).bind(actor.tenant_id).bind(input.workflow_version_id).fetch_one(&state.pool).await?;
     if !valid {
         return Err(ApiError::unprocessable(
@@ -1045,9 +1048,25 @@ async fn create_deployment(
     let sequence: u64 = sqlx::query_scalar("SELECT CAST(COALESCE(MAX(sequence_number),0)+1 AS UNSIGNED) FROM application_deployments WHERE tenant_id=? AND application_id=? FOR UPDATE")
         .bind(actor.tenant_id).bind(id).fetch_one(&mut *tx).await?;
     let (input_schema, output_schema) = application_webhooks::workflow_schemas(&definition);
-    sqlx::query("INSERT INTO application_deployments(id,tenant_id,application_id,workflow_version_id,environment_id,sequence_number,input_schema_json,output_schema_json,session_version_policy,trigger_revision,trigger_manifest_hash,status,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,'building',?)")
+    if let Some(field) = input.api_user_id_input.as_deref() {
+        if input_schema
+            .pointer(&format!(
+                "/properties/{}/type",
+                field.replace('~', "~0").replace('/', "~1")
+            ))
+            .and_then(Value::as_str)
+            != Some("string")
+        {
+            return Err(ApiError::bad_request(
+                "API_USER_ID_INPUT_INVALID",
+                "API user ID must reference a top-level string input",
+            ));
+        }
+    }
+
+    sqlx::query("INSERT INTO application_deployments(id,tenant_id,application_id,workflow_version_id,environment_id,sequence_number,input_schema_json,output_schema_json,session_version_policy,api_user_id_input,trigger_revision,trigger_manifest_hash,status,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'building',?)")
         .bind(deployment_id).bind(actor.tenant_id).bind(id).bind(input.workflow_version_id).bind(input.environment_id).bind(sequence)
-        .bind(input_schema).bind(output_schema).bind(input.session_version_policy).bind(trigger_revision).bind(trigger_manifest_hash).bind(actor.user_id).execute(&mut *tx).await?;
+        .bind(input_schema).bind(output_schema).bind(input.session_version_policy).bind(input.api_user_id_input).bind(trigger_revision).bind(trigger_manifest_hash).bind(actor.user_id).execute(&mut *tx).await?;
     let expected: Option<u64> = sqlx::query_scalar(
         "SELECT version FROM application_deployment_heads WHERE tenant_id=? AND application_id=?",
     )
@@ -1083,10 +1102,11 @@ async fn create_deployment(
     ))
 }
 
-const DEPLOYMENT_SELECT: &str = "SELECT ad.id,ad.application_id,ad.workflow_version_id,wv.version_number,ad.input_schema_json,ad.output_schema_json,ad.environment_id,e.name environment_name,ad.sequence_number,ad.session_version_policy,IF(pa.state IS NULL OR pa.state='active',ad.status,pa.state) status,ad.created_at,pa.id publish_attempt_id,pa.last_error_code publish_error_code,pa.last_error_message publish_error_message FROM application_deployments ad JOIN workflow_versions wv ON wv.id=ad.workflow_version_id JOIN workflow_environments e ON e.id=ad.environment_id LEFT JOIN publish_attempts pa ON pa.tenant_id=ad.tenant_id AND pa.deployment_id=ad.id AND pa.id=(SELECT pa2.id FROM publish_attempts pa2 WHERE pa2.tenant_id=ad.tenant_id AND pa2.deployment_id=ad.id ORDER BY pa2.created_at DESC LIMIT 1) WHERE ad.tenant_id=? AND ad.application_id=? ORDER BY ad.sequence_number DESC";
+const DEPLOYMENT_SELECT: &str = "SELECT ad.id,ad.application_id,ad.workflow_version_id,wv.version_number,ad.input_schema_json,ad.output_schema_json,ad.environment_id,e.name environment_name,ad.sequence_number,ad.session_version_policy,ad.api_user_id_input,IF(pa.state IS NULL OR pa.state='active',ad.status,pa.state) status,ad.created_at,pa.id publish_attempt_id,pa.last_error_code publish_error_code,pa.last_error_message publish_error_message FROM application_deployments ad JOIN workflow_versions wv ON wv.id=ad.workflow_version_id JOIN workflow_environments e ON e.id=ad.environment_id LEFT JOIN publish_attempts pa ON pa.tenant_id=ad.tenant_id AND pa.deployment_id=ad.id AND pa.id=(SELECT pa2.id FROM publish_attempts pa2 WHERE pa2.tenant_id=ad.tenant_id AND pa2.deployment_id=ad.id ORDER BY pa2.created_at DESC LIMIT 1) WHERE ad.tenant_id=? AND ad.application_id=? ORDER BY ad.sequence_number DESC";
 
 fn deployment_from_row(row: sqlx::mysql::MySqlRow) -> ApiResult<DeploymentResponse> {
     Ok(DeploymentResponse {
+        api_user_id_input: row.try_get("api_user_id_input")?,
         id: row.try_get("id")?,
         application_id: row.try_get("application_id")?,
         workflow_version_id: row.try_get("workflow_version_id")?,
@@ -1246,14 +1266,24 @@ async fn load_schedule(
     schedule_from_row(row)
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SessionUserFilter {
+    external_user_id: Option<String>,
+    user_source: Option<String>,
+}
+
 async fn list_sessions(
     State(state): State<ControlApiState>,
     actor: Actor,
     Path(application_id): Path<Uuid>,
+    Query(filter): Query<SessionUserFilter>,
 ) -> ApiResult<Json<Vec<SessionResponse>>> {
     actor.require("application:view")?;
     require_application(&state, &actor, application_id).await?;
     let request = SessionSearchRequestV1 {
+        user_source: filter.user_source,
+        external_user_id: filter.external_user_id,
         api_version: 1,
         tenant_id: actor.tenant_id,
         application_id: Some(application_id),
@@ -1369,6 +1399,7 @@ async fn get_runtime_session(
 
 fn session_response(value: agentx_runtime_contracts::SessionSummaryV1) -> SessionResponse {
     SessionResponse {
+        end_user: value.end_user,
         id: value.session_id,
         application_id: value.application_id,
         application_deployment_id: value.application_deployment_id,

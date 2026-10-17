@@ -27,8 +27,15 @@ use crate::{
     control_api::{Actor, ControlApiState, execution_origin},
 };
 
+#[path = "application_invocations.rs"]
+mod application_invocations;
+
 pub fn routes() -> Router<ControlApiState> {
     Router::new()
+        .route(
+            "/api/v1/applications/{id}/invocations",
+            get(application_invocations::list),
+        )
         .route("/api/v1/executions", get(search_executions))
         .route("/api/v1/executions/{id}", get(get_execution))
         .route("/api/v1/executions/{id}/nodes", get(get_nodes))
@@ -133,11 +140,12 @@ struct AgentSessionClearInput {
     idempotency_key: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
-struct AgentSubjectMemoryInput {
+pub(crate) struct AgentSubjectMemoryInput {
     application_id: Uuid,
-    memory_resource_version_id: Uuid,
+    memory_resource_id: Uuid,
+    scope: agentx_runtime_contracts::MemoryScopeV1,
     limit: Option<u32>,
     after: Option<String>,
     idempotency_key: Option<String>,
@@ -286,10 +294,11 @@ async fn search_agent_subject_memory(
         ));
     }
     let request = agentx_runtime_contracts::AgentSubjectMemorySearchRequestV1 {
+        scope: input.scope,
         api_version: 1,
         tenant_id: actor.tenant_id,
         application_id: input.application_id,
-        memory_resource_version_id: input.memory_resource_version_id,
+        memory_resource_id: input.memory_resource_id,
         limit: input.limit.unwrap_or(50).clamp(1, 100),
         after: input.after,
     };
@@ -334,10 +343,11 @@ async fn clear_agent_subject_memory(
         ));
     }
     let request = agentx_runtime_contracts::AgentSubjectMemoryClearRequestV1 {
+        scope: input.scope,
         api_version: 1,
         tenant_id: actor.tenant_id,
         application_id: input.application_id,
-        memory_resource_version_id: input.memory_resource_version_id,
+        memory_resource_id: input.memory_resource_id,
         idempotency_key: input
             .idempotency_key
             .unwrap_or_else(|| format!("web:{}", Uuid::now_v7())),
@@ -375,11 +385,14 @@ struct ExecutionListQuery {
     limit: Option<u32>,
     application_ids: Option<String>,
     workflow_ids: Option<String>,
+    workflow_version_ids: Option<String>,
     tool_ids: Option<String>,
     initiator_user_ids: Option<String>,
     initiator_department_ids: Option<String>,
     trigger_types: Option<String>,
     trigger_name: Option<String>,
+    external_user_id: Option<String>,
+    user_source: Option<String>,
     statuses: Option<String>,
     error_codes: Option<String>,
     session_mode: Option<String>,
@@ -416,6 +429,22 @@ async fn search_executions(
         return Err(ApiError::forbidden("Missing permission execution:view"));
     }
     let workflow_ids = parse_uuid_filter(query.workflow_ids.as_deref(), "workflowIds")?;
+    let workflow_version_ids =
+        parse_uuid_filter(query.workflow_version_ids.as_deref(), "workflowVersionIds")?;
+    let mut workflow_draft_ids = Vec::new();
+    for version in &workflow_version_ids {
+        let document: Option<Uuid> = sqlx::query_scalar(
+            "SELECT working_draft_id FROM workflow_versions WHERE tenant_id=? AND id=?",
+        )
+        .bind(actor.tenant_id)
+        .bind(version)
+        .fetch_optional(&state.pool)
+        .await?
+        .flatten();
+        if let Some(document) = document {
+            workflow_draft_ids.push(document);
+        }
+    }
     let tool_ids = parse_uuid_filter(query.tool_ids.as_deref(), "toolIds")?;
     let initiator_user_ids =
         parse_uuid_filter(query.initiator_user_ids.as_deref(), "initiatorUserIds")?;
@@ -498,10 +527,14 @@ async fn search_executions(
         ));
     }
     let request = ExecutionSearchRequestV1 {
+        user_source: query.user_source,
+        external_user_id: query.external_user_id,
         api_version: 1,
         tenant_id: actor.tenant_id,
         application_ids,
         workflow_ids,
+        workflow_version_ids,
+        workflow_draft_ids,
         tool_ids,
         initiator_user_ids,
         initiator_department_ids,
@@ -1496,7 +1529,7 @@ fn execution_summary_json(
         "triggerType":summary.trigger_type,"executionType":if summary.trigger_type == "fork" { "fork" } else if summary.parent_execution_id.is_some() { "sub_workflow" } else { "whole" },"parentExecutionId":summary.parent_execution_id,
         "initiatorUserId":summary.initiator_user_id,"initiatorUserName":summary.initiator_user_name,
         "initiatorDepartmentId":summary.initiator_department_id,"initiatorDepartmentName":summary.initiator_department_name,
-        "triggerSourceId":summary.trigger_source_id,"triggerName":summary.trigger_name,
+        "endUser":summary.end_user,"triggerSourceId":summary.trigger_source_id,"triggerName":summary.trigger_name,
         "callerExecutionId":null,"forkCheckpointId":null,"status":summary.status,
         "startedAt":rfc3339(summary.created_at),"endedAt":summary.completed_at.and_then(rfc3339),"durationMs":summary.duration_ms,
         "costMicros":summary.cost_micros,"costCurrency":summary.cost_currency,"inputTokens":summary.input_tokens,"outputTokens":summary.output_tokens,
@@ -1674,6 +1707,7 @@ mod tests {
         let execution_id = Uuid::now_v7();
         let execution = execution_summary_json(
             ExecutionSummaryV1 {
+                end_user: None,
                 execution_id,
                 invocation_id: None,
                 application_id: None,

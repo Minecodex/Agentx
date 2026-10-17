@@ -129,6 +129,14 @@ async fn direct_requirements(
     input: &AuthorizationInput,
 ) -> ApiResult<Vec<Requirement>> {
     validate_operation(&input.operation)?;
+    if input.resource_type == "memory"
+        && !matches!(input.operation.as_str(), "use" | "view" | "manage")
+    {
+        return Err(ApiError::bad_request(
+            "INVALID_MEMORY_OPERATION",
+            "Memory connections use a single read/write use permission",
+        ));
+    }
     let owner = ensure_resource(state, tenant, &input.resource_type, input.resource_id).await?;
     let mut values = vec![Requirement {
         resource_type: input.resource_type.clone(),
@@ -240,8 +248,14 @@ async fn direct_requirements(
             }
         }
         "memory" => {
-            let credential: Option<Uuid> = sqlx::query_scalar("SELECT c.credential_id FROM memory_namespaces n JOIN memory_connections c ON c.tenant_id=n.tenant_id AND c.id=n.connection_id WHERE n.tenant_id=? AND n.id=?")
-                .bind(tenant).bind(input.resource_id).fetch_optional(&state.pool).await?.flatten();
+            let credential: Option<Uuid> = sqlx::query_scalar(
+                "SELECT c.credential_id FROM memory_connections c WHERE c.tenant_id=? AND c.id=?",
+            )
+            .bind(tenant)
+            .bind(input.resource_id)
+            .fetch_optional(&state.pool)
+            .await?
+            .flatten();
             if let Some(credential) = credential {
                 push_requirement(
                     state,

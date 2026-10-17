@@ -1,3 +1,4 @@
+import { fixtureVersionId } from '../draft-fixtures'
 import { expect, type Page } from '@playwright/test'
 import { createHash } from 'node:crypto'
 import type { components } from '../../../src/web/src/shared/api/generated'
@@ -21,14 +22,14 @@ function expectErrorExit(draft: Draft, sourceId: string) {
 }
 
 async function namedModel(page: Page, token: string, created: Created, name: string) {
-  const options = await read<{ items: Array<{ id: string; name: string; resourceVersionId: string }> }>(page, token, `/workflows/${created.id}/resource-options?draftId=${created.createdDraftId}&resourceType=model&operation=use&pageSize=100`)
+  const options = await read<{ items: Array<{ id: string; name: string; resourceVersionId: string }> }>(page, token, `/workflows/${created.id}/resource-options?draftId=${created.documentId}&resourceType=model&operation=use&pageSize=100`)
   const model = options.items.find(item => item.name === name)
   expect(model).toBeTruthy()
   return model!
 }
 
 async function document(page: Page, token: string, created: Created, resourceId?: string): Promise<Document> {
-  const original = await read<Draft>(page, token, `/workflows/${created.id}/drafts/${created.createdDraftId}`)
+  const original = await read<Draft>(page, token, `/workflows/${created.id}/drafts/${created.documentId}`)
   const result: Document = { definition: structuredClone(original.definition), editorDocument: structuredClone(original.editorDocument) }
   const success = result.definition.nodes.find(node => node.type === 'exit')!
   success.parameters = { outputs: { answer: reference('outputs', ['text'], 'retrieve'), documents: reference('outputs', ['documents'], 'retrieve'), files: reference('outputs', ['files'], 'retrieve') }, errorOutputs: {} }
@@ -47,7 +48,7 @@ async function apply(page: Page, value: Document) {
 }
 
 async function run(page: Page, token: string, created: Created, status: 'succeeded' | 'failed') {
-  const accepted = page.waitForResponse(value => value.url().endsWith(`/drafts/${created.createdDraftId}/debug-executions`) && value.request().method() === 'POST')
+  const accepted = page.waitForResponse(value => value.url().endsWith(`/drafts/${created.documentId}/debug-executions`) && value.request().method() === 'POST')
   await page.getByRole('button', { name: '运行', exact: true }).first().click()
   const response = await accepted
   expect(response.status(), await response.text()).toBe(202)
@@ -76,7 +77,7 @@ for (const provider of ['lightrag', 'ragflow']) {
     expect(await count(page, token, created.id)).toBe(0)
     // Setup grants use the same authorization endpoint as the editor. The AI
     // has deliberately left the ungranted resource selected for user action.
-    const grant = await page.request.post(`/api/v1/workflows/${created.id}/resource-authorizations`, { headers: { Authorization: `Bearer ${token}` }, data: { resourceType: 'rag', resourceId, operation: 'read' } })
+    const grant = await page.request.post(`/api/v1/workflows/${created.id}/resource-authorizations`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { resourceType: 'rag', resourceId, operation: 'read' } })
     expect(grant.ok(), await grant.text()).toBeTruthy()
     await page.reload()
     await page.getByRole('button', { name: /^(适应画布|Fit view)$/ }).click()
@@ -104,7 +105,7 @@ for (const provider of ['lightrag', 'ragflow']) {
       const before = await saved(page, token, created)
       await page.getByTestId('studio-builder-panel').getByRole('button', { name: '关闭', exact: true }).click()
       const result = await run(page, token, created, query === 'fixture-error' ? 'failed' : 'succeeded')
-      expect(result.source).toMatchObject({ kind: 'draft_revision', draftId: created.createdDraftId, revision: before.revision })
+      expect(result.source).toMatchObject({ kind: 'draft_revision', draftId: created.documentId, revision: before.revision })
       if (query === 'fixture-error') expect(result.error).toMatchObject({ outputs: { source_node_id: 'retrieve', code: expect.any(String), message: expect.any(String) } })
       else { expect(JSON.stringify(result)).toContain('"files":[]'); expect(JSON.stringify(result)).not.toContain('sapphire-orbit') }
       await page.getByRole('button', { name: 'AI 创作', exact: true }).click()
@@ -127,10 +128,10 @@ test('P8 knowledge fixture Agent: all resource slots save and reopen without gra
   agent.resourceReferences = []
   for (const [resourceType, bindingRole, operation, id] of [
     ['model', 'model', 'use', null], ['mcp_tool', 'mcp_tools', 'use', resources.tool],
-    ['skill', 'skills', 'use', resources.skill], ['memory', 'long_term_memory', 'read', resources.memory],
+    ['skill', 'skills', 'use', resources.skill], ['memory', 'long_term_memory', 'use', resources.memory],
     ['rag', 'knowledge', 'read', process.env.AGENTX_E2E_STUDIO_KNOWLEDGE_LIGHTRAG],
   ] as const) {
-    const options = await read<{ items: Array<{ id: string; name: string; resourceVersionId: string | null }> }>(page, token, `/workflows/${created.id}/resource-options?draftId=${created.createdDraftId}&resourceType=${resourceType}&operation=${operation}&pageSize=100`)
+    const options = await read<{ items: Array<{ id: string; name: string; resourceVersionId: string | null }> }>(page, token, `/workflows/${created.id}/resource-options?draftId=${created.documentId}&resourceType=${resourceType}&operation=${operation}&pageSize=100`)
     const selected = options.items.find(item => id ? item.id === id : item.name === model)!
     expect(selected).toBeTruthy()
     agent.resourceReferences.push({ resourceType, bindingRole, operation, resourceId: selected.id, ...(selected.resourceVersionId ? { resourceVersionId: selected.resourceVersionId } : {}) })
@@ -158,7 +159,7 @@ test('P8 knowledge fixture Agent: all resource slots save and reopen without gra
   const history = await allEntries<{ sequence: number }>(page, token, session.id)
   const lastSequence = history.at(-1)!.sequence
   const frame = await page.evaluate(async ({ path, token, after }) => {
-    const response = await fetch(`/api/v1${path}/events?after=${after}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5000) })
+    const response = await fetch(`/api/v1${path}/events?after=${after}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, signal: AbortSignal.timeout(5000) })
     if (!response.ok) throw new Error(`SSE status ${response.status}`)
     const reader = response.body!.getReader()
     try { return new TextDecoder().decode((await reader.read()).value) } finally { await reader.cancel() }
@@ -181,7 +182,7 @@ test('P8 knowledge fixture Agent: all resource slots save and reopen without gra
   await page.reload()
   await page.getByTestId(`studio-node-${agent.id}`).dblclick()
   await expect(page.getByTestId('agent-panel')).toBeVisible()
-  const validation = await page.request.post(`/api/v1/workflows/${created.id}/drafts/${created.createdDraftId}/validate`, { headers: { Authorization: `Bearer ${token}` }, data: { definition: incomplete.definition, editorDocument: incomplete.editorDocument } })
+  const validation = await page.request.post(`/api/v1/workflows/${created.id}/drafts/${created.documentId}/validate`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { definition: incomplete.definition, editorDocument: incomplete.editorDocument } })
   expect(validation.ok(), await validation.text()).toBeTruthy()
   expect(JSON.stringify(await validation.json())).toContain('BINDING_REQUIRED')
 })
@@ -230,7 +231,7 @@ test('P8 knowledge live AI: unmatched Agent resources remain empty and draft reo
   await page.reload()
   await page.getByTestId(`studio-node-${agent.id}`).dblclick()
   await expect(page.getByTestId('agent-panel')).toBeVisible()
-  const validate = await page.request.post(`/api/v1/workflows/${created.id}/drafts/${created.createdDraftId}/validate`, { headers: { Authorization: `Bearer ${token}` }, data: { definition: draft.definition, editorDocument: draft.editorDocument } })
+  const validate = await page.request.post(`/api/v1/workflows/${created.id}/drafts/${created.documentId}/validate`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { definition: draft.definition, editorDocument: draft.editorDocument } })
   expect(validate.ok(), await validate.text()).toBeTruthy()
   expect(JSON.stringify(await validate.json())).toContain('BINDING_REQUIRED')
 })
@@ -252,7 +253,7 @@ test('P8 knowledge live AI: binds named MCP, memory, skill and knowledge Agent a
   expect(agent.resourceReferences).toContainEqual(expect.objectContaining({ resourceType: 'model', bindingRole: 'model', resourceId: expectedModel.id, resourceVersionId: expectedModel.resourceVersionId }))
   for (const [resourceType, bindingRole, resourceId, operation] of [
     ['mcp_tool', 'mcp_tools', resources.tool, 'use'], ['skill', 'skills', resources.skill, 'use'],
-    ['memory', 'long_term_memory', resources.memory, 'read'],
+    ['memory', 'long_term_memory', resources.memory, 'use'],
     ['rag', 'knowledge', process.env.AGENTX_E2E_STUDIO_KNOWLEDGE_LIGHTRAG, 'read'],
   ]) expect(agent.resourceReferences).toContainEqual(expect.objectContaining({ resourceType, bindingRole, resourceId, operation }))
   expect(agent.resourceReferences.find(ref => ref.resourceType === 'skill')?.resourceVersionId).toBe(resources.skillVersion)
@@ -269,9 +270,9 @@ test('P8 knowledge live AI: binds named MCP, memory, skill and knowledge Agent a
 test('P8 recovered execution: failed history and full trace remain visible', async ({ page }) => {
   const target = process.env.AGENTX_E2E_RECOVERED_EXECUTION
   test.skip(!target, 'Recovery injection is orchestrated by pytest')
-  const { workflowId, draftId, executionId } = JSON.parse(target!) as Record<string, string>
+  const { workflowId, executionId } = JSON.parse(target!) as Record<string, string>
   await login(page)
-  await page.goto(`/workflows/${workflowId}/drafts/${draftId}/editor`)
+  await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   const select = page.getByRole('combobox', { name: /切换执行/ })
   await select.click()
   await page.getByRole('option', { name: /失败/ }).first().click()

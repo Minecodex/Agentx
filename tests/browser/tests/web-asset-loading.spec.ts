@@ -44,10 +44,10 @@ test('creates a workflow and opens its details and editor', async ({ page }, tes
   await expect(page).toHaveURL(/\/workflows\/[a-f0-9-]+$/)
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
   await expect(page.getByText('Unexpected Application Error!')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '打开画布', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '新建画布', exact: true })).toBeEnabled()
   await page.screenshot({ path: testInfo.outputPath('workflow-created-details.png'), fullPage: true })
-  await page.getByRole('link', { name: '打开画布', exact: true }).click()
-  await expect(page).toHaveURL(/\/workflows\/[a-f0-9-]+\/drafts\/[a-f0-9-]+\/editor$/)
+  await page.getByTestId('workflow-version-1').getByRole('link', { name: '编辑', exact: true }).click()
+  await expect(page).toHaveURL(/\/workflows\/[a-f0-9-]+\/versions\/[a-f0-9-]+\/editor$/)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
 })
 

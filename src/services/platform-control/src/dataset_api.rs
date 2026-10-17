@@ -622,7 +622,7 @@ async fn create_evaluation(
     for (label, sql, id) in [
         (
             "workflow_versions",
-            "SELECT EXISTS(SELECT 1 FROM workflow_versions WHERE tenant_id=? AND id=?)",
+            "SELECT EXISTS(SELECT 1 FROM workflow_versions WHERE tenant_id=? AND id=? AND publication_status='published')",
             input.workflow_version_id,
         ),
         (

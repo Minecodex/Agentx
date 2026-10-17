@@ -1,4 +1,3 @@
-# ruff: noqa: S608
 """plan7 P7-D5 rolling upgrade drills (INT-009).
 
 Two-phase rollout (expand -> rolling upgrade -> contract) with a continuous
@@ -15,6 +14,7 @@ stays on the long-run handoff list.
 
 from __future__ import annotations
 
+# ruff: noqa: S608
 import json
 import threading
 import time
@@ -24,7 +24,7 @@ from typing import Any
 import httpx
 import pytest
 
-from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id, idempotent_headers, publish_fixture_version
 from tests.e2e.product.test_channel_delivery import (
     _access_token,
     _development_environment_id,
@@ -106,13 +106,8 @@ def _relay_workflow(control: httpx.Client, headers: dict[str, str], name: str) -
         f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}", headers=headers
     )
     latest.raise_for_status()
-    published = control.post(
-        f"/api/v1/workflows/{workflow_id}/versions",
-        headers=headers,
-        json={
-            "draftId": fixture_draft(control, workflow_id, headers)["id"],
-            "draftRevision": latest.json()["revision"],
-        },
+    published = publish_fixture_version(
+        control, workflow_id, fixture_draft(control, workflow_id, headers)["id"], latest.json()["revision"], headers
     )
     assert published.status_code in (200, 201), published.text
     return {"workflowId": workflow_id, "versionId": published.json()["id"]}
@@ -129,8 +124,12 @@ def probe_channel(installed_agentx: dict[str, str], service_urls: dict[str, str]
         environment_id = _development_environment_id(control, headers)
         deploy = control.post(
             f"/api/v1/workflows/{workflow['workflowId']}/deployments",
-            headers=headers,
-            json={"environmentId": environment_id, "workflowVersionId": workflow["versionId"]},
+            headers=idempotent_headers(headers),
+            json={
+                "contentSource": "version",
+                "environmentId": environment_id,
+                "workflowVersionId": workflow["versionId"],
+            },
         )
         assert deploy.status_code in (200, 201), deploy.text
         application = control.post(

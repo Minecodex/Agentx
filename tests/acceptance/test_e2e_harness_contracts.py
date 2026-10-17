@@ -43,7 +43,8 @@ def test_local_sandbox_tls_forward_is_scoped_and_always_stopped(monkeypatch, tmp
     calls = []
 
     class Forward:
-        def __init__(self, command, *, stdout_path, stderr_path):
+        def __init__(self, command, *, stdout_path, stderr_path, health_url):
+            assert health_url == f"https://127.0.0.1:{port}/"
             calls.append(tuple(command))
             stdout_path.write_text(f"Forwarding from 0.0.0.0:{port} -> 3129\n")
             self.process = SimpleNamespace(poll=lambda: None)

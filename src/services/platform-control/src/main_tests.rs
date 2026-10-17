@@ -219,6 +219,8 @@ async fn runtime_success_before_local_transition_is_replayed_after_takeover(
             minimum_admission_epoch: 1,
             runtime_config_revision: 1,
             runtime_policy: agentx_runtime_contracts::ApplicationRuntimePolicyV1 {
+                api_user_id_input: None,
+                environment_id: None,
                 session_version_policy: agentx_runtime_contracts::SessionVersionPolicyV1::Pinned,
                 synchronous_wait_seconds: 30,
                 maximum_json_bytes: 1_048_576,

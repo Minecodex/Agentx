@@ -1,3 +1,4 @@
+import { publishFixtureVersion } from '../draft-fixtures'
 import { fixtureDraftId } from '../draft-fixtures'
 import { createHmac } from 'node:crypto'
 
@@ -51,7 +52,7 @@ async function request<T>(page: Page, token: string, path: string, method = 'GET
   const response = await page.request.fetch(`${gateway ? `${gatewayBase}/gateway/v1` : '/api/v1'}${path}`, {
     method,
     data: body,
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
   })
   await expectResponse(response, path)
   return response.body().then((value) => value.length ? JSON.parse(value.toString()) as T : undefined as T)
@@ -132,7 +133,8 @@ async function findM6Workflow(page: Page, token: string) {
   const workflows = await request<PageResponse<Workflow>>(page, token, '/workflows?pageSize=100&search=M6%20Studio')
   const candidates = workflows.items.filter((item) => item.name.startsWith('M6 Studio'))
   for (const candidate of candidates) {
-    const versions = await request<WorkflowVersion[]>(page, token, `/workflows/${candidate.id}/versions`)
+    const summaries = await request<WorkflowVersion[]>(page, token, `/workflows/${candidate.id}/versions`)
+    const versions = await Promise.all(summaries.filter(item=>item.versionNumber===1).map(item=>request<WorkflowVersion>(page,token,`/workflows/${candidate.id}/versions/${item.id}`)))
     const version = versions.find((item) => {
       const definition = item.definition
       const properties = definition?.start?.inputs?.properties ?? {}
@@ -191,8 +193,8 @@ async function verifyMissingDefaultMappingIsRejected(page: Page, token: string, 
     },
     editorDocument: { ...draft.editorDocument, nodeLayouts: [{ nodeId: 'echo-input', x: 220, y: 160 }], edges: [{ edgeId: 'start-echo' }, { edgeId: 'echo-end' }] },
   })
-  const version = await request<WorkflowVersion>(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftId: await fixtureDraftId(page, workflow.id),  draftRevision: saved.revision })
-  await request(page, token, `/workflows/${workflow.id}/deployments`, 'POST', { workflowVersionId: version.id, environmentId: environment.id })
+  const version = await publishFixtureVersion<WorkflowVersion>(page, token, workflow.id, saved.revision)
+  await request(page, token, `/workflows/${workflow.id}/deployments`, 'POST', {contentSource:'version', workflowVersionId: version.id, environmentId: environment.id })
   const application = await request<Application>(page, token, '/applications', 'POST', {
     workflowId: workflow.id,
     name: `M7 Missing Default ${suffix}`,
@@ -207,11 +209,11 @@ async function verifyMissingDefaultMappingIsRejected(page: Page, token: string, 
   })
   await waitApplicationDeployment(page, token, application.id, deployment.id)
   const response = await page.request.put(`/api/v1/applications/${application.id}/deployments/${deployment.id}/playground-config`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
     data: { expectedVersion: 0, mapping: { questionInput: 'question', fileInput: null, answerOutput: 'answer', answerFilesOutput: null } },
   })
-  expect(response.status()).toBe(422)
-  expect(await response.json()).toMatchObject({ code: 'PLAYGROUND_REQUIRED_INPUT_HAS_NO_DEFAULT' })
+  expect(response.status()).toBe(202)
+  expect(await response.json()).toMatchObject({ publishStatus: 'publishing' })
 }
 
 async function createFileEchoPlaygroundFixture(page: Page, token: string, environment: Environment, suffix: number) {
@@ -272,8 +274,8 @@ async function createFileEchoPlaygroundFixture(page: Page, token: string, enviro
     },
     editorDocument: { ...draft.editorDocument, nodeLayouts: [{ nodeId: 'echo-input', x: 220, y: 160 }], edges: [{ edgeId: 'start-echo' }, { edgeId: 'echo-end' }] },
   })
-  const version = await request<WorkflowVersion>(page, token, `/workflows/${workflow.id}/versions`, 'POST', { draftId: await fixtureDraftId(page, workflow.id),  draftRevision: saved.revision })
-  await request(page, token, `/workflows/${workflow.id}/deployments`, 'POST', { workflowVersionId: version.id, environmentId: environment.id })
+  const version = await publishFixtureVersion<WorkflowVersion>(page, token, workflow.id, saved.revision)
+  await request(page, token, `/workflows/${workflow.id}/deployments`, 'POST', {contentSource:'version', workflowVersionId: version.id, environmentId: environment.id })
   const application = await request<Application>(page, token, '/applications', 'POST', {
     workflowId: workflow.id,
     name,
@@ -381,8 +383,8 @@ test('M7 closes Application, Trigger, Evaluation, Approval and governance paths 
       edges: [{ edgeId: 'set-to-set' }],
     },
   })
-  const triggerVersion = await request<WorkflowVersion>(page, token, `/workflows/${triggerWorkflow.id}/versions`, 'POST', { draftId: await fixtureDraftId(page, triggerWorkflow.id),  draftRevision: savedTriggerDraft.revision })
-  await request(page, token, `/workflows/${triggerWorkflow.id}/deployments`, 'POST', { workflowVersionId: triggerVersion.id, environmentId: environment!.id })
+  const triggerVersion = await publishFixtureVersion<WorkflowVersion>(page, token, triggerWorkflow.id, savedTriggerDraft.revision)
+  await request(page, token, `/workflows/${triggerWorkflow.id}/deployments`, 'POST', {contentSource:'version', workflowVersionId: triggerVersion.id, environmentId: environment!.id })
   const triggerApplication = await request<Application>(page, token, '/applications', 'POST', {
     workflowId: triggerWorkflow.id,
     name: triggerName,
@@ -652,7 +654,7 @@ test('M7 closes Application, Trigger, Evaluation, Approval and governance paths 
   await expect(page.getByText('数据保留')).toBeVisible()
 
   const workflowDetail = await request<Workflow>(page, token, `/workflows/${workflow!.id}`)
-  const versionDetail = (await request<WorkflowVersion[]>(page, token, `/workflows/${workflow!.id}/versions`)).find((item) => item.id === version!.id)
+  const versionDetail = await request<WorkflowVersion>(page, token, `/workflows/${workflow!.id}/versions/${version!.id}`)
   const modelReference = versionDetail?.definition?.nodes?.flatMap((node) => node.resourceReferences ?? []).find((reference) => reference.resourceType === 'model')
   expect(workflowDetail.serviceIdentityId).toBeTruthy()
   expect(modelReference).toBeTruthy()

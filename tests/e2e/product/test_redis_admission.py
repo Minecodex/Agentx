@@ -101,7 +101,7 @@ def test_redis_real_watermark_rejects_new_api_and_chat_preserves_replay(boundary
         session = gateway.post(
             f"/gateway/v1/applications/{app['slug']}/sessions",
             headers={"Idempotency-Key": "redis-session"},
-            json={"title": None, "externalUserId": "redis-proof"},
+            json={"title": None, "input": {}},
         )
         assert session.status_code == 201, session.text
         chat_path = f"/gateway/v1/sessions/{session.json()['id']}/messages"

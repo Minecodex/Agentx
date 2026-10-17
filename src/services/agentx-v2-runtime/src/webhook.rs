@@ -598,11 +598,22 @@ pub(crate) async fn dispatch_event(
         trigger_name: Some(trigger_name),
         ..agentx_runtime_contracts::ExecutionOriginV1::system(None)
     };
+    let end_user = agentx_runtime_contracts::ApplicationUserIdentityV1::channel(
+        match context.provider {
+            WebhookProviderV1::Agentx => "agentx",
+            WebhookProviderV1::Dingtalk => "dingtalk",
+            WebhookProviderV1::Wecom => "wecom",
+            WebhookProviderV1::Feishu => "feishu",
+        },
+        &context.provider_connection_id,
+        &context.sender.id,
+    );
     let accepted = crate::execution::create_runtime_invocation(
         pool,
         tenant_id,
         application_id,
         crate::execution::InvocationCaller {
+            end_user,
             caller_type: "webhook",
             caller_id: binding_id,
             token_version: None,

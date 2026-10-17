@@ -306,14 +306,14 @@ pub(crate) async fn start_version_execution(
 ) -> ApiResult<StartDebugRunResponse> {
     validate_idempotency_key(&idempotency_key)?;
     let workflow_id: Uuid =
-        sqlx::query_scalar("SELECT workflow_id FROM workflow_versions WHERE tenant_id=? AND id=?")
+        sqlx::query_scalar("SELECT workflow_id FROM workflow_versions WHERE tenant_id=? AND id=? AND publication_status='published'")
             .bind(actor.tenant_id)
             .bind(version_id)
             .fetch_optional(&state.pool)
             .await?
             .ok_or_else(|| ApiError::not_found("Workflow version"))?;
     crate::workflow_api::require_workflow_access(state, actor, workflow_id, false).await?;
-    let version = sqlx::query("SELECT v.workflow_id,v.version_number,v.source_revision,v.content_hash,v.definition_json,i.id service_identity_id,i.version identity_version FROM workflow_versions v JOIN workflows w ON w.tenant_id=v.tenant_id AND w.id=v.workflow_id JOIN workflow_service_identities i ON i.tenant_id=v.tenant_id AND i.workflow_id=v.workflow_id WHERE v.tenant_id=? AND v.id=? AND w.status='active' AND i.status='active'")
+    let version = sqlx::query("SELECT v.workflow_id,v.version_number,v.source_revision,v.content_hash,v.definition_json,i.id service_identity_id,i.version identity_version FROM workflow_versions v JOIN workflows w ON w.tenant_id=v.tenant_id AND w.id=v.workflow_id JOIN workflow_service_identities i ON i.tenant_id=v.tenant_id AND i.workflow_id=v.workflow_id WHERE v.tenant_id=? AND v.id=? AND v.publication_status='published' AND w.status='active' AND i.status='active'")
         .bind(actor.tenant_id)
         .bind(version_id)
         .fetch_optional(&state.pool)
@@ -511,7 +511,7 @@ pub(crate) async fn start_debug_run(
     actor.require("workflow:edit")?;
     validate_idempotency_key(&request.idempotency_key)?;
     crate::workflow_api::require_workflow_access(&state, &actor, workflow_id, true).await?;
-    let draft = sqlx::query("SELECT r.id revision_id,r.revision,r.definition_json,r.resource_snapshot_json,i.id service_identity_id,i.version identity_version FROM workflow_draft_revisions r JOIN workflow_drafts d ON d.tenant_id=r.tenant_id AND d.id=r.draft_id JOIN workflows w ON w.id=r.workflow_id AND w.tenant_id=r.tenant_id JOIN workflow_service_identities i ON i.workflow_id=w.id AND i.tenant_id=w.tenant_id WHERE r.tenant_id=? AND r.workflow_id=? AND r.draft_id=? AND r.revision=? AND d.status='active' AND w.status='active' AND i.status='active'")
+    let draft = sqlx::query("SELECT r.id revision_id,r.revision,r.definition_json,r.resource_snapshot_json,i.id service_identity_id,i.version identity_version FROM workflow_draft_revisions r JOIN workflow_drafts d ON d.tenant_id=r.tenant_id AND d.id=r.draft_id JOIN workflow_versions v ON v.tenant_id=d.tenant_id AND v.working_draft_id=d.id JOIN workflows w ON w.id=r.workflow_id AND w.tenant_id=r.tenant_id JOIN workflow_service_identities i ON i.workflow_id=w.id AND i.tenant_id=w.tenant_id WHERE r.tenant_id=? AND r.workflow_id=? AND r.draft_id=? AND r.revision=? AND v.archived=FALSE AND w.status='active' AND i.status='active'")
         .bind(actor.tenant_id)
         .bind(workflow_id)
         .bind(request.draft_id)
@@ -898,7 +898,7 @@ async fn load_version_dependencies(
             continue;
         }
         let value: Value = sqlx::query_scalar(
-            "SELECT definition_json FROM workflow_versions WHERE tenant_id=? AND id=?",
+            "SELECT definition_json FROM workflow_versions WHERE tenant_id=? AND id=? AND publication_status='published'",
         )
         .bind(tenant_id)
         .bind(version_id)
@@ -1422,7 +1422,7 @@ pub(crate) async fn start_evaluation(
     actor: &Actor,
     run_id: Uuid,
 ) -> ApiResult<()> {
-    let row = sqlx::query("SELECT r.workflow_version_id,r.dataset_version_id,r.evaluation_profile_version_id,r.parameters_json,r.status,v.workflow_id,v.version_number workflow_version_number,v.definition_json,i.id service_identity_id,i.version identity_version FROM evaluation_runs r JOIN workflow_versions v ON v.tenant_id=r.tenant_id AND v.id=r.workflow_version_id JOIN workflow_service_identities i ON i.tenant_id=v.tenant_id AND i.workflow_id=v.workflow_id WHERE r.tenant_id=? AND r.id=?")
+    let row = sqlx::query("SELECT r.workflow_version_id,r.dataset_version_id,r.evaluation_profile_version_id,r.parameters_json,r.status,v.workflow_id,v.version_number workflow_version_number,v.definition_json,i.id service_identity_id,i.version identity_version FROM evaluation_runs r JOIN workflow_versions v ON v.tenant_id=r.tenant_id AND v.id=r.workflow_version_id JOIN workflow_service_identities i ON i.tenant_id=v.tenant_id AND i.workflow_id=v.workflow_id WHERE r.tenant_id=? AND r.id=? AND v.publication_status='published'")
         .bind(actor.tenant_id).bind(run_id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Evaluation Run"))?;
     if row.try_get::<String, _>("status")? != "created" {
         return Err(ApiError::conflict(

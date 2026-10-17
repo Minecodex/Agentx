@@ -7,6 +7,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../../app/providers/auth-provider'
 import { apiRequest, jsonBody } from '../../shared/api/client'
 import type { Approval, Checkpoint, Execution, ExecutionEvent, ForkExecutionRequest, NodeExecution, PageResponse, SideEffectConfirmationRequest } from '../../shared/api/types'
+import { EndUserLabel } from '../../shared/components/end-user-label'
 import { ConfirmDialog } from '../../shared/components/confirm-dialog'
 import { EmptyState } from '../../shared/components/empty-state'
 import { StatusBadge } from '../../shared/components/status-badge'
@@ -121,6 +122,7 @@ export function ExecutionDetailPage() {
         </div>
       </div>
       {(value.parentExecutionId || value.callerExecutionId) && <div className="mt-2 flex flex-wrap gap-3 border-t border-border pt-2 text-[10px] text-muted-foreground">{value.parentExecutionId && <Link className="inline-flex items-center gap-1 text-primary hover:underline" to={`/executions/${value.parentExecutionId}`}><Link2 className="size-3" />{t('executions.parentExecution', { id: value.parentExecutionId })}</Link>}{value.callerExecutionId && <Link className="inline-flex items-center gap-1 text-primary hover:underline" to={`/executions/${value.callerExecutionId}`}><Link2 className="size-3" />{t('executions.callerExecution', { id: value.callerExecutionId })}</Link>}</div>}
+      {value.endUser && <div className="mt-2 flex items-center gap-3 text-xs"><span className="text-muted-foreground">{t('applications.endUser')}</span><EndUserLabel user={value.endUser} /></div>}
       {value.errorMessage && <p className="mt-3 border-l-2 border-danger bg-danger/10 px-3 py-2 text-xs text-danger"><strong>{value.errorCode}</strong> {value.errorMessage}</p>}
     </header>
 

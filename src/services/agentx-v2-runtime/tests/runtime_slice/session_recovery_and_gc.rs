@@ -11,7 +11,7 @@ async fn session_message_appends_one_assistant_response(fixture: &Fixture) {
                 .header("idempotency-key", "runtime-slice-session")
                 .body(Body::from(
                     serde_json::to_vec(&CreateSessionRequestV1 {
-                        external_user_id: Some("runtime-slice-user".into()),
+                        input: serde_json::json!({}),
                         title: None,
                     })
                     .unwrap(),
@@ -63,14 +63,13 @@ async fn session_message_appends_one_assistant_response(fixture: &Fixture) {
     );
     let invocation: InvocationResponseV1 = serde_json::from_slice(&message_body).unwrap();
     assert_eq!(invocation.session_id, Some(session.id));
-    let inferred_title: Option<String> = sqlx::query_scalar(
-        "SELECT title FROM application_sessions WHERE tenant_id=? AND id=?",
-    )
-    .bind(fixture.tenant_id)
-    .bind(session.id)
-    .fetch_one(&fixture.state.pool)
-    .await
-    .unwrap();
+    let inferred_title: Option<String> =
+        sqlx::query_scalar("SELECT title FROM application_sessions WHERE tenant_id=? AND id=?")
+            .bind(fixture.tenant_id)
+            .bind(session.id)
+            .fetch_one(&fixture.state.pool)
+            .await
+            .unwrap();
     assert_eq!(inferred_title.as_deref(), Some("session-message"));
     let mapping_snapshot = sqlx::query("SELECT chat_mapping_version,chat_mapping_json FROM application_invocations WHERE tenant_id=? AND id=?")
         .bind(fixture.tenant_id)
@@ -204,14 +203,13 @@ async fn session_message_appends_one_assistant_response(fixture: &Fixture) {
         .await
         .unwrap();
     assert_eq!(snapshot_versions, vec![1, 2]);
-    let unchanged_title: Option<String> = sqlx::query_scalar(
-        "SELECT title FROM application_sessions WHERE tenant_id=? AND id=?",
-    )
-    .bind(fixture.tenant_id)
-    .bind(session.id)
-    .fetch_one(&fixture.state.pool)
-    .await
-    .unwrap();
+    let unchanged_title: Option<String> =
+        sqlx::query_scalar("SELECT title FROM application_sessions WHERE tenant_id=? AND id=?")
+            .bind(fixture.tenant_id)
+            .bind(session.id)
+            .fetch_one(&fixture.state.pool)
+            .await
+            .unwrap();
     assert_eq!(unchanged_title.as_deref(), Some("session-message"));
 }
 
@@ -342,8 +340,8 @@ async fn chat_mapping_publication_is_idempotent(
         publisher_headers("runtime.chat_mappings.apply"),
         Json(request.clone()),
     )
-        .await
-        .unwrap();
+    .await
+    .unwrap();
     assert!(!first.replayed);
     let replay = apply_chat_mapping(
         State(fixture.state.clone()),
@@ -363,7 +361,8 @@ async fn chat_mapping_publication_is_idempotent(
         publisher_headers("runtime.chat_mappings.apply"),
         Json(ApplyChatMappingRequestV1 {
             mapping: Some(conflicting_mapping.clone()),
-            content_hash: agentx_runtime_contracts::content_hash(&Some(conflicting_mapping)).unwrap(),
+            content_hash: agentx_runtime_contracts::content_hash(&Some(conflicting_mapping))
+                .unwrap(),
             ..request
         }),
     )
@@ -431,7 +430,10 @@ async fn invocation_and_dispatch_recovery_are_fenced(
     );
     let recovered: Vec<_> = first.unwrap().into_iter().chain(second.unwrap()).collect();
     assert_eq!(
-        recovered.iter().filter(|message| message.attempt_id == attempt_id).count(),
+        recovered
+            .iter()
+            .filter(|message| message.attempt_id == attempt_id)
+            .count(),
         1,
         "concurrent recovery must re-dispatch an eligible attempt only once"
     );
@@ -451,15 +453,24 @@ async fn invocation_and_dispatch_recovery_are_fenced(
     // still succeed; only that Attempt row is a claim lock.
     let mut held_snapshot = fixture.state.pool.begin().await.unwrap();
     sqlx::query("SELECT id FROM workflow_executions WHERE id=? FOR UPDATE")
-        .bind(task.execution_id).fetch_one(&mut *held_snapshot).await.unwrap();
+        .bind(task.execution_id)
+        .fetch_one(&mut *held_snapshot)
+        .await
+        .unwrap();
     sqlx::query("SELECT id FROM node_executions WHERE id=? FOR UPDATE")
-        .bind(task.node_execution_id).fetch_one(&mut *held_snapshot).await.unwrap();
+        .bind(task.node_execution_id)
+        .fetch_one(&mut *held_snapshot)
+        .await
+        .unwrap();
     for statement in [
         "SELECT execution_id FROM execution_snapshots WHERE execution_id=? FOR UPDATE",
         "SELECT execution_id FROM execution_runtime_state WHERE execution_id=? FOR UPDATE",
     ] {
         sqlx::query(statement)
-            .bind(task.execution_id).fetch_one(&mut *held_snapshot).await.unwrap();
+            .bind(task.execution_id)
+            .fetch_one(&mut *held_snapshot)
+            .await
+            .unwrap();
     }
     let mut contenders = tokio::task::JoinSet::new();
     for worker in workers {
@@ -482,7 +493,9 @@ async fn invocation_and_dispatch_recovery_are_fenced(
                 claims.push(claim);
             }
         }
-    }).await.expect("Worker claims must not lock unrelated Workflow/snapshot rows");
+    })
+    .await
+    .expect("Worker claims must not lock unrelated Workflow/snapshot rows");
     held_snapshot.rollback().await.unwrap();
     assert_eq!(
         claims.len(),
@@ -539,7 +552,10 @@ async fn invocation_and_dispatch_recovery_are_fenced(
         .execute(&fixture.state.pool).await.unwrap();
     let mut held = fixture.state.pool.begin().await.unwrap();
     sqlx::query("SELECT id FROM quota_reservations WHERE id=? FOR UPDATE")
-        .bind(unrelated_reservation).fetch_one(&mut *held).await.unwrap();
+        .bind(unrelated_reservation)
+        .fetch_one(&mut *held)
+        .await
+        .unwrap();
     tokio::time::timeout(
         Duration::from_millis(500),
         agentx_v2_runtime::engine::submit_worker_result(&fixture.state.pool, &replacement_result),
@@ -549,7 +565,10 @@ async fn invocation_and_dispatch_recovery_are_fenced(
     .unwrap();
     held.rollback().await.unwrap();
     sqlx::query("DELETE FROM quota_reservations WHERE id=?")
-        .bind(unrelated_reservation).execute(&fixture.state.pool).await.unwrap();
+        .bind(unrelated_reservation)
+        .execute(&fixture.state.pool)
+        .await
+        .unwrap();
     replacement_result
 }
 
@@ -802,11 +821,10 @@ fn successful_worker_result(
         claim.inputs.get("main").cloned().unwrap_or_default(),
     )]);
     let status = WorkerResultStatusV1::Succeeded;
-    let result_hash =
-        agentx_v2_runtime::engine::worker_result_hash(
-            status, &outputs, None, None, None, None, None,
-        )
-            .unwrap();
+    let result_hash = agentx_v2_runtime::engine::worker_result_hash(
+        status, &outputs, None, None, None, None, None,
+    )
+    .unwrap();
     WorkerResultV1 {
         protocol_version: 1,
         attempt_id: claim.task.attempt_id,
@@ -1052,10 +1070,14 @@ async fn query_is_tenant_application_and_execution_scoped(fixture: &Fixture, exe
         .unwrap();
 
     let search_request = ExecutionSearchRequestV1 {
+        user_source: None,
+        external_user_id: None,
         api_version: 1,
         tenant_id: fixture.tenant_id,
         application_ids: vec![fixture.application_id],
         workflow_ids: vec![],
+        workflow_version_ids: vec![],
+        workflow_draft_ids: vec![],
         tool_ids: vec![],
         initiator_user_ids: vec![],
         initiator_department_ids: vec![],
@@ -1137,10 +1159,14 @@ async fn query_is_tenant_application_and_execution_scoped(fixture: &Fixture, exe
     ));
 
     let combined_request = ExecutionSearchRequestV1 {
+        user_source: None,
+        external_user_id: None,
         api_version: 1,
         tenant_id: fixture.tenant_id,
         application_ids: vec![fixture.application_id],
         workflow_ids: vec![],
+        workflow_version_ids: vec![],
+        workflow_draft_ids: vec![],
         tool_ids: vec![called_tool_id, Uuid::now_v7()],
         initiator_user_ids: vec![Uuid::now_v7(), subject_id],
         initiator_department_ids: vec![Uuid::now_v7(), initiator_department_id],
@@ -1238,10 +1264,14 @@ async fn query_is_tenant_application_and_execution_scoped(fixture: &Fixture, exe
     );
 
     let wrong_application_request = ExecutionSearchRequestV1 {
+        user_source: None,
+        external_user_id: None,
         api_version: 1,
         tenant_id: fixture.tenant_id,
         application_ids: vec![fixture.application_id],
         workflow_ids: vec![],
+        workflow_version_ids: vec![],
+        workflow_draft_ids: vec![],
         tool_ids: vec![],
         initiator_user_ids: vec![],
         initiator_department_ids: vec![],
@@ -1413,7 +1443,7 @@ async fn gc_object_delete_failure_is_recorded_and_retryable(fixture: &Fixture) {
         trust: fixture.state.trust.clone(),
         wakeups: Default::default(),
         vault: None,
-                admission_redis: fixture.state.admission_redis.clone(),
+        admission_redis: fixture.state.admission_redis.clone(),
     };
     assert_eq!(mark_collectable(&state, run).await.unwrap(), 1);
     assert!(sweep_one(&state, run, Uuid::now_v7()).await.unwrap());
@@ -1503,7 +1533,7 @@ async fn ready_orphan_objects_are_swept_and_reuploadable(fixture: &Fixture) {
         trust: fixture.state.trust.clone(),
         wakeups: Default::default(),
         vault: None,
-                admission_redis: fixture.state.admission_redis.clone(),
+        admission_redis: fixture.state.admission_redis.clone(),
     };
     let retry_run = Uuid::now_v7();
     assert_eq!(
@@ -1872,15 +1902,20 @@ fn composite_definition(child_version_id: Uuid) -> WorkflowDefinition {
 
 async fn connect_with_retry(port: u16) -> MySqlPool {
     let settings = agentx_runtime_infrastructure::RuntimeMySqlSettings {
-        host: "127.0.0.1".into(), port, database: "agentx_runtime".into(),
-        username: "agentx".into(), password: "agentx-test-password".into(), max_connections: 64,
+        host: "127.0.0.1".into(),
+        port,
+        database: "agentx_runtime".into(),
+        username: "agentx".into(),
+        password: "agentx-test-password".into(),
+        max_connections: 64,
         tls_mode: agentx_runtime_infrastructure::MySqlTlsMode::Disabled,
-        tls_ca_path: None, tls_client_cert_path: None, tls_client_key_path: None,
+        tls_ca_path: None,
+        tls_client_cert_path: None,
+        tls_client_key_path: None,
     };
     let mut last_error = None;
     for _ in 0..40 {
-        match agentx_runtime_infrastructure::connect_runtime_mysql(&settings).await
-        {
+        match agentx_runtime_infrastructure::connect_runtime_mysql(&settings).await {
             Ok(pool) => return pool,
             Err(error) => last_error = Some(error),
         }

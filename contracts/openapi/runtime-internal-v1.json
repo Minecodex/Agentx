@@ -70,6 +70,19 @@
           "ApplicationRuntimePolicyV1": {
             "additionalProperties": false,
             "properties": {
+              "apiUserIdInput": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "environmentId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "maximumJsonBytes": {
                 "format": "uint64",
                 "minimum": 0,
@@ -308,6 +321,23 @@
       },
       "AgentSessionDiagnosticV1": {
         "$defs": {
+          "AgentMemoryTargetV1": {
+            "additionalProperties": false,
+            "properties": {
+              "memoryResourceId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "scope": {
+                "$ref": "#/$defs/MemoryScopeV1"
+              }
+            },
+            "required": [
+              "scope",
+              "memoryResourceId"
+            ],
+            "type": "object"
+          },
           "AgentSessionEntryViewV1": {
             "additionalProperties": false,
             "properties": {
@@ -417,6 +447,76 @@
               "updatedAt"
             ],
             "type": "object"
+          },
+          "ApplicationUserIdentityV1": {
+            "additionalProperties": false,
+            "description": "The end user a call acts for. API identities are declarations, not authentication.",
+            "properties": {
+              "externalUserId": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/$defs/ApplicationUserSourceV1"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "sourceId",
+              "externalUserId"
+            ],
+            "type": "object"
+          },
+          "ApplicationUserSourceV1": {
+            "enum": [
+              "platform",
+              "channel",
+              "api_parameter"
+            ],
+            "type": "string"
+          },
+          "MemoryScopeV1": {
+            "additionalProperties": false,
+            "description": "Stable scope shared by all Mem0 call sites. Runtime data never uses display names.",
+            "properties": {
+              "applicationId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "environmentId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "stableNodeId": {
+                "type": "string"
+              },
+              "tenantId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "user": {
+                "$ref": "#/$defs/ApplicationUserIdentityV1"
+              },
+              "workflowId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenantId",
+              "workflowId",
+              "stableNodeId",
+              "user"
+            ],
+            "type": "object"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -434,6 +534,12 @@
             },
             "type": "array"
           },
+          "memoryTargets": {
+            "items": {
+              "$ref": "#/$defs/AgentMemoryTargetV1"
+            },
+            "type": "array"
+          },
           "recovery": true,
           "summary": {
             "$ref": "#/$defs/AgentSessionSummaryV1"
@@ -447,7 +553,8 @@
           "apiVersion",
           "summary",
           "entries",
-          "usages"
+          "usages",
+          "memoryTargets"
         ],
         "title": "AgentSessionDiagnosticV1",
         "type": "object"
@@ -787,6 +894,78 @@
         "type": "object"
       },
       "AgentSubjectMemoryClearRequestV1": {
+        "$defs": {
+          "ApplicationUserIdentityV1": {
+            "additionalProperties": false,
+            "description": "The end user a call acts for. API identities are declarations, not authentication.",
+            "properties": {
+              "externalUserId": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/$defs/ApplicationUserSourceV1"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "sourceId",
+              "externalUserId"
+            ],
+            "type": "object"
+          },
+          "ApplicationUserSourceV1": {
+            "enum": [
+              "platform",
+              "channel",
+              "api_parameter"
+            ],
+            "type": "string"
+          },
+          "MemoryScopeV1": {
+            "additionalProperties": false,
+            "description": "Stable scope shared by all Mem0 call sites. Runtime data never uses display names.",
+            "properties": {
+              "applicationId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "environmentId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "stableNodeId": {
+                "type": "string"
+              },
+              "tenantId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "user": {
+                "$ref": "#/$defs/ApplicationUserIdentityV1"
+              },
+              "workflowId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenantId",
+              "workflowId",
+              "stableNodeId",
+              "user"
+            ],
+            "type": "object"
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
@@ -802,9 +981,12 @@
           "idempotencyKey": {
             "type": "string"
           },
-          "memoryResourceVersionId": {
+          "memoryResourceId": {
             "format": "uuid",
             "type": "string"
+          },
+          "scope": {
+            "$ref": "#/$defs/MemoryScopeV1"
           },
           "tenantId": {
             "format": "uuid",
@@ -812,10 +994,11 @@
           }
         },
         "required": [
+          "scope",
           "apiVersion",
           "tenantId",
           "applicationId",
-          "memoryResourceVersionId",
+          "memoryResourceId",
           "idempotencyKey"
         ],
         "title": "AgentSubjectMemoryClearRequestV1",
@@ -884,6 +1067,78 @@
         "type": "object"
       },
       "AgentSubjectMemorySearchRequestV1": {
+        "$defs": {
+          "ApplicationUserIdentityV1": {
+            "additionalProperties": false,
+            "description": "The end user a call acts for. API identities are declarations, not authentication.",
+            "properties": {
+              "externalUserId": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/$defs/ApplicationUserSourceV1"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "sourceId",
+              "externalUserId"
+            ],
+            "type": "object"
+          },
+          "ApplicationUserSourceV1": {
+            "enum": [
+              "platform",
+              "channel",
+              "api_parameter"
+            ],
+            "type": "string"
+          },
+          "MemoryScopeV1": {
+            "additionalProperties": false,
+            "description": "Stable scope shared by all Mem0 call sites. Runtime data never uses display names.",
+            "properties": {
+              "applicationId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "environmentId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "stableNodeId": {
+                "type": "string"
+              },
+              "tenantId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "user": {
+                "$ref": "#/$defs/ApplicationUserIdentityV1"
+              },
+              "workflowId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenantId",
+              "workflowId",
+              "stableNodeId",
+              "user"
+            ],
+            "type": "object"
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
@@ -909,9 +1164,12 @@
             "minimum": 0,
             "type": "integer"
           },
-          "memoryResourceVersionId": {
+          "memoryResourceId": {
             "format": "uuid",
             "type": "string"
+          },
+          "scope": {
+            "$ref": "#/$defs/MemoryScopeV1"
           },
           "tenantId": {
             "format": "uuid",
@@ -919,10 +1177,11 @@
           }
         },
         "required": [
+          "scope",
           "apiVersion",
           "tenantId",
           "applicationId",
-          "memoryResourceVersionId"
+          "memoryResourceId"
         ],
         "title": "AgentSubjectMemorySearchRequestV1",
         "type": "object"
@@ -1928,9 +2187,6 @@
               {
                 "additionalProperties": false,
                 "properties": {
-                  "accessMode": {
-                    "type": "string"
-                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -1947,20 +2203,11 @@
                   "kind": {
                     "const": "memory",
                     "type": "string"
-                  },
-                  "memoryVersion": {
-                    "type": "string"
-                  },
-                  "namespace": {
-                    "type": "string"
                   }
                 },
                 "required": [
                   "kind",
-                  "endpoint",
-                  "namespace",
-                  "memoryVersion",
-                  "accessMode"
+                  "endpoint"
                 ],
                 "type": "object"
               },
@@ -4818,6 +5065,35 @@
       },
       "ExecutionContextSnapshotV1": {
         "$defs": {
+          "ApplicationUserIdentityV1": {
+            "additionalProperties": false,
+            "description": "The end user a call acts for. API identities are declarations, not authentication.",
+            "properties": {
+              "externalUserId": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/$defs/ApplicationUserSourceV1"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "sourceId",
+              "externalUserId"
+            ],
+            "type": "object"
+          },
+          "ApplicationUserSourceV1": {
+            "enum": [
+              "platform",
+              "channel",
+              "api_parameter"
+            ],
+            "type": "string"
+          },
           "ExecutionApplicationSnapshotV1": {
             "additionalProperties": false,
             "properties": {
@@ -5193,6 +5469,23 @@
               }
             ]
           },
+          "endUser": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ApplicationUserIdentityV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "environmentId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "format": "uuid",
             "type": "string"
@@ -5259,6 +5552,35 @@
       },
       "ExecutionDetailV1": {
         "$defs": {
+          "ApplicationUserIdentityV1": {
+            "additionalProperties": false,
+            "description": "The end user a call acts for. API identities are declarations, not authentication.",
+            "properties": {
+              "externalUserId": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/$defs/ApplicationUserSourceV1"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "sourceId",
+              "externalUserId"
+            ],
+            "type": "object"
+          },
+          "ApplicationUserSourceV1": {
+            "enum": [
+              "platform",
+              "channel",
+              "api_parameter"
+            ],
+            "type": "string"
+          },
           "ExecutionSummaryV1": {
             "additionalProperties": false,
             "properties": {
@@ -5299,6 +5621,16 @@
                 "type": [
                   "integer",
                   "null"
+                ]
+              },
+              "endUser": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ApplicationUserIdentityV1"
+                  },
+                  {
+                    "type": "null"
+                  }
                 ]
               },
               "errorCode": {
@@ -5988,6 +6320,35 @@
       },
       "ExecutionSearchPageV1": {
         "$defs": {
+          "ApplicationUserIdentityV1": {
+            "additionalProperties": false,
+            "description": "The end user a call acts for. API identities are declarations, not authentication.",
+            "properties": {
+              "externalUserId": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/$defs/ApplicationUserSourceV1"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "sourceId",
+              "externalUserId"
+            ],
+            "type": "object"
+          },
+          "ApplicationUserSourceV1": {
+            "enum": [
+              "platform",
+              "channel",
+              "api_parameter"
+            ],
+            "type": "string"
+          },
           "ExecutionSummaryV1": {
             "additionalProperties": false,
             "properties": {
@@ -6028,6 +6389,16 @@
                 "type": [
                   "integer",
                   "null"
+                ]
+              },
+              "endUser": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ApplicationUserIdentityV1"
+                  },
+                  {
+                    "type": "null"
+                  }
                 ]
               },
               "errorCode": {
@@ -6301,6 +6672,12 @@
             },
             "type": "array"
           },
+          "externalUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "initiatorDepartmentIds": {
             "items": {
               "format": "uuid",
@@ -6358,7 +6735,27 @@
             },
             "type": "array"
           },
+          "userSource": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workflowDraftIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
           "workflowIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "workflowVersionIds": {
             "items": {
               "format": "uuid",
               "type": "string"
@@ -6371,6 +6768,8 @@
           "tenantId",
           "applicationIds",
           "workflowIds",
+          "workflowVersionIds",
+          "workflowDraftIds",
           "toolIds",
           "initiatorUserIds",
           "initiatorDepartmentIds",
@@ -8712,9 +9111,6 @@
               {
                 "additionalProperties": false,
                 "properties": {
-                  "accessMode": {
-                    "type": "string"
-                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -8731,20 +9127,11 @@
                   "kind": {
                     "const": "memory",
                     "type": "string"
-                  },
-                  "memoryVersion": {
-                    "type": "string"
-                  },
-                  "namespace": {
-                    "type": "string"
                   }
                 },
                 "required": [
                   "kind",
-                  "endpoint",
-                  "namespace",
-                  "memoryVersion",
-                  "accessMode"
+                  "endpoint"
                 ],
                 "type": "object"
               },
@@ -10492,6 +10879,35 @@
       },
       "InvocationDetailV1": {
         "$defs": {
+          "ApplicationUserIdentityV1": {
+            "additionalProperties": false,
+            "description": "The end user a call acts for. API identities are declarations, not authentication.",
+            "properties": {
+              "externalUserId": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/$defs/ApplicationUserSourceV1"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "sourceId",
+              "externalUserId"
+            ],
+            "type": "object"
+          },
+          "ApplicationUserSourceV1": {
+            "enum": [
+              "platform",
+              "channel",
+              "api_parameter"
+            ],
+            "type": "string"
+          },
           "InvocationSummaryV1": {
             "additionalProperties": false,
             "properties": {
@@ -10519,6 +10935,16 @@
               },
               "createdAt": {
                 "type": "string"
+              },
+              "endUser": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ApplicationUserIdentityV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "executionId": {
                 "format": "uuid",
@@ -10586,6 +11012,35 @@
       },
       "InvocationSearchPageV1": {
         "$defs": {
+          "ApplicationUserIdentityV1": {
+            "additionalProperties": false,
+            "description": "The end user a call acts for. API identities are declarations, not authentication.",
+            "properties": {
+              "externalUserId": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/$defs/ApplicationUserSourceV1"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "sourceId",
+              "externalUserId"
+            ],
+            "type": "object"
+          },
+          "ApplicationUserSourceV1": {
+            "enum": [
+              "platform",
+              "channel",
+              "api_parameter"
+            ],
+            "type": "string"
+          },
           "InvocationSummaryV1": {
             "additionalProperties": false,
             "properties": {
@@ -10613,6 +11068,16 @@
               },
               "createdAt": {
                 "type": "string"
+              },
+              "endUser": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ApplicationUserIdentityV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "executionId": {
                 "format": "uuid",
@@ -10725,6 +11190,12 @@
               "null"
             ]
           },
+          "externalUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "limit": {
             "format": "uint32",
             "minimum": 0,
@@ -10739,6 +11210,12 @@
           "tenantId": {
             "format": "uuid",
             "type": "string"
+          },
+          "userSource": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -11412,9 +11889,6 @@
               {
                 "additionalProperties": false,
                 "properties": {
-                  "accessMode": {
-                    "type": "string"
-                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -11431,20 +11905,11 @@
                   "kind": {
                     "const": "memory",
                     "type": "string"
-                  },
-                  "memoryVersion": {
-                    "type": "string"
-                  },
-                  "namespace": {
-                    "type": "string"
                   }
                 },
                 "required": [
                   "kind",
-                  "endpoint",
-                  "namespace",
-                  "memoryVersion",
-                  "accessMode"
+                  "endpoint"
                 ],
                 "type": "object"
               },
@@ -14179,9 +14644,6 @@
               {
                 "additionalProperties": false,
                 "properties": {
-                  "accessMode": {
-                    "type": "string"
-                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -14198,20 +14660,11 @@
                   "kind": {
                     "const": "memory",
                     "type": "string"
-                  },
-                  "memoryVersion": {
-                    "type": "string"
-                  },
-                  "namespace": {
-                    "type": "string"
                   }
                 },
                 "required": [
                   "kind",
-                  "endpoint",
-                  "namespace",
-                  "memoryVersion",
-                  "accessMode"
+                  "endpoint"
                 ],
                 "type": "object"
               },
@@ -17576,9 +18029,6 @@
               {
                 "additionalProperties": false,
                 "properties": {
-                  "accessMode": {
-                    "type": "string"
-                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -17595,20 +18045,11 @@
                   "kind": {
                     "const": "memory",
                     "type": "string"
-                  },
-                  "memoryVersion": {
-                    "type": "string"
-                  },
-                  "namespace": {
-                    "type": "string"
                   }
                 },
                 "required": [
                   "kind",
-                  "endpoint",
-                  "namespace",
-                  "memoryVersion",
-                  "accessMode"
+                  "endpoint"
                 ],
                 "type": "object"
               },
@@ -19221,9 +19662,6 @@
               {
                 "additionalProperties": false,
                 "properties": {
-                  "accessMode": {
-                    "type": "string"
-                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -19240,20 +19678,11 @@
                   "kind": {
                     "const": "memory",
                     "type": "string"
-                  },
-                  "memoryVersion": {
-                    "type": "string"
-                  },
-                  "namespace": {
-                    "type": "string"
                   }
                 },
                 "required": [
                   "kind",
-                  "endpoint",
-                  "namespace",
-                  "memoryVersion",
-                  "accessMode"
+                  "endpoint"
                 ],
                 "type": "object"
               },
@@ -20247,6 +20676,19 @@
           "ApplicationRuntimePolicyV1": {
             "additionalProperties": false,
             "properties": {
+              "apiUserIdInput": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "environmentId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "maximumJsonBytes": {
                 "format": "uint64",
                 "minimum": 0,
@@ -23414,9 +23856,6 @@
               {
                 "additionalProperties": false,
                 "properties": {
-                  "accessMode": {
-                    "type": "string"
-                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -23433,20 +23872,11 @@
                   "kind": {
                     "const": "memory",
                     "type": "string"
-                  },
-                  "memoryVersion": {
-                    "type": "string"
-                  },
-                  "namespace": {
-                    "type": "string"
                   }
                 },
                 "required": [
                   "kind",
-                  "endpoint",
-                  "namespace",
-                  "memoryVersion",
-                  "accessMode"
+                  "endpoint"
                 ],
                 "type": "object"
               },
@@ -24334,9 +24764,6 @@
               {
                 "additionalProperties": false,
                 "properties": {
-                  "accessMode": {
-                    "type": "string"
-                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -24353,20 +24780,11 @@
                   "kind": {
                     "const": "memory",
                     "type": "string"
-                  },
-                  "memoryVersion": {
-                    "type": "string"
-                  },
-                  "namespace": {
-                    "type": "string"
                   }
                 },
                 "required": [
                   "kind",
-                  "endpoint",
-                  "namespace",
-                  "memoryVersion",
-                  "accessMode"
+                  "endpoint"
                 ],
                 "type": "object"
               },
@@ -27840,9 +28258,6 @@
               {
                 "additionalProperties": false,
                 "properties": {
-                  "accessMode": {
-                    "type": "string"
-                  },
                   "credential": {
                     "anyOf": [
                       {
@@ -27859,20 +28274,11 @@
                   "kind": {
                     "const": "memory",
                     "type": "string"
-                  },
-                  "memoryVersion": {
-                    "type": "string"
-                  },
-                  "namespace": {
-                    "type": "string"
                   }
                 },
                 "required": [
                   "kind",
-                  "endpoint",
-                  "namespace",
-                  "memoryVersion",
-                  "accessMode"
+                  "endpoint"
                 ],
                 "type": "object"
               },
@@ -28712,6 +29118,35 @@
       },
       "SessionDetailV1": {
         "$defs": {
+          "ApplicationUserIdentityV1": {
+            "additionalProperties": false,
+            "description": "The end user a call acts for. API identities are declarations, not authentication.",
+            "properties": {
+              "externalUserId": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/$defs/ApplicationUserSourceV1"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "sourceId",
+              "externalUserId"
+            ],
+            "type": "object"
+          },
+          "ApplicationUserSourceV1": {
+            "enum": [
+              "platform",
+              "channel",
+              "api_parameter"
+            ],
+            "type": "string"
+          },
           "SessionSummaryV1": {
             "additionalProperties": false,
             "properties": {
@@ -28728,6 +29163,16 @@
                 "type": [
                   "string",
                   "null"
+                ]
+              },
+              "endUser": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ApplicationUserIdentityV1"
+                  },
+                  {
+                    "type": "null"
+                  }
                 ]
               },
               "externalUserId": {
@@ -28821,6 +29266,35 @@
       },
       "SessionSearchPageV1": {
         "$defs": {
+          "ApplicationUserIdentityV1": {
+            "additionalProperties": false,
+            "description": "The end user a call acts for. API identities are declarations, not authentication.",
+            "properties": {
+              "externalUserId": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/$defs/ApplicationUserSourceV1"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "sourceId",
+              "externalUserId"
+            ],
+            "type": "object"
+          },
+          "ApplicationUserSourceV1": {
+            "enum": [
+              "platform",
+              "channel",
+              "api_parameter"
+            ],
+            "type": "string"
+          },
           "SessionSummaryV1": {
             "additionalProperties": false,
             "properties": {
@@ -28837,6 +29311,16 @@
                 "type": [
                   "string",
                   "null"
+                ]
+              },
+              "endUser": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ApplicationUserIdentityV1"
+                  },
+                  {
+                    "type": "null"
+                  }
                 ]
               },
               "externalUserId": {
@@ -28947,6 +29431,12 @@
               "null"
             ]
           },
+          "externalUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "limit": {
             "format": "uint32",
             "minimum": 0,
@@ -28961,6 +29451,12 @@
           "tenantId": {
             "format": "uuid",
             "type": "string"
+          },
+          "userSource": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [

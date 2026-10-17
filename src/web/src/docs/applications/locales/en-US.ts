@@ -50,7 +50,7 @@ export const applicationIntegrationDocs = {
         id: 'createSession', method: 'POST', path: '/applications/{slug}/sessions', title: 'Create a session', description: 'Creates a Session for multi-turn messages under the deployment version policy and returns 201.', responseKind: 'session',
         fields: [
           ['Path', 'slug', 'string', true, 'Current application slug.'], ['Header', 'Authorization', 'Bearer API key', true, 'An API key for this application.'], ['Header', 'Idempotency-Key', 'string', true, 'Unique value for this session creation.'],
-          ['Body', 'title', 'string | null', false, 'Session title.'], ['Body', 'externalUserId', 'string | null', false, 'User identifier in the calling system.'],
+          ['Body', 'title', 'string | null', false, 'Session title.'], ['Body', 'input', 'object', false, 'Initial workflow inputs. The deployment’s selected user ID field identifies this session’s user without identity verification. Later messages reuse these business inputs.'],
         ],
       },
       {

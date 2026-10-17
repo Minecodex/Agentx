@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bot, ExternalLink, File, MessageSquarePlus, Plus, Send, Settings2, Square, UserRound } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
@@ -16,6 +16,7 @@ import { Tooltip } from '../../shared/ui/tooltip'
 import { useToast } from '../../shared/ui/toast'
 import { useExecutionArtifactDownload } from '../traces/use-execution-artifact-download'
 import { ChatMappingDialog } from './chat-mapping-dialog'
+import { SessionInputDialog } from './session-input-dialog'
 import type { ChatMapping, PlaygroundConfig, PlaygroundDeployment } from './playground-types'
 import { artifactPartType } from './playground-types'
 import { useInvocationEvents } from './use-invocation-events'
@@ -39,6 +40,7 @@ export function ConversationTestWorkspace({ application, deployment, sessionId, 
   const [files, setFiles] = useState<ArtifactReference[]>([])
   const [uploading, setUploading] = useState(false)
   const [mappingOpen, setMappingOpen] = useState(false)
+  const [sessionInputsOpen, setSessionInputsOpen] = useState(false)
   const [invocationId, setInvocationId] = useState<string>()
   const [deltaBuffer, setDeltaBuffer] = useState('')
   const sessions = useQuery({ queryKey: ['application-sessions', application.id], queryFn: () => apiRequest<ApplicationSession[]>(`/applications/${application.id}/sessions`) })
@@ -66,8 +68,8 @@ export function ConversationTestWorkspace({ application, deployment, sessionId, 
     if (invocation.data && terminal.has(invocation.data.status) && deltaBuffer) setDeltaBuffer('')
   }, [deltaBuffer, invocation.data])
   const createSession = useMutation({
-    mutationFn: () => gatewayRequest<GatewaySession>(`/applications/${application.slug}/sessions`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: jsonBody({ title: null, externalUserId: null }) }),
-    onSuccess: async (value) => { setCreatedSession(value); setInvocationId(undefined); onSessionChange(value.id); await queryClient.invalidateQueries({ queryKey: ['application-sessions', application.id] }) },
+    mutationFn: (input: Record<string, unknown>) => gatewayRequest<GatewaySession>(`/applications/${application.slug}/sessions`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: jsonBody({ title: null, input }) }),
+    onSuccess: async (value) => { setSessionInputsOpen(false); setCreatedSession(value); setInvocationId(undefined); onSessionChange(value.id); await queryClient.invalidateQueries({ queryKey: ['application-sessions', application.id] }) },
     onError: (error: Error) => showToast(error.message),
   })
   const saveMapping = useMutation({ mutationFn: (mapping: ChatMapping | null) => apiRequest<PlaygroundConfig>(`/applications/${application.id}/deployments/${deployment.id}/playground-config`, { method: 'PUT', body: jsonBody({ expectedVersion: config.data?.version ?? 0, mapping }) }), onSuccess: (value) => { queryClient.setQueryData(['playground-config', application.id, deployment.id], value); setMappingOpen(false) }, onError: (error: Error) => showToast(error.message) })
@@ -86,6 +88,11 @@ export function ConversationTestWorkspace({ application, deployment, sessionId, 
   })
   const cancel = useMutation({ mutationFn: () => gatewayRequest(`/invocations/${invocationId}/cancel`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() } }), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['gateway-invocation', invocationId] }) })
   const activeMapping = config.data?.publishStatus === 'active' ? config.data.mapping : null
+  const initialInputSchema = useMemo(() => {
+    const properties = Object.fromEntries(Object.entries(deployment.inputSchema.properties ?? {}).filter(([name]) => name !== activeMapping?.questionInput && name !== activeMapping?.fileInput))
+    return { ...deployment.inputSchema, properties, required: deployment.inputSchema.required?.filter(name => name in properties) }
+  }, [deployment.inputSchema, activeMapping])
+  const newSession = () => { if (Object.keys(initialInputSchema.properties).length) setSessionInputsOpen(true); else createSession.mutate({}) }
   const canSend = Boolean(session?.status === 'active' && activeMapping && !running && !uploading)
   const chooseFiles = async (selected: FileList | null) => {
     if (!selected?.length) return
@@ -102,7 +109,7 @@ export function ConversationTestWorkspace({ application, deployment, sessionId, 
   const requestSend = () => { if (message.trim() && canSend) send.mutate() }
   return <div className="grid h-full min-h-0 grid-cols-[280px_minmax(0,1fr)] overflow-hidden rounded-lg border border-border bg-surface">
     <aside className="flex min-h-0 flex-col border-r border-border bg-muted/20">
-      <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4"><strong className="text-sm">{t('applications.playground.conversationHistory')}</strong><Button aria-label={t('applications.playground.newSession')} disabled={createSession.isPending} onClick={() => createSession.mutate()} size="icon" variant="ghost"><MessageSquarePlus className="size-4" /></Button></div>
+      <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4"><strong className="text-sm">{t('applications.playground.conversationHistory')}</strong><Button aria-label={t('applications.playground.newSession')} disabled={createSession.isPending} onClick={newSession} size="icon" variant="ghost"><MessageSquarePlus className="size-4" /></Button></div>
       <div className="min-h-0 flex-1 space-y-1 overflow-auto p-2">{sessions.isLoading ? <Hint>{t('common.loading')}</Hint> : sessionList.length ? sessionList.map((item) => {
         const title = item.title ?? t('applications.playground.sessionTitle')
         return <button aria-pressed={item.id === sessionId} className={`w-full rounded-md p-3 text-left ${item.id === sessionId ? 'bg-primary/10' : 'hover:bg-muted'}`} key={item.id} onClick={() => { setInvocationId(undefined); onSessionChange(item.id) }} type="button"><span className="flex items-center gap-2"><Tooltip content={title}><strong className="min-w-0 flex-1 truncate text-xs">{title}</strong></Tooltip><Badge tone={item.status === 'active' ? 'success' : 'neutral'}>{localizedValue(t, 'common', item.status)}</Badge></span><span className="mt-1 block truncate font-mono text-[9px] text-muted-foreground">{item.id}</span></button>
@@ -120,6 +127,7 @@ export function ConversationTestWorkspace({ application, deployment, sessionId, 
         </div>
       </div>
     </section>
+    <SessionInputDialog open={sessionInputsOpen} schema={initialInputSchema} pending={createSession.isPending} onClose={() => setSessionInputsOpen(false)} onCreate={input => createSession.mutate(input)} onUpload={uploadArtifact} />
     <ChatMappingDialog canManage={auth.hasPermission('application:manage')} config={config.data} inputSchema={deployment.inputSchema} onClear={() => saveMapping.mutate(null)} onOpenChange={setMappingOpen} onSave={(mapping) => saveMapping.mutate(mapping)} open={mappingOpen} outputSchema={deployment.outputSchema} saving={saveMapping.isPending} />
   </div>
 }

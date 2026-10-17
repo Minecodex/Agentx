@@ -231,17 +231,7 @@ def live_providers(
                     "configuration": {},
                 },
             )
-            memory_resource = post(
-                control,
-                "/memory/namespaces",
-                {
-                    "name": f"P7 live memory {run_id}",
-                    "connectionId": memory_connection["id"],
-                    "externalNamespace": f"p7_memory_{run_id.replace('-', '_')}",
-                    "accessMode": "read_write",
-                    "ownerDepartmentId": app["departmentId"],
-                },
-            )
+            memory_resource = memory_connection
             yield {
                 "ragId": rag["id"],
                 "ragCredentialId": rag_credential["id"],

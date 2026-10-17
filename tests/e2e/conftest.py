@@ -307,6 +307,7 @@ def _local_sandbox_proxy(values: Path, rendered: str, context: dict[str, str]) -
         ),
         stdout_path=log,
         stderr_path=directory / "port-forward-sandbox-egress-error.log",
+        health_url=f"https://127.0.0.1:{port}/",
     )
     try:
         deadline = time.monotonic() + 30

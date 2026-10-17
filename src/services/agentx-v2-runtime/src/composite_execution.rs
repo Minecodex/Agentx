@@ -66,6 +66,7 @@ pub(crate) async fn create_child(
     let workflow: agentx_runtime_contracts::ExecutionWorkflowSnapshotV1 =
         serde_json::from_value(composite.try_get("workflow_json")?)
             .map_err(|error| RuntimeError::Internal(error.into()))?;
+    let child_workflow_id = workflow.id;
     let input_items = activation
         .inputs
         .get("main")
@@ -161,7 +162,7 @@ pub(crate) async fn create_child(
     )
     .bind(child_execution_id)
     .bind(tenant_id)
-    .bind(workflow_version_id)
+    .bind(child_workflow_id)
     .bind(workflow_version_id)
     .bind(parent.try_get::<Option<Uuid>, _>("application_id")?)
     .bind(bundle_id)

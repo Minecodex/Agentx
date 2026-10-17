@@ -1,4 +1,5 @@
-import { fixtureDraftId } from '../draft-fixtures'
+import { publishFixtureResponse } from '../draft-fixtures'
+import { fixtureVersionId, fixtureDraftId } from '../draft-fixtures'
 import { expect, test } from '@playwright/test'
 
 import { connect, login } from '../support/canvas-plugin'
@@ -19,7 +20,7 @@ test('propagates dynamic contracts across a plugin chain and preserves them afte
   const workflow = await created.json() as { id: string }
   const draftResponse = await page.request.get(`/api/v1/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`, { headers })
   const draft = await draftResponse.json() as { definition: { connections: Array<{ id: string }> } }
-  await page.goto(`/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}/editor`)
+  await page.goto(`/workflows/${workflow.id}/versions/${await fixtureVersionId(page, workflow.id)}/editor`)
   const initialId = draft.definition.connections[0].id
   const initialEdge = page.locator(`.react-flow__edge[data-testid="rf__edge-${initialId}"]`)
   const toolbar = page.locator(`.studio-edge-toolbar[data-edge-id="${initialId}"]`)
@@ -54,7 +55,7 @@ test('propagates dynamic contracts across a plugin chain and preserves them afte
   await expect(downstream.locator('.react-flow__handle.source[data-handleid="second"]')).toBeVisible()
   const savedResponse = await page.request.get(`/api/v1/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`, { headers })
   const saved = await savedResponse.json() as { revision: number }
-  const version = await page.request.post(`/api/v1/workflows/${workflow.id}/versions`, { headers, data: { draftId: await fixtureDraftId(page, workflow.id),  draftRevision: saved.revision } })
+  const version = await publishFixtureResponse(page, token, workflow.id, saved.revision)
   expect(version.ok(), await version.text()).toBeTruthy()
   await page.screenshot({ path: testInfo.outputPath('dynamic-plugin-chain.png'), fullPage: true })
 })

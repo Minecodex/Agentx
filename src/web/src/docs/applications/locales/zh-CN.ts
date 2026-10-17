@@ -57,7 +57,7 @@ export const applicationIntegrationDocs = {
           ['Header', 'Authorization', 'Bearer API Key', true, '当前应用的 API Key。'],
           ['Header', 'Idempotency-Key', 'string', true, '创建会话操作的唯一值。'],
           ['Body', 'title', 'string | null', false, '会话标题。'],
-          ['Body', 'externalUserId', 'string | null', false, '调用系统中的用户标识，用于关联业务用户。'],
+          ['Body', 'input', 'object', false, '初始工作流输入。部署配置所选字段的值作为会话用户 ID，不核实身份；后续消息继承这些业务参数。'],
         ],
       },
       {

@@ -1,3 +1,4 @@
+import { EndUserLabel, UserSourceFilter, type EndUser } from '../../shared/components/end-user-label'
 import * as Popover from '@radix-ui/react-popover'
 import { useQuery } from '@tanstack/react-query'
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
@@ -26,6 +27,7 @@ import { localizedValue } from '../../shared/lib/localized-value'
 import { designSourceLabel, executionStatus, formatCost } from './execution-format'
 
 type ExecutionRow = {
+  endUser?: EndUser | null
   id: string
   applicationId?: string | null
   applicationName?: string | null
@@ -48,8 +50,8 @@ type ExecutionRow = {
 }
 
 type ExecutionPage = { items: ExecutionRow[]; limit: number; total: number; nextCursor?: string | null }
-type FilterKey = 'applicationIds' | 'workflowIds' | 'toolIds' | 'initiatorUserIds' | 'initiatorDepartmentIds' | 'triggerTypes' | 'statuses' | 'errorCodes'
-const filterKeys: FilterKey[] = ['applicationIds', 'workflowIds', 'toolIds', 'initiatorUserIds', 'initiatorDepartmentIds', 'triggerTypes', 'statuses', 'errorCodes']
+type FilterKey = 'applicationIds' | 'workflowVersionIds' | 'workflowIds' | 'toolIds' | 'initiatorUserIds' | 'initiatorDepartmentIds' | 'triggerTypes' | 'statuses' | 'errorCodes'
+const filterKeys: FilterKey[] = ['applicationIds', 'workflowVersionIds', 'workflowIds', 'toolIds', 'initiatorUserIds', 'initiatorDepartmentIds', 'triggerTypes', 'statuses', 'errorCodes']
 const triggerTypes = ['user', 'api_key', 'webhook', 'schedule', 'poll', 'lifecycle', 'debug', 'evaluation', 'fork', 'composite']
 const statuses = ['created', 'queued', 'running', 'waiting', 'waiting_approval', 'suspended', 'succeeded', 'failed', 'cancelled', 'timed_out']
 
@@ -127,6 +129,7 @@ export function ExecutionsPage() {
     { id: 'source', header: t('executions.source'), cell: ({ row }) => <div><p className="text-foreground">{row.original.applicationName ?? localizedValue(t, 'executions.triggerTypes', row.original.triggerType)}</p><p className="mt-0.5 text-[10px]">{row.original.applicationId ?? '—'}</p></div> },
     { accessorKey: 'workflowVersionNumber', header: t('common.version'), cell: ({ row }) => designSourceLabel(row.original.source, row.original.workflowVersionNumber, (revision, draft) => t('executions.draftRevision', {revision, draft})) },
     { accessorKey: 'triggerType', header: t('executions.trigger'), cell: ({ row }) => <div><p className="text-foreground">{localizedValue(t, 'executions.triggerTypes', row.original.triggerType)}</p>{row.original.triggerName && <p className="mt-0.5 text-[10px]">{row.original.triggerName}</p>}</div> },
+    { id: 'endUser', header: t('applications.endUser'), cell: ({ row }) => <EndUserLabel user={row.original.endUser} /> },
     { id: 'initiator', header: t('executions.initiator'), cell: ({ row }) => row.original.initiatorUserName ? <div><p className="text-foreground">{row.original.initiatorUserName}</p><p className="mt-0.5 text-[10px]">{row.original.initiatorDepartmentName ?? '—'}</p></div> : '—' },
     { accessorKey: 'status', header: t('common.status'), cell: ({ row }) => <StatusBadge status={executionStatus(row.original.status)} /> },
     { accessorKey: 'startedAt', header: t('executions.startedAt'), cell: ({ row }) => formatDateTime(row.original.startedAt) },
@@ -159,6 +162,8 @@ export function ExecutionsPage() {
     <Card className="mt-6 overflow-hidden">
       <div className="flex min-h-16 flex-wrap items-center gap-2 border-b border-border px-5 py-3">
         <SearchField onChange={(event) => setSearch(event.target.value)} placeholder={t('executions.search')} value={search} />
+        <SearchField onChange={(event) => updateParam('externalUserId', event.target.value)} placeholder={t('applications.userFilter')} value={params.get('externalUserId') ?? ''} />
+        <UserSourceFilter value={params.get('userSource') ?? ''} onChange={value => updateParam('userSource', value)} />
         <SearchableMultiSelect label={t('common.status')} onChange={(value, selected) => updateMulti('statuses', value, selected)} options={statuses.map((value) => ({ value, label: localizedValue(t, 'common', executionStatus(value)) }))} queryKey="execution-status" value={filters.statuses} />
         <DateTimePicker label={t('executions.createdAfter')} max={isoDate(params.get('createdBefore'))} messages={dateTimePickerMessages} onChange={(value) => updateParam('createdAfter', value?.toISOString())} value={isoDate(params.get('createdAfter'))} />
         <DateTimePicker label={t('executions.createdBefore')} messages={dateTimePickerMessages} min={isoDate(params.get('createdAfter'))} onChange={(value) => updateParam('createdBefore', value?.toISOString())} value={isoDate(params.get('createdBefore'))} />
@@ -189,7 +194,7 @@ function canonicalFilterString(params: URLSearchParams) {
     const values = [...new Set(csv(params.get(key)))]
     if (values.length > 0) canonical.set(key, values.join(','))
   }
-  for (const key of ['search', 'triggerName', 'createdAfter', 'createdBefore']) {
+  for (const key of ['search', 'triggerName', 'externalUserId', 'userSource', 'createdAfter', 'createdBefore']) {
     const value = params.get(key)?.trim()
     if (value) canonical.set(key, value)
   }

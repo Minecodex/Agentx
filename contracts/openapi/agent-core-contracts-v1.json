@@ -374,7 +374,7 @@
               "trustedSubject": {
                 "anyOf": [
                   {
-                    "$ref": "#/$defs/TrustedSubjectEvidenceV1"
+                    "$ref": "#/$defs/ApplicationUserEvidenceV1"
                   },
                   {
                     "type": "null"
@@ -386,6 +386,26 @@
               "mode",
               "sessionKey",
               "stateVersion"
+            ],
+            "type": "object"
+          },
+          "ApplicationUserEvidenceV1": {
+            "additionalProperties": false,
+            "properties": {
+              "evidenceHash": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "userIdentityId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "userIdentityId",
+              "source",
+              "evidenceHash"
             ],
             "type": "object"
           },
@@ -631,26 +651,6 @@
               "memory"
             ],
             "type": "string"
-          },
-          "TrustedSubjectEvidenceV1": {
-            "additionalProperties": false,
-            "properties": {
-              "authenticatedSubjectId": {
-                "type": "string"
-              },
-              "evidenceHash": {
-                "type": "string"
-              },
-              "source": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "authenticatedSubjectId",
-              "source",
-              "evidenceHash"
-            ],
-            "type": "object"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -882,6 +882,26 @@
       },
       "AgentSessionProjectionV1": {
         "$defs": {
+          "ApplicationUserEvidenceV1": {
+            "additionalProperties": false,
+            "properties": {
+              "evidenceHash": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "userIdentityId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "userIdentityId",
+              "source",
+              "evidenceHash"
+            ],
+            "type": "object"
+          },
           "RetentionPolicyV1": {
             "additionalProperties": false,
             "properties": {
@@ -914,26 +934,6 @@
               "invocation"
             ],
             "type": "string"
-          },
-          "TrustedSubjectEvidenceV1": {
-            "additionalProperties": false,
-            "properties": {
-              "authenticatedSubjectId": {
-                "type": "string"
-              },
-              "evidenceHash": {
-                "type": "string"
-              },
-              "source": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "authenticatedSubjectId",
-              "source",
-              "evidenceHash"
-            ],
-            "type": "object"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -972,7 +972,7 @@
           "trustedSubject": {
             "anyOf": [
               {
-                "$ref": "#/$defs/TrustedSubjectEvidenceV1"
+                "$ref": "#/$defs/ApplicationUserEvidenceV1"
               },
               {
                 "type": "null"
@@ -1908,6 +1908,28 @@
         "title": "AgentSessionUsageV1",
         "type": "object"
       },
+      "ApplicationUserEvidenceV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "evidenceHash": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "userIdentityId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userIdentityId",
+          "source",
+          "evidenceHash"
+        ],
+        "title": "ApplicationUserEvidenceV1",
+        "type": "object"
+      },
       "CompactionRegisterV1": {
         "$defs": {
           "CompactionKindV1": {
@@ -2529,54 +2551,6 @@
           "lease"
         ],
         "title": "SandboxProcessSessionContractV1",
-        "type": "object"
-      },
-      "SubjectMemoryScopeV1": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false,
-        "properties": {
-          "applicationId": {
-            "type": "string"
-          },
-          "authenticatedSubjectId": {
-            "type": "string"
-          },
-          "memoryResourceVersionId": {
-            "type": "string"
-          },
-          "tenantId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "tenantId",
-          "authenticatedSubjectId",
-          "applicationId",
-          "memoryResourceVersionId"
-        ],
-        "title": "SubjectMemoryScopeV1",
-        "type": "object"
-      },
-      "TrustedSubjectEvidenceV1": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false,
-        "properties": {
-          "authenticatedSubjectId": {
-            "type": "string"
-          },
-          "evidenceHash": {
-            "type": "string"
-          },
-          "source": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "authenticatedSubjectId",
-          "source",
-          "evidenceHash"
-        ],
-        "title": "TrustedSubjectEvidenceV1",
         "type": "object"
       }
     }

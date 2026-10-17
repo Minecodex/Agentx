@@ -40,11 +40,6 @@ const translations = {
   "operations": {
     "use": "使用", "view": "查看", "read": "读取", "write": "写入", "execute": "执行", "manage": "管理"
   },
-  "validationReasons": {
-    "resource_missing_or_disabled": "资源不存在或已停用",
-    "grant_revoked": "授权已撤销",
-    "workflow_grant_missing": "工作流运行身份缺少授权"
-  }
 } as const
 
 export default translations

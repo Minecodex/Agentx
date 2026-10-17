@@ -120,7 +120,7 @@ impl FromStr for EntityType {
             "knowledge" | "knowledge_resource" | "knowledge_resources" | "rag" => {
                 Ok(Self::Knowledge)
             }
-            "memory" | "memory_namespace" | "memory_namespaces" => Ok(Self::Memory),
+            "memory" | "memory_connection" | "memory_connections" => Ok(Self::Memory),
             "sandbox" | "sandbox_profile" | "sandbox_profiles" => Ok(Self::SandboxProfile),
             "dataset" | "datasets" => Ok(Self::Dataset),
             "evaluation_profile" | "evaluation_profiles" => Ok(Self::EvaluationProfile),
@@ -278,7 +278,7 @@ async fn load_target(
             "SELECT name,version,FALSE immutable FROM rag_resources WHERE tenant_id=? AND id=?"
         }
         EntityType::Memory => {
-            "SELECT name,version,FALSE immutable FROM memory_namespaces WHERE tenant_id=? AND id=?"
+            "SELECT name,version,FALSE immutable FROM memory_connections WHERE tenant_id=? AND id=?"
         }
         EntityType::SandboxProfile => {
             "SELECT name,version,FALSE immutable FROM sandbox_profiles WHERE tenant_id=? AND id=?"
@@ -355,8 +355,8 @@ async fn push_resource_references(
 }
 
 const RESOURCE_REFERENCE_QUERIES: &[&str] = &[
-    "SELECT 'workflows' source_module,'workflow_draft_revision' source_type,r.id source_id,CONCAT(w.name,' / ',d.name,' r',r.revision) source_name,'revision_resource' relation,w.id parent_id,j.node_id,NULL node_name,TRUE immutable FROM workflow_draft_revisions r JOIN workflows w ON w.tenant_id=r.tenant_id AND w.id=r.workflow_id JOIN workflow_drafts d ON d.tenant_id=r.tenant_id AND d.id=r.draft_id JOIN JSON_TABLE(r.resource_snapshot_json,'$[*]' COLUMNS(node_id VARCHAR(128) PATH '$.nodeId',resource_type VARCHAR(32) PATH '$.reference.resourceType',resource_id VARCHAR(36) PATH '$.reference.resourceId')) j WHERE r.tenant_id=? AND ((j.resource_type=? AND j.resource_id=BIN_TO_UUID(?)) OR (? AND j.resource_type='mcp_tool' AND j.resource_id IN (SELECT BIN_TO_UUID(id) FROM mcp_tools WHERE tenant_id=r.tenant_id AND server_id=?)))",
-    "SELECT 'workflows' source_module,'workflow_draft' source_type,d.id source_id,CONCAT(w.name,' / ',d.name) source_name,'draft_resource' relation,w.id parent_id,r.node_id,r.node_name,FALSE immutable FROM workflow_draft_resources r JOIN workflows w ON w.tenant_id=r.tenant_id AND w.id=r.workflow_id JOIN workflow_drafts d ON d.tenant_id=r.tenant_id AND d.id=r.draft_id WHERE r.tenant_id=? AND ((r.resource_type=? AND r.resource_id=?) OR (? AND r.resource_type='mcp_tool' AND r.resource_id IN (SELECT id FROM mcp_tools WHERE tenant_id=r.tenant_id AND server_id=?)))",
+    "SELECT 'workflows' source_module,'workflow_draft_revision' source_type,r.id source_id,CONCAT(w.name,' / ',CONCAT('v',v.version_number),' r',r.revision) source_name,'revision_resource' relation,w.id parent_id,j.node_id,NULL node_name,TRUE immutable FROM workflow_draft_revisions r JOIN workflows w ON w.tenant_id=r.tenant_id AND w.id=r.workflow_id JOIN workflow_drafts d ON d.tenant_id=r.tenant_id AND d.id=r.draft_id JOIN JSON_TABLE(r.resource_snapshot_json,'$[*]' COLUMNS(node_id VARCHAR(128) PATH '$.nodeId',resource_type VARCHAR(32) PATH '$.reference.resourceType',resource_id VARCHAR(36) PATH '$.reference.resourceId')) j JOIN workflow_versions v ON v.tenant_id=d.tenant_id AND v.working_draft_id=d.id WHERE r.tenant_id=? AND ((j.resource_type=? AND j.resource_id=BIN_TO_UUID(?)) OR (? AND j.resource_type='mcp_tool' AND j.resource_id IN (SELECT BIN_TO_UUID(id) FROM mcp_tools WHERE tenant_id=r.tenant_id AND server_id=?)))",
+    "SELECT 'workflows' source_module,'workflow_draft' source_type,d.id source_id,CONCAT(w.name,' / ',CONCAT('v',v.version_number)) source_name,'draft_resource' relation,w.id parent_id,r.node_id,r.node_name,FALSE immutable FROM workflow_draft_resources r JOIN workflows w ON w.tenant_id=r.tenant_id AND w.id=r.workflow_id JOIN workflow_drafts d ON d.tenant_id=r.tenant_id AND d.id=r.draft_id JOIN workflow_versions v ON v.tenant_id=d.tenant_id AND v.working_draft_id=d.id WHERE r.tenant_id=? AND ((r.resource_type=? AND r.resource_id=?) OR (? AND r.resource_type='mcp_tool' AND r.resource_id IN (SELECT id FROM mcp_tools WHERE tenant_id=r.tenant_id AND server_id=?)))",
     "SELECT 'workflows' source_module,'workflow_version' source_type,v.id source_id,CONCAT(w.name,' v',v.version_number) source_name,'version_resource' relation,w.id parent_id,r.node_id,NULL node_name,TRUE immutable FROM workflow_version_resources r JOIN workflow_versions v ON v.tenant_id=r.tenant_id AND v.id=r.workflow_version_id JOIN workflows w ON w.tenant_id=v.tenant_id AND w.id=v.workflow_id WHERE r.tenant_id=? AND ((r.resource_type=? AND r.resource_id=?) OR (? AND r.resource_type='mcp_tool' AND r.resource_id IN (SELECT id FROM mcp_tools WHERE tenant_id=r.tenant_id AND server_id=?)))",
     "SELECT 'skills' source_module,'skill_version' source_type,v.id source_id,CONCAT(s.name,' v',v.version_number) source_name,'skill_dependency' relation,s.id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM skill_dependencies r JOIN skill_versions v ON v.tenant_id=r.tenant_id AND v.id=r.skill_version_id JOIN skills s ON s.tenant_id=v.tenant_id AND s.id=v.skill_id WHERE r.tenant_id=? AND ((r.resource_type=? AND r.resource_id=?) OR (? AND r.resource_type='mcp_tool' AND r.resource_id IN (SELECT id FROM mcp_tools WHERE tenant_id=r.tenant_id AND server_id=?)))",
     "SELECT 'resourceGrants' source_module,'resource_grant' source_type,r.id source_id,COALESCE(d.name,w.name,r.subject_type) source_name,'resource_grant' relation,r.subject_id parent_id,NULL node_id,NULL node_name,FALSE immutable FROM resource_grants r LEFT JOIN departments d ON r.subject_type='department' AND d.tenant_id=r.tenant_id AND d.id=r.subject_id LEFT JOIN workflow_service_identities i ON r.subject_type='workflow_service_identity' AND i.tenant_id=r.tenant_id AND i.id=r.subject_id LEFT JOIN workflows w ON w.tenant_id=i.tenant_id AND w.id=i.workflow_id WHERE r.tenant_id=? AND ((r.resource_type=? AND r.resource_id=?) OR (? AND r.resource_type='mcp_tool' AND r.resource_id IN (SELECT id FROM mcp_tools WHERE tenant_id=r.tenant_id AND server_id=?)))",
@@ -376,11 +376,11 @@ fn direct_reference_queries(entity: EntityType) -> &'static [&'static str] {
         ],
         EntityType::Model => &[
             "SELECT 'models' source_module,'studio_builder_setting' source_type,s.tenant_id source_id,'Canvas AI model setting' source_name,'studio_builder_model' relation,NULL parent_id,NULL node_id,NULL node_name,FALSE immutable FROM tenant_settings s WHERE s.tenant_id=? AND s.studio_builder_model_alias_id=?",
-            "SELECT 'workflows' source_module,'studio_builder_run' source_type,r.id source_id,CONCAT(w.name,' / ',d.name) source_name,'studio_builder_model' relation,w.id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM studio_builder_runs r JOIN studio_builder_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id JOIN workflows w ON w.tenant_id=s.tenant_id AND w.id=s.workflow_id JOIN workflow_drafts d ON d.tenant_id=s.tenant_id AND d.id=s.draft_id WHERE r.tenant_id=? AND r.model_alias_id=? AND r.status IN ('queued','running','waiting','outcome_unknown')",
+            "SELECT 'workflows' source_module,'studio_builder_run' source_type,r.id source_id,CONCAT(w.name,' / ',CONCAT('v',v.version_number)) source_name,'studio_builder_model' relation,w.id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM studio_builder_runs r JOIN studio_builder_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id JOIN workflows w ON w.tenant_id=s.tenant_id AND w.id=s.workflow_id JOIN workflow_drafts d ON d.tenant_id=s.tenant_id AND d.id=s.draft_id JOIN workflow_versions v ON v.tenant_id=d.tenant_id AND v.working_draft_id=d.id WHERE r.tenant_id=? AND r.model_alias_id=? AND r.status IN ('queued','running','waiting','outcome_unknown')",
         ],
         EntityType::Credential => &[
             "SELECT 'models' source_module,'studio_builder_setting' source_type,s.tenant_id source_id,'Canvas AI model setting' source_name,'studio_builder_credential' relation,NULL parent_id,NULL node_id,NULL node_name,FALSE immutable FROM tenant_settings s WHERE s.tenant_id=? AND s.studio_builder_credential_id=?",
-            "SELECT 'workflows' source_module,'studio_builder_run' source_type,r.id source_id,CONCAT(w.name,' / ',d.name) source_name,'studio_builder_credential' relation,w.id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM studio_builder_runs r JOIN studio_builder_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id JOIN workflows w ON w.tenant_id=s.tenant_id AND w.id=s.workflow_id JOIN workflow_drafts d ON d.tenant_id=s.tenant_id AND d.id=s.draft_id WHERE r.tenant_id=? AND r.credential_id=? AND r.status IN ('queued','running','waiting','outcome_unknown')",
+            "SELECT 'workflows' source_module,'studio_builder_run' source_type,r.id source_id,CONCAT(w.name,' / ',CONCAT('v',v.version_number)) source_name,'studio_builder_credential' relation,w.id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM studio_builder_runs r JOIN studio_builder_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id JOIN workflows w ON w.tenant_id=s.tenant_id AND w.id=s.workflow_id JOIN workflow_drafts d ON d.tenant_id=s.tenant_id AND d.id=s.draft_id JOIN workflow_versions v ON v.tenant_id=d.tenant_id AND v.working_draft_id=d.id WHERE r.tenant_id=? AND r.credential_id=? AND r.status IN ('queued','running','waiting','outcome_unknown')",
             "SELECT 'models' source_module,'model_deployment' source_type,d.id source_id,CONCAT(d.connection_name,' / ',d.model_name) source_name,'credential' relation,NULL parent_id,NULL node_id,NULL node_name,FALSE immutable FROM model_deployments d WHERE d.tenant_id=? AND d.credential_id=?",
             "SELECT 'mcp' source_module,'mcp_server_version' source_type,v.id source_id,CONCAT(s.name,' v',v.version_number) source_name,'credential' relation,s.id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM mcp_server_versions v JOIN mcp_servers s ON s.tenant_id=v.tenant_id AND s.id=v.server_id WHERE v.tenant_id=? AND v.credential_id=?",
             "SELECT 'knowledge' source_module,'knowledge_connection' source_type,c.id source_id,c.name source_name,'credential' relation,NULL parent_id,NULL node_id,NULL node_name,FALSE immutable FROM rag_connections c WHERE c.tenant_id=? AND c.credential_id=?",
@@ -449,6 +449,8 @@ async fn runtime_application_references(
     let mut after = None;
     loop {
         let request = SessionSearchRequestV1 {
+            user_source: None,
+            external_user_id: None,
             api_version: 1,
             tenant_id: actor.tenant_id,
             application_id: Some(application_id),
@@ -496,6 +498,8 @@ async fn runtime_application_references(
     let mut cursor = None;
     loop {
         let request = InvocationSearchRequestV1 {
+            user_source: None,
+            external_user_id: None,
             api_version: 1,
             tenant_id: actor.tenant_id,
             application_ids: vec![application_id],

@@ -156,10 +156,14 @@ fn execution_origin_and_search_filters_round_trip_without_compatibility_fields()
     assert!(serde_json::from_value::<ExecutionOriginV1>(unknown).is_err());
 
     let request = ExecutionSearchRequestV1 {
+        user_source: None,
+        external_user_id: None,
         api_version: 1,
         tenant_id: Uuid::now_v7(),
         application_ids: vec![Uuid::now_v7()],
         workflow_ids: vec![Uuid::now_v7()],
+        workflow_version_ids: vec![],
+        workflow_draft_ids: vec![],
         tool_ids: vec![Uuid::now_v7()],
         initiator_user_ids: vec![user_id],
         initiator_department_ids: vec![department_id],
@@ -265,6 +269,7 @@ fn every_top_level_wire_family_rejects_version_two() {
 #[test]
 fn internal_api_response_wrappers_reject_version_two() {
     let summary = ExecutionSummaryV1 {
+        end_user: None,
         execution_id: Uuid::now_v7(),
         invocation_id: None,
         application_id: None,

@@ -18,6 +18,7 @@ mod process_session;
 mod publish;
 mod query;
 mod service_auth;
+mod user_identity;
 mod workspace;
 
 pub use agent_session::*;
@@ -37,6 +38,7 @@ pub use process_session::*;
 pub use publish::*;
 pub use query::*;
 pub use service_auth::*;
+pub use user_identity::*;
 pub use workspace::*;
 
 pub const BUNDLE_SCHEMA_VERSION: u32 = 2;

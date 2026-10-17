@@ -156,6 +156,7 @@ pub async fn execute(pool: &sqlx::MySqlPool, claim: &TriggerClaim) -> RuntimeRes
             claim.tenant_id,
             claim.application_id,
             InvocationCaller {
+                end_user: None,
                 caller_type: match claim.kind.as_str() {
                     "schedule" => "schedule",
                     _ => "webhook",

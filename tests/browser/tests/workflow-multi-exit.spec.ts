@@ -1,4 +1,4 @@
-import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
+import { fixtureVersionId, fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 
 const password = 'agentx-e2e-admin-password'
@@ -36,7 +36,7 @@ async function login(page: Page) {
 }
 
 async function api<T>(page: Page, token: string, path: string): Promise<T> {
-  const response = await page.request.get(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.get(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   if (!response.ok()) throw new Error(`${path}: ${response.status()} ${await response.text()}`)
   return response.json() as Promise<T>
 }
@@ -50,8 +50,8 @@ async function createWorkflow(page: Page, name: string) {
   await dialog.getByRole('button', { name: '保存' }).click()
   await expect(page).toHaveURL(/\/workflows\/[0-9a-f-]+$/)
   const workflowId = page.url().split('/').at(-1) as string
-  await page.locator(`a[href="/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor"]`).click()
-  await expect(page).toHaveURL(new RegExp(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor$`))
+  await page.locator(`a[href="/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor"]`).click()
+  await expect(page).toHaveURL(new RegExp(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor$`))
   return workflowId
 }
 

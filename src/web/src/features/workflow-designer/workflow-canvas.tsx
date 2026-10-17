@@ -11,16 +11,13 @@ import { useShallow } from "zustand/react/shallow";
 import { ApiClientError, apiRequest, jsonBody } from "../../shared/api/client";
 import type {
   Workflow,
-  WorkflowDeployment,
   WorkflowDraft,
-  WorkflowEnvironment,
   WorkflowVersion,
+  WorkflowEditorContext,
 } from "../../shared/api/types";
-import { localizedValue } from "../../shared/lib/localized-value";
 import { localizedNodeLabel } from "./model/manifest-localization";
 import { Button } from "../../shared/ui/button";
 import { Dialog, DialogContent } from "../../shared/ui/dialog";
-import { Select } from "../../shared/ui/select";
 import { useToast } from "../../shared/ui/toast";
 import {
   loadNodeCatalog,
@@ -53,7 +50,6 @@ import {
   hasRunParameters,
 } from "./panels/run-parameters-dialog";
 import { StudioToolbar } from "./panels/studio-toolbar";
-import { VersionDialog } from "./panels/version-dialog";
 import {
   DebugRunDialog,
   type DebugInputSource,
@@ -89,15 +85,19 @@ function combineFrozenManifests(results: Array<{ data?: { manifest: NodeManifest
   return results.flatMap((result) => result.data ? [result.data.manifest] : []);
 }
 
-export function WorkflowCanvas() {
-  const { workflowId, draftId, versionId } = useParams();
-  return <DesignEffectsContext.Provider value><EditorStoreProvider key={`${workflowId}:${draftId ?? versionId}`} readOnly={Boolean(versionId)}><WorkflowCanvasEditor /></EditorStoreProvider></DesignEffectsContext.Provider>;
+export function WorkflowCanvas({ readOnly = false }: { readOnly?: boolean }) {
+  const { workflowId = "", versionId = "" } = useParams();
+  const { t } = useTranslation();
+  const context = useQuery({ enabled: !readOnly, queryKey: ["workflow-editor-context", workflowId, versionId], queryFn: () => apiRequest<WorkflowEditorContext>(`/workflows/${workflowId}/versions/${versionId}/edit`, { method: "POST" }), staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: false });
+  if (!readOnly && (context.isFetching || !context.data)) return <div className="grid h-dvh place-items-center text-sm"><p role={context.error ? "alert" : "status"}>{context.error?.message ?? t("workflows.loading")}</p></div>;
+  return <DesignEffectsContext.Provider value><EditorStoreProvider key={`${workflowId}:${versionId}:${readOnly}`} readOnly={readOnly}><WorkflowCanvasEditor viewOnly={readOnly} documentId={readOnly ? undefined : context.data?.document.id} /></EditorStoreProvider></DesignEffectsContext.Provider>;
 }
-export function WorkflowCanvasEditor() {
+export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { viewOnly?: boolean; documentId?: string }) {
   const storeApi = useEditorStoreApi();
-  const { workflowId = "", draftId = "", versionId } = useParams();
+  const { workflowId = "", versionId = "" } = useParams();
+  const draftId = documentId;
   const auth = useAuth();
-  const documentKey = `${auth.user?.companyId}:${auth.user?.id}:${workflowId}:${draftId || versionId}`;
+  const documentKey = `${auth.user?.companyId}:${auth.user?.id}:${workflowId}:${versionId}:${viewOnly ? "view" : "edit"}`;
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -110,10 +110,10 @@ export function WorkflowCanvasEditor() {
   const [recovery, setRecovery] = useState<LocalRecovery>();
   const [issues, setIssues] = useState<StudioValidationIssue[]>([]);
   const [locatedIssue, setLocatedIssue] = useState<StudioValidationIssue>();
-  const [publishOpen, setPublishOpen] = useState(false);
-  const [versionsOpen, setVersionsOpen] = useState(false);
-  const [publishEnvironment, setPublishEnvironment] = useState("");
-  const [publishVersion, setPublishVersion] = useState("");
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const lifecyclePending = useRef(false);
+  const restoreOperation = useRef<{ revision: number; key: string } | undefined>(undefined);
   const [overlayIds, setOverlayIds] = useState<Record<string, string>>({});
   const [debugDialogOpen, setDebugDialogOpen] = useState(false);
   const [runParametersOpen, setRunParametersOpen] = useState(false);
@@ -147,10 +147,11 @@ export function WorkflowCanvasEditor() {
   });
   const draft = useQuery({
     queryKey: ["workflow-document", workflowId, draftId || versionId],
+    refetchOnMount: "always",
     queryFn: async (): Promise<WorkflowDraft & {nodeManifests?: Record<string, NodeManifest>}> => {
-      if (!versionId) return apiRequest<WorkflowDraft>(`/workflows/${workflowId}/drafts/${draftId}`);
+      if (!viewOnly) return apiRequest<WorkflowDraft>(`/workflows/${workflowId}/drafts/${draftId}`);
       const value = await apiRequest<WorkflowVersion>(`/workflows/${workflowId}/versions/${versionId}`);
-      return { id: value.id, workflowId: value.workflowId, name: `v${value.versionNumber}`, status: "archived", baseVersionId: value.id, revision: value.sourceRevision, schemaVersion: value.schemaVersion, definition: value.definition, editorDocument: value.editorDocument, definitionHash: value.contentHash, editorHash: "", updatedAt: value.createdAt, nodeManifests: value.nodeManifests as unknown as Record<string,NodeManifest> };
+      return { id: value.id, workflowId: value.workflowId, versionId: value.id, versionNumber: value.versionNumber, publicationStatus: value.publicationStatus, archived: value.archived, generation: 0, baseVersionId: value.id, revision: value.sourceRevision, schemaVersion: value.schemaVersion, definition: value.definition, editorDocument: value.editorDocument, definitionHash: value.contentHash, editorHash: value.editorHash, updatedAt: value.updatedAt, nodeManifests: value.nodeManifests as unknown as Record<string,NodeManifest> };
     },
   });
   const catalog = useQuery({
@@ -174,20 +175,6 @@ export function WorkflowCanvasEditor() {
       staleTime: Infinity,
     })),
     combine: combineFrozenManifests,
-  });
-  const versions = useQuery({
-    queryKey: ["workflow-versions", workflowId],
-    queryFn: () =>
-      apiRequest<WorkflowVersion[]>(`/workflows/${workflowId}/versions`),
-  });
-  const environments = useQuery({
-    queryKey: ["environments"],
-    queryFn: () => apiRequest<WorkflowEnvironment[]>("/environments"),
-  });
-  const deployments = useQuery({
-    queryKey: ["workflow-deployments", workflowId],
-    queryFn: () =>
-      apiRequest<WorkflowDeployment[]>(`/workflows/${workflowId}/deployments`),
   });
   const resourceOptionRequests = useMemo(
     () => collectResourceOptionRequests((catalog.data ?? []).map((entry) => entry.manifest)),
@@ -266,7 +253,7 @@ export function WorkflowCanvasEditor() {
   const selectedId = useEditorStore((state) => state.selectedId);
   const selected = resolvingDocument.nodes.find((node) => node.id === selectedId);
   const dirty = useEditorStore((state) => state.dirty);
-  const readOnly = Boolean(versionId) || draft.data?.status === "archived" || workflow.data?.canEdit === false || workflow.data?.status === "archived";
+  const readOnly = viewOnly || !draft.data || restoreOpen || restoring || draft.data.archived || workflow.data?.canEdit === false || workflow.data?.status === "archived";
   useEffect(() => {storeApi.setState({readOnly});}, [readOnly, storeApi]);
   const canUndo = useEditorStore((state) => state.past.length > 0);
   const canRedo = useEditorStore((state) => state.future.length > 0);
@@ -357,7 +344,7 @@ export function WorkflowCanvasEditor() {
         )
         .map((issue) => issue.message);
     },
-    [manifestMap, t, workflowId],
+    [manifestMap, storeApi, draftId, workflowId],
   );
   useStudioShortcuts({
     workflowId,
@@ -378,7 +365,7 @@ export function WorkflowCanvasEditor() {
   });
 
   useEffect(() => {
-    if (!draft.data || hydrated.current) return;
+    if (!draft.data || draft.isFetching || draft.error || hydrated.current) return;
     hydrated.current = true;
     setRevision(draft.data.revision);
     editor.hydrate(deserializeDraft(draft.data));
@@ -389,7 +376,7 @@ export function WorkflowCanvasEditor() {
       new Date(local.savedAt) > new Date(draft.data.updatedAt)
     )
       setRecovery(local);
-  }, [draft.data, editor, workflowId]);
+  }, [draft.data, draft.isFetching, draft.error, editor, documentKey]);
 
   useEffect(() => {
     const edge = edgeInsertRequest;
@@ -439,7 +426,7 @@ export function WorkflowCanvasEditor() {
     };
     window.addEventListener("beforeunload", beforeUnload);
     return () => window.removeEventListener("beforeunload", beforeUnload);
-  }, []);
+  }, [storeApi, documentKey, revision]);
 
   const saveInFlight = useRef<ReturnType<typeof saveDraft> | undefined>(undefined);
   const saveMutation = useMutation({
@@ -514,7 +501,7 @@ export function WorkflowCanvasEditor() {
   }, [saveMutation]);
   const saveDocument = useCallback(
     (showValidation = true) => {
-      if (readOnly || saveInFlight.current || saveMutation.isPending) return;
+      if (readOnly || lifecyclePending.current || saveInFlight.current || saveMutation.isPending) return;
       const document = studioDocument(storeApi.getState());
       const structuralIssues = definitionIssues(document);
       if (structuralIssues.length) {
@@ -565,7 +552,7 @@ export function WorkflowCanvasEditor() {
         !storeApi.getState().dirty ||
         saveMutation.isPending ||
         conflictOpen ||
-        recovery
+        recovery || readOnly || lifecyclePending.current
       )
         return;
       timer = window.setTimeout(() => saveDocument(false), 1400);
@@ -587,7 +574,7 @@ export function WorkflowCanvasEditor() {
       unsubscribe();
       if (timer) window.clearTimeout(timer);
     };
-  }, [conflictOpen, recovery, saveDocument, saveMutation.isPending]);
+  }, [conflictOpen, recovery, readOnly, saveDocument, saveMutation.isPending, storeApi]);
 
   const validateCurrent = async () => {
     const document = studioDocument(storeApi.getState());
@@ -614,18 +601,12 @@ export function WorkflowCanvasEditor() {
     debugMode: DebugMode = mode,
     context: Record<string, unknown> = {},
   ) => {
+    if (readOnly) return;
     if (dirty || saveMutation.isPending)
       return showToast(t("studio.toasts.saveBeforeRun"));
     const target =
       selected?.data.editorKind === "action" ? selected.id : undefined;
     try {
-      if (versionId) {
-        const accepted = await apiRequest<{executionId: string}>(`/workflow-versions/${versionId}/executions`, {method: "POST", body: jsonBody({input, idempotencyKey: crypto.randomUUID()})});
-        setExecutionId(accepted.executionId);
-        runtime.setRunning(true);
-        setRunParametersOpen(false);
-        return;
-      }
       if (!(await validateCurrent())) return;
       const document = studioDocument(storeApi.getState());
       const included = includedActionNodeIds(document, debugMode, target);
@@ -660,11 +641,6 @@ export function WorkflowCanvasEditor() {
   };
 
   const run = () => {
-    if (versionId) {
-      if (hasRunParameters(referenceSource.start)) return setRunParametersOpen(true);
-      void executeRun();
-      return;
-    }
     if (readOnly) return;
     if (dirty || saveMutation.isPending)
       return showToast(t("studio.toasts.saveBeforeRun"));
@@ -689,61 +665,29 @@ export function WorkflowCanvasEditor() {
     }
   };
 
-  const createVersion = async () => {
-    if (readOnly) return;
-    if (dirty || saveMutation.isPending)
-      return showToast(t("studio.toasts.saveBeforeRun"));
-    if (!(await validateCurrent())) return;
+  const restoreCanvas = async () => {
+    if (viewOnly || draft.data?.archived || runtime.running || restoring) return;
+    lifecyclePending.current = true;
+    setRestoring(true);
+    setAiOpen(false);
     try {
-      await apiRequest<WorkflowVersion>(`/workflows/${workflowId}/versions`, {
-        method: "POST",
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-        body: jsonBody({ draftId, draftRevision: revision }),
-      });
-      await versions.refetch();
-      setVersionsOpen(false);
-      showToast(t("studio.toasts.versionCreated"));
-    } catch (error) {
-      showToast((error as Error).message);
-    }
-  };
-
-  const publish = async () => {
-    if (readOnly) return;
-    if (!publishEnvironment || !publishVersion) return;
-    try {
-      await apiRequest(`/workflows/${workflowId}/deployments`, {
-        method: "POST",
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-        body: jsonBody({
-          environmentId: publishEnvironment,
-          workflowVersionId: publishVersion,
-        }),
-      });
-      setPublishOpen(false);
-      await deployments.refetch();
-      showToast(t("studio.toasts.published"));
-    } catch (error) {
-      showToast((error as Error).message);
-    }
-  };
-  const rollback = async (deployment: WorkflowDeployment) => {
-    try {
-      await apiRequest(
-        `/workflows/${workflowId}/deployments/${deployment.environmentId}/rollback`,
-        {
-          method: "POST",
-          headers: { "Idempotency-Key": crypto.randomUUID() },
-          body: jsonBody({
-            targetWorkflowVersionId: deployment.workflowVersionId,
-          }),
-        },
-      );
-      await deployments.refetch();
-      showToast(t("studio.toasts.rolledBack"));
-    } catch (error) {
-      showToast((error as Error).message);
-    }
+      if (saveInFlight.current) await saveInFlight.current;
+      const expected = queryClient.getQueryData<WorkflowDraft>(["workflow-document", workflowId, draftId])?.revision ?? revision;
+      if (restoreOperation.current?.revision !== expected) restoreOperation.current = { revision: expected, key: crypto.randomUUID() };
+      await apiRequest(`/workflows/${workflowId}/versions/${versionId}/restore`, { method: "POST", headers: { "Idempotency-Key": restoreOperation.current.key }, body: jsonBody({ expectedRevision: expected }) });
+      const value = await apiRequest<WorkflowDraft>(`/workflows/${workflowId}/drafts/${draftId}`);
+      queryClient.setQueryData(["workflow-document", workflowId, draftId], value);
+      setRevision(value.revision);
+      editor.hydrate(deserializeDraft(value));
+      clearRecovery(documentKey);
+      setRecovery(undefined);
+      setOverlayIds({}); setExecutionId(undefined); setIssues([]); setLocatedIssue(undefined);
+      await queryClient.invalidateQueries({ queryKey: ["workflow-versions", workflowId] });
+      showToast(t("studio.restoreCanvas.success"));
+    } catch (failure) {
+      if (failure instanceof ApiClientError && failure.detail.code === "DRAFT_REVISION_CONFLICT") setConflictOpen(true);
+      showToast((failure as Error).message);
+    } finally { lifecyclePending.current = false; setRestoring(false); setRestoreOpen(false); }
   };
 
   const actionData = (manifest: NodeManifest) => ({
@@ -943,13 +887,13 @@ export function WorkflowCanvasEditor() {
     }, 50);
   };
 
-  if (draft.isLoading || catalog.isLoading)
+  if (draft.isLoading || (!hydrated.current && draft.isFetching) || catalog.isLoading)
     return (
       <div className="grid h-full place-items-center text-sm text-muted-foreground">
         {t("studio.loading")}
       </div>
     );
-  if (!draft.data || catalog.error)
+  if (!draft.data || draft.error || catalog.error)
     return (
       <div className="grid h-full place-items-center px-8 text-sm text-danger">
         {String(draft.error ?? catalog.error ?? t("studio.unavailable"))}
@@ -963,7 +907,7 @@ export function WorkflowCanvasEditor() {
         canUndo={canUndo}
         dirty={dirty}
         mode={mode}
-        name={`${workflow.data?.name ?? t("studio.workflow")} · ${draft.data.name}`}
+        name={`${workflow.data?.name ?? t("studio.workflow")} · v${draft.data.versionNumber} · ${t(viewOnly ? "studio.restoreCanvas.readOnly" : draft.data.publicationStatus === "published" ? "studio.restoreCanvas.draft" : "studio.restoreCanvas.unpublished")}`}
         onAlign={editor.alignSelected}
         onLayout={() => {
           const state = storeApi.getState();
@@ -973,24 +917,24 @@ export function WorkflowCanvasEditor() {
           });
         }}
         onMode={(value) => setMode(value as DebugMode)}
-        onPublish={() => setPublishOpen(true)}
         onRedo={editor.redo}
         onRun={() => void run()}
         onSave={saveNow}
         onStop={() => void stop()}
         onUndo={editor.undo}
-        onVersion={() => setVersionsOpen(true)}
         revision={revision}
         running={runtime.running}
         readOnly={readOnly}
-        canRun={auth.hasPermission("execution:run") && (!readOnly || Boolean(versionId))}
-        canPublish={auth.hasPermission("workflow:publish")}
+        canRun={auth.hasPermission("execution:run") && !readOnly}
+        onRestore={() => setRestoreOpen(true)}
+        canRestore={!readOnly && !runtime.running}
+        restoreTarget={t(draft.data.publicationStatus === "published" ? "studio.restoreCanvas.targetVersion" : "studio.restoreCanvas.targetInitial", { version: draft.data.versionNumber })}
         saving={saveMutation.isPending}
         selectedCount={selectedCount}
         workflowId={workflowId}
       />
       <main className="relative flex min-h-0 flex-1">
-        <NodePalette
+        {!viewOnly && <NodePalette
           collapsed={paletteCollapsed}
           manifests={readOnly ? [] : manifests}
           onAddAction={(manifest, targetHandle) => {
@@ -1043,7 +987,7 @@ export function WorkflowCanvasEditor() {
                 }
               : undefined
           }
-        />
+        />}
         <div className="flex min-w-0 flex-1 flex-col">
           <WorkflowFlow
             ref={flowRef}
@@ -1163,6 +1107,7 @@ export function WorkflowCanvasEditor() {
         />
         {interfaceBoundary && (
           <StartPanel
+            readOnly={readOnly}
             onClose={() => setInterfaceBoundary(undefined)}
             onStartChange={editor.setStart}
             start={referenceSource.start}
@@ -1170,6 +1115,7 @@ export function WorkflowCanvasEditor() {
         )}
         {exitPanelId && selected?.data.editorKind === "exit" && selected.id === exitPanelId && (
           <ExitPanel
+            readOnly={readOnly}
             end={referenceSource.end}
             exitId={exitPanelId}
             exits={exitNodes}
@@ -1233,35 +1179,9 @@ export function WorkflowCanvasEditor() {
             )}
           />
         )}
-      <PublishDialog
-        deployments={deployments.data ?? []}
-        environment={publishEnvironment}
-        environments={environments.data ?? []}
-        onClose={() => setPublishOpen(false)}
-        onEnvironment={setPublishEnvironment}
-        onPublish={() => void publish()}
-        onRollback={(deployment) => void rollback(deployment)}
-        onVersion={setPublishVersion}
-        open={publishOpen}
-        version={publishVersion}
-        versions={versions.data ?? []}
-      />
-      {(() => {
-        const current = serializeStudio(
-          studioDocument(storeApi.getState()),
-        );
-        return (
-          <VersionDialog
-            creating={false}
-            definition={current.definition}
-            editorDocument={current.editorDocument}
-            onClose={() => setVersionsOpen(false)}
-            onCreate={() => void createVersion()}
-            open={versionsOpen}
-            versions={versions.data ?? []}
-          />
-        );
-      })()}
+      <Dialog open={restoreOpen} onOpenChange={open => { if (!restoring) setRestoreOpen(open); }}><DialogContent title={t("studio.restoreCanvas.title")}>
+        <div className="p-6"><h2 className="text-lg font-semibold">{t("studio.restoreCanvas.title")}</h2><p className="mt-3 text-sm text-muted-foreground">{t(draft.data.publicationStatus === "published" ? "studio.restoreCanvas.confirmVersion" : "studio.restoreCanvas.confirmInitial", { version: draft.data.versionNumber })}</p><div className="mt-6 flex justify-end gap-2"><Button variant="ghost" disabled={restoring} onClick={() => setRestoreOpen(false)}>{t("common.cancel")}</Button><Button disabled={restoring} onClick={() => void restoreCanvas()}>{t(restoring ? "studio.restoreCanvas.restoring" : "studio.restoreCanvas.confirm")}</Button></div></div>
+      </DialogContent></Dialog>
     </div>
   );
 }
@@ -1401,103 +1321,6 @@ function IssuesDialog({
     </Dialog>
   );
 }
-function PublishDialog({
-  open,
-  environment,
-  version,
-  environments,
-  versions,
-  deployments,
-  onClose,
-  onEnvironment,
-  onVersion,
-  onPublish,
-  onRollback,
-}: {
-  open: boolean;
-  environment: string;
-  version: string;
-  environments: WorkflowEnvironment[];
-  versions: WorkflowVersion[];
-  deployments: WorkflowDeployment[];
-  onClose: () => void;
-  onEnvironment: (id: string) => void;
-  onVersion: (id: string) => void;
-  onPublish: () => void;
-  onRollback: (deployment: WorkflowDeployment) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <Dialog onOpenChange={(value) => !value && onClose()} open={open}>
-      <DialogContent title={t("studio.publishDialog.title")}>
-        <div className="p-5">
-          <h2 className="text-sm font-semibold">
-            {t("studio.publishDialog.title")}
-          </h2>
-          <div className="mt-4 space-y-3">
-            <Select
-              aria-label={t("studio.publishDialog.environment")}
-              className="w-full"
-              onValueChange={onEnvironment}
-              options={environments
-                .filter((item) => item.status === "active")
-                .map((item) => ({ value: item.id, label: item.name }))}
-              placeholder={t("studio.publishDialog.environment")}
-              value={environment}
-            />
-            <Select
-              aria-label={t("studio.publishDialog.version")}
-              className="w-full"
-              onValueChange={onVersion}
-              options={versions.map((item) => ({
-                value: item.id,
-                label: `v${item.versionNumber} · ${t("studio.versionDialog.revision", { revision: item.sourceRevision })}`,
-              }))}
-              placeholder={t("studio.publishDialog.version")}
-              value={version}
-            />
-          </div>
-          {deployments.length > 0 && (
-            <div className="mt-5 border-t border-border pt-3">
-              <h3 className="text-xs font-semibold">
-                {t("studio.publishDialog.history")}
-              </h3>
-              {deployments.map((deployment) => (
-                <div
-                  className="mt-2 flex items-center text-[11px]"
-                  key={deployment.id}
-                >
-                  <span>
-                    {deployment.environmentName} · v{deployment.versionNumber} ·{" "}
-                    {localizedValue(t, "common", deployment.status)}
-                  </span>
-                  <span className="flex-1" />
-                  {deployment.status !== "active" && (
-                    <Button
-                      onClick={() => onRollback(deployment)}
-                      size="sm"
-                      variant="ghost"
-                    >
-                      {t("studio.publishDialog.rollback")}
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="mt-5 flex justify-end gap-2">
-            <Button onClick={onClose} variant="ghost">
-              {t("studio.publishDialog.cancel")}
-            </Button>
-            <Button disabled={!environment || !version} onClick={onPublish}>
-              {t("studio.publishDialog.publish")}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 function defaults(manifest: NodeManifest) {
   return Object.fromEntries(
@@ -1591,8 +1414,7 @@ const defaultResourceOptionRequests: ResourceOptionRequest[] = [
   { resourceType: "mcp_tool", operation: "use" },
   { resourceType: "skill", operation: "use" },
   { resourceType: "rag", operation: "read" },
-  { resourceType: "memory", operation: "read" },
-  { resourceType: "memory", operation: "write" },
+  { resourceType: "memory", operation: "use" },
   { resourceType: "sandbox_profile", operation: "use" },
 ];
 

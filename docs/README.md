@@ -36,7 +36,8 @@ Agentx 是一个采用 n8n 式画布交互、但使用 Agentx 原生 Workflow/No
 | [plan5/README.md](plan5/README.md) | 已完成的Workflow节点体系重构：Dify式配置与调试流程、Definition 8.0、原 13 类节点、Agent 附件（当前新增独立知识检索见 plan8）、Loop容器、Approval/Exit/集成执行闭环及完整Kubernetes门禁；[implementation-plan.md](plan5/implementation-plan.md) 保存M0–M6 + F1–F8完成清单与证据 |
 | [plan6/README.md](plan6/README.md) | 画布插件：动态 React UI、TypeScript/Node.js、权威动态契约、调用隔离、文件流和 Trace；SDK/RPC 2 的最新修复与验证范围见 [P6-11](plan6/evidence/p6-11-runtime-boundaries.md) |
 | [plan7/README.md](plan7/README.md) | 产品最后一公里与生产收口（对比 n8n/Dify 后立项）：IM 渠道出站回复闭环、LLM 流式与多模态透传、评测与 Insights 补全、P0 生产认证收口、知识库管理面 |
-| [plan8/README.md](plan8/README.md) | 多草稿画布与 AI 编辑已完成，26+3 场景、完整非压测回归及失败项复测已关闭（容量压测暂缓）：共享 Agent Core、手动/AI 编辑事务、版本派生、租户模型设置、七工具和静态校验；运行、版本创建和部署由用户 UI 操作 |
+| [plan8/README.md](plan8/README.md) | 画布 AI 编辑与历史验收；当前版本生命周期、版本列表和还原规则见 [版本与画布管理](plan8/09-version-canvases.md) |
+| [plan8/10-application-user-memory.md](plan8/10-application-user-memory.md) | 应用用户参数映射、会话归属与固定读写记忆连接 |
 | [planv2/evidence/egress-gateway.md](planv2/evidence/egress-gateway.md) | SaaS 受控公网出口、真实模型、密钥轮换、稳定性、滚动升级和生产 CNI 未关闭门禁证据 |
 | [plan/m2-task-list.md](plan/m2-task-list.md) | M2 Workflow 控制面与资源中心的详细实施批次和任务清单 |
 | [plan/m2.1-resource-redesign.md](plan/m2.1-resource-redesign.md) | M2.1 MCP、Skill Workspace、Kubernetes Addon 与全局 E2E 重构任务 |
@@ -74,7 +75,7 @@ Agentx 是一个采用 n8n 式画布交互、但使用 Agentx 原生 Workflow/No
 
 1. Workflow 是平台第一核心对象，其他功能都服务于其开发、运行、发布和评测。
 2. Workflow Studio 对齐 n8n 的拖拽、配置、调试和发布交互，但 Definition、IR、Manifest、表达式和节点 API 全部使用 Agentx 原生协议；首期及 M6/M7 不实现 n8n JSON、社区节点或 Credential 兼容。
-3. Workflow 草稿可变，Workflow Version 不可变，Deployment 负责将版本发布到环境。
+3. Workflow 以版本为画布入口：未发布版本可变，定稿后内容不可变，每个版本最多一份共享工作草稿；Deployment 绑定已定稿版本。当前语义见 [版本与画布重构](plan8/09-version-canvases.md)。
 4. 采用 Item 数据模型传递节点数据，保留 Item 的上下游来源关系。
 5. MySQL 保存权威业务状态；Redis 只负责缓存、租约、限流和任务派发。
 6. ClickHouse 首期只保存和查询 Workflow Trace，不要求接入 Prometheus 或 Grafana。

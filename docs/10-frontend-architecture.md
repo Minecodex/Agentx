@@ -274,7 +274,7 @@ Kubernetes 桌面浏览器验收覆盖创建工作流后进入详情和画布、
 
 `common.*` 只保存保存、取消、删除、状态、分页、确认等跨业务含义完全一致的文案。别名、连接、版本发布、轮换等词进入所属业务域；Model 使用 `models.fields.modelName` 和 `models.fields.upstreamModelId`，Skill 使用 `skills.fields.name/alias/description`，避免同名参数跨模块串词。中英文资源必须保持相同键结构，语言探测、`agentx.locale`、`html lang` 和稳定错误码翻译保持不变。
 
-中文界面采用以下业务术语：Workflow 为“工作流”、Skill 为“技能”、Memory 为“记忆”、Agent 为“智能体”、Execution 为“执行”、Dataset 为“测试集”、Case 为“用例”、Deployment 为“部署”、Environment 为“环境”、Checkpoint 为“检查点”、Service Identity 为“运行身份”。Workflow Studio 使用“工作流设计器”，Playground 使用“调试台”。组合术语统一使用“工作流版本”“技能版本”“记忆命名空间”“工作流执行”“节点执行”“派生执行”“测试集版本”“测试用例”和“工作流运行身份”。
+中文界面采用以下业务术语：Workflow 为“工作流”、Skill 为“技能”、Memory 为“记忆”、Agent 为“智能体”、Execution 为“执行”、Dataset 为“测试集”、Case 为“用例”、Deployment 为“部署”、Environment 为“环境”、Checkpoint 为“检查点”、Service Identity 为“运行身份”。Workflow Studio 使用“工作流设计器”，Playground 使用“调试台”。组合术语统一使用“工作流版本”“技能版本”“记忆连接”“工作流执行”“节点执行”“派生执行”“测试集版本”“测试用例”和“工作流运行身份”。
 
 `Revision` 与不可变 `Version` 必须按语义区分：Draft Revision 为“草稿修订号”，Workspace Revision 为“工作区修订号”，Model Deployment Revision 为“部署配置版本”，其他计数型 Revision 为“修订号”；不可变发布物才称为“版本”。`Trace`、`Runtime`、`Worker`、`Artifact`、`Definition`、`Diff`、`Schema`、`Endpoint`、`Runner`、`Token` 保留英文，Agentx、MCP、API、HTTP、JSON、MIME、URI、UUID、OpenSandbox、Mem0、SKILL.md 等标准名或产品名同样不翻译。技术词与中文组合时采用自然语序，例如“智能体运行记录”“Runtime 调用”“本次执行的 Artifact”“评测 Trace”。
 

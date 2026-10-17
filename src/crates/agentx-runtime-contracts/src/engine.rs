@@ -242,9 +242,6 @@ pub enum RuntimeResourceConfigurationV1 {
     },
     Memory {
         endpoint: String,
-        namespace: String,
-        memory_version: String,
-        access_mode: String,
         credential: Option<crate::VaultSecretReferenceV1>,
     },
     Skill {

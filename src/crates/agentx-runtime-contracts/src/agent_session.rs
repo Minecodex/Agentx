@@ -72,6 +72,14 @@ pub struct AgentSessionDiagnosticV1 {
     pub usages: Vec<Value>,
     pub compaction: Option<Value>,
     pub recovery: Option<Value>,
+    pub memory_targets: Vec<AgentMemoryTargetV1>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct AgentMemoryTargetV1 {
+    pub scope: crate::MemoryScopeV1,
+    pub memory_resource_id: Uuid,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -98,10 +106,11 @@ pub struct AgentSessionClearReceiptV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct AgentSubjectMemoryClearRequestV1 {
+    pub scope: crate::MemoryScopeV1,
     pub api_version: u32,
     pub tenant_id: Uuid,
     pub application_id: Uuid,
-    pub memory_resource_version_id: Uuid,
+    pub memory_resource_id: Uuid,
     pub idempotency_key: String,
 }
 
@@ -118,10 +127,11 @@ pub struct AgentSubjectMemoryClearReceiptV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct AgentSubjectMemorySearchRequestV1 {
+    pub scope: crate::MemoryScopeV1,
     pub api_version: u32,
     pub tenant_id: Uuid,
     pub application_id: Uuid,
-    pub memory_resource_version_id: Uuid,
+    pub memory_resource_id: Uuid,
     #[serde(default)]
     pub limit: u32,
     #[serde(default)]

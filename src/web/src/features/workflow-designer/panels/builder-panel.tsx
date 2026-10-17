@@ -134,7 +134,7 @@ export function BuilderPanel({ manifests, workflowId, draftId, serverRevision, e
         if (store.getState().readOnly) status = 'read_only'
         else {
           try {
-            let candidate = deserializeDraft({ id: draftId, workflowId, name: '', status: 'active', baseVersionId: null, revision: before.serverRevision, schemaVersion: '8.0', definitionHash: '', editorHash: '', updatedAt: '', ...command.document })
+            let candidate = deserializeDraft({ id: draftId, workflowId, versionId: '', versionNumber: 0, publicationStatus: 'unpublished', archived: false, generation: 0, baseVersionId: null, revision: before.serverRevision, schemaVersion: '8.0', definitionHash: '', editorHash: '', updatedAt: '', ...command.document })
             if (await documentHash(command.document) !== command.resultDocumentHash) throw new Error('Command hash does not match its document')
             if (canonicalDocument(serializeStudio(candidate)) !== canonicalDocument(command.document)) throw new Error('Document cannot be represented without changes by this editor. Include layouts, contiguous connection orders and canonical node settings.')
             if (command.autoLayout) candidate = await layoutStudioDocument(candidate, latest.current.manifests)

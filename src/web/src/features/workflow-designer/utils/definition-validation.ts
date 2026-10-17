@@ -143,7 +143,7 @@ function referenceMatchesNode(nodeType: string, reference: ResourceReference) {
   if (role === "mcp_tools") return reference.resourceType === "mcp_tool" && reference.operation === "use";
   if (role === "skills") return reference.resourceType === "skill" && reference.operation === "use";
   if (role === "knowledge") return reference.resourceType === "rag" && reference.operation === "read";
-  return role === "long_term_memory" && reference.resourceType === "memory" && (reference.operation === "read" || reference.operation === "write");
+  return role === "long_term_memory" && reference.resourceType === "memory" && reference.operation === "use";
 }
 
 function isResourceNode(nodeType: string) {

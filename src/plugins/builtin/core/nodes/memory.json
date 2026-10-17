@@ -185,7 +185,7 @@
     "resourceSelectors": [
       {
         "resourceType": "memory",
-        "operation": "read",
+        "operation": "use",
         "required": true
       }
     ],

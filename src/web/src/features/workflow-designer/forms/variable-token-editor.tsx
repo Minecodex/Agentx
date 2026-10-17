@@ -34,6 +34,7 @@ import type {
 } from "../model/types";
 import { selectorsEqual } from "../model/selector";
 import { DEFAULT_REFERENCE_COLOR, sourceNodeColor } from "./reference-picker/reference-color";
+import { useReadOnlyForm } from "./read-only-form";
 
 const AGENTX_TEMPLATE_MIME = "application/x-agentx-text-template+json";
 
@@ -148,12 +149,14 @@ export function VariableTokenEditor({
   catalog?: ReferenceCatalog;
   onEditorReady?: (editor: LexicalEditor) => void;
 }) {
+  const readOnly = useReadOnlyForm();
   const current = useRef(value);
   current.current = value;
   return (
     <LexicalComposer
       initialConfig={{
         namespace: "agentx-variable-token-editor",
+        editable: !readOnly,
         nodes: [VariableNode],
         onError: (error) => {
           throw error;
@@ -184,6 +187,7 @@ export function VariableTokenEditor({
         <OnChangePlugin
           ignoreSelectionChange
           onChange={(state) => {
+            if (readOnly) return;
             state.read(() => {
               const next = editorValue();
               if (JSON.stringify(next) !== JSON.stringify(current.current)) onChange(next);
@@ -203,6 +207,7 @@ export function insertVariable(
   color?: string,
   trigger?: "{{" | "/",
 ) {
+  if (!editor.isEditable()) return;
   editor.update(() => {
     const variable = $createVariableNode(selector, label, color);
     const selection = $getSelection();
@@ -237,6 +242,8 @@ function EditorBridge({
   onReady?: (editor: LexicalEditor) => void;
 }) {
   const [editor] = useLexicalComposerContext();
+  const readOnly = useReadOnlyForm();
+  useEffect(() => { editor.setEditable(!readOnly); }, [editor, readOnly]);
   const lastExternal = useRef(JSON.stringify(value));
   useEffect(() => onReady?.(editor), [editor, onReady]);
   useEffect(() => {
@@ -258,6 +265,7 @@ function EditorBridge({
       event.clipboardData?.setData(AGENTX_TEMPLATE_MIME, JSON.stringify(editorValueRead(editor)));
     };
     const paste = (event: ClipboardEvent) => {
+      if (!editor.isEditable()) { event.preventDefault(); return; }
       const encoded = event.clipboardData?.getData(AGENTX_TEMPLATE_MIME);
       if (!encoded) return;
       try {

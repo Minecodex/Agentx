@@ -1,4 +1,4 @@
-import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
+import { fixtureVersionId, fixtureDraftIdKnown } from '../draft-fixtures'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { fillMonaco, showEdgeToolbar } from './workflow-studio-editor-helpers'
@@ -16,7 +16,7 @@ async function login(page: Page, username = 'admin', userPassword = password) {
 }
 
 async function api<T>(page: Page, token: string, path: string, method = 'GET', data?: unknown): Promise<T> {
-  const response = await page.request.fetch(`/api/v1${path}`, { method, data, headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.fetch(`/api/v1${path}`, { method, data, headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   if (!response.ok()) throw new Error(`${path}: ${response.status()} ${await response.text()}`)
   return response.json() as Promise<T>
 }
@@ -148,7 +148,7 @@ test('Python Code is configured through Studio and executes in a real OpenSandbo
   await grant.getByRole('button', { name: '添加授权', exact: true }).click()
   await expect(grant.getByRole('button', { name: '撤销授权' })).toHaveCount(1)
   await grant.getByRole('button', { name: '取消', exact: true }).click()
-  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+  await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   const initial = page.locator('.react-flow__edge[data-testid="rf__edge-start-exit"]')
   const toolbar = page.locator('.studio-edge-toolbar[data-edge-id="start-exit"]')

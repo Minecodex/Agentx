@@ -203,7 +203,10 @@ impl Fixture {
             workflow: agentx_runtime_contracts::ExecutionWorkflowSnapshotV1 {
                 id: self.workflow_id,
                 name: "Runtime slice Workflow".into(),
-                source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version { version_id: package_id, version_number: 1 },
+                source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version {
+                    version_id: package_id,
+                    version_number: 1,
+                },
                 version_id: Some(package_id),
                 version_number: Some(1),
                 owner_department: None,
@@ -212,17 +215,18 @@ impl Fixture {
             purpose: WorkPackagePurpose::Debug,
             call_purpose: RuntimeCallPurposeV1::Debug,
             spec: agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Debug {
-                source: agentx_runtime_contracts::WorkflowDesignSourceV1::DraftRevision { draft_id: uuid::Uuid::now_v7(), revision_id: uuid::Uuid::now_v7(), revision: 1 },
+                source: agentx_runtime_contracts::WorkflowDesignSourceV1::DraftRevision {
+                    draft_id: uuid::Uuid::now_v7(),
+                    revision_id: uuid::Uuid::now_v7(),
+                    revision: 1,
+                },
                 debug_plan: agentx_runtime_contracts::RuntimeDebugPlanV1::whole(&compiled),
             },
             source_revision: "draft:1".into(),
             definition,
             dependency_versions: BTreeMap::new(),
             plugin_manifests: vec![],
-            supported_capabilities: BTreeSet::from([
-                "builtin".into(),
-                "plugin_nodejs".into(),
-            ]),
+            supported_capabilities: BTreeSet::from(["builtin".into(), "plugin_nodejs".into()]),
             overlay: RuntimeWorkPackageOverlayV1 {
                 input: json!({"message":"work-package"}),
                 ..RuntimeWorkPackageOverlayV1::default()
@@ -234,10 +238,7 @@ impl Fixture {
                 service_identity_id: self.identity_id,
                 workflow_id: self.workflow_id,
                 policy_epoch: 1,
-                capabilities: BTreeSet::from([
-                    "builtin".into(),
-                    "plugin_nodejs".into(),
-                ]),
+                capabilities: BTreeSet::from(["builtin".into(), "plugin_nodejs".into()]),
                 grant_ids: vec![],
                 grant_bindings: vec![],
                 maximum_policy_staleness_seconds: 72 * 60 * 60,
@@ -320,7 +321,8 @@ fn builtin_data_runtime_object(tenant_id: Uuid) -> (RuntimeObjectReferenceV1, Ve
         .runtime_artifact
         .as_ref()
         .expect("agentx/data Runtime artifact");
-    let content_hash = agentx_runtime_contracts::ContentHash::parse(&artifact.content_hash).unwrap();
+    let content_hash =
+        agentx_runtime_contracts::ContentHash::parse(&artifact.content_hash).unwrap();
     (
         RuntimeObjectReferenceV1 {
             tenant_id,
@@ -614,7 +616,10 @@ async fn evaluation_work_package_creates_cases_converges_and_cancels_atomically(
         .await
         .unwrap();
         assert_eq!(evaluation_context["trigger"]["type"], "evaluation");
-        assert_eq!(evaluation_context["workflow"]["name"], "Runtime slice Workflow");
+        assert_eq!(
+            evaluation_context["workflow"]["name"],
+            "Runtime slice Workflow"
+        );
         assert!(evaluation_context["initiator"].get("user").is_none());
     }
     let case_count: i64 = sqlx::query_scalar(
@@ -745,7 +750,7 @@ async fn evaluation_work_package_creates_cases_converges_and_cancels_atomically(
             }))
             .unwrap(),
             configuration: agentx_runtime_contracts::RuntimeResourceConfigurationV1::Model {
-            capabilities: Vec::new(),
+                capabilities: Vec::new(),
                 provider: "openai_compatible".into(),
                 endpoint,
                 model: "evaluator-fixture".into(),
@@ -1358,6 +1363,8 @@ fn activation_request(
             minimum_admission_epoch: epoch,
             runtime_config_revision: 1,
             runtime_policy: agentx_runtime_contracts::ApplicationRuntimePolicyV1 {
+                api_user_id_input: None,
+                environment_id: None,
                 session_version_policy: agentx_runtime_contracts::SessionVersionPolicyV1::Pinned,
                 synchronous_wait_seconds: 30,
                 maximum_json_bytes: 1_048_576,
@@ -1411,6 +1418,8 @@ async fn rollback_request(
                 minimum_admission_epoch: epoch,
                 runtime_config_revision: 1,
                 runtime_policy: agentx_runtime_contracts::ApplicationRuntimePolicyV1 {
+                    api_user_id_input: None,
+                    environment_id: None,
                     session_version_policy:
                         agentx_runtime_contracts::SessionVersionPolicyV1::Pinned,
                     synchronous_wait_seconds: 30,

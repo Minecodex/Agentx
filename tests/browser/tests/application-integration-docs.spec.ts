@@ -16,7 +16,7 @@ async function request<T>(page: Page, token: string, path: string, method = 'GET
   const response = await page.request.fetch(`/api/v1${path}`, {
     method,
     data: body,
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
   })
   await expectResponse(response, `${method} ${path}`)
   const text = await response.text()

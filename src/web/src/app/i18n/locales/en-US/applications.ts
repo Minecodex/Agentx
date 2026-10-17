@@ -1,4 +1,16 @@
 const translations = {
+  "invocationRecords": "Invocation records",
+  "noEndUser": "No user ID was provided. Personal long-term memory is unavailable.",
+  "userSource": "All user sources",
+  "endUser": "End user",
+  "userFilter": "Filter by user ID",
+  "userSources": {"platform": "Platform login", "channel": "Channel sender", "api_parameter": "API parameter"},
+
+  "advancedConfiguration": "Advanced configuration",
+  "apiUserIdInput": "API user ID input",
+  "userIdNotConfigured": "Not configured",
+  "userIdExplanation": "Used for personal long-term memory, session attribution, and filtering invocation records. API calls use the selected input value without verifying user identity. Keep the same ID for the same user.\nPlatform calls use the signed-in user ID; channel calls use the sender ID within the channel account.\nPersonal long-term memory is unavailable when no user ID is provided. The identifier does not determine workflow, tool, or credential permissions.",
+
   "created": "Created",
   "saved": "Saved",
   "edit": "Edit application",
@@ -172,6 +184,8 @@ const translations = {
     "goWorkflows": "Go to workflows"
   },
   "playground": {
+    "sessionInputs": "Initial session inputs",
+    "sessionInputsDescription": "Each message reuses these business inputs. Platform calls automatically use the signed-in user ID.",
     "title": "Playground",
     "description": "Test complex inputs or real multi-turn sessions through the production Application Invocation API.",
     "sessions": "Sessions",

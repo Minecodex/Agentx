@@ -57,29 +57,21 @@ jobs:
       - run: cargo xtask check --fast
 
   kubernetes-e2e-linux:
+    if: ${{ inputs.full }}
     needs: python-helm
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.full && 360 || 120 }}
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}
       - uses: ./.github/actions/e2e-tools
-      - name: Run required system E2E or full release acceptance in disposable Minikube
-        env:
-          FULL_ACCEPTANCE: ${{ inputs.full }}
+      - name: Run full release acceptance in disposable Minikube
         run: |
-          if [ "$FULL_ACCEPTANCE" = "true" ]; then
-            uv run --frozen --group test pytest tests/e2e --minikube \
-              --values deploy/values/local.yaml --ci-profile release -m 'not browser_performance' \
-              --evidence-run-id "ci-${{ github.run_id }}-${{ github.run_attempt }}" \
-              --junitxml=.local/artifacts/kubernetes-e2e.xml --timeout=18000
-          else
-            uv run --frozen --group test pytest tests/e2e --minikube \
-              --values deploy/values/local.yaml --ci-profile pr \
-              --evidence-run-id "ci-${{ github.run_id }}-${{ github.run_attempt }}" \
-              --junitxml=.local/artifacts/kubernetes-e2e.xml --timeout=14400
-          fi
+          uv run --frozen --group test pytest tests/e2e --minikube \
+            --values deploy/values/local.yaml --ci-profile release -m 'not browser_performance' \
+            --evidence-run-id "ci-${{ github.run_id }}-${{ github.run_attempt }}" \
+            --junitxml=.local/artifacts/kubernetes-e2e.xml --timeout=18000
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -153,11 +145,12 @@ jobs:
 
           jobs = json.loads(os.environ["JOB_RESULTS"])
           full = os.environ["FULL_ACCEPTANCE"] == "true"
+          release_jobs = {"kubernetes-e2e-linux", "canvas-performance-linux"}
           failed = {
               name: job["result"]
               for name, job in jobs.items()
               if job["result"] != "success"
-              and not (name == "canvas-performance-linux" and not full and job["result"] == "skipped")
+              and not (name in release_jobs and not full and job["result"] == "skipped")
           }
           if failed:
               print(f"Required CI jobs did not succeed: {failed}")

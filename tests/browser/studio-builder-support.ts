@@ -1,6 +1,6 @@
 import { expect, test as base, type Page } from '@playwright/test'
 
-export type Created = { id: string; createdDraftId: string }
+export type Created = { id: string; createdVersionId: string; documentId: string }
 export type Draft = { id: string; revision: number; definition: { nodes: Array<{ id: string; name: string; type: string }>; connections: unknown[] }; definitionHash: string }
 const activeRuns = new Map<Page,{id:string;session:string;authorization:string}>()
 
@@ -18,7 +18,7 @@ export const test = base.extend<{ designRunCleanup: void }>({
           headers: { Authorization: run.authorization },
         })
         // Some security cases deliberately revoke access or delete the draft/session.
-        expect([200, 401, 403, 404]).toContain(response.status())
+        expect([200, 401, 403, 404, 409]).toContain(response.status())
       }
     }
   }, { auto: true }],
@@ -78,9 +78,11 @@ export async function create(page: Page, name: string) {
   const received = await response
   expect(received.status(), await received.text()).toBe(201)
   const created = await received.json() as Created
-  expect(created.createdDraftId).toMatch(/^[0-9a-f-]{36}$/)
+  expect(created.createdVersionId).toMatch(/^[0-9a-f-]{36}$/)
+  const editing=page.waitForResponse(response=>response.url().endsWith(`/versions/${created.createdVersionId}/edit`)&&response.request().method()==='POST')
   await expect(page).toHaveURL(new RegExp(`/workflows/${created.id}$`))
-  await page.locator(`a[href="/workflows/${created.id}/drafts/${created.createdDraftId}/editor"]`).click()
+  await page.locator(`a[href="/workflows/${created.id}/versions/${created.createdVersionId}/editor"]`).click()
+  created.documentId=((await (await editing).json()) as {document:{id:string}}).document.id
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   return created
 }
@@ -137,12 +139,12 @@ export async function completed(page: Page, requireApplied = true, timeout = 180
 }
 
 export async function saved(page: Page, token: string, created: Created) {
-  await expect(page.locator('header').getByText(/^修订号 \d+ · 已保存$/)).toBeVisible({timeout:90_000})
+  await expect(page.locator('header').getByText(/^修订号 \d+ · 已保存(?: · |$)/)).toBeVisible({timeout:90_000})
   await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled({ timeout: 60_000 })
-  return read<Draft>(page, token, `/workflows/${created.id}/drafts/${created.createdDraftId}`)
+  return read<Draft>(page, token, `/workflows/${created.id}/drafts/${created.documentId}`)
 }
 
-export const editorPath = (created: Created) => `/workflows/${created.id}/drafts/${created.createdDraftId}/editor`
+export const editorPath = (created: Created) => `/workflows/${created.id}/versions/${created.createdVersionId}/editor`
 
 export async function rename(page: Page, label: string, id = 'p8-decision', kind: 'node' | 'loop' = 'node') {
   const card = kind === 'loop' ? page.getByTestId(`studio-loop-${id}`).locator('header') : page.getByTestId(`studio-node-${id}`)
@@ -158,48 +160,46 @@ export async function rename(page: Page, label: string, id = 'p8-decision', kind
 }
 
 export async function createVersion(page: Page, created: Created) {
-  await page.goto(`/workflows/${created.id}`)
-  await page.getByRole('combobox', {name:'选择当前草稿'}).click()
-  await page.locator(`[data-option-value="${created.createdDraftId}"]`).click()
-  const pending = page.waitForResponse(response => response.url().endsWith(`/workflows/${created.id}/versions`) && response.request().method() === 'POST')
-  await page.getByRole('button', {name:'保存为版本',exact:true}).click()
-  const response = await pending
-  expect(response.status(), await response.text()).toBe(201)
-  return await response.json() as {id:string;versionNumber:number;sourceDraftId:string;sourceRevision:number;sourceRevisionId:string;contentHash:string}
+  const token=((await (await page.request.post('/api/v1/auth/refresh')).json()) as {accessToken:string}).accessToken
+  const deployment=await publishVersion(page,token,created,created.createdVersionId)
+  return read<{id:string;versionNumber:number;sourceDraftId:string;sourceRevision:number;sourceRevisionId:string;contentHash:string}>(page,token,`/workflows/${created.id}/versions/${deployment.workflowVersionId}`)
 }
 
-export async function derive(page: Page, created: Created, version: string, name: string): Promise<Created> {
+export async function newCanvas(page: Page, created: Created): Promise<Created> {
   await page.goto(`/workflows/${created.id}`)
-  await page.getByRole('button',{name:'新建草稿',exact:true}).click()
-  const dialog = page.getByRole('dialog',{name:'新建草稿'})
-  await dialog.getByLabel('草稿名称').fill(name)
-  if (version) {
-    await dialog.getByRole('combobox',{name:'基于版本'}).click()
-    await page.locator(`[data-option-value="${version}"]`).click()
-  }
-  const pending = page.waitForResponse(response => response.url().endsWith(`/workflows/${created.id}/drafts`) && response.request().method() === 'POST')
-  await dialog.getByRole('button',{name:'新建',exact:true}).click()
-  const response = await pending
-  expect(response.status(), await response.text()).toBe(201)
-  const draft = await response.json() as Draft
-  expect(draft.revision).toBe(0)
-  return {id:created.id,createdDraftId:draft.id}
+  const pending=page.waitForResponse(response=>response.url().endsWith(`/workflows/${created.id}/versions`)&&response.request().method()==='POST')
+  const editing=page.waitForResponse(response=>/\/versions\/[^/]+\/edit$/.test(response.url())&&response.request().method()==='POST')
+  await page.getByRole('button',{name:'新建画布',exact:true}).click()
+  const response=await pending
+  expect(response.status(),await response.text()).toBe(200)
+  const version=await response.json() as {id:string}
+  const context=await (await editing).json() as {document:{id:string}}
+  return {id:created.id,createdVersionId:version.id,documentId:context.document.id}
 }
 
-export async function publishVersion(page: Page, token: string, created: Created, version: string) {
+export async function publishVersion(page: Page, token: string, created: Pick<Created,'id'>, version: string) {
   await page.goto(`/workflows/${created.id}`)
-  await page.getByRole('button',{name:'发布到环境…',exact:true}).click()
+  const versions=await read<Array<{id:string;versionNumber:number}>>(page,token,`/workflows/${created.id}/versions`)
+  const row=page.getByTestId(`workflow-version-${versions.find(item=>item.id===version)!.versionNumber}`)
+  await row.getByRole('button',{name:'发布',exact:true}).click()
   const dialog=page.getByRole('dialog',{name:'发布到环境…',exact:true})
-  await dialog.getByRole('combobox',{name:'发布内容',exact:true}).click()
-  await page.locator(`[data-option-value="${version}"]`).click()
+  const submit=dialog.getByRole('button',{name:'发布到环境…',exact:true})
+  if(await submit.isDisabled()) {
+    const active=(await read<Array<{status:string;workflowVersionId:string}>>(page,token,`/workflows/${created.id}/deployments`)).find(item=>item.status==='active'&&item.workflowVersionId===version)!
+    expect(active).toBeTruthy()
+    await dialog.getByRole('button',{name:'取消',exact:true}).click()
+    return active
+  }
   const pending=page.waitForResponse(response=>response.url().endsWith(`/workflows/${created.id}/deployments`)&&response.request().method()==='POST')
-  await dialog.getByRole('button',{name:'发布到环境…',exact:true}).click()
-  expect((await pending).ok()).toBeTruthy()
-  await expect.poll(async()=> (await read<Array<{status:string;workflowVersionId:string}>>(page,token,`/workflows/${created.id}/deployments`)).find(item=>item.workflowVersionId===version)?.status,{timeout:180_000}).toBe('active')
+  await submit.click()
+  const response=await pending
+  expect(response.status(),await response.text()).toBe(200)
+  await expect(dialog).not.toBeVisible()
+  return response.json() as Promise<{workflowVersionId:string}>
 }
 
 export async function manualRun(page: Page, token: string, created: Created, mode='full') {
-  const pending = page.waitForResponse(response => response.url().endsWith(`/drafts/${created.createdDraftId}/debug-executions`) && response.request().method()==='POST')
+  const pending = page.waitForResponse(response => response.url().endsWith(`/drafts/${created.documentId}/debug-executions`) && response.request().method()==='POST')
   await page.locator('header').getByRole('button',{name:'运行',exact:true}).click()
   const dialog=page.getByRole('dialog',{name:'调试输入',exact:true})
   if (mode === 'single_node' || mode === 'from_node') {

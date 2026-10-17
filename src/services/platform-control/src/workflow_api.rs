@@ -22,9 +22,7 @@ use crate::{
     api_error::{ApiError, ApiResult},
     control_api::{Actor, ControlApiState},
     control_helpers::required_name,
-    workflow_resources::{
-        build_version_snapshots, insert_version_snapshots, replace_draft_resources,
-    },
+    workflow_resources::replace_draft_resources,
 };
 
 pub fn routes() -> Router<ControlApiState> {
@@ -39,7 +37,6 @@ pub fn routes() -> Router<ControlApiState> {
                 .patch(update_workflow)
                 .delete(delete_workflow),
         )
-        .route("/api/v1/workflows/{id}/archive", post(archive_workflow))
         .route(
             "/api/v1/workflows/{id}/drafts/{draft_id}",
             get(get_draft).put(save_draft),
@@ -63,12 +60,12 @@ pub fn routes() -> Router<ControlApiState> {
             get(list_revisions),
         )
         .route(
-            "/api/v1/workflows/{id}/versions",
-            get(list_versions).post(create_version),
-        )
-        .route(
             "/api/v1/workflows/{id}/members",
             get(list_members).post(upsert_member),
+        )
+        .route(
+            "/api/v1/workflows/{id}/member-candidates",
+            get(member_candidates),
         )
         .route(
             "/api/v1/workflows/{id}/members/{user_id}",
@@ -76,11 +73,11 @@ pub fn routes() -> Router<ControlApiState> {
         )
         .route(
             "/api/v1/workflows/{id}/deployments",
-            get(list_deployments).post(publish),
+            get(list_deployments).post(crate::workflow_publishing::publish),
         )
         .route(
             "/api/v1/workflows/{id}/deployments/{environment_id}/rollback",
-            post(rollback),
+            post(crate::workflow_publishing::rollback),
         )
         .route(
             "/api/v1/environments",
@@ -113,7 +110,6 @@ struct WorkflowResponse {
     owner_department_id: Uuid,
     service_identity_id: Uuid,
     owner_name: String,
-    draft_count: u64,
     latest_version: Option<u64>,
     version: u64,
     can_edit: bool,
@@ -138,22 +134,26 @@ struct UpdateWorkflowRequest {
     version: u64,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DraftResponse {
-    pub name: String,
+    pub version_id: Uuid,
+    pub version_number: u64,
+    pub publication_status: String,
+    pub archived: bool,
+    pub generation: u64,
     pub base_version_id: Option<Uuid>,
-    pub status: String,
-    id: Uuid,
-    workflow_id: Uuid,
-    schema_version: String,
-    revision: u64,
-    definition: Value,
-    editor_document: Value,
-    definition_hash: String,
-    editor_hash: String,
+    pub id: Uuid,
+    pub workflow_id: Uuid,
+    pub schema_version: String,
+    pub revision: u64,
+    pub definition: Value,
+    pub editor_document: Value,
+    pub definition_hash: String,
+    pub editor_hash: String,
     #[serde(with = "time::serde::rfc3339")]
-    updated_at: OffsetDateTime,
+    #[schemars(with = "String")]
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -175,34 +175,6 @@ struct RevisionResponse {
     created_by: Uuid,
     #[serde(with = "time::serde::rfc3339")]
     created_at: OffsetDateTime,
-}
-
-#[derive(Clone, Serialize, schemars::JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct WorkflowVersionResponse {
-    source_draft_id: Uuid,
-    source_revision_id: Uuid,
-    base_version_id: Option<Uuid>,
-    id: Uuid,
-    workflow_id: Uuid,
-    version_number: u64,
-    source_revision: u64,
-    schema_version: String,
-    content_hash: String,
-    definition: Value,
-    editor_document: Value,
-    node_manifests: std::collections::BTreeMap<String, agentx_node_protocol::NodeManifestVersion>,
-    created_by: Uuid,
-    #[serde(with = "time::serde::rfc3339")]
-    #[schemars(with = "String")]
-    created_at: OffsetDateTime,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct CreateVersionRequest {
-    draft_id: Uuid,
-    draft_revision: u64,
 }
 
 #[derive(Serialize)]
@@ -249,7 +221,7 @@ struct UpdateEnvironmentRequest {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct DeploymentResponse {
+pub(crate) struct DeploymentResponse {
     id: Uuid,
     workflow_id: Uuid,
     environment_id: Uuid,
@@ -261,19 +233,6 @@ struct DeploymentResponse {
     source: String,
     #[serde(with = "time::serde::rfc3339")]
     created_at: OffsetDateTime,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PublishWorkflowRequest {
-    environment_id: Uuid,
-    workflow_version_id: Uuid,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct RollbackWorkflowRequest {
-    target_workflow_version_id: Uuid,
 }
 
 async fn list_workflows(
@@ -289,13 +248,13 @@ async fn list_workflows(
     let status = query.status.unwrap_or_default();
     let administrator = actor.roles.iter().any(|role| role == "company_admin");
     let (rows, total) = if administrator {
-        let rows = sqlx::query("SELECT w.id,w.name,w.description,w.status,w.visibility,w.owner_user_id,w.owner_department_id,si.id service_identity_id,u.display_name owner_name,w.version,w.updated_at,CAST((SELECT COUNT(*) FROM workflow_drafts d WHERE d.tenant_id=w.tenant_id AND d.workflow_id=w.id AND d.status='active') AS UNSIGNED) draft_count,(SELECT MAX(version_number) FROM workflow_versions v WHERE v.tenant_id=w.tenant_id AND v.workflow_id=w.id) latest_version FROM workflows w JOIN users u ON u.tenant_id=w.tenant_id AND u.id=w.owner_user_id JOIN workflow_service_identities si ON si.tenant_id=w.tenant_id AND si.workflow_id=w.id WHERE w.tenant_id=? AND (?='' OR w.status=?) AND (?='%%' OR w.name LIKE ?) ORDER BY w.updated_at DESC,w.id DESC LIMIT ? OFFSET ?")
+        let rows = sqlx::query("SELECT w.id,w.name,w.description,w.status,w.visibility,w.owner_user_id,w.owner_department_id,si.id service_identity_id,u.display_name owner_name,w.version,w.updated_at,(SELECT MAX(version_number) FROM workflow_versions v WHERE v.tenant_id=w.tenant_id AND v.workflow_id=w.id) latest_version FROM workflows w JOIN users u ON u.tenant_id=w.tenant_id AND u.id=w.owner_user_id JOIN workflow_service_identities si ON si.tenant_id=w.tenant_id AND si.workflow_id=w.id WHERE w.tenant_id=? AND (?='' OR w.status=?) AND (?='%%' OR w.name LIKE ?) ORDER BY w.updated_at DESC,w.id DESC LIMIT ? OFFSET ?")
             .bind(actor.tenant_id).bind(&status).bind(&status).bind(&search).bind(&search).bind(page_size).bind(offset).fetch_all(&state.pool).await?;
         let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workflows w WHERE w.tenant_id=? AND (?='' OR w.status=?) AND (?='%%' OR w.name LIKE ?)")
             .bind(actor.tenant_id).bind(&status).bind(&status).bind(&search).bind(&search).fetch_one(&state.pool).await?;
         (rows, total)
     } else {
-        let rows = sqlx::query("SELECT w.id,w.name,w.description,w.status,w.visibility,w.owner_user_id,w.owner_department_id,si.id service_identity_id,u.display_name owner_name,w.version,w.updated_at,CAST((SELECT COUNT(*) FROM workflow_drafts d WHERE d.tenant_id=w.tenant_id AND d.workflow_id=w.id AND d.status='active') AS UNSIGNED) draft_count,(SELECT MAX(version_number) FROM workflow_versions v WHERE v.tenant_id=w.tenant_id AND v.workflow_id=w.id) latest_version FROM workflows w JOIN users u ON u.tenant_id=w.tenant_id AND u.id=w.owner_user_id JOIN workflow_service_identities si ON si.tenant_id=w.tenant_id AND si.workflow_id=w.id WHERE w.tenant_id=? AND (w.owner_user_id=? OR w.visibility='company' OR EXISTS(SELECT 1 FROM workflow_members wm WHERE wm.tenant_id=w.tenant_id AND wm.workflow_id=w.id AND wm.user_id=?) OR (w.visibility='department' AND EXISTS(SELECT 1 FROM department_closure dc WHERE dc.tenant_id=w.tenant_id AND dc.ancestor_id=w.owner_department_id AND dc.descendant_id=?))) AND (?='' OR w.status=?) AND (?='%%' OR w.name LIKE ?) ORDER BY w.updated_at DESC,w.id DESC LIMIT ? OFFSET ?")
+        let rows = sqlx::query("SELECT w.id,w.name,w.description,w.status,w.visibility,w.owner_user_id,w.owner_department_id,si.id service_identity_id,u.display_name owner_name,w.version,w.updated_at,(SELECT MAX(version_number) FROM workflow_versions v WHERE v.tenant_id=w.tenant_id AND v.workflow_id=w.id) latest_version FROM workflows w JOIN users u ON u.tenant_id=w.tenant_id AND u.id=w.owner_user_id JOIN workflow_service_identities si ON si.tenant_id=w.tenant_id AND si.workflow_id=w.id WHERE w.tenant_id=? AND (w.owner_user_id=? OR w.visibility='company' OR EXISTS(SELECT 1 FROM workflow_members wm WHERE wm.tenant_id=w.tenant_id AND wm.workflow_id=w.id AND wm.user_id=?) OR (w.visibility='department' AND EXISTS(SELECT 1 FROM department_closure dc WHERE dc.tenant_id=w.tenant_id AND dc.ancestor_id=w.owner_department_id AND dc.descendant_id=?))) AND (?='' OR w.status=?) AND (?='%%' OR w.name LIKE ?) ORDER BY w.updated_at DESC,w.id DESC LIMIT ? OFFSET ?")
             .bind(actor.tenant_id).bind(actor.user_id).bind(actor.user_id).bind(actor.department_id).bind(&status).bind(&status).bind(&search).bind(&search).bind(page_size).bind(offset).fetch_all(&state.pool).await?;
         let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workflows w WHERE w.tenant_id=? AND (w.owner_user_id=? OR w.visibility='company' OR EXISTS(SELECT 1 FROM workflow_members wm WHERE wm.tenant_id=w.tenant_id AND wm.workflow_id=w.id AND wm.user_id=?) OR (w.visibility='department' AND EXISTS(SELECT 1 FROM department_closure dc WHERE dc.tenant_id=w.tenant_id AND dc.ancestor_id=w.owner_department_id AND dc.descendant_id=?))) AND (?='' OR w.status=?) AND (?='%%' OR w.name LIKE ?)")
             .bind(actor.tenant_id).bind(actor.user_id).bind(actor.user_id).bind(actor.department_id).bind(&status).bind(&status).bind(&search).bind(&search).fetch_one(&state.pool).await?;
@@ -322,6 +281,7 @@ async fn list_workflows(
 async fn create_workflow(
     State(state): State<ControlApiState>,
     actor: Actor,
+    headers: axum::http::HeaderMap,
     Json(input): Json<CreateWorkflowRequest>,
 ) -> ApiResult<(StatusCode, Json<Value>)> {
     actor.require("workflow:create")?;
@@ -335,7 +295,24 @@ async fn create_workflow(
     let editor = serde_json::to_value(EditorDocument::default()).map_err(ApiError::internal)?;
     let definition_hash = canonical_content_hash(&definition).map_err(ApiError::internal)?;
     let editor_hash = canonical_content_hash(&editor).map_err(ApiError::internal)?;
+    let request =
+        json!({"name":input.name,"description":input.description,"visibility":input.visibility});
+    let keyed = headers.contains_key("Idempotency-Key");
     let mut tx = state.pool.begin().await?;
+    if keyed {
+        sqlx::query("SELECT id FROM users WHERE tenant_id=? AND id=? FOR UPDATE")
+            .bind(actor.tenant_id)
+            .bind(actor.user_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        if let Some(result) =
+            crate::workflow_versions::replay(&mut tx, &actor, "create-workflow", &headers, &request)
+                .await?
+        {
+            tx.commit().await?;
+            return Ok((StatusCode::CREATED, Json(result)));
+        }
+    }
     sqlx::query("INSERT INTO workflows(id,tenant_id,name,description,visibility,owner_user_id,owner_department_id) VALUES(?,?,?,?,?,?,?)")
         .bind(workflow_id).bind(actor.tenant_id).bind(&name).bind(&input.description).bind(&input.visibility).bind(actor.user_id).bind(actor.department_id).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO workflow_service_identities(id,tenant_id,workflow_id) VALUES(?,?,?)")
@@ -370,18 +347,30 @@ async fn create_workflow(
         json!({"name":name}),
     )
     .await?;
+    let version_id =
+        crate::workflow_versions::insert_unpublished(&mut tx, &actor, workflow_id, draft_id)
+            .await?;
+    let row=sqlx::query("SELECT w.id,w.name,w.description,w.status,w.visibility,w.owner_user_id,w.owner_department_id,si.id service_identity_id,u.display_name owner_name,w.version,w.updated_at,(SELECT MAX(version_number) FROM workflow_versions v WHERE v.tenant_id=w.tenant_id AND v.workflow_id=w.id) latest_version FROM workflows w JOIN users u ON u.tenant_id=w.tenant_id AND u.id=w.owner_user_id JOIN workflow_service_identities si ON si.tenant_id=w.tenant_id AND si.workflow_id=w.id WHERE w.tenant_id=? AND w.id=?").bind(actor.tenant_id).bind(workflow_id).fetch_optional(&mut *tx).await?.ok_or_else(||ApiError::not_found("Workflow"))?;
+    let mut result = serde_json::to_value(workflow_from_row(
+        row,
+        actor.permissions.iter().any(|p| p == "workflow:edit"),
+    )?)
+    .map_err(ApiError::internal)?;
+    result["createdVersionId"] = json!(version_id);
+    if keyed {
+        crate::workflow_versions::receipt(
+            &mut tx,
+            &actor,
+            "create-workflow",
+            &headers,
+            &request,
+            &result,
+        )
+        .await?;
+    }
     tx.commit().await?;
     crate::runtime_admission::publish_barrier(&state, admission_commands).await?;
-    Ok((
-        StatusCode::CREATED,
-        Json({
-            let mut result =
-                serde_json::to_value(load_workflow(&state, &actor, workflow_id).await?)
-                    .map_err(ApiError::internal)?;
-            result["createdDraftId"] = json!(draft_id);
-            result
-        }),
-    ))
+    Ok((StatusCode::CREATED, Json(result)))
 }
 
 async fn get_workflow(
@@ -415,24 +404,6 @@ async fn update_workflow(
     Ok(Json(load_workflow(&state, &actor, id).await?))
 }
 
-async fn archive_workflow(
-    State(state): State<ControlApiState>,
-    actor: Actor,
-    Path(id): Path<Uuid>,
-) -> ApiResult<StatusCode> {
-    actor.require("workflow:archive")?;
-    require_workflow_access(&state, &actor, id, true).await?;
-    let changed = sqlx::query("UPDATE workflows SET status='archived',archived_at=UTC_TIMESTAMP(6),version=version+1 WHERE tenant_id=? AND id=? AND status='active'")
-        .bind(actor.tenant_id).bind(id).execute(&state.pool).await?;
-    if changed.rows_affected() != 1 {
-        return Err(ApiError::conflict(
-            "WORKFLOW_NOT_ACTIVE",
-            "Workflow is already archived",
-        ));
-    }
-    Ok(StatusCode::NO_CONTENT)
-}
-
 async fn delete_workflow(
     State(state): State<ControlApiState>,
     actor: Actor,
@@ -447,15 +418,16 @@ async fn delete_workflow(
         id,
     )
     .await?;
-    let references: i64 = sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM applications WHERE tenant_id=? AND workflow_id=?)+(SELECT COUNT(*) FROM workflow_deployments WHERE tenant_id=? AND workflow_id=?)+(SELECT COUNT(*) FROM workflow_versions WHERE tenant_id=? AND workflow_id=?)+(SELECT COUNT(*) FROM studio_builder_runs r JOIN studio_builder_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id WHERE s.tenant_id=? AND s.workflow_id=? AND r.status IN ('queued','running','waiting','outcome_unknown'))")
-        .bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
+    let mut tx = state.pool.begin().await?;
+    crate::workflow_versions::lock_workflow(&mut tx, &actor, id).await?;
+    let references: i64 = sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM applications WHERE tenant_id=? AND workflow_id=?)+(SELECT COUNT(*) FROM workflow_deployments WHERE tenant_id=? AND workflow_id=?)+(SELECT COUNT(*) FROM workflow_versions WHERE tenant_id=? AND workflow_id=? AND publication_status='published')+(SELECT COUNT(*) FROM studio_builder_runs r JOIN studio_builder_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id WHERE s.tenant_id=? AND s.workflow_id=? AND r.status IN ('queued','running','waiting','outcome_unknown'))")
+        .bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&mut *tx).await?;
     if references != 0 {
         return Err(ApiError::conflict(
             "WORKFLOW_REFERENCED",
             "Workflow is referenced by an application or deployment",
         ));
     }
-    let mut tx = state.pool.begin().await?;
     for statement in [
         "DELETE e FROM studio_builder_entries e JOIN studio_builder_sessions s ON s.tenant_id=e.tenant_id AND s.id=e.session_id WHERE s.tenant_id=? AND s.workflow_id=?",
         "DELETE e FROM studio_builder_effects e JOIN studio_builder_sessions s ON s.tenant_id=e.tenant_id AND s.id=e.session_id WHERE s.tenant_id=? AND s.workflow_id=?",
@@ -463,6 +435,7 @@ async fn delete_workflow(
         "DELETE FROM studio_builder_sessions WHERE tenant_id=? AND workflow_id=?",
         "DELETE FROM workflow_debug_overlays WHERE tenant_id=? AND workflow_id=?",
         "DELETE FROM workflow_draft_resources WHERE tenant_id=? AND workflow_id=?",
+        "DELETE FROM workflow_versions WHERE tenant_id=? AND workflow_id=? AND publication_status='unpublished'",
         "DELETE FROM workflow_draft_revisions WHERE tenant_id=? AND workflow_id=?",
         "DELETE FROM workflow_members WHERE tenant_id=? AND workflow_id=?",
         "DELETE FROM workflow_service_identities WHERE tenant_id=? AND workflow_id=?",
@@ -560,11 +533,12 @@ async fn save_draft(
     )
     .await?;
     let mut tx = state.pool.begin().await?;
+    crate::workflow_versions::lock_workflow(&mut tx, &actor, id).await?;
     crate::canvas_plugin_api::lock_resolved_plugin_closure(&mut tx, actor.tenant_id, &resolved)
         .await?;
     crate::workflow_revision_resources::lock_for_save(&mut tx, actor.tenant_id, &frozen).await?;
     let row = sqlx::query(
-        "SELECT id,name,base_version_id,status,revision FROM workflow_drafts WHERE tenant_id=? AND workflow_id=? AND id=? AND status='active' FOR UPDATE",
+        "SELECT d.*,v.id version_id,v.version_number,v.publication_status,v.archived FROM workflow_drafts d JOIN workflow_versions v ON v.tenant_id=d.tenant_id AND v.working_draft_id=d.id AND v.workflow_id=d.workflow_id WHERE d.tenant_id=? AND d.workflow_id=? AND d.id=? AND v.archived=FALSE FOR UPDATE",
     )
     .bind(actor.tenant_id)
     .bind(id)
@@ -604,9 +578,12 @@ async fn save_draft(
             .fetch_one(&mut *tx)
             .await?;
     let saved = DraftResponse {
-        name: row.try_get("name")?,
+        version_id: row.try_get("version_id")?,
+        version_number: row.try_get("version_number")?,
+        publication_status: row.try_get("publication_status")?,
+        archived: row.try_get("archived")?,
+        generation: row.try_get("generation")?,
         base_version_id: row.try_get("base_version_id")?,
-        status: row.try_get("status")?,
         id: draft_id,
         workflow_id: id,
         schema_version: "8.0".into(),
@@ -617,6 +594,7 @@ async fn save_draft(
         editor_hash,
         updated_at,
     };
+    crate::workflow_versions::sync_unpublished(&mut tx, &actor, id, draft_id).await?;
     tx.commit().await?;
     Ok(Json(saved))
 }
@@ -647,152 +625,6 @@ async fn list_revisions(
     ))
 }
 
-async fn create_version(
-    State(state): State<ControlApiState>,
-    actor: Actor,
-    Path(id): Path<Uuid>,
-    Json(input): Json<CreateVersionRequest>,
-) -> ApiResult<(StatusCode, Json<WorkflowVersionResponse>)> {
-    actor.require("workflow:publish")?;
-    require_workflow_access(&state, &actor, id, true).await?;
-    let draft = sqlx::query("SELECT r.id revision_id,r.draft_id,r.revision,r.schema_version,r.definition_json,r.editor_json,r.content_hash,r.editor_hash,r.resource_snapshot_json,d.base_version_id FROM workflow_draft_revisions r JOIN workflow_drafts d ON d.tenant_id=r.tenant_id AND d.id=r.draft_id WHERE r.tenant_id=? AND r.workflow_id=? AND r.draft_id=? AND r.revision=? AND d.status='active'")
-        .bind(actor.tenant_id).bind(id).bind(input.draft_id).bind(input.draft_revision).fetch_optional(&state.pool).await?.ok_or_else(|| ApiError::not_found("Workflow draft"))?;
-    let revision: u64 = draft.try_get("revision")?;
-    if revision != input.draft_revision {
-        return Err(ApiError::conflict(
-            "DRAFT_REVISION_CONFLICT",
-            format!("Draft is now at revision {revision}"),
-        ));
-    }
-    let definition_value: Value = draft.try_get("definition_json")?;
-    let definition: WorkflowDefinition =
-        serde_json::from_value(definition_value.clone()).map_err(|error| {
-            ApiError::unprocessable("INVALID_WORKFLOW_DEFINITION", error.to_string())
-        })?;
-    let dependencies =
-        load_composite_definitions_for_actor(&state, &actor, id, &definition).await?;
-    crate::canvas_plugin_api::require_definition_plugin_closure_enabled(
-        &state,
-        actor.tenant_id,
-        &definition,
-        &dependencies,
-    )
-    .await?;
-    let registry = crate::canvas_plugin_api::registry_for_tenant(
-        &state,
-        actor.tenant_id,
-        &dependencies,
-        false,
-    )
-    .await?;
-    let resolved = crate::canvas_plugin_api::resolve_workflow_plugin_closure(
-        &state,
-        actor.tenant_id,
-        &definition,
-        &dependencies,
-        &registry,
-    )
-    .await?;
-    if !resolved.incomplete.is_empty() || !resolved.invalid.is_empty() {
-        let issues = resolved
-            .incomplete
-            .into_iter()
-            .chain(resolved.invalid)
-            .map(|issue| format!("{}: {}", issue.path, issue.message))
-            .collect::<Vec<_>>()
-            .join("; ");
-        return Err(ApiError::unprocessable(
-            "PLUGIN_DEFINITION_NOT_READY",
-            issues,
-        ));
-    }
-    WorkflowCompiler::new(&registry)
-        .with_resolved_manifests(&resolved.manifests)
-        .compile(&definition, &CompileContext::default())
-        .map_err(|error| ApiError::unprocessable("WORKFLOW_COMPILE_FAILED", error.to_string()))?;
-    let frozen = serde_json::from_value::<Vec<agentx_domain::ResourceVersionSnapshot>>(
-        draft.try_get("resource_snapshot_json")?,
-    )
-    .map_err(ApiError::internal)?;
-    let snapshots =
-        build_version_snapshots(&state, actor.tenant_id, id, &definition, &frozen).await?;
-    let expected_hash: String = draft.try_get("content_hash")?;
-    let mut tx = state.pool.begin().await?;
-    crate::canvas_plugin_api::lock_resolved_plugin_closure(&mut tx, actor.tenant_id, &resolved)
-        .await?;
-    sqlx::query("SELECT id FROM workflows WHERE tenant_id=? AND id=? FOR UPDATE")
-        .bind(actor.tenant_id)
-        .bind(id)
-        .fetch_one(&mut *tx)
-        .await?;
-    if let Some(existing_id) = sqlx::query_scalar::<_, Uuid>(
-        "SELECT id FROM workflow_versions WHERE tenant_id=? AND workflow_id=? AND source_draft_id=? AND source_revision=? AND content_hash=?",
-    )
-    .bind(actor.tenant_id)
-    .bind(id)
-    .bind(input.draft_id)
-    .bind(revision)
-    .bind(&expected_hash)
-    .fetch_optional(&mut *tx)
-    .await?
-    {
-        let row = version_query(existing_id, actor.tenant_id, &mut tx).await?;
-        tx.commit().await?;
-        return Ok((StatusCode::OK, Json(version_from_row(row)?)));
-    }
-    let version_number: u64 = sqlx::query_scalar("SELECT CAST(COALESCE(MAX(version_number),0)+1 AS UNSIGNED) FROM workflow_versions WHERE tenant_id=? AND workflow_id=?")
-        .bind(actor.tenant_id).bind(id).fetch_one(&mut *tx).await?;
-    let version_id = Uuid::now_v7();
-    let frozen_manifests = definition
-        .nodes
-        .iter()
-        .filter_map(|node| {
-            resolved
-                .manifests
-                .get(&node.id)
-                .or_else(|| {
-                    registry.resolve_definition_manifest(
-                        &node.node_type,
-                        node.type_version,
-                        &node.parameters,
-                    )
-                })
-                .map(|manifest| (node.id.clone(), manifest.clone()))
-        })
-        .collect::<std::collections::BTreeMap<_, _>>();
-    sqlx::query("INSERT INTO workflow_versions(id,tenant_id,workflow_id,version_number,source_draft_id,source_revision_id,base_version_id,source_revision,schema_version,definition_json,node_manifests_json,editor_json,content_hash,editor_hash,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .bind(version_id).bind(actor.tenant_id).bind(id).bind(version_number).bind(input.draft_id).bind(draft.try_get::<Uuid,_>("revision_id")?).bind(draft.try_get::<Option<Uuid>,_>("base_version_id")?).bind(revision).bind(draft.try_get::<String,_>("schema_version")?).bind(&definition_value).bind(serde_json::to_value(frozen_manifests).map_err(ApiError::internal)?).bind(draft.try_get::<Value,_>("editor_json")?).bind(&expected_hash).bind(draft.try_get::<String,_>("editor_hash")?).bind(actor.user_id).execute(&mut *tx).await?;
-    insert_version_snapshots(&mut tx, actor.tenant_id, version_id, &snapshots).await?;
-    audit(
-        &mut tx,
-        &actor,
-        "workflow.version_created",
-        "workflow",
-        id,
-        json!({"workflowVersionId":version_id,"versionNumber":version_number}),
-    )
-    .await?;
-    let row = version_query(version_id, actor.tenant_id, &mut tx).await?;
-    tx.commit().await?;
-    Ok((StatusCode::CREATED, Json(version_from_row(row)?)))
-}
-
-async fn list_versions(
-    State(state): State<ControlApiState>,
-    actor: Actor,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Json<Vec<WorkflowVersionResponse>>> {
-    actor.require("workflow:view")?;
-    require_workflow_access(&state, &actor, id, false).await?;
-    let rows = sqlx::query("SELECT id,workflow_id,version_number,source_draft_id,source_revision_id,base_version_id,source_revision,schema_version,content_hash,definition_json,node_manifests_json,editor_json,created_by,created_at FROM workflow_versions WHERE tenant_id=? AND workflow_id=? ORDER BY version_number DESC")
-        .bind(actor.tenant_id).bind(id).fetch_all(&state.pool).await?;
-    Ok(Json(
-        rows.into_iter()
-            .map(version_from_row)
-            .collect::<Result<_, _>>()?,
-    ))
-}
-
 async fn list_members(
     State(state): State<ControlApiState>,
     actor: Actor,
@@ -814,6 +646,25 @@ async fn list_members(
             })
             .collect::<Result<_, sqlx::Error>>()?,
     ))
+}
+
+#[derive(Deserialize)]
+struct MemberSearch {
+    search: Option<String>,
+}
+
+async fn member_candidates(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Path(id): Path<Uuid>,
+    Query(query): Query<MemberSearch>,
+) -> ApiResult<Json<Value>> {
+    actor.require("workflow:manage_member")?;
+    require_workflow_access(&state, &actor, id, true).await?;
+    let search = format!("%{}%", query.search.unwrap_or_default().trim());
+    let rows=sqlx::query("SELECT u.id,u.username,u.display_name FROM users u WHERE u.tenant_id=? AND u.status='active' AND (u.username LIKE ? OR u.display_name LIKE ?) AND NOT EXISTS(SELECT 1 FROM workflow_members m WHERE m.tenant_id=u.tenant_id AND m.workflow_id=? AND m.user_id=u.id) ORDER BY u.display_name,u.id LIMIT 100").bind(actor.tenant_id).bind(&search).bind(&search).bind(id).fetch_all(&state.pool).await?;
+    let items=rows.into_iter().map(|row|->ApiResult<Value>{Ok(json!({"id":row.try_get::<Uuid,_>("id")?,"username":row.try_get::<String,_>("username")?,"displayName":row.try_get::<String,_>("display_name")?}))}).collect::<ApiResult<Vec<_>>>()?;
+    Ok(Json(json!(items)))
 }
 
 async fn upsert_member(
@@ -1014,99 +865,6 @@ async fn list_deployments(
             .map(deployment_from_row)
             .collect::<Result<_, _>>()?,
     ))
-}
-
-async fn publish(
-    State(state): State<ControlApiState>,
-    actor: Actor,
-    Path(id): Path<Uuid>,
-    Json(input): Json<PublishWorkflowRequest>,
-) -> ApiResult<(StatusCode, Json<DeploymentResponse>)> {
-    deploy(
-        &state,
-        &actor,
-        id,
-        input.environment_id,
-        input.workflow_version_id,
-        "publish",
-    )
-    .await
-}
-
-async fn rollback(
-    State(state): State<ControlApiState>,
-    actor: Actor,
-    Path((id, environment_id)): Path<(Uuid, Uuid)>,
-    Json(input): Json<RollbackWorkflowRequest>,
-) -> ApiResult<(StatusCode, Json<DeploymentResponse>)> {
-    deploy(
-        &state,
-        &actor,
-        id,
-        environment_id,
-        input.target_workflow_version_id,
-        "rollback",
-    )
-    .await
-}
-
-async fn deploy(
-    state: &ControlApiState,
-    actor: &Actor,
-    workflow_id: Uuid,
-    environment_id: Uuid,
-    version_id: Uuid,
-    source: &str,
-) -> ApiResult<(StatusCode, Json<DeploymentResponse>)> {
-    actor.require("workflow:publish")?;
-    require_workflow_access(state, actor, workflow_id, true).await?;
-    crate::canvas_plugin_api::require_workflow_version_plugins_enabled(
-        state,
-        actor.tenant_id,
-        version_id,
-    )
-    .await?;
-    let mut tx = state.pool.begin().await?;
-    let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_versions v JOIN workflows w ON w.tenant_id=v.tenant_id AND w.id=v.workflow_id AND w.status='active' JOIN workflow_environments e ON e.tenant_id=v.tenant_id AND e.id=? AND e.status='active' WHERE v.tenant_id=? AND v.id=? AND v.workflow_id=?)").bind(environment_id).bind(actor.tenant_id).bind(version_id).bind(workflow_id).fetch_one(&mut *tx).await?;
-    if !valid {
-        return Err(ApiError::bad_request(
-            "INVALID_DEPLOYMENT_TARGET",
-            "Environment or workflow version is invalid",
-        ));
-    }
-    let head:Option<Uuid>=sqlx::query_scalar("SELECT active_deployment_id FROM workflow_deployment_heads WHERE tenant_id=? AND workflow_id=? AND environment_id=? FOR UPDATE").bind(actor.tenant_id).bind(workflow_id).bind(environment_id).fetch_optional(&mut *tx).await?;
-    if let Some(previous) = head {
-        sqlx::query("UPDATE workflow_deployments SET status=? WHERE id=?")
-            .bind(if source == "rollback" {
-                "rolled_back"
-            } else {
-                "superseded"
-            })
-            .bind(previous)
-            .execute(&mut *tx)
-            .await?;
-    }
-    let sequence:u64=sqlx::query_scalar("SELECT CAST(COALESCE(MAX(sequence_number),0)+1 AS UNSIGNED) FROM workflow_deployments WHERE tenant_id=? AND workflow_id=? AND environment_id=?").bind(actor.tenant_id).bind(workflow_id).bind(environment_id).fetch_one(&mut *tx).await?;
-    let id = Uuid::now_v7();
-    sqlx::query("INSERT INTO workflow_deployments(id,tenant_id,workflow_id,environment_id,workflow_version_id,sequence_number,source,created_by) VALUES(?,?,?,?,?,?,?,?)").bind(id).bind(actor.tenant_id).bind(workflow_id).bind(environment_id).bind(version_id).bind(sequence).bind(source).bind(actor.user_id).execute(&mut *tx).await?;
-    sqlx::query("INSERT INTO workflow_deployment_heads(tenant_id,workflow_id,environment_id,active_deployment_id) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE active_deployment_id=VALUES(active_deployment_id),version=version+1").bind(actor.tenant_id).bind(workflow_id).bind(environment_id).bind(id).execute(&mut *tx).await?;
-    let row=sqlx::query("SELECT d.id,d.workflow_id,d.environment_id,e.name environment_name,d.workflow_version_id,v.version_number,d.sequence_number,d.status,d.source,d.created_at FROM workflow_deployments d JOIN workflow_environments e ON e.tenant_id=d.tenant_id AND e.id=d.environment_id JOIN workflow_versions v ON v.tenant_id=d.tenant_id AND v.id=d.workflow_version_id WHERE d.tenant_id=? AND d.id=?").bind(actor.tenant_id).bind(id).fetch_one(&mut *tx).await?;
-    audit(
-        &mut tx,
-        actor,
-        if source == "rollback" {
-            "workflow.rolled_back"
-        } else {
-            "workflow.published"
-        },
-        "workflow",
-        workflow_id,
-        json!({"deploymentId":id,"workflowVersionId":version_id,"environmentId":environment_id}),
-    )
-    .await?;
-    let response = deployment_from_row(row)?;
-    tx.commit().await?;
-    Ok((StatusCode::CREATED, Json(response)))
 }
 
 #[derive(Deserialize)]
@@ -1482,7 +1240,7 @@ async fn load_workflow(
     actor: &Actor,
     id: Uuid,
 ) -> ApiResult<WorkflowResponse> {
-    let row=sqlx::query("SELECT w.id,w.name,w.description,w.status,w.visibility,w.owner_user_id,w.owner_department_id,si.id service_identity_id,u.display_name owner_name,w.version,w.updated_at,CAST((SELECT COUNT(*) FROM workflow_drafts d WHERE d.tenant_id=w.tenant_id AND d.workflow_id=w.id AND d.status='active') AS UNSIGNED) draft_count,(SELECT MAX(version_number) FROM workflow_versions v WHERE v.tenant_id=w.tenant_id AND v.workflow_id=w.id) latest_version FROM workflows w JOIN users u ON u.tenant_id=w.tenant_id AND u.id=w.owner_user_id JOIN workflow_service_identities si ON si.tenant_id=w.tenant_id AND si.workflow_id=w.id WHERE w.tenant_id=? AND w.id=?").bind(actor.tenant_id).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Workflow"))?;
+    let row=sqlx::query("SELECT w.id,w.name,w.description,w.status,w.visibility,w.owner_user_id,w.owner_department_id,si.id service_identity_id,u.display_name owner_name,w.version,w.updated_at,(SELECT MAX(version_number) FROM workflow_versions v WHERE v.tenant_id=w.tenant_id AND v.workflow_id=w.id) latest_version FROM workflows w JOIN users u ON u.tenant_id=w.tenant_id AND u.id=w.owner_user_id JOIN workflow_service_identities si ON si.tenant_id=w.tenant_id AND si.workflow_id=w.id WHERE w.tenant_id=? AND w.id=?").bind(actor.tenant_id).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Workflow"))?;
     let can_edit = actor
         .permissions
         .iter()
@@ -1499,19 +1257,22 @@ pub(crate) async fn load_draft(
     id: Uuid,
     draft_id: Uuid,
 ) -> ApiResult<DraftResponse> {
-    let row=sqlx::query("SELECT id,name,base_version_id,status,workflow_id,schema_version,revision,definition_json,editor_json,content_hash,editor_hash,updated_at FROM workflow_drafts WHERE tenant_id=? AND workflow_id=? AND id=?").bind(tenant).bind(id).bind(draft_id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Workflow draft"))?;
+    let row=sqlx::query("SELECT d.*,v.id version_id,v.version_number,v.publication_status,v.archived FROM workflow_drafts d JOIN workflow_versions v ON v.tenant_id=d.tenant_id AND v.workflow_id=d.workflow_id AND v.working_draft_id=d.id WHERE d.tenant_id=? AND d.workflow_id=? AND d.id=?").bind(tenant).bind(id).bind(draft_id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Workflow document"))?;
     Ok(DraftResponse {
-        name: row.try_get("name")?,
+        version_id: row.try_get("version_id")?,
+        version_number: row.try_get("version_number")?,
+        publication_status: row.try_get("publication_status")?,
+        archived: row.try_get("archived")?,
+        generation: row.try_get("generation")?,
         base_version_id: row.try_get("base_version_id")?,
-        status: row.try_get("status")?,
         id: row.try_get("id")?,
         workflow_id: row.try_get("workflow_id")?,
         schema_version: row.try_get("schema_version")?,
         revision: row.try_get("revision")?,
         definition: row.try_get("definition_json")?,
-        editor_document: row.try_get::<Value, _>("editor_json")?,
+        editor_document: row.try_get("editor_json")?,
         definition_hash: row.try_get("content_hash")?,
-        editor_hash: row.try_get::<String, _>("editor_hash")?,
+        editor_hash: row.try_get("editor_hash")?,
         updated_at: row.try_get("updated_at")?,
     })
 }
@@ -1590,32 +1351,10 @@ fn workflow_from_row(
         owner_department_id: row.try_get("owner_department_id")?,
         service_identity_id: row.try_get("service_identity_id")?,
         owner_name: row.try_get("owner_name")?,
-        draft_count: row.try_get("draft_count")?,
         latest_version: row.try_get("latest_version")?,
         version: row.try_get("version")?,
         can_edit,
         updated_at: row.try_get("updated_at")?,
-    })
-}
-pub(crate) fn version_from_row(
-    row: sqlx::mysql::MySqlRow,
-) -> Result<WorkflowVersionResponse, sqlx::Error> {
-    Ok(WorkflowVersionResponse {
-        source_draft_id: row.try_get("source_draft_id")?,
-        source_revision_id: row.try_get("source_revision_id")?,
-        base_version_id: row.try_get("base_version_id")?,
-        id: row.try_get("id")?,
-        workflow_id: row.try_get("workflow_id")?,
-        version_number: row.try_get("version_number")?,
-        source_revision: row.try_get("source_revision")?,
-        schema_version: row.try_get("schema_version")?,
-        content_hash: row.try_get("content_hash")?,
-        definition: row.try_get("definition_json")?,
-        editor_document: row.try_get::<Value, _>("editor_json")?,
-        node_manifests: serde_json::from_value(row.try_get("node_manifests_json")?)
-            .map_err(|error| sqlx::Error::Decode(Box::new(error)))?,
-        created_by: row.try_get("created_by")?,
-        created_at: row.try_get("created_at")?,
     })
 }
 fn environment_from_row(row: sqlx::mysql::MySqlRow) -> Result<EnvironmentResponse, sqlx::Error> {
@@ -1628,7 +1367,9 @@ fn environment_from_row(row: sqlx::mysql::MySqlRow) -> Result<EnvironmentRespons
         version: row.try_get("version")?,
     })
 }
-fn deployment_from_row(row: sqlx::mysql::MySqlRow) -> Result<DeploymentResponse, sqlx::Error> {
+pub(crate) fn deployment_from_row(
+    row: sqlx::mysql::MySqlRow,
+) -> Result<DeploymentResponse, sqlx::Error> {
     Ok(DeploymentResponse {
         id: row.try_get("id")?,
         workflow_id: row.try_get("workflow_id")?,
@@ -1655,13 +1396,6 @@ fn overlay_from_row(row: sqlx::mysql::MySqlRow) -> Result<DebugOverlayResponse, 
         updated_by: row.try_get("updated_by")?,
         updated_at: row.try_get("updated_at")?,
     })
-}
-async fn version_query(
-    id: Uuid,
-    tenant: Uuid,
-    tx: &mut Transaction<'_, MySql>,
-) -> ApiResult<sqlx::mysql::MySqlRow> {
-    Ok(sqlx::query("SELECT id,workflow_id,version_number,source_draft_id,source_revision_id,base_version_id,source_revision,schema_version,content_hash,definition_json,node_manifests_json,editor_json,created_by,created_at FROM workflow_versions WHERE tenant_id=? AND id=?").bind(tenant).bind(id).fetch_one(&mut **tx).await?)
 }
 fn validate_visibility(value: &str) -> ApiResult<()> {
     if matches!(value, "private" | "department" | "company") {
@@ -1694,7 +1428,7 @@ pub(crate) async fn load_composite_definitions_for_actor(
 ) -> ApiResult<BTreeMap<Uuid, WorkflowDefinition>> {
     for version in composite_dependency_ids(definition)? {
         let workflow: Uuid = sqlx::query_scalar(
-            "SELECT workflow_id FROM workflow_versions WHERE tenant_id=? AND id=?",
+            "SELECT workflow_id FROM workflow_versions WHERE tenant_id=? AND id=? AND publication_status='published'",
         )
         .bind(actor.tenant_id)
         .bind(version)
@@ -1719,7 +1453,7 @@ pub(crate) async fn load_composite_definitions(
             continue;
         }
         let row = sqlx::query(
-            "SELECT workflow_id,definition_json FROM workflow_versions WHERE tenant_id=? AND id=?",
+            "SELECT workflow_id,definition_json FROM workflow_versions WHERE tenant_id=? AND id=? AND publication_status='published'",
         )
         .bind(tenant_id)
         .bind(version_id)

@@ -182,13 +182,15 @@ def test_real_lightrag_unavailable_restart_and_invalid_auth_are_observable(
     )
 
 
-def memory_application(state, live_providers, suffix, namespace_id):
+def memory_application(state, live_providers, suffix, memory_connection_id):
     model = new_model(state, suffix)
     workflow = model_workflow(state, model, suffix)
-    authorize(state["control"], workflow["workflowId"], reference("memory", namespace_id, operation="read"))
+    authorize(state["control"], workflow["workflowId"], reference("memory", memory_connection_id, operation="use"))
     definition = agent_definition(state["control"], workflow["workflowId"], model)
     node = next(n for n in definition["nodes"] if n["type"] == "agent")
-    node["resourceReferences"].append(reference("memory", namespace_id, operation="read", role="long_term_memory"))
+    node["resourceReferences"].append(
+        reference("memory", memory_connection_id, operation="use", role="long_term_memory")
+    )
     version = save_version(state["control"], workflow["workflowId"], definition)
     return publish_chat(state, {**workflow, "versionId": version["id"]}, suffix)
 
@@ -255,17 +257,7 @@ def test_real_mem0_outage_auth_failure_and_same_application_recovery(
             "configuration": {},
         },
     )
-    resource = post(
-        state["control"],
-        "/memory/namespaces",
-        {
-            "name": f"Boundary wrong Mem0 namespace {state['runId']}",
-            "connectionId": connection["id"],
-            "externalNamespace": f"wrong_mem0_{state['runId']}",
-            "accessMode": "read_write",
-            "ownerDepartmentId": state["me"]["departmentId"],
-        },
-    )
+    resource = connection
     wrong_app = memory_application(state, live_providers, "wrong-memory", resource["id"])
     denied, denied_calls = memory_ask(state, wrong_app)
     assert denied_calls and all(c["status"] == "failed" and c.get("errorCode") for c in denied_calls), denied_calls

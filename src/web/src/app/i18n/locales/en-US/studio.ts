@@ -1,7 +1,23 @@
 const translations = {
+  "restoreCanvas": {
+    "button": "Restore",
+    "targetVersion": "Restore target: published v{{version}}",
+    "targetInitial": "Restore target: initial canvas",
+    "title": "Restore canvas",
+    "confirm": "Confirm restore",
+    "restoring": "Restoring…",
+    "confirmVersion": "Restore the published content of v{{version}}, replacing saved and unsaved edits. Historical versions and deployments are preserved.",
+    "confirmInitial": "Restore the initial canvas content, replacing saved and unsaved edits.",
+    "success": "Canvas restored and saved",
+    "readOnly": "Read-only details",
+    "draft": "Draft",
+    "unpublished": "Unpublished"
+  },
   "builder": {
     "recoveryUnavailable": "Local recovery could not be saved. Save the current edits before continuing AI creation.",
-    "scope": "Edit scope", "canvasScope": "Current canvas", "nodesScope": "Selected nodes only",
+    "scope": "Edit scope",
+    "canvasScope": "Current canvas",
+    "nodesScope": "Selected nodes only",
     "staticPassed": "Static checks passed; the workflow has not been executed.",
     "staticStale": "The canvas changed. This static validation result is outdated.",
     "staticIssues": "Static checks found issues. Select an issue to locate it.",
@@ -12,30 +28,35 @@ const translations = {
       "credential_disabled": "The model credential is disabled or unavailable.",
       "credential_changed": "The model credential changed. An administrator must set the canvas AI model again."
     },
-    "ack": {"applied": "Applied one edit transaction", "stale": "Canvas changed; stale command was not applied", "read_only": "Read-only canvas; command was not applied", "rejected": "Edit validation failed"},
-  "title": "AI creation",
-  "model": "Creation model: {{model}}",
-  "unconfigured": "An administrator must configure the canvas AI model in the model list.",
-  "unavailable": "Canvas AI model is unavailable. Ask an administrator to check the model, credential and authorization.",
-  "staticOnly": "AI edits and statically validates. Use UI buttons to run, test, create versions and publish.",
-  "pendingSave": "Canvas changes awaiting save",
-  "saved": "Canvas saved",
-  "inspectSelected": "Share current execution with AI",
-  "working": "Working…",
-  "prompt": "Describe workflow requirements",
-  "placeholder": "Describe the workflow to create or changes to this canvas…",
-  "stop": "Stop",
-  "send": "Send",
-  "answer": "Answer design question",
-  "editBatch": "Prepared a batch affecting {{count}} nodes",
-  "usage": "Input {{input}} / Output {{output}} tokens · {{currency}} {{cost}}",
-  "status": {
-    "completed": "Creation complete. Check static results and test manually.",
-    "failed": "Creation stopped. Check the error.",
-    "cancelled": "Stopped. Applied changes remain on the canvas.",
-    "outcome_unknown": "Model outcome is unknown. Review before starting another run."
-  }
-},
+    "ack": {
+      "applied": "Applied one edit transaction",
+      "stale": "Canvas changed; stale command was not applied",
+      "read_only": "Read-only canvas; command was not applied",
+      "rejected": "Edit validation failed"
+    },
+    "title": "AI creation",
+    "model": "Creation model: {{model}}",
+    "unconfigured": "An administrator must configure the canvas AI model in the model list.",
+    "unavailable": "Canvas AI model is unavailable. Ask an administrator to check the model, credential and authorization.",
+    "staticOnly": "AI edits and statically validates. Use UI buttons to run, test, create versions and publish.",
+    "pendingSave": "Canvas changes awaiting save",
+    "saved": "Canvas saved",
+    "inspectSelected": "Share current execution with AI",
+    "working": "Working…",
+    "prompt": "Describe workflow requirements",
+    "placeholder": "Describe the workflow to create or changes to this canvas…",
+    "stop": "Stop",
+    "send": "Send",
+    "answer": "Answer design question",
+    "editBatch": "Prepared a batch affecting {{count}} nodes",
+    "usage": "Input {{input}} / Output {{output}} tokens · {{currency}} {{cost}}",
+    "status": {
+      "completed": "Creation complete. Check static results and test manually.",
+      "failed": "Creation stopped. Check the error.",
+      "cancelled": "Stopped. Applied changes remain on the canvas.",
+      "outcome_unknown": "Model outcome is unknown. Review before starting another run."
+    }
+  },
   "details": {
     "parameters": "Parameters",
     "input": "Input",
@@ -43,7 +64,6 @@ const translations = {
     "trace": "Trace",
     "more": "More node actions"
   },
-  "publish": "Publish",
   "loading": "Loading Workflow Studio…",
   "unsupported": "Unsupported UI control: {{control}}. This node cannot be saved.",
   "unavailable": "Workflow Studio is unavailable",
@@ -51,7 +71,6 @@ const translations = {
   "back": "Back",
   "close": "Close",
   "save": "Save",
-  "version": "Version",
   "run": "Run",
   "stop": "Stop",
   "undo": "Undo",
@@ -141,32 +160,36 @@ const translations = {
     "workflowVersion": "Workflow version",
     "editContextWrite": "Edit global variable write",
     "selectContext": "Select a global variable",
-    "contextWriteDialogDescription": "Select a declared global variable and configure its value"
-    ,"selectResource": "Select a resource"
-    ,"selectedResourceUnavailable": "Selected resource unavailable or hidden"
-    ,"viewRequest": "View"
-    ,"resourceStates": {
+    "contextWriteDialogDescription": "Select a declared global variable and configure its value",
+    "selectResource": "Select a resource",
+    "selectedResourceUnavailable": "Selected resource unavailable or hidden",
+    "viewRequest": "View",
+    "resourceStates": {
       "authorized": "Authorized",
       "grantable": "Can authorize",
       "requestable": "Request required",
       "pending": "Pending approval",
       "rejected": "Rejected",
       "unavailable": "Unavailable"
-    }
-    ,"authorize": "Authorize"
-    ,"request": "Request"
-    ,"requestAgain": "Request again"
-    ,"authorizeTitle": "Authorize workflow resource"
-    ,"requestTitle": "Request resource access"
-    ,"authorizeDescription": "Atomically authorizes the primary resource and all dependencies for this workflow. You must still select it manually afterward."
-    ,"requestDescription": "Submits the primary resource and all dependencies for approval by each owning department. You must still select it manually after approval."
-    ,"requestMessage": "Request note"
-    ,"requestMessagePlaceholder": "Optional: explain why this node needs the resource"
-    ,"confirmAuthorize": "Authorize"
-    ,"confirmRequest": "Submit request"
+    },
+    "authorize": "Authorize",
+    "request": "Request",
+    "requestAgain": "Request again",
+    "authorizeTitle": "Authorize workflow resource",
+    "requestTitle": "Request resource access",
+    "authorizeDescription": "Atomically authorizes the primary resource and all dependencies for this workflow. You must still select it manually afterward.",
+    "requestDescription": "Submits the primary resource and all dependencies for approval by each owning department. You must still select it manually after approval.",
+    "requestMessage": "Request note",
+    "requestMessagePlaceholder": "Optional: explain why this node needs the resource",
+    "confirmAuthorize": "Authorize",
+    "confirmRequest": "Submit request"
   },
   "panels": {
-    "knowledge": {"resource": "Knowledge base", "retrieval": "Retrieval settings", "outputHint": "Returns text chunks, document provenance and existing attachment references. Source references are not platform files; originals are not downloaded. No matches return empty results."},
+    "knowledge": {
+      "resource": "Knowledge base",
+      "retrieval": "Retrieval settings",
+      "outputHint": "Returns text chunks, document provenance and existing attachment references. Source references are not platform files; originals are not downloaded. No matches return empty results."
+    },
     "model": {
       "model": "Model",
       "modelDescription": "Pick an authorized model resource; its capability decides outputs and usage.",
@@ -340,7 +363,8 @@ const translations = {
     "addFirstNode": "Add loop body node"
   },
   "runtime": {
-    "streamTail": "Live model preview", "reasoning": "Reasoning",
+    "streamTail": "Live model preview",
+    "reasoning": "Reasoning",
     "title": "Execution",
     "expand": "Expand execution rail",
     "collapse": "Collapse execution rail",
@@ -411,29 +435,6 @@ const translations = {
     "minimap": "Canvas minimap",
     "handle": "Connection handle"
   },
-  "versionDialog": {
-    "title": "Workflow versions",
-    "description": "Definition changes affect execution. Editor-only changes preserve the runtime hash.",
-    "create": "Create version",
-    "diff": "Draft diff",
-    "history": "History",
-    "nodes": "Nodes",
-    "connections": "Connections",
-    "definitionChanges": "Definition changes",
-    "editorChanges": "Editor changes",
-    "close": "Close",
-    "version": "Version {{version}}",
-    "revision": "Revision {{revision}}"
-  },
-  "publishDialog": {
-    "title": "Publish workflow",
-    "environment": "Environment",
-    "version": "Version",
-    "history": "Deployment history",
-    "rollback": "Rollback",
-    "cancel": "Cancel",
-    "publish": "Publish"
-  },
   "conflict": {
     "title": "Draft revision conflict",
     "description": "The server draft changed while this editor had local changes.",
@@ -499,8 +500,7 @@ const translations = {
       "NODE_MANIFEST_MISSING": "The node definition is missing.",
       "UNSUPPORTED_NODE_VERSION": "The node version is unsupported.",
       "DANGLING_CONNECTION": "The connection references a node that does not exist.",
-      "CYCLE_NOT_ALLOWED": "This connection would create a cycle that is not allowed."
-,
+      "CYCLE_NOT_ALLOWED": "This connection would create a cycle that is not allowed.",
       "CONTAINER_EDGE_CROSSES_BOUNDARY": "This connection crosses a loop container boundary: nodes inside and outside a container cannot connect directly; wire loop body entries from the iteration start chip."
     }
   },
@@ -517,9 +517,9 @@ const translations = {
     "rolledBack": "Deployment rolled back",
     "primaryClearedConnection": "Primary output cleared because the node now has a normal output connection",
     "primaryClearedDisabled": "Primary output cleared because the node was disabled",
-    "primaryClearedDeleted": "Primary output cleared because the node was deleted"
-    ,"resourceAuthorized": "Resource access granted. Reopen the picker to select it"
-    ,"resourceRequested": "Resource access request submitted"
+    "primaryClearedDeleted": "Primary output cleared because the node was deleted",
+    "resourceAuthorized": "Resource access granted. Reopen the picker to select it",
+    "resourceRequested": "Resource access request submitted"
   },
   "editorFallback": "Editor is loading; you can type here",
   "addItem": "Add item",
@@ -666,19 +666,44 @@ const translations = {
     "single": "single"
   },
   "executionReferences": {
-    "root": "Execution information", "execution": "Execution", "node": "Current node", "workflow": "Workflow",
-    "trigger": "Trigger", "initiator": "Initiator", "applicationSession": "Application and session",
-    "executionId": "Execution ID", "startedAt": "Started at", "parentExecutionId": "Parent execution ID",
-    "nodeId": "Node ID", "nodeExecutionId": "Node execution ID", "runIndex": "Run index",
-    "itemIndex": "Item index", "loopIterationIndex": "Loop iteration index",
-    "workflowId": "Workflow ID", "workflowName": "Workflow name", "workflowVersionId": "Version ID",
-    "workflowVersionNumber": "Version number", "ownerDepartmentId": "Owner department ID", "ownerDepartmentName": "Owner department name",
-    "triggerType": "Trigger type", "triggerSourceId": "Trigger source ID", "triggerName": "Trigger name",
-    "initiatorType": "Initiator type", "userId": "User ID", "userName": "User name",
-    "departmentId": "Department ID", "departmentName": "Department name", "roleIds": "Role IDs",
-    "roleCodes": "Role codes", "roleNames": "Role names", "roleAssignments": "Role assignments",
-    "applicationId": "Application ID", "invocationId": "Invocation ID", "sessionId": "Session ID",
-    "externalUserId": "External user ID", "partial": "Empty for some trigger types"
+    "root": "Execution information",
+    "execution": "Execution",
+    "node": "Current node",
+    "workflow": "Workflow",
+    "trigger": "Trigger",
+    "initiator": "Initiator",
+    "applicationSession": "Application and session",
+    "executionId": "Execution ID",
+    "startedAt": "Started at",
+    "parentExecutionId": "Parent execution ID",
+    "nodeId": "Node ID",
+    "nodeExecutionId": "Node execution ID",
+    "runIndex": "Run index",
+    "itemIndex": "Item index",
+    "loopIterationIndex": "Loop iteration index",
+    "workflowId": "Workflow ID",
+    "workflowName": "Workflow name",
+    "workflowVersionId": "Version ID",
+    "workflowVersionNumber": "Version number",
+    "ownerDepartmentId": "Owner department ID",
+    "ownerDepartmentName": "Owner department name",
+    "triggerType": "Trigger type",
+    "triggerSourceId": "Trigger source ID",
+    "triggerName": "Trigger name",
+    "initiatorType": "Initiator type",
+    "userId": "User ID",
+    "userName": "User name",
+    "departmentId": "Department ID",
+    "departmentName": "Department name",
+    "roleIds": "Role IDs",
+    "roleCodes": "Role codes",
+    "roleNames": "Role names",
+    "roleAssignments": "Role assignments",
+    "applicationId": "Application ID",
+    "invocationId": "Invocation ID",
+    "sessionId": "Session ID",
+    "externalUserId": "External user ID",
+    "partial": "Empty for some trigger types"
   },
   "interface": {
     "start": "Start",

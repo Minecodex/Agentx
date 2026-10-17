@@ -15,6 +15,8 @@ pub enum SessionVersionPolicyV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ApplicationRuntimePolicyV1 {
+    pub api_user_id_input: Option<String>,
+    pub environment_id: Option<Uuid>,
     pub session_version_policy: SessionVersionPolicyV1,
     pub synchronous_wait_seconds: u32,
     pub maximum_json_bytes: u64,
@@ -245,6 +247,8 @@ pub struct SessionUpgradeReceiptV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionSearchRequestV1 {
+    pub user_source: Option<String>,
+    pub external_user_id: Option<String>,
     #[serde(deserialize_with = "crate::deserialize_v1")]
     pub api_version: u32,
     pub tenant_id: Uuid,
@@ -257,6 +261,7 @@ pub struct SessionSearchRequestV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionSummaryV1 {
+    pub end_user: Option<crate::ApplicationUserIdentityV1>,
     pub session_id: Uuid,
     pub application_id: Uuid,
     pub application_deployment_id: Uuid,
@@ -294,13 +299,16 @@ pub struct SessionDetailV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateSessionRequestV1 {
-    pub external_user_id: Option<String>,
+    #[serde(default = "empty_session_input")]
+    #[schemars(with = "std::collections::BTreeMap<String, Value>")]
+    pub input: Value,
     pub title: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionResponseV1 {
+    pub end_user: Option<crate::ApplicationUserIdentityV1>,
     pub id: Uuid,
     pub application_id: Uuid,
     pub application_deployment_id: Uuid,
@@ -327,6 +335,8 @@ pub struct InvocationRequestV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct InvocationResponseV1 {
+    pub user_identity_diagnostic: Option<String>,
+    pub end_user: Option<crate::ApplicationUserIdentityV1>,
     pub id: Uuid,
     pub application_id: Uuid,
     pub session_id: Option<Uuid>,
@@ -428,6 +438,10 @@ pub struct CommandAcceptedV1 {
 pub struct GatewayErrorV1 {
     pub code: String,
     pub message: String,
+}
+
+fn empty_session_input() -> Value {
+    serde_json::json!({})
 }
 
 #[cfg(test)]

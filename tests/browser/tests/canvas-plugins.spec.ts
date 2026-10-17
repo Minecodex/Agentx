@@ -1,4 +1,5 @@
-import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
+import { publishFixtureResponse } from '../draft-fixtures'
+import { fixtureVersionId, fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
 import { connect, login } from '../support/canvas-plugin'
 import { showEdgeToolbar } from './workflow-studio-editor-helpers'
 import { expect, type Locator, type Page, test } from '@playwright/test'
@@ -9,7 +10,7 @@ const password = 'agentx-e2e-admin-password'
 const gatewayBase = process.env.AGENTX_E2E_RUNTIME_URL ?? ''
 
 async function api<T>(page: Page, token: string, path: string): Promise<T> {
-  const response = await page.request.get(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.get(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   if (!response.ok()) throw new Error(`${path}: ${response.status()} ${await response.text()}`)
   return response.json() as Promise<T>
 }
@@ -67,11 +68,11 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
     expect.objectContaining({ packageId: 'agentx/data', sourceType: 'builtin' }),
     expect.objectContaining({ packageId: 'agentx/http', sourceType: 'builtin' }),
   ]))
-  const template = await page.request.get('/api/v1/canvas-plugin-sdk/template', { headers: { Authorization: `Bearer ${token}` } })
+  const template = await page.request.get('/api/v1/canvas-plugin-sdk/template', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(template.ok(), await template.text()).toBeTruthy()
   expect((await template.body()).length).toBeGreaterThan(5_000)
   const invalid = await page.request.post('/api/v1/canvas-plugin-imports', {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
     multipart: { file: { name: 'invalid.agentx-plugin', mimeType: 'application/zip', buffer: Buffer.from('not a zip') } },
   })
   expect(invalid.status()).toBe(201)
@@ -79,11 +80,11 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   expect(invalidImport.status).toBe('failed')
   expect(invalidImport.issues).not.toHaveLength(0)
   expect((await api<{ status: string }>(page, token, `/canvas-plugin-imports/${invalidImport.id}`)).status).toBe('failed')
-  expect((await page.request.delete(`/api/v1/canvas-plugin-imports/${invalidImport.id}`, { headers: { Authorization: `Bearer ${token}` } })).status()).toBe(204)
-  const invalidRetry = await page.request.post('/api/v1/canvas-plugin-imports', { headers: { Authorization: `Bearer ${token}` }, multipart: { file: { name: 'invalid-retry.agentx-plugin', mimeType: 'application/zip', buffer: Buffer.from('not a zip') } } })
+  expect((await page.request.delete(`/api/v1/canvas-plugin-imports/${invalidImport.id}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })).status()).toBe(204)
+  const invalidRetry = await page.request.post('/api/v1/canvas-plugin-imports', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, multipart: { file: { name: 'invalid-retry.agentx-plugin', mimeType: 'application/zip', buffer: Buffer.from('not a zip') } } })
   const invalidRetried = await invalidRetry.json() as { id: string; status: string }
   expect(invalidRetried.status).toBe('failed')
-  expect((await page.request.delete(`/api/v1/canvas-plugin-imports/${invalidRetried.id}`, { headers: { Authorization: `Bearer ${token}` } })).status()).toBe(204)
+  expect((await page.request.delete(`/api/v1/canvas-plugin-imports/${invalidRetried.id}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })).status()).toBe(204)
   await page.getByRole('link', { name: '画布插件', exact: true }).click()
   await expect(page).toHaveURL(/\/canvas-plugins$/)
   if (!builtins.items.some((item) => item.packageId === 'acme/json-mapper')) {
@@ -100,24 +101,24 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   await page.screenshot({ path: managementShot, fullPage: true })
   await testInfo.attach('canvas-plugins-light-zh.png', { path: managementShot, contentType: 'image/png' })
   const resolved = await page.request.post('/api/v1/node-definitions/acme.json_mapper/versions/1/resolve', {
-    headers: { Authorization: `Bearer ${token}` }, data: { configuration: { label: 'customer' }, upstreamContracts: {} },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { configuration: { label: 'customer' }, upstreamContracts: {} },
   })
   expect(resolved.ok(), await resolved.text()).toBeTruthy()
   expect((await resolved.json()).status).toBe('complete')
-  const provider = await page.request.get('/api/v1/node-definitions/acme.json_mapper/versions/1/providers/labels?search=cus&limit=10', { headers: { Authorization: `Bearer ${token}` } })
+  const provider = await page.request.get('/api/v1/node-definitions/acme.json_mapper/versions/1/providers/labels?search=cus&limit=10', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(provider.ok(), await provider.text()).toBeTruthy()
   expect((await provider.json()).items).toEqual([{ value: 'customer', label: 'Customer', description: null }])
   const firstProviderPage = await api<{ items: Array<{ value: string }>; nextCursor?: string }>(page, token, '/node-definitions/acme.json_mapper/versions/1/providers/labels?limit=1')
   expect(firstProviderPage).toMatchObject({ items: [{ value: 'customer' }], nextCursor: '1' })
   expect((await api<{ items: Array<{ value: string }> }>(page, token, `/node-definitions/acme.json_mapper/versions/1/providers/labels?limit=1&cursor=${firstProviderPage.nextCursor}`)).items[0].value).toBe('order')
-  const missingModelProvider = await page.request.get(`/api/v1/node-definitions/acme.json_mapper/versions/1/providers/labels?parameters=${encodeURIComponent(JSON.stringify({ hostMode: 'missing-model' }))}`, { headers: { Authorization: `Bearer ${token}` } })
+  const missingModelProvider = await page.request.get(`/api/v1/node-definitions/acme.json_mapper/versions/1/providers/labels?parameters=${encodeURIComponent(JSON.stringify({ hostMode: 'missing-model' }))}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(missingModelProvider.status()).toBe(422)
   expect((await missingModelProvider.json()).code).toBe('PLUGIN_DESIGN_OPERATION_FAILED')
   const missingCredentialReference = [{ bindingRole: 'credential', resourceType: 'credential', resourceId: crypto.randomUUID(), operation: 'use' }]
-  const missingCredentialProvider = await page.request.get(`/api/v1/node-definitions/acme.json_mapper/versions/1/providers/labels?resourceReferences=${encodeURIComponent(JSON.stringify(missingCredentialReference))}`, { headers: { Authorization: `Bearer ${token}` } })
+  const missingCredentialProvider = await page.request.get(`/api/v1/node-definitions/acme.json_mapper/versions/1/providers/labels?resourceReferences=${encodeURIComponent(JSON.stringify(missingCredentialReference))}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(missingCredentialProvider.status()).toBe(422)
 
-  const validationWorkflowResponse = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}` }, data: { name: `Plugin validation ${Date.now()}`, visibility: 'company' } })
+  const validationWorkflowResponse = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { name: `Plugin validation ${Date.now()}`, visibility: 'company' } })
   const validationWorkflow = await validationWorkflowResponse.json() as { id: string }
   const validationDraft = await api<{ revision: number; definition: { nodes: Array<Record<string, unknown>>; [key: string]: unknown }; editorDocument: { nodeLayouts?: unknown[]; [key: string]: unknown } }>(page, token, `/workflows/${validationWorkflow.id}/drafts/${await fixtureDraftId(page, validationWorkflow.id)}`)
   const incompleteNode = { id: 'dynamic', key: 'dynamic', type: 'acme.json_mapper', typeVersion: 1, name: 'Dynamic', disabled: false, protected: false, parameters: { label: '', includeMetadata: false, largeTrace: false }, contextWrites: [], resourceReferences: [], settings: {} }
@@ -126,7 +127,7 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   const incompleteSave = await page.request.put(`/api/v1/workflows/${validationWorkflow.id}/drafts/${await fixtureDraftId(page, validationWorkflow.id)}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: validationDraft.revision, definition: validationDefinition, editorDocument: validationEditor } })
   expect(incompleteSave.ok(), await incompleteSave.text()).toBeTruthy()
   const incompleteRevision = ((await incompleteSave.json()) as { revision: number }).revision
-  const blockedVersion = await page.request.post(`/api/v1/workflows/${validationWorkflow.id}/versions`, { headers: { Authorization: `Bearer ${token}` }, data: { draftId: await fixtureDraftId(page, validationWorkflow.id),  draftRevision: incompleteRevision } })
+  const blockedVersion = await publishFixtureResponse(page, token, validationWorkflow.id, incompleteRevision)
   expect(blockedVersion.status()).toBe(422)
   expect((await blockedVersion.json()).code).toBe('PLUGIN_DEFINITION_NOT_READY')
   incompleteNode.parameters.label = '__invalid__'
@@ -135,12 +136,12 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   expect((await api<{ revision: number }>(page, token, `/workflows/${validationWorkflow.id}/drafts/${await fixtureDraftId(page, validationWorkflow.id)}`)).revision).toBe(incompleteRevision)
 
   const response = await page.request.post('/api/v1/workflows', {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
     data: { name: `Plugin E2E ${Date.now()}`, description: 'Canvas plugin E2E', visibility: 'company' },
   })
   expect(response.ok(), await response.text()).toBeTruthy()
   const workflow = (await response.json()) as { id: string }
-  await page.goto(`/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}/editor`)
+  await page.goto(`/workflows/${workflow.id}/versions/${await fixtureVersionId(page, workflow.id)}/editor`)
   const draft = await api<{ definition: { connections: Array<{ id: string }> } }>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
   const initialEdge = page.locator(`.react-flow__edge[data-testid="rf__edge-${draft.definition.connections[0].id}"]`)
   const edgeToolbar = page.locator(`.studio-edge-toolbar[data-edge-id="${draft.definition.connections[0].id}"]`)
@@ -180,20 +181,20 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   }
   await expect(page.locator('header').getByText(/修订号 \d+ · 已保存/)).toBeVisible()
   if (!savedRevision) savedRevision = (await api<{ revision: number }>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)).revision
-  const workflowVersionResponse = await page.request.post(`/api/v1/workflows/${workflow.id}/versions`, { headers: { Authorization: `Bearer ${token}` }, data: { draftId: await fixtureDraftId(page, workflow.id),  draftRevision: savedRevision } })
+  const workflowVersionResponse = await publishFixtureResponse(page, token, workflow.id, savedRevision)
   expect(workflowVersionResponse.ok(), await workflowVersionResponse.text()).toBeTruthy()
   const workflowVersion = await workflowVersionResponse.json() as { id: string }
   const environment = (await api<Array<{ id: string; code: string }>>(page, token, '/environments')).find((item) => item.code === 'development')!
-  const workflowDeployment = await page.request.post(`/api/v1/workflows/${workflow.id}/deployments`, { headers: { Authorization: `Bearer ${token}` }, data: { workflowVersionId: workflowVersion.id, environmentId: environment.id } })
-  expect(workflowDeployment.status()).toBe(201)
+  const workflowDeployment = await page.request.post(`/api/v1/workflows/${workflow.id}/deployments`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: {contentSource:'version', workflowVersionId: workflowVersion.id, environmentId: environment.id } })
+  expect(workflowDeployment.status()).toBe(200)
   const suffix = Date.now().toString()
-  const applicationResponse = await page.request.post('/api/v1/applications', { headers: { Authorization: `Bearer ${token}` }, data: { workflowId: workflow.id, name: `Plugin Application ${suffix}`, slug: `plugin-${suffix}`, description: 'Plugin production E2E', visibility: 'company' } })
+  const applicationResponse = await page.request.post('/api/v1/applications', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { workflowId: workflow.id, name: `Plugin Application ${suffix}`, slug: `plugin-${suffix}`, description: 'Plugin production E2E', visibility: 'company' } })
   expect(applicationResponse.status()).toBe(201)
   const application = await applicationResponse.json() as { id: string; slug: string }
-  const apiKeyResponse = await page.request.post(`/api/v1/applications/${application.id}/api-keys`, { headers: { Authorization: `Bearer ${token}` }, data: { name: 'Plugin E2E' } })
+  const apiKeyResponse = await page.request.post(`/api/v1/applications/${application.id}/api-keys`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { name: 'Plugin E2E' } })
   expect(apiKeyResponse.status()).toBe(201)
   const apiKey = await apiKeyResponse.json() as { secret: string }
-  const applicationDeploymentResponse = await page.request.post(`/api/v1/applications/${application.id}/deployments`, { headers: { Authorization: `Bearer ${token}` }, data: { workflowVersionId: workflowVersion.id, environmentId: environment.id, sessionVersionPolicy: 'pinned' } })
+  const applicationDeploymentResponse = await page.request.post(`/api/v1/applications/${application.id}/deployments`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { workflowVersionId: workflowVersion.id, environmentId: environment.id, sessionVersionPolicy: 'pinned' } })
   expect(applicationDeploymentResponse.status()).toBe(202)
   const applicationDeployment = await applicationDeploymentResponse.json() as { id: string }
   await expect.poll(async () => (await api<Array<{ id: string; status: string }>>(page, token, `/applications/${application.id}/deployments`)).find((item) => item.id === applicationDeployment.id)?.status, { timeout: 180_000, intervals: [500, 1_000, 2_000] }).toBe('active')
@@ -236,7 +237,7 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   const executionEvidence = process.env.AGENTX_PLUGIN_EXECUTION_OUTPUT
   if (executionEvidence) await writeFile(executionEvidence, JSON.stringify({ executionId, workflowId: workflow.id }), 'utf8')
 
-  const parentWorkflowResponse = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}` }, data: { name: `Plugin sub-workflow ${Date.now()}`, visibility: 'company' } })
+  const parentWorkflowResponse = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { name: `Plugin sub-workflow ${Date.now()}`, visibility: 'company' } })
   expect(parentWorkflowResponse.status()).toBe(201)
   const parentWorkflow = await parentWorkflowResponse.json() as { id: string }
   const parentDraft = await api<{ revision: number; definition: { nodes: unknown[]; connections: unknown[]; [key: string]: unknown }; editorDocument: { nodeLayouts?: unknown[]; [key: string]: unknown } }>(page, token, `/workflows/${parentWorkflow.id}/drafts/${await fixtureDraftId(page, parentWorkflow.id)}`)
@@ -246,39 +247,39 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   const parentSave = await page.request.put(`/api/v1/workflows/${parentWorkflow.id}/drafts/${await fixtureDraftId(page, parentWorkflow.id)}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: parentDraft.revision, definition: parentDefinition, editorDocument: parentEditor } })
   expect(parentSave.ok(), await parentSave.text()).toBeTruthy()
   const parentRevision = ((await parentSave.json()) as { revision: number }).revision
-  const parentDebug = await page.request.post(`/api/v1/workflows/${parentWorkflow.id}/drafts/${await fixtureDraftId(page, parentWorkflow.id)}/debug-executions`, { headers: { Authorization: `Bearer ${token}` }, data: { expectedRevision: parentRevision, idempotencyKey: crypto.randomUUID(), input: {}, context: {}, mode: 'full', targetNodeId: null, inputSource: {}, overlayIds: [], sideEffectDecisions: {} } })
+  const parentDebug = await page.request.post(`/api/v1/workflows/${parentWorkflow.id}/drafts/${await fixtureDraftId(page, parentWorkflow.id)}/debug-executions`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { expectedRevision: parentRevision, idempotencyKey: crypto.randomUUID(), input: {}, context: {}, mode: 'full', targetNodeId: null, inputSource: {}, overlayIds: [], sideEffectDecisions: {} } })
   expect(parentDebug.status(), await parentDebug.text()).toBe(202)
   const parentExecutionId = ((await parentDebug.json()) as { executionId: string }).executionId
   await expect.poll(async () => (await api<{ status: string }>(page, token, `/executions/${parentExecutionId}`)).status, { timeout: 120_000 }).toBe('succeeded')
   const parentNodes = await api<{ items: Array<{ nodeType: string; status: string }> }>(page, token, `/executions/${parentExecutionId}/nodes`)
   expect(parentNodes.items).toContainEqual(expect.objectContaining({ nodeType: 'sub_workflow', status: 'succeeded' }))
   const evaluationSuffix = Date.now().toString()
-  const datasetResponse = await page.request.post('/api/v1/datasets', { headers: { Authorization: `Bearer ${token}` }, data: { name: `Plugin dataset ${evaluationSuffix}`, description: 'Plugin closure', visibility: 'company' } })
+  const datasetResponse = await page.request.post('/api/v1/datasets', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { name: `Plugin dataset ${evaluationSuffix}`, description: 'Plugin closure', visibility: 'company' } })
   expect(datasetResponse.status()).toBe(201)
   const dataset = await datasetResponse.json() as { id: string }
-  const caseResponse = await page.request.post(`/api/v1/datasets/${dataset.id}/cases`, { headers: { Authorization: `Bearer ${token}` }, data: { expectedRevision: 0, caseKey: 'plugin-case', name: 'Plugin case', input: {}, expectedOutput: { mapped: 1 }, context: null, tags: ['plugin'], evaluatorOverride: null } })
+  const caseResponse = await page.request.post(`/api/v1/datasets/${dataset.id}/cases`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { expectedRevision: 0, caseKey: 'plugin-case', name: 'Plugin case', input: {}, expectedOutput: { mapped: 1 }, context: null, tags: ['plugin'], evaluatorOverride: null } })
   expect(caseResponse.status()).toBe(201)
-  const datasetVersionResponse = await page.request.post(`/api/v1/datasets/${dataset.id}/versions`, { headers: { Authorization: `Bearer ${token}` } })
+  const datasetVersionResponse = await page.request.post(`/api/v1/datasets/${dataset.id}/versions`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(datasetVersionResponse.status()).toBe(201)
   const datasetVersion = await datasetVersionResponse.json() as { id: string }
-  const profileResponse = await page.request.post('/api/v1/evaluation-profiles', { headers: { Authorization: `Bearer ${token}` }, data: { name: `Plugin exact ${evaluationSuffix}`, description: 'Plugin closure', visibility: 'company', aggregation: 'all', passThreshold: '1', rules: [{ key: 'exact', name: 'Exact', evaluatorType: 'exact', configuration: {}, weight: '1', required: true }] } })
+  const profileResponse = await page.request.post('/api/v1/evaluation-profiles', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { name: `Plugin exact ${evaluationSuffix}`, description: 'Plugin closure', visibility: 'company', aggregation: 'all', passThreshold: '1', rules: [{ key: 'exact', name: 'Exact', evaluatorType: 'exact', configuration: {}, weight: '1', required: true }] } })
   expect(profileResponse.status()).toBe(201)
   const profile = await profileResponse.json() as { versionId: string }
-  const evaluationResponse = await page.request.post('/api/v1/evaluations', { headers: { Authorization: `Bearer ${token}` }, data: { name: `Plugin evaluation ${evaluationSuffix}`, workflowVersionId: workflowVersion.id, datasetVersionId: datasetVersion.id, evaluationProfileVersionId: profile.versionId, visibility: 'company', parameters: {} } })
+  const evaluationResponse = await page.request.post('/api/v1/evaluations', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { name: `Plugin evaluation ${evaluationSuffix}`, workflowVersionId: workflowVersion.id, datasetVersionId: datasetVersion.id, evaluationProfileVersionId: profile.versionId, visibility: 'company', parameters: {} } })
   expect(evaluationResponse.status()).toBe(201)
   const evaluation = await evaluationResponse.json() as { id: string }
-  const evaluationStart = await page.request.post(`/api/v1/evaluations/${evaluation.id}/start`, { headers: { Authorization: `Bearer ${token}` } })
+  const evaluationStart = await page.request.post(`/api/v1/evaluations/${evaluation.id}/start`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(evaluationStart.status()).toBe(202)
-  await expect.poll(async () => (await page.request.get(`/api/v1/evaluations/${evaluation.id}/report`, { headers: { Authorization: `Bearer ${token}` } })).status(), { timeout: 180_000, intervals: [500, 1_000, 2_000] }).toBe(200)
+  await expect.poll(async () => (await page.request.get(`/api/v1/evaluations/${evaluation.id}/report`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })).status(), { timeout: 180_000, intervals: [500, 1_000, 2_000] }).toBe(200)
 
   const installed = (await api<{ items: Array<{ id: string; packageId: string; version: number; versions: Array<{ id: string; packageVersion: string; bundleDigest: string }> }> }>(page, token, '/canvas-plugins?pageSize=100')).items.find((plugin) => plugin.packageId === 'acme/json-mapper')!
   const version = installed.versions.find((candidate) => candidate.packageVersion === '1.0.0')!
   const departments = await api<Array<{ id: string; isRoot: boolean }>>(page, token, '/departments')
-  const roleResponse = await page.request.post('/api/v1/roles', { headers: { Authorization: `Bearer ${token}` }, data: { code: `plugin_designer_${Date.now()}`, name: 'Plugin Designer', description: 'Uses installed nodes without package management', dataScope: 'company', permissions: ['workflow:view', 'workflow:create', 'workflow:edit', 'execution:run', 'execution:view', 'canvas_plugin:view'] } })
+  const roleResponse = await page.request.post('/api/v1/roles', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { code: `plugin_designer_${Date.now()}`, name: 'Plugin Designer', description: 'Uses installed nodes without package management', dataScope: 'company', permissions: ['workflow:view', 'workflow:create', 'workflow:edit', 'execution:run', 'execution:view', 'canvas_plugin:view'] } })
   expect(roleResponse.status()).toBe(201)
   const role = await roleResponse.json() as { id: string }
   const username = `plugin_designer_${Date.now()}`
-  const userResponse = await page.request.post('/api/v1/users', { headers: { Authorization: `Bearer ${token}` }, data: { username, displayName: 'Plugin Designer', departmentId: departments.find((item) => item.isRoot)!.id, roleId: role.id } })
+  const userResponse = await page.request.post('/api/v1/users', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { username, displayName: 'Plugin Designer', departmentId: departments.find((item) => item.isRoot)!.id, roleId: role.id } })
   expect(userResponse.status()).toBe(201)
   const designerLogin = await page.request.post('/api/v1/auth/login', { data: { username, password: '123456' } })
   expect(designerLogin.ok(), await designerLogin.text()).toBeTruthy()
@@ -319,21 +320,21 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   const ongoingExecution = await startProduction(`plugin-running-during-disable-${suffix}`)
   expect(ongoingExecution.status).not.toBe('completed')
   const disabled = await page.request.patch(`/api/v1/canvas-plugins/${installed.id}/versions/${version.id}`, {
-    headers: { Authorization: `Bearer ${token}` }, data: { enabled: false, expectedRevision: installed.version },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { enabled: false, expectedRevision: installed.version },
   })
   expect(disabled.ok(), await disabled.text()).toBeTruthy()
   const disabledPlugin = await disabled.json() as { version: number }
   expect((await waitInvocation(page, apiKey.secret, ongoingExecution.id)).status).toBe('completed')
   expect((await invokeProduction(`plugin-after-disable-${suffix}`)).outputs?.mapped).toBe(1)
-  const blockedRepublish = await page.request.post(`/api/v1/applications/${application.id}/deployments`, { headers: { Authorization: `Bearer ${token}` }, data: { workflowVersionId: workflowVersion.id, environmentId: environment.id, sessionVersionPolicy: 'pinned' } })
+  const blockedRepublish = await page.request.post(`/api/v1/applications/${application.id}/deployments`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { workflowVersionId: workflowVersion.id, environmentId: environment.id, sessionVersionPolicy: 'pinned' } })
   expect(blockedRepublish.status()).toBe(409)
   expect((await blockedRepublish.json()).code).toBe('PLUGIN_VERSION_DISABLED')
-  const blockedDebug = await page.request.post(`/api/v1/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}/debug-executions`, { headers: { Authorization: `Bearer ${token}` }, data: { expectedRevision: savedRevision, idempotencyKey: crypto.randomUUID(), input: {}, context: {}, mode: 'full', targetNodeId: null, inputSource: {}, overlayIds: [], sideEffectDecisions: {} } })
+  const blockedDebug = await page.request.post(`/api/v1/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}/debug-executions`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { expectedRevision: savedRevision, idempotencyKey: crypto.randomUUID(), input: {}, context: {}, mode: 'full', targetNodeId: null, inputSource: {}, overlayIds: [], sideEffectDecisions: {} } })
   expect(blockedDebug.status()).toBe(409)
   expect((await blockedDebug.json()).code).toBe('PLUGIN_VERSION_DISABLED')
   const catalog = await api<{ items: Array<{ nodeType: string; version: number }> }>(page, token, '/node-definitions?pageSize=100')
   expect(catalog.items.some((item) => item.nodeType === 'acme.json_mapper' && item.version === 1)).toBeFalsy()
-  const frozenManifest = await page.request.get(`/api/v1/node-definitions/acme.json_mapper/versions/1?bundleDigest=${encodeURIComponent(version.bundleDigest)}`, { headers: { Authorization: `Bearer ${token}` } })
+  const frozenManifest = await page.request.get(`/api/v1/node-definitions/acme.json_mapper/versions/1?bundleDigest=${encodeURIComponent(version.bundleDigest)}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(frozenManifest.ok(), await frozenManifest.text()).toBeTruthy()
   await page.goto(`/executions/${executionId}`)
   const historicalTrace = page.getByTestId('trace-workspace')
@@ -348,47 +349,47 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   await testInfo.attach('plugin-trace-light-zh.png', { path: traceShot, contentType: 'image/png' })
   const checkpoints = await api<{ items: Array<{ id: string }> }>(page, token, `/executions/${executionId}/checkpoints`)
   expect(checkpoints.items.length).toBeGreaterThan(0)
-  const disabledFork = await page.request.post(`/api/v1/executions/${executionId}/fork`, { headers: { Authorization: `Bearer ${token}` }, data: { checkpointId: checkpoints.items.at(-1)!.id, mode: 'whole', nodeId: null, sideEffectDecisions: {}, idempotencyKey: crypto.randomUUID() } })
+  const disabledFork = await page.request.post(`/api/v1/executions/${executionId}/fork`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { checkpointId: checkpoints.items.at(-1)!.id, mode: 'whole', nodeId: null, sideEffectDecisions: {}, idempotencyKey: crypto.randomUUID() } })
   expect(disabledFork.status()).toBe(409)
   expect((await disabledFork.json()).code).toBe('PLUGIN_VERSION_DISABLED')
-  const blockedDelete = await page.request.delete(`/api/v1/canvas-plugins/${installed.id}/versions/${version.id}`, { headers: { Authorization: `Bearer ${token}` } })
+  const blockedDelete = await page.request.delete(`/api/v1/canvas-plugins/${installed.id}/versions/${version.id}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(blockedDelete.status()).toBe(409)
   expect((await blockedDelete.json()).code).toBe('PLUGIN_VERSION_IN_USE')
   const reenabled = await page.request.patch(`/api/v1/canvas-plugins/${installed.id}/versions/${version.id}`, {
-    headers: { Authorization: `Bearer ${token}` }, data: { enabled: true, expectedRevision: disabledPlugin.version },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { enabled: true, expectedRevision: disabledPlugin.version },
   })
   expect(reenabled.ok(), await reenabled.text()).toBeTruthy()
-  const download = await page.request.get(`/api/v1/canvas-plugins/${installed.id}/versions/${version.id}/download`, { headers: { Authorization: `Bearer ${token}` } })
+  const download = await page.request.get(`/api/v1/canvas-plugins/${installed.id}/versions/${version.id}/download`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(download.ok(), await download.text()).toBeTruthy()
   expect(await download.body()).toEqual(packageBytes)
 
   const duplicateImport = await page.request.post('/api/v1/canvas-plugin-imports', {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
     multipart: { file: { name: 'same.agentx-plugin', mimeType: 'application/zip', buffer: packageBytes } },
   })
   expect(duplicateImport.ok(), await duplicateImport.text()).toBeTruthy()
   const duplicate = await duplicateImport.json() as { id: string; bundleDigest: string }
   const duplicateInstall = await page.request.post(`/api/v1/canvas-plugin-imports/${duplicate.id}/install`, {
-    headers: { Authorization: `Bearer ${token}` }, data: { bundleDigest: duplicate.bundleDigest, enable: true, setDefault: true },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { bundleDigest: duplicate.bundleDigest, enable: true, setDefault: true },
   })
   expect(duplicateInstall.status()).toBe(200)
 
   const changedBytes = Buffer.concat([packageBytes, Buffer.from('different-approved-build')])
   const conflictImport = await page.request.post('/api/v1/canvas-plugin-imports', {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
     multipart: { file: { name: 'changed.agentx-plugin', mimeType: 'application/zip', buffer: changedBytes } },
   })
   expect(conflictImport.ok(), await conflictImport.text()).toBeTruthy()
   const changed = await conflictImport.json() as { id: string; bundleDigest: string }
   const conflictInstall = await page.request.post(`/api/v1/canvas-plugin-imports/${changed.id}/install`, {
-    headers: { Authorization: `Bearer ${token}` }, data: { bundleDigest: changed.bundleDigest, enable: true, setDefault: true },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { bundleDigest: changed.bundleDigest, enable: true, setDefault: true },
   })
   expect(conflictInstall.status()).toBe(409)
   expect((await conflictInstall.json()).code).toBe('PLUGIN_VERSION_CONFLICT')
-  const cancelled = await page.request.delete(`/api/v1/canvas-plugin-imports/${changed.id}`, { headers: { Authorization: `Bearer ${token}` } })
+  const cancelled = await page.request.delete(`/api/v1/canvas-plugin-imports/${changed.id}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(cancelled.status()).toBe(204)
   const retried = await page.request.post('/api/v1/canvas-plugin-imports', {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
     multipart: { file: { name: 'changed.agentx-plugin', mimeType: 'application/zip', buffer: changedBytes } },
   })
   expect(retried.status()).toBe(201)
@@ -396,14 +397,14 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   const raceBytes = await readFile(resolve(import.meta.dirname, '../../../src/plugins/templates/canvas-plugin/dist/acme-race.agentx-plugin'))
   let racePlugin = (await api<{ items: Array<{ id: string; packageId: string; versions: Array<{ id: string }> }> }>(page, token, '/canvas-plugins?pageSize=100')).items.find((item) => item.packageId === 'acme/race')
   if (!racePlugin) {
-    const raceImportResponse = await page.request.post('/api/v1/canvas-plugin-imports', { headers: { Authorization: `Bearer ${token}` }, multipart: { file: { name: 'race.agentx-plugin', mimeType: 'application/zip', buffer: raceBytes } } })
+    const raceImportResponse = await page.request.post('/api/v1/canvas-plugin-imports', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, multipart: { file: { name: 'race.agentx-plugin', mimeType: 'application/zip', buffer: raceBytes } } })
     expect(raceImportResponse.status()).toBe(201)
     const raceImport = await raceImportResponse.json() as { id: string; bundleDigest: string }
-    const raceInstallResponse = await page.request.post(`/api/v1/canvas-plugin-imports/${raceImport.id}/install`, { headers: { Authorization: `Bearer ${token}` }, data: { bundleDigest: raceImport.bundleDigest, enable: true, setDefault: true } })
+    const raceInstallResponse = await page.request.post(`/api/v1/canvas-plugin-imports/${raceImport.id}/install`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { bundleDigest: raceImport.bundleDigest, enable: true, setDefault: true } })
     expect(raceInstallResponse.status()).toBe(201)
     racePlugin = await raceInstallResponse.json() as { id: string; packageId: string; versions: Array<{ id: string }> }
   }
-  const raceWorkflowResponse = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}` }, data: { name: `Plugin delete race ${Date.now()}`, visibility: 'company' } })
+  const raceWorkflowResponse = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { name: `Plugin delete race ${Date.now()}`, visibility: 'company' } })
   const raceWorkflow = await raceWorkflowResponse.json() as { id: string }
   const raceDraft = await api<{ revision: number; definition: { nodes: unknown[]; connections: unknown[]; [key: string]: unknown }; editorDocument: { nodeLayouts: unknown[]; edges: unknown[]; [key: string]: unknown } }>(page, token, `/workflows/${raceWorkflow.id}/drafts/${await fixtureDraftId(page, raceWorkflow.id)}`)
   const raceNode = { id: 'race', key: 'race', type: 'acme.race', typeVersion: 1, name: 'Race Plugin', disabled: false, protected: false, parameters: { label: 'race', includeMetadata: false }, contextWrites: [], resourceReferences: [], settings: {} }
@@ -411,25 +412,25 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   const raceEditor = { ...raceDraft.editorDocument, nodeLayouts: [{ nodeId: 'race', x: 340, y: 220 }, ...raceDraft.editorDocument.nodeLayouts], edges: [{ edgeId: 'race-start' }, { edgeId: 'race-exit' }] }
   const [raceSave, raceDelete] = await Promise.all([
     page.request.put(`/api/v1/workflows/${raceWorkflow.id}/drafts/${await fixtureDraftId(page, raceWorkflow.id)}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: raceDraft.revision, definition: raceDefinition, editorDocument: raceEditor } }),
-    page.request.delete(`/api/v1/canvas-plugins/${racePlugin.id}/versions/${racePlugin.versions[0].id}`, { headers: { Authorization: `Bearer ${token}` } }),
+    page.request.delete(`/api/v1/canvas-plugins/${racePlugin.id}/versions/${racePlugin.versions[0].id}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } }),
   ])
   expect([raceSave.ok(), raceDelete.ok()].filter(Boolean)).toHaveLength(1)
   expect([raceSave.status(), raceDelete.status()].some((status) => status === 409 || status === 422)).toBeTruthy()
-  const raceReimportResponse = await page.request.post('/api/v1/canvas-plugin-imports', { headers: { Authorization: `Bearer ${token}` }, multipart: { file: { name: 'race-reinstall.agentx-plugin', mimeType: 'application/zip', buffer: raceBytes } } })
+  const raceReimportResponse = await page.request.post('/api/v1/canvas-plugin-imports', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, multipart: { file: { name: 'race-reinstall.agentx-plugin', mimeType: 'application/zip', buffer: raceBytes } } })
   expect([200, 201]).toContain(raceReimportResponse.status())
   const raceReimport = await raceReimportResponse.json() as { id: string; bundleDigest: string }
-  const raceReinstall = await page.request.post(`/api/v1/canvas-plugin-imports/${raceReimport.id}/install`, { headers: { Authorization: `Bearer ${token}` }, data: { bundleDigest: raceReimport.bundleDigest, enable: true, setDefault: true } })
+  const raceReinstall = await page.request.post(`/api/v1/canvas-plugin-imports/${raceReimport.id}/install`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { bundleDigest: raceReimport.bundleDigest, enable: true, setDefault: true } })
   expect([200, 201], await raceReinstall.text()).toContain(raceReinstall.status())
 
   const v2Path = resolve(import.meta.dirname, '../../../src/plugins/templates/canvas-plugin/dist/acme-json-mapper-v2.agentx-plugin')
   const v2Import = await page.request.post('/api/v1/canvas-plugin-imports', {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
     multipart: { file: { name: 'json-mapper-v2.agentx-plugin', mimeType: 'application/zip', buffer: await readFile(v2Path) } },
   })
   expect(v2Import.ok(), await v2Import.text()).toBeTruthy()
   const v2Preview = await v2Import.json() as { id: string; bundleDigest: string }
   const v2Installs = await Promise.all([0, 1].map(() => page.request.post(`/api/v1/canvas-plugin-imports/${v2Preview.id}/install`, {
-    headers: { Authorization: `Bearer ${token}` }, data: { bundleDigest: v2Preview.bundleDigest, enable: true, setDefault: true },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { bundleDigest: v2Preview.bundleDigest, enable: true, setDefault: true },
   })))
   const installStatuses = v2Installs.map((response) => response.status()).sort()
   expect([[200, 200], [200, 201]]).toContainEqual(installStatuses)
@@ -438,7 +439,7 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   const existingV2 = withV2.versions.find((item) => item.packageVersion === '2.0.0')!
   if (existingV2.status !== 'enabled') {
     const enabledV2 = await page.request.patch(`/api/v1/canvas-plugins/${withV2.id}/versions/${existingV2.id}`, {
-      headers: { Authorization: `Bearer ${token}` }, data: { enabled: true, expectedRevision: withV2.version },
+      headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { enabled: true, expectedRevision: withV2.version },
     })
     expect(enabledV2.ok(), await enabledV2.text()).toBeTruthy()
     withV2 = await enabledV2.json() as typeof withV2
@@ -446,7 +447,7 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   const enabledV2 = withV2.versions.find((item) => item.packageVersion === '2.0.0')!
   if (withV2.defaultVersionId !== enabledV2.id) {
     const defaultV2 = await page.request.patch(`/api/v1/canvas-plugins/${withV2.id}`, {
-      headers: { Authorization: `Bearer ${token}` }, data: { defaultVersionId: enabledV2.id, expectedRevision: withV2.version },
+      headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { defaultVersionId: enabledV2.id, expectedRevision: withV2.version },
     })
     expect(defaultV2.ok(), await defaultV2.text()).toBeTruthy()
     withV2 = await defaultV2.json() as typeof withV2
@@ -456,7 +457,7 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   const unchangedDraft = await api<{ definition: { nodes: Array<{ type: string; typeVersion: number }> } }>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
   expect(unchangedDraft.definition.nodes.find((node) => node.type === 'acme.json_mapper')?.typeVersion).toBe(1)
 
-  await page.goto(`/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}/editor`)
+  await page.goto(`/workflows/${workflow.id}/versions/${await fixtureVersionId(page, workflow.id)}/editor`)
   const versionedNode = page.locator('.react-flow__node-manifest').filter({ hasText: 'JSON Mapper' })
   await versionedNode.click()
   const versionField = page.getByTestId('node-details-view').locator('[data-field-path="typeVersion"]')
@@ -483,7 +484,7 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   await expect.poll(async () => (await api<{ status: string }>(page, token, `/executions/${v2ExecutionId}`)).status, { timeout: 120_000 }).toBe('succeeded')
   const v2Nodes = await api<{ items: Array<{ nodeType: string; output?: { main?: Array<{ json: Record<string, unknown> }> } }> }>(page, token, `/executions/${v2ExecutionId}/nodes`)
   expect(v2Nodes.items.find((node) => node.nodeType === 'acme.json_mapper')?.output?.main?.[0].json.pluginVersion).toBe('2.0.0')
-  const secondWorkflowResponse = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}` }, data: { name: `Plugin v2 workflow ${Date.now()}`, visibility: 'company' } })
+  const secondWorkflowResponse = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { name: `Plugin v2 workflow ${Date.now()}`, visibility: 'company' } })
   expect(secondWorkflowResponse.status()).toBe(201)
   const secondWorkflow = await secondWorkflowResponse.json() as { id: string }
   const secondDraft = await api<{ revision: number; definition: { nodes: unknown[]; connections: unknown[]; [key: string]: unknown }; editorDocument: { nodeLayouts?: unknown[]; [key: string]: unknown } }>(page, token, `/workflows/${secondWorkflow.id}/drafts/${await fixtureDraftId(page, secondWorkflow.id)}`)
@@ -493,7 +494,7 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   const secondSave = await page.request.put(`/api/v1/workflows/${secondWorkflow.id}/drafts/${await fixtureDraftId(page, secondWorkflow.id)}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() }, data: { expectedRevision: secondDraft.revision, definition: secondDefinition, editorDocument: secondEditor } })
   expect(secondSave.ok(), await secondSave.text()).toBeTruthy()
   const secondRevision = ((await secondSave.json()) as { revision: number }).revision
-  const secondDebug = await page.request.post(`/api/v1/workflows/${secondWorkflow.id}/drafts/${await fixtureDraftId(page, secondWorkflow.id)}/debug-executions`, { headers: { Authorization: `Bearer ${token}` }, data: { expectedRevision: secondRevision, idempotencyKey: crypto.randomUUID(), input: {}, context: {}, mode: 'full', targetNodeId: null, inputSource: {}, overlayIds: [], sideEffectDecisions: {} } })
+  const secondDebug = await page.request.post(`/api/v1/workflows/${secondWorkflow.id}/drafts/${await fixtureDraftId(page, secondWorkflow.id)}/debug-executions`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { expectedRevision: secondRevision, idempotencyKey: crypto.randomUUID(), input: {}, context: {}, mode: 'full', targetNodeId: null, inputSource: {}, overlayIds: [], sideEffectDecisions: {} } })
   expect(secondDebug.status(), await secondDebug.text()).toBe(202)
   const secondExecutionId = ((await secondDebug.json()) as { executionId: string }).executionId
   await expect.poll(async () => (await api<{ status: string }>(page, token, `/executions/${secondExecutionId}`)).status, { timeout: 120_000 }).toBe('succeeded')

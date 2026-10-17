@@ -61,7 +61,7 @@ function apiKeyRequest(endpointId: ApiKeyEndpointId, runtimeBaseUrl: string, slu
     method: 'POST',
     url: `${base}/applications/${encodeURIComponent(slug)}/sessions`,
     headers: [auth, idempotency, ['Content-Type', 'application/json']],
-    body: { title: 'Support conversation', externalUserId: 'customer-10001' },
+    body: { title: 'Support conversation', input: { customerId: 'customer-10001' } },
   }
   if (endpointId === 'sendMessage') return {
     method: 'POST',

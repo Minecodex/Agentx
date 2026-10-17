@@ -1,13 +1,13 @@
 """One shared real Agent application and its fail-closed session-boundary probe."""
 
-# ruff: noqa: S608 -- identifiers come from the owned E2E namespace.
 from __future__ import annotations
 
+# ruff: noqa: S608 -- identifiers come from the owned E2E namespace.
 import time
 
 import pytest
 
-from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id, publish_fixture_version
 from tests.e2e.product.live_text_support import post
 from tests.e2e.product.test_model_streaming import _grant_model_to_workflow, _stream_workflow
 from tests.e2e.product.test_provider_integration import _publish_application_deployment
@@ -28,7 +28,7 @@ def live_agent_application(live_providers, live_application, installed_agentx, s
     identity = control.get(f"/api/v1/workflows/{workflow}").json()["serviceIdentityId"]
     for kind, resource, operation in (
         ("rag", live_providers["ragId"], "read"),
-        ("memory", live_providers["memoryId"], "manage"),
+        ("memory", live_providers["memoryId"], "use"),
         ("credential", live_providers["ragCredentialId"], "use"),
         ("credential", live_providers["memoryCredentialId"], "use"),
     ):
@@ -87,7 +87,7 @@ def live_agent_application(live_providers, live_application, installed_agentx, s
                 "bindingRole": "long_term_memory",
                 "resourceType": "memory",
                 "resourceId": live_providers["memoryId"],
-                "operation": "manage",
+                "operation": "use",
             },
         ]
     )
@@ -103,16 +103,14 @@ def live_agent_application(live_providers, live_application, installed_agentx, s
     revision = control.get(f"/api/v1/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}").json()[
         "revision"
     ]
-    version = post(
-        control,
-        f"/workflows/{workflow}/versions",
-        {"draftId": fixture_draft(control, workflow, None)["id"], "draftRevision": revision},
-    )
+    version = publish_fixture_version(
+        control, workflow, fixture_draft(control, workflow, None)["id"], revision, None
+    ).json()
     environment = next(item for item in control.get("/api/v1/environments").json() if item["code"] == "development")
     post(
         control,
         f"/workflows/{workflow}/deployments",
-        {"environmentId": environment["id"], "workflowVersionId": version["id"]},
+        {"contentSource": "version", "environmentId": environment["id"], "workflowVersionId": version["id"]},
     )
     application = post(
         control,

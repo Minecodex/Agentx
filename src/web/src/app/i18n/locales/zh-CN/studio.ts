@@ -1,7 +1,23 @@
 const translations = {
+  "restoreCanvas": {
+    "button": "还原",
+    "targetVersion": "还原目标：v{{version}} 已发布内容",
+    "targetInitial": "还原目标：初始画布",
+    "title": "还原画布",
+    "confirm": "确认还原",
+    "restoring": "正在还原…",
+    "confirmVersion": "将画布还原为 v{{version}} 的已发布内容，覆盖本轮已保存和未保存的修改。历史版本和环境部署不变。",
+    "confirmInitial": "将画布还原为创建时的初始内容，覆盖已保存和未保存的修改。",
+    "success": "画布已还原并保存",
+    "readOnly": "只读详情",
+    "draft": "草稿",
+    "unpublished": "未发布"
+  },
   "builder": {
     "recoveryUnavailable": "本地恢复记录未能保存。请手动保存当前编辑后再继续创作。",
-    "scope": "编辑范围", "canvasScope": "当前画布", "nodesScope": "仅选中节点",
+    "scope": "编辑范围",
+    "canvasScope": "当前画布",
+    "nodesScope": "仅选中节点",
     "staticPassed": "静态检查通过，尚未执行工作流。",
     "staticStale": "画布已变更，此静态检查结果已过期。",
     "staticIssues": "静态检查发现问题，点击定位。",
@@ -12,30 +28,35 @@ const translations = {
       "credential_disabled": "模型凭据已禁用或不可用。",
       "credential_changed": "模型已更换凭据，需要管理员重新设置画布 AI 模型。"
     },
-    "ack": {"applied": "已应用一个编辑事务", "stale": "画布已变化，旧命令未应用", "read_only": "画布只读，命令未应用", "rejected": "编辑校验失败"},
-  "title": "AI 创作",
-  "model": "创作模型：{{model}}",
-  "unconfigured": "管理员尚未设置画布 AI 模型，请在模型列表配置。",
-  "unavailable": "画布 AI 模型不可用，请管理员检查模型、凭据和授权设置。",
-  "staticOnly": "AI 只编辑和静态校验；运行、测试、创建版本和发布请使用界面按钮。",
-  "pendingSave": "画布修改待保存",
-  "saved": "画布已保存",
-  "inspectSelected": "将当前执行结果交给 AI 分析",
-  "working": "正在处理…",
-  "prompt": "描述工作流需求",
-  "placeholder": "描述要创建的工作流或当前画布需要修改的内容…",
-  "stop": "停止",
-  "send": "发送",
-  "answer": "回答设计问题",
-  "editBatch": "已准备 {{count}} 个节点的批量变更",
-  "usage": "输入 {{input}} / 输出 {{output}} Token · {{currency}} {{cost}}",
-  "status": {
-    "completed": "创作完成，请检查静态结果并手动测试。",
-    "failed": "创作停止，请检查错误。",
-    "cancelled": "已停止，已应用的修改保留在画布中。",
-    "outcome_unknown": "模型调用结果未知，请检查后开启新一轮创作。"
-  }
-},
+    "ack": {
+      "applied": "已应用一个编辑事务",
+      "stale": "画布已变化，旧命令未应用",
+      "read_only": "画布只读，命令未应用",
+      "rejected": "编辑校验失败"
+    },
+    "title": "AI 创作",
+    "model": "创作模型：{{model}}",
+    "unconfigured": "管理员尚未设置画布 AI 模型，请在模型列表配置。",
+    "unavailable": "画布 AI 模型不可用，请管理员检查模型、凭据和授权设置。",
+    "staticOnly": "AI 只编辑和静态校验；运行、测试、创建版本和发布请使用界面按钮。",
+    "pendingSave": "画布修改待保存",
+    "saved": "画布已保存",
+    "inspectSelected": "将当前执行结果交给 AI 分析",
+    "working": "正在处理…",
+    "prompt": "描述工作流需求",
+    "placeholder": "描述要创建的工作流或当前画布需要修改的内容…",
+    "stop": "停止",
+    "send": "发送",
+    "answer": "回答设计问题",
+    "editBatch": "已准备 {{count}} 个节点的批量变更",
+    "usage": "输入 {{input}} / 输出 {{output}} Token · {{currency}} {{cost}}",
+    "status": {
+      "completed": "创作完成，请检查静态结果并手动测试。",
+      "failed": "创作停止，请检查错误。",
+      "cancelled": "已停止，已应用的修改保留在画布中。",
+      "outcome_unknown": "模型调用结果未知，请检查后开启新一轮创作。"
+    }
+  },
   "details": {
     "parameters": "参数",
     "input": "输入",
@@ -43,7 +64,6 @@ const translations = {
     "trace": "Trace",
     "more": "更多节点操作"
   },
-  "publish": "发布",
   "loading": "正在加载工作流设计器…",
   "unsupported": "不支持的 UI 控件：{{control}}。此节点不能保存。",
   "unavailable": "工作流设计器暂不可用",
@@ -51,7 +71,6 @@ const translations = {
   "back": "返回",
   "close": "关闭",
   "save": "保存",
-  "version": "版本",
   "run": "运行",
   "stop": "停止",
   "undo": "撤销",
@@ -141,32 +160,36 @@ const translations = {
     "workflowVersion": "工作流版本",
     "editContextWrite": "编辑全局变量写入",
     "selectContext": "选择全局变量",
-    "contextWriteDialogDescription": "选择已声明的全局变量并设置写入值"
-    ,"selectResource": "选择资源"
-    ,"selectedResourceUnavailable": "已选资源不可用或无权查看"
-    ,"viewRequest": "查看"
-    ,"resourceStates": {
+    "contextWriteDialogDescription": "选择已声明的全局变量并设置写入值",
+    "selectResource": "选择资源",
+    "selectedResourceUnavailable": "已选资源不可用或无权查看",
+    "viewRequest": "查看",
+    "resourceStates": {
       "authorized": "已授权",
       "grantable": "可授权",
       "requestable": "需申请",
       "pending": "审批中",
       "rejected": "已拒绝",
       "unavailable": "不可用"
-    }
-    ,"authorize": "授权"
-    ,"request": "申请"
-    ,"requestAgain": "重新申请"
-    ,"authorizeTitle": "授权工作流资源"
-    ,"requestTitle": "申请资源授权"
-    ,"authorizeDescription": "将主资源及其全部依赖原子授权给当前工作流。授权完成后仍需手动选择资源。"
-    ,"requestDescription": "将主资源及其全部依赖提交给各资源所属部门会签。审批通过后仍需手动选择资源。"
-    ,"requestMessage": "申请说明"
-    ,"requestMessagePlaceholder": "可选：说明该节点需要此资源的用途"
-    ,"confirmAuthorize": "确认授权"
-    ,"confirmRequest": "提交申请"
+    },
+    "authorize": "授权",
+    "request": "申请",
+    "requestAgain": "重新申请",
+    "authorizeTitle": "授权工作流资源",
+    "requestTitle": "申请资源授权",
+    "authorizeDescription": "将主资源及其全部依赖原子授权给当前工作流。授权完成后仍需手动选择资源。",
+    "requestDescription": "将主资源及其全部依赖提交给各资源所属部门会签。审批通过后仍需手动选择资源。",
+    "requestMessage": "申请说明",
+    "requestMessagePlaceholder": "可选：说明该节点需要此资源的用途",
+    "confirmAuthorize": "确认授权",
+    "confirmRequest": "提交申请"
   },
   "panels": {
-    "knowledge": {"resource": "知识库", "retrieval": "检索设置", "outputHint": "输出文本片段、文档来源和已有附件引用。来源引用不是平台文件，不会下载原文件；没有命中时输出空结果。"},
+    "knowledge": {
+      "resource": "知识库",
+      "retrieval": "检索设置",
+      "outputHint": "输出文本片段、文档来源和已有附件引用。来源引用不是平台文件，不会下载原文件；没有命中时输出空结果。"
+    },
     "model": {
       "model": "模型",
       "modelDescription": "选择已授权的模型资源，模型能力决定输出与用量。",
@@ -340,7 +363,8 @@ const translations = {
     "addFirstNode": "添加循环体节点"
   },
   "runtime": {
-    "streamTail": "模型增量预览", "reasoning": "推理内容",
+    "streamTail": "模型增量预览",
+    "reasoning": "推理内容",
     "title": "执行",
     "expand": "展开执行轨道",
     "collapse": "折叠执行轨道",
@@ -411,29 +435,6 @@ const translations = {
     "minimap": "画布缩略图",
     "handle": "连接端口"
   },
-  "versionDialog": {
-    "title": "工作流版本",
-    "description": "Definition 变化会影响执行；仅编辑变化保留运行时 Hash。",
-    "create": "创建版本",
-    "diff": "草稿 Diff",
-    "history": "历史",
-    "nodes": "节点",
-    "connections": "连线",
-    "definitionChanges": "Definition 变化",
-    "editorChanges": "编辑变化",
-    "close": "关闭",
-    "version": "版本 {{version}}",
-    "revision": "修订号 {{revision}}"
-  },
-  "publishDialog": {
-    "title": "发布工作流",
-    "environment": "环境",
-    "version": "版本",
-    "history": "部署历史",
-    "rollback": "回滚",
-    "cancel": "取消",
-    "publish": "发布"
-  },
   "conflict": {
     "title": "草稿版本冲突",
     "description": "服务器草稿在当前编辑器存在本地修改时发生了变化。",
@@ -499,8 +500,7 @@ const translations = {
       "NODE_MANIFEST_MISSING": "节点定义不存在。",
       "UNSUPPORTED_NODE_VERSION": "节点版本不受支持。",
       "DANGLING_CONNECTION": "连线引用了不存在的节点。",
-      "CYCLE_NOT_ALLOWED": "当前连线会形成不允许的循环。"
-,
+      "CYCLE_NOT_ALLOWED": "当前连线会形成不允许的循环。",
       "CONTAINER_EDGE_CROSSES_BOUNDARY": "当前连线跨越了循环容器边界：容器内外节点不能直接相连，循环体内入口请从“迭代开始”芯片连线。"
     }
   },
@@ -517,9 +517,9 @@ const translations = {
     "rolledBack": "部署已回滚",
     "primaryClearedConnection": "主要输出已清除：该节点新增了正常输出连线",
     "primaryClearedDisabled": "主要输出已清除：该节点已禁用",
-    "primaryClearedDeleted": "主要输出已清除：该节点已删除"
-    ,"resourceAuthorized": "资源授权已完成，请重新打开下拉选择"
-    ,"resourceRequested": "资源授权申请已提交"
+    "primaryClearedDeleted": "主要输出已清除：该节点已删除",
+    "resourceAuthorized": "资源授权已完成，请重新打开下拉选择",
+    "resourceRequested": "资源授权申请已提交"
   },
   "editorFallback": "编辑器加载中，可直接输入内容",
   "addItem": "添加条目",
@@ -666,19 +666,44 @@ const translations = {
     "single": "单值"
   },
   "executionReferences": {
-    "root": "运行信息", "execution": "执行信息", "node": "当前节点", "workflow": "工作流",
-    "trigger": "触发信息", "initiator": "发起人", "applicationSession": "应用与会话",
-    "executionId": "执行 ID", "startedAt": "开始时间", "parentExecutionId": "父执行 ID",
-    "nodeId": "节点 ID", "nodeExecutionId": "节点执行 ID", "runIndex": "运行序号",
-    "itemIndex": "数据项序号", "loopIterationIndex": "循环迭代序号",
-    "workflowId": "工作流 ID", "workflowName": "工作流名称", "workflowVersionId": "版本 ID",
-    "workflowVersionNumber": "版本号", "ownerDepartmentId": "所属部门 ID", "ownerDepartmentName": "所属部门名称",
-    "triggerType": "触发类型", "triggerSourceId": "触发来源 ID", "triggerName": "触发来源名称",
-    "initiatorType": "发起人类型", "userId": "用户 ID", "userName": "用户名称",
-    "departmentId": "部门 ID", "departmentName": "部门名称", "roleIds": "角色 ID 列表",
-    "roleCodes": "角色编码列表", "roleNames": "角色名称列表", "roleAssignments": "完整角色分配",
-    "applicationId": "应用 ID", "invocationId": "调用 ID", "sessionId": "会话 ID",
-    "externalUserId": "外部用户 ID", "partial": "部分触发方式下为空"
+    "root": "运行信息",
+    "execution": "执行信息",
+    "node": "当前节点",
+    "workflow": "工作流",
+    "trigger": "触发信息",
+    "initiator": "发起人",
+    "applicationSession": "应用与会话",
+    "executionId": "执行 ID",
+    "startedAt": "开始时间",
+    "parentExecutionId": "父执行 ID",
+    "nodeId": "节点 ID",
+    "nodeExecutionId": "节点执行 ID",
+    "runIndex": "运行序号",
+    "itemIndex": "数据项序号",
+    "loopIterationIndex": "循环迭代序号",
+    "workflowId": "工作流 ID",
+    "workflowName": "工作流名称",
+    "workflowVersionId": "版本 ID",
+    "workflowVersionNumber": "版本号",
+    "ownerDepartmentId": "所属部门 ID",
+    "ownerDepartmentName": "所属部门名称",
+    "triggerType": "触发类型",
+    "triggerSourceId": "触发来源 ID",
+    "triggerName": "触发来源名称",
+    "initiatorType": "发起人类型",
+    "userId": "用户 ID",
+    "userName": "用户名称",
+    "departmentId": "部门 ID",
+    "departmentName": "部门名称",
+    "roleIds": "角色 ID 列表",
+    "roleCodes": "角色编码列表",
+    "roleNames": "角色名称列表",
+    "roleAssignments": "完整角色分配",
+    "applicationId": "应用 ID",
+    "invocationId": "调用 ID",
+    "sessionId": "会话 ID",
+    "externalUserId": "外部用户 ID",
+    "partial": "部分触发方式下为空"
   },
   "interface": {
     "start": "开始",

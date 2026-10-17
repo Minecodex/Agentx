@@ -84,7 +84,7 @@ macro_rules! grantable_query {
             " UNION ALL SELECT t.tenant_id,t.id,CONVERT('mcp_tool' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(t.title,t.name) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(CONCAT(s.name,' / ',t.name) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(IF(t.availability='available' AND p.enabled=TRUE AND s.status='active','active','unavailable') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,s.owner_department_id,GREATEST(t.updated_at,p.updated_at,s.updated_at) FROM mcp_tools t JOIN mcp_servers s ON s.id=t.server_id AND s.tenant_id=t.tenant_id JOIN mcp_tool_policies p ON p.tool_id=t.id AND p.tenant_id=t.tenant_id",
             " UNION ALL SELECT tenant_id,id,CONVERT('skill' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(description,'') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,owner_department_id,updated_at FROM skills",
             " UNION ALL SELECT tenant_id,id,CONVERT('rag' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(external_resource_id,'') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,owner_department_id,updated_at FROM rag_resources",
-            " UNION ALL SELECT tenant_id,id,CONVERT('memory' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(COALESCE(external_namespace,'') USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,owner_department_id,updated_at FROM memory_namespaces",
+            " UNION ALL SELECT tenant_id,id,CONVERT('memory' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(endpoint USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,owner_department_id,updated_at FROM memory_connections",
             " UNION ALL SELECT p.tenant_id,p.id,CONVERT('sandbox_profile' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(p.name USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(v.image_digest USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,CONVERT(p.status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci,p.owner_department_id,p.updated_at FROM sandbox_profiles p JOIN sandbox_profile_versions v ON v.profile_id=p.id AND v.version_number=p.current_version_number",
             ") ",
             $tail
@@ -318,6 +318,12 @@ async fn create_grant(
     Json(input): Json<CreateGrantRequest>,
 ) -> ApiResult<(StatusCode, Json<GrantResponse>)> {
     actor.require("resource:grant")?;
+    if kind == "memory" && !matches!(input.operation.as_str(), "use" | "view" | "manage") {
+        return Err(ApiError::bad_request(
+            "INVALID_MEMORY_OPERATION",
+            "Memory supports a single read/write use grant",
+        ));
+    }
     validate_operation(&input.operation)?;
     ensure_resource(&state, actor.tenant_id, &kind, id).await?;
     match input.subject_type.as_str() {
@@ -855,7 +861,7 @@ async fn create_subject_request(
         ));
     }
     if let (Some(workflow), Some(draft)) = (subject.workflow(), input.source_draft_id) {
-        let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_drafts WHERE tenant_id=? AND workflow_id=? AND id=? AND revision=? AND status='active')")
+        let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_drafts d JOIN workflow_versions v ON v.tenant_id=d.tenant_id AND v.working_draft_id=d.id WHERE d.tenant_id=? AND d.workflow_id=? AND d.id=? AND d.revision=? AND v.archived=FALSE)")
             .bind(actor.tenant_id).bind(workflow).bind(draft).bind(input.source_revision).fetch_one(&state.pool).await?;
         if !valid {
             return Err(ApiError::conflict(

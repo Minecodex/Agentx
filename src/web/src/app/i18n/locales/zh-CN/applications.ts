@@ -1,4 +1,16 @@
 const translations = {
+  "invocationRecords": "调用记录",
+  "noEndUser": "未提供用户标识，个人长期记忆不可用。",
+  "userSource": "全部用户来源",
+  "endUser": "调用用户",
+  "userFilter": "按用户 ID 筛选",
+  "userSources": {"platform": "平台登录", "channel": "渠道发送者", "api_parameter": "API 参数"},
+
+  "advancedConfiguration": "高级配置",
+  "apiUserIdInput": "API 用户标识参数",
+  "userIdNotConfigured": "不设置",
+  "userIdExplanation": "用于个人长期记忆、应用会话归属和调用记录筛选。API 调用直接使用所选输入参数的值，不验证用户身份；同一用户应持续传入相同标识。\n平台登录调用自动使用当前登录用户 ID；渠道调用自动使用对应渠道账号内的发送者 ID。\n不设置或未取得用户标识时，个人长期记忆不可用。该标识不决定工作流、工具或凭证权限。",
+
   "created": "创建成功",
   "saved": "保存成功",
   "edit": "编辑应用",
@@ -172,6 +184,8 @@ const translations = {
     "goWorkflows": "去工作流"
   },
   "playground": {
+    "sessionInputs": "会话初始参数",
+    "sessionInputsDescription": "创建后每轮消息都会沿用这些业务参数。平台调用自动使用当前登录用户 ID。",
     "title": "调试台",
     "description": "通过正式 Application Invocation API 测试复杂参数或真实多轮会话。",
     "sessions": "会话",

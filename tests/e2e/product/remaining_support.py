@@ -12,7 +12,7 @@ import httpx
 import pytest
 import yaml
 
-from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id, publish_fixture_version
 from tests.e2e.product.live_text_support import Secret, post
 from tests.e2e.product.next_batch_support import get, publish_application
 from tests.e2e.product.test_model_streaming import _grant_model_to_workflow, _stream_workflow
@@ -158,16 +158,13 @@ def save_version(control, workflow, definition):
         },
     )
     assert response.status_code == 200, response.text
-    return post(
+    return publish_fixture_version(
         control,
-        f"/workflows/{workflow}/versions",
-        {
-            "draftId": fixture_draft(control, workflow, None)["id"],
-            "draftRevision": get(control, f"/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}")[
-                "revision"
-            ],
-        },
-    )
+        workflow,
+        fixture_draft(control, workflow, None)["id"],
+        get(control, f"/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}")["revision"],
+        None,
+    ).json()
 
 
 def agent_definition(control, workflow, model, tool=None, skill=None):

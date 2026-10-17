@@ -1,4 +1,4 @@
-import { fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
+import { fixtureVersionId, fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
@@ -18,7 +18,7 @@ async function login(page: Page) {
 }
 
 async function api<T>(page: Page, token: string, path: string): Promise<T> {
-  const response = await page.request.get(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.get(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   if (!response.ok()) throw new Error(`${path}: ${response.status()} ${await response.text()}`)
   return response.json() as Promise<T>
 }
@@ -65,10 +65,10 @@ test('imports and executes the independently developed template variant', async 
   }
   await expect(page.getByText(displayName, { exact: true }).first()).toBeVisible()
 
-  const created = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}` }, data: { name: `Template Variant ${Date.now()}`, visibility: 'company' } })
+  const created = await page.request.post('/api/v1/workflows', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { name: `Template Variant ${Date.now()}`, visibility: 'company' } })
   expect(created.ok(), await created.text()).toBeTruthy()
   const workflow = await created.json() as { id: string }
-  await page.goto(`/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}/editor`)
+  await page.goto(`/workflows/${workflow.id}/versions/${await fixtureVersionId(page, workflow.id)}/editor`)
   const draft = await api<{ definition: { connections: Array<{ id: string }> } }>(page, token, `/workflows/${workflow.id}/drafts/${await fixtureDraftId(page, workflow.id)}`)
   const edge = page.locator(`.react-flow__edge[data-testid="rf__edge-${draft.definition.connections[0].id}"]`)
   const toolbar = page.locator(`.studio-edge-toolbar[data-edge-id="${draft.definition.connections[0].id}"]`)

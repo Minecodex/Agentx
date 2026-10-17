@@ -83,8 +83,10 @@ mod work_packages;
 mod workflow_api;
 mod workflow_drafts;
 mod workflow_operations;
+mod workflow_publishing;
 mod workflow_resources;
 mod workflow_revision_resources;
+mod workflow_versions;
 
 use control_helpers::{
     control_roles as roles, payload_strings, payload_uuid, payload_uuids, required_env as required,
@@ -1428,6 +1430,9 @@ impl Publisher {
     }
 
     async fn activate(&self, a: &Attempt) -> Result<()> {
+        let identity_policy = sqlx::query("SELECT api_user_id_input,environment_id FROM application_deployments WHERE tenant_id=? AND id=?")
+            .bind(a.tenant_id).bind(a.deployment_id).fetch_one(&self.pool).await?;
+
         let policy: String = sqlx::query_scalar(
             "SELECT session_version_policy FROM application_deployments WHERE tenant_id=? AND id=?",
         )
@@ -1453,6 +1458,8 @@ impl Publisher {
             minimum_admission_epoch: a.minimum_admission_epoch,
             runtime_config_revision,
             runtime_policy: agentx_runtime_contracts::ApplicationRuntimePolicyV1 {
+                api_user_id_input: identity_policy.try_get("api_user_id_input")?,
+                environment_id: Some(identity_policy.try_get("environment_id")?),
                 session_version_policy: match policy.as_str() {
                     "pinned" => agentx_runtime_contracts::SessionVersionPolicyV1::Pinned,
                     "follow_deployment" => {
@@ -1689,7 +1696,7 @@ async fn load_dependencies(
             continue;
         }
         let value: Value = sqlx::query_scalar(
-            "SELECT definition_json FROM workflow_versions WHERE tenant_id=? AND id=?",
+            "SELECT definition_json FROM workflow_versions WHERE tenant_id=? AND id=? AND publication_status='published'",
         )
         .bind(tenant)
         .bind(id)
@@ -1734,3 +1741,6 @@ fn runtime_object_idempotency_key(
 #[cfg(test)]
 #[path = "main_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod workflow_version_tests;

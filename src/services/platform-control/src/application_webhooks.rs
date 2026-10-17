@@ -117,9 +117,9 @@ async fn configuration_schemas(
             deployment.try_get("output_schema_json")?,
         ));
     }
-    let definition = sqlx::query_scalar::<_, Value>("SELECT v.definition_json FROM applications a JOIN workflow_versions v ON v.tenant_id=a.tenant_id AND v.workflow_id=a.workflow_id WHERE a.tenant_id=? AND a.id=? ORDER BY v.version_number DESC LIMIT 1")
+    let definition = sqlx::query_scalar::<_, Value>("SELECT v.definition_json FROM applications a JOIN workflow_versions v ON v.tenant_id=a.tenant_id AND v.workflow_id=a.workflow_id WHERE a.tenant_id=? AND a.id=? AND v.publication_status='published' ORDER BY v.version_number DESC LIMIT 1")
         .bind(tenant_id).bind(application_id).fetch_optional(&state.pool).await?
-        .ok_or_else(|| ApiError::unprocessable("APPLICATION_WORKFLOW_VERSION_REQUIRED", "Create a Workflow version before configuring channels"))?;
+        .ok_or_else(|| ApiError::unprocessable("APPLICATION_WORKFLOW_VERSION_REQUIRED", "Publish a Workflow version before configuring channels"))?;
     let definition = serde_json::from_value(definition).map_err(ApiError::internal)?;
     Ok(workflow_schemas(&definition))
 }

@@ -14,7 +14,7 @@ async function login(page: Page) {
 }
 
 async function request<T>(page: Page, token: string, path: string): Promise<T> {
-  const response = await page.request.get(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.get(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   await expectResponse(response, path)
   return await response.json() as T
 }

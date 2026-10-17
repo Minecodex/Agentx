@@ -45,6 +45,7 @@ pub struct ApiKeyCaller {
 
 #[derive(Clone, Debug)]
 pub struct InvocationCaller {
+    pub end_user: Option<agentx_runtime_contracts::ApplicationUserIdentityV1>,
     pub caller_type: &'static str,
     pub caller_id: Uuid,
     pub token_version: Option<u64>,
@@ -331,6 +332,7 @@ pub async fn create_invocation(
         tenant_id,
         application_id,
         InvocationCaller {
+            end_user: None,
             caller_type: "api_key",
             caller_id,
             token_version: None,
@@ -466,16 +468,38 @@ async fn create_runtime_invocation_tx_inner(
         caller.origin.clone()
     };
     let mut selected_bundle_id = bundle_id;
+    let mut identity_policy =
+        crate::user_identity::api_policy(tx, tenant_id, application_id).await?;
+    let mut end_user = caller.end_user.clone().or_else(|| {
+        crate::user_identity::from_call(
+            caller.caller_type,
+            caller.caller_id,
+            input,
+            &identity_policy,
+        )
+    });
+    let mut session_initial_input = json!({});
     let mut session_external_user_id = None;
     if let Some(session_id) = session_id {
-        let session = sqlx::query("SELECT application_id,bundle_id,version_policy,status,external_user_id FROM application_sessions WHERE tenant_id=? AND id=? FOR UPDATE")
+        let session = sqlx::query("SELECT application_id,bundle_id,version_policy,status,external_user_id,user_identity_json,initial_input_json,environment_id FROM application_sessions WHERE tenant_id=? AND id=? FOR UPDATE")
             .bind(tenant_id).bind(session_id).fetch_optional(&mut **tx).await?.ok_or(RuntimeError::NotFound)?;
         if session.try_get::<Uuid, _>("application_id")? != application_id
             || session.try_get::<String, _>("status")? != "active"
         {
             return Err(RuntimeError::Unauthorized);
         }
+        identity_policy["environmentId"] =
+            serde_json::to_value(session.try_get::<Option<Uuid>, _>("environment_id")?)
+                .map_err(|error| RuntimeError::Internal(error.into()))?;
         session_external_user_id = session.try_get("external_user_id")?;
+        end_user = session
+            .try_get::<Option<Value>, _>("user_identity_json")?
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|error| RuntimeError::Internal(error.into()))?;
+        session_initial_input = session
+            .try_get::<Option<Value>, _>("initial_input_json")?
+            .unwrap_or_else(|| json!({}));
         if session.try_get::<String, _>("version_policy")? != "follow_deployment" {
             selected_bundle_id = session
                 .try_get::<Option<Uuid>, _>("bundle_id")?
@@ -523,6 +547,14 @@ async fn create_runtime_invocation_tx_inner(
     } else {
         (input.clone(), None, None)
     };
+    if chat_message {
+        if let (Some(initial), Some(projected)) =
+            (session_initial_input.as_object_mut(), input.as_object())
+        {
+            initial.extend(projected.clone());
+            input = session_initial_input;
+        }
+    }
     agentx_runtime::materialize_and_validate_start_input(&mut input, &spec.input_contract)
         .map_err(|error| {
             RuntimeError::InvalidRequest("INPUT_SCHEMA_VALIDATION_FAILED", error.to_string())
@@ -582,7 +614,7 @@ async fn create_runtime_invocation_tx_inner(
         .map_err(|error| RuntimeError::Internal(error.into()))?;
     let object_manifest = serde_json::to_value(&spec.objects)
         .map_err(|error| RuntimeError::Internal(error.into()))?;
-    let execution_context = serde_json::to_value(crate::execution_context::create_snapshot(
+    let mut execution_context = serde_json::to_value(crate::execution_context::create_snapshot(
         crate::execution_context::NewExecutionContext {
             execution_id,
             started_at,
@@ -606,6 +638,20 @@ async fn create_runtime_invocation_tx_inner(
         },
     ))
     .map_err(|error| RuntimeError::Internal(error.into()))?;
+    execution_context["endUser"] =
+        serde_json::to_value(&end_user).map_err(|error| RuntimeError::Internal(error.into()))?;
+    execution_context["environmentId"] = identity_policy
+        .get("environmentId")
+        .cloned()
+        .unwrap_or(Value::Null);
+    sqlx::query(
+        "UPDATE application_invocations SET user_identity_json=? WHERE tenant_id=? AND id=?",
+    )
+    .bind(&execution_context["endUser"])
+    .bind(tenant_id)
+    .bind(invocation_id)
+    .execute(&mut **tx)
+    .await?;
     sqlx::query(
         "INSERT INTO execution_snapshots(execution_id,tenant_id,workflow_version_id,bundle_id,admission_epoch,state_version,definition_json,compiled_ir_json,compiled_ir_hash,compiler_version,resource_snapshot_json,authorization_snapshot_json,policy_snapshot_json,execution_context_json,worker_compatibility_json,object_manifest_json,runtime_settings_json,state_hash) VALUES(?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?)",
     )

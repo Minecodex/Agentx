@@ -439,12 +439,7 @@ def test_p305_subject_memory_write_recall_is_scoped_and_audited(
     service_urls: dict[str, str],
     run_id: str,
 ) -> None:
-    """Exercise trusted Subject Memory across two gateway executions.
-
-    The first invocation writes a marker and the second recalls it.  Both
-    calls use the authenticated gateway subject; no request-body user ID is
-    used to construct the namespace.
-    """
+    """Platform-created sessions freeze the logged-in user for later API calls."""
     assert e2e_providers["mem0"].endswith(":8000")
     with httpx.Client(base_url=service_urls["web"], timeout=60) as control:
         token, me = _access_token(control)
@@ -459,10 +454,7 @@ def test_p305_subject_memory_write_recall_is_scoped_and_audited(
             environment["id"],
             job_suffix="subject-memory",
             session_policy="application_session",
-            fixture_env={
-                "AGENTX_V2_FIXTURE_MEMORY_OPERATION": "manage",
-                "AGENTX_V2_FIXTURE_MEMORY_ACCESS_MODE": "read_write",
-            },
+            fixture_env={},
         )
         application_id = fixture["applicationId"]
         api_key_response = control.post(
@@ -496,7 +488,7 @@ def test_p305_subject_memory_write_recall_is_scoped_and_audited(
                 },
                 json={
                     "title": f"P3-05 subject memory session {index}",
-                    "externalUserId": "00000000-0000-7000-8000-00000000dead",
+                    "input": {},
                 },
             )
             assert response.status_code == 201, response.text
@@ -548,23 +540,35 @@ def test_p305_subject_memory_write_recall_is_scoped_and_audited(
     }, {"registry": registry, "calls": calls}
     audit_rows = _runtime_mysql(
         installed_agentx,
-        "SELECT JSON_ARRAYAGG(JSON_OBJECT('operation',operation,'subject',BIN_TO_UUID(authenticated_subject_id))) "
+        "SELECT JSON_ARRAYAGG(JSON_OBJECT('operation',operation,'subject',BIN_TO_UUID(application_user_id))) "
         "FROM agent_subject_memory_audit "
         f"WHERE tenant_id=UUID_TO_BIN('{me['companyId']}') AND application_id=UUID_TO_BIN('{application_id}') "
-        f"AND authenticated_subject_id=UUID_TO_BIN('{me['id']}') "
         "AND operation IN ('write','recall');",
     )
     audits = json.loads(audit_rows) if audit_rows and audit_rows.lower() != "null" else []
     assert {item["operation"] for item in audits} >= {"write", "recall"}
 
-    memory_version_id = next(tool["resourceVersionId"] for tool in registry["tools"] if tool["name"] == "memory_recall")
+    memory_connection_id = next(tool["resourceId"] for tool in registry["tools"] if tool["name"] == "memory_recall")
     with httpx.Client(base_url=service_urls["web"], timeout=60) as control:
+        sessions = control.get(
+            "/api/v1/agent-sessions",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"applicationId": application_id},
+        ).json()["items"]
+        selected = sessions[0]
+        diagnostic = control.get(
+            f"/api/v1/agent-sessions/{selected['sessionKey']}/{selected['stableAgentNodeKey']}",
+            headers={"Authorization": f"Bearer {token}"},
+        ).json()
+        target = next(item for item in diagnostic["memoryTargets"] if item["memoryResourceId"] == memory_connection_id)
+        assert target["scope"]["user"]["externalUserId"] == me["id"]
         clear_response = control.post(
             "/api/v1/agent-subject-memory/clear",
             headers={"Authorization": f"Bearer {token}"},
             json={
                 "applicationId": application_id,
-                "memoryResourceVersionId": memory_version_id,
+                "memoryResourceId": memory_connection_id,
+                "scope": target["scope"],
                 "idempotencyKey": f"p3-05-subject-memory-clear-{run_id}",
             },
         )
@@ -581,7 +585,7 @@ def test_p305_subject_memory_write_recall_is_scoped_and_audited(
             },
             json={
                 "title": "P3-05 cleared subject memory session",
-                "externalUserId": "00000000-0000-7000-8000-00000000dead",
+                "input": {},
             },
         )
         assert third_session_response.status_code == 201, third_session_response.text
@@ -613,8 +617,7 @@ def test_p305_subject_memory_write_recall_is_scoped_and_audited(
         "SELECT COUNT(*) FROM agent_subject_memory_audit "
         f"WHERE tenant_id=UUID_TO_BIN('{me['companyId']}') "
         f"AND application_id=UUID_TO_BIN('{application_id}') "
-        f"AND authenticated_subject_id=UUID_TO_BIN('{me['id']}') "
-        f"AND memory_resource_version_id=UUID_TO_BIN('{memory_version_id}') "
+        f"AND memory_connection_id=UUID_TO_BIN('{memory_connection_id}') "
         "AND operation='clear';",
     )
     assert int(clear_audit or "0") == 1

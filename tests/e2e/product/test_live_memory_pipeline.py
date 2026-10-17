@@ -1,9 +1,8 @@
-"""Real application/namespace memory isolation and Agent-to-Python data flow."""
-
-# ruff: noqa: S608 -- only isolated API-generated UUIDs enter diagnostic SQL.
+"""Real application/Agent memory isolation and Agent-to-Python data flow."""
 
 from __future__ import annotations
 
+# ruff: noqa: S608 -- only isolated API-generated UUIDs enter diagnostic SQL.
 import copy
 import json
 import time
@@ -12,7 +11,7 @@ from itertools import pairwise
 import httpx
 import pytest
 
-from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id, publish_fixture_version
 from tests.e2e.product.live_text_support import post
 from tests.e2e.product.next_batch_support import get, publish_application
 from tests.e2e.product.test_live_knowledge_memory import (
@@ -65,16 +64,25 @@ def _save_version(control, workflow, definition):
         },
     )
     assert saved.status_code == 200, saved.text
-    return post(
+    return publish_fixture_version(
         control,
-        f"/workflows/{workflow}/versions",
-        {
-            "draftId": fixture_draft(control, workflow, None)["id"],
-            "draftRevision": get(control, f"/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}")[
-                "revision"
-            ],
-        },
-    )
+        workflow,
+        fixture_draft(control, workflow, None)["id"],
+        get(control, f"/workflows/{workflow}/drafts/{fixture_draft_id(control, workflow, None)}")["revision"],
+        None,
+    ).json()
+
+
+def _replace_node_id(value, previous_id, node_id):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in {"id", "sourceNodeId", "targetNodeId"} and child == previous_id:
+                value[key] = node_id
+            else:
+                _replace_node_id(child, previous_id, node_id)
+    elif isinstance(value, list):
+        for child in value:
+            _replace_node_id(child, previous_id, node_id)
 
 
 def _memory_results(context, execution):
@@ -99,7 +107,7 @@ def _switch_application(control, app, version):
     post(
         control,
         f"/workflows/{app['workflowId']}/deployments",
-        {"environmentId": environment["id"], "workflowVersionId": version},
+        {"contentSource": "version", "environmentId": environment["id"], "workflowVersionId": version},
     )
     deployed = _publish_application_deployment(
         control, dict(control.headers), app["applicationId"], version, environment["id"]
@@ -125,7 +133,7 @@ def _switch_application(control, app, version):
         time.sleep(0.5)
 
 
-def test_real_memory_isolated_by_application_and_namespace(
+def test_real_memory_isolated_by_application_and_agent(
     installed_agentx, service_urls, live_providers, live_agent_application, run_id
 ):
     control = live_providers["control"]
@@ -145,23 +153,9 @@ def test_real_memory_isolated_by_application_and_namespace(
     _authorize_definition(control, workflow_b, definition)
     version_b = _save_version(control, workflow_b, definition)
     app_b = publish_application(control, workflow_b, version_b["id"], f"p7-other-memory-{run_id}")
-    memory = get(control, f"/memory/namespaces/{live_providers['memoryId']}")
-    namespace_b = post(
-        control,
-        "/memory/namespaces",
-        {
-            "connectionId": memory["connectionId"],
-            "name": f"P7 alternate memory {run_id}",
-            "externalNamespace": f"p7_alternate_{run_id}",
-            "accessMode": "read_write",
-            "ownerDepartmentId": memory["ownerDepartmentId"],
-        },
-    )
     alternate = copy.deepcopy(definition)
     agent = next(node for node in alternate["nodes"] if node["type"] == "agent")
-    next(item for item in agent["resourceReferences"] if item["resourceType"] == "memory")["resourceId"] = namespace_b[
-        "id"
-    ]
+    _replace_node_id(alternate, agent["id"], "alternate_memory_agent")
     _authorize_definition(control, app_a["workflowId"], alternate)
     alternate_version = _save_version(control, app_a["workflowId"], alternate)
     alpha = f"memory-alpha-{run_id}"
@@ -199,28 +193,27 @@ def test_real_memory_isolated_by_application_and_namespace(
         assert beta in answer and alpha not in answer and _memory_results(installed_agentx, recall_b), answer
         _switch_application(control, app_a, alternate_version["id"])
         try:
-            isolated_namespace, answer = _ask(
-                gateway, app_a, "A 改绑另一命名空间", "请调用 memory_recall 查询我的私人项目代号,没有结果就回答不知道。"
+            isolated_node, answer = _ask(
+                gateway,
+                app_a,
+                "A 改绑另一Agent 节点",
+                "请调用 memory_recall 查询我的私人项目代号,没有结果就回答不知道。",
             )
             assert (
-                alpha not in answer
-                and beta not in answer
-                and _memory_results(installed_agentx, isolated_namespace) == []
+                alpha not in answer and beta not in answer and _memory_results(installed_agentx, isolated_node) == []
             ), answer
-            written_namespace, _ = _ask(
-                gateway, app_a, "新命名空间写入", f"请调用 memory_write 保存事实:我的私人项目代号是 {gamma}。"
+            written_node, _ = _ask(
+                gateway, app_a, "新Agent 节点写入", f"请调用 memory_write 保存事实:我的私人项目代号是 {gamma}。"
             )
-            _assert_written(installed_agentx, written_namespace)
-            recall_namespace, answer = _ask(
-                gateway, app_a, "新命名空间召回", "请调用 memory_recall 查询我的私人项目代号,准确回答查到的代号。"
+            _assert_written(installed_agentx, written_node)
+            recall_node, answer = _ask(
+                gateway, app_a, "新Agent 节点召回", "请调用 memory_recall 查询我的私人项目代号,准确回答查到的代号。"
             )
-            assert gamma in answer and alpha not in answer and _memory_results(installed_agentx, recall_namespace), (
-                answer
-            )
+            assert gamma in answer and alpha not in answer and _memory_results(installed_agentx, recall_node), answer
         finally:
             _switch_application(control, app_a, original_version)
         restored_a, answer = _ask(
-            gateway, app_a, "恢复原命名空间", "请调用 memory_recall 查询我的私人项目代号,准确回答查到的代号。"
+            gateway, app_a, "恢复原Agent 节点", "请调用 memory_recall 查询我的私人项目代号,准确回答查到的代号。"
         )
         assert (
             alpha in answer
@@ -229,15 +222,15 @@ def test_real_memory_isolated_by_application_and_namespace(
             and _memory_results(installed_agentx, restored_a)
         ), answer
     for result, scope in (
-        (written_a, "app-a/namespace-a"),
-        (recall_a, "app-a/namespace-a"),
-        (isolated_b, "app-b/namespace-a"),
-        (written_b, "app-b/namespace-a"),
-        (recall_b, "app-b/namespace-a"),
-        (isolated_namespace, "app-a/namespace-b"),
-        (written_namespace, "app-a/namespace-b"),
-        (recall_namespace, "app-a/namespace-b"),
-        (restored_a, "app-a/namespace-a"),
+        (written_a, "app-a/agent-a"),
+        (recall_a, "app-a/agent-a"),
+        (isolated_b, "app-b/agent-a"),
+        (written_b, "app-b/agent-a"),
+        (recall_b, "app-b/agent-a"),
+        (isolated_node, "app-a/agent-b"),
+        (written_node, "app-a/agent-b"),
+        (recall_node, "app-a/agent-b"),
+        (restored_a, "app-a/agent-a"),
     ):
         scope_hash = _runtime_mysql(
             installed_agentx,
@@ -257,8 +250,8 @@ def test_real_memory_isolated_by_application_and_namespace(
             "status": "passed",
             "sameAuthenticatedUser": True,
             "differentApplicationsIsolated": True,
-            "differentNamespacesIsolated": True,
-            "originalNamespaceRestored": True,
+            "differentAgentsIsolated": True,
+            "originalAgentRestored": True,
             "scopeEvidence": checked,
         },
     )

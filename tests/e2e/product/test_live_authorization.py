@@ -1,9 +1,8 @@
 """Second-batch grant lifecycle against the actual Control and Runtime."""
 
-# ruff: noqa: S608 -- identifiers only come from the isolated API fixture.
-
 from __future__ import annotations
 
+# ruff: noqa: S608 -- identifiers only come from the isolated API fixture.
 import os
 import time
 from pathlib import Path
@@ -11,7 +10,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id
+from tests.e2e.draft_fixtures import fixture_draft, fixture_draft_id, publish_fixture_version
 from tests.e2e.product.live_text_support import post
 from tests.e2e.product.next_batch_support import (
     approval_resources as approval_resources,
@@ -126,16 +125,13 @@ def test_cross_department_approval_rejection_cancellation_and_runtime_revocation
             },
         )
         assert saved.status_code == 200, saved.text
-        version = post(
+        version = publish_fixture_version(
             editor,
-            f"/workflows/{workflow}/versions",
-            {
-                "draftId": fixture_draft(editor, workflow, None)["id"],
-                "draftRevision": get(
-                    editor, f"/workflows/{workflow}/drafts/{fixture_draft_id(editor, workflow, None)}"
-                )["revision"],
-            },
-        )
+            workflow,
+            fixture_draft(editor, workflow, None)["id"],
+            get(editor, f"/workflows/{workflow}/drafts/{fixture_draft_id(editor, workflow, None)}")["revision"],
+            None,
+        ).json()
         app = publish_application(control, workflow, version["id"], f"p7-approved-{run_id}")
         with httpx.Client(
             base_url=service_urls["runtime"],
@@ -302,7 +298,7 @@ def test_already_issued_token_is_refused_after_role_revocation(
                 time.sleep(0.5)
             creation = gateway.post(
                 f"/gateway/v1/applications/{app['applicationSlug']}/sessions",
-                json={"title": "旧 Token 应失效", "externalUserId": None},
+                json={"title": "旧 Token 应失效", "input": {}},
                 headers={"Idempotency-Key": f"old-token-{time.time_ns()}"},
             )
             existing = gateway.post(

@@ -201,11 +201,25 @@ describe('resource page uniqueness field errors', () => {
     expect(await within(form).findByText('所选连接下已存在相同的外部知识资源 ID。')).toBeInTheDocument()
   })
 
-  it('shows Memory external namespace conflicts', async () => {
-    stubFetch(externalResourceHandler('memory', 'MEMORY_EXTERNAL_NAMESPACE_EXISTS', 'externalNamespace'))
+  it('creates a single read/write Memory connection without namespace fields', async () => {
+    let submitted: Record<string, unknown> | undefined
+    stubFetch((path, init) => {
+      if (path.endsWith('/memory/connections') && init?.method === 'POST') {
+        submitted = JSON.parse(String(init.body))
+        return jsonResponse({ id: 'memory-1' }, 201)
+      }
+      if (path.endsWith('/departments')) return jsonResponse([rootDepartment])
+      return jsonResponse([])
+    })
     renderPage(<MemoryPage />)
-    const form = await openExternalResourceForm('接入记忆服务', '记忆命名空间')
-    expect(await within(form).findByText('所选连接下已存在相同的外部 Namespace。')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: '接入记忆服务' }))
+    const form = await screen.findByRole('dialog')
+    for (const label of ['资源名称', '记忆命名空间', '访问模式']) expect(within(form).queryByLabelText(label)).not.toBeInTheDocument()
+    fireEvent.change(within(form).getByLabelText('连接名称'), { target: { value: 'Mem0 connection' } })
+    fireEvent.change(within(form).getByLabelText('Endpoint'), { target: { value: 'https://mem0.example.test' } })
+    choose(form, '所属部门', '公司')
+    fireEvent.click(within(form).getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(submitted).toEqual({ name: 'Mem0 connection', endpoint: 'https://mem0.example.test', healthPath: '/health', credentialId: null, ownerDepartmentId: rootDepartment.id, configuration: {} }))
   })
 
   it('shows Workflow environment code conflicts', async () => {
@@ -242,11 +256,11 @@ function choose(container: HTMLElement, label: string, option: string) {
   fireEvent.click(screen.getByRole('option', { name: option }))
 }
 
-function externalResourceHandler(kind: 'knowledge' | 'memory', code: string, field: string): FetchHandler {
+function externalResourceHandler(kind: 'knowledge', code: string, field: string): FetchHandler {
   return (path, init) => {
     if (path.endsWith(`/${kind}/connections`) && init?.method === 'POST') return jsonResponse({ id: 'connection-1' }, 201)
     if (path.endsWith(`/${kind}/connections`)) return jsonResponse([])
-    const suffix = kind === 'knowledge' ? '/knowledge/resources' : '/memory/namespaces'
+    const suffix = '/knowledge/resources'
     if (path.endsWith(suffix) && init?.method === 'POST') return fieldConflict(code, field)
     if (path.endsWith('/departments')) return jsonResponse([rootDepartment])
     return jsonResponse(emptyPage)

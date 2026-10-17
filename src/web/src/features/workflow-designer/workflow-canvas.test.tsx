@@ -22,7 +22,7 @@ vi.mock('./store/canvas-render-store', async (importOriginal) => {
 
 const editorDocument = { nodeLayouts: [{ nodeId: 'trigger', x: 100, y: 100 }, { nodeId: 'exit', x: 560, y: 100 }], boundaryLayouts: [], edges: [], annotations: [], groups: [], viewport: { x: 0, y: 0, zoom: 1 } }
 const draft = {
-  name: 'Draft', status: 'active' as const, baseVersionId: null, id: 'draft-1', workflowId: 'workflow-1', revision: 1, schemaVersion: '8.0', definitionHash: 'sha256:def', editorHash: 'sha256:editor', updatedAt: '2026-08-02T10:00:00Z', editorDocument,
+  versionId:'version-1',versionNumber:1,publicationStatus:'unpublished',archived:false,generation:0, baseVersionId: null, id: 'draft-1', workflowId: 'workflow-1', revision: 1, schemaVersion: '8.0', definitionHash: 'sha256:def', editorHash: 'sha256:editor', updatedAt: '2026-08-02T10:00:00Z', editorDocument,
   definition: { schemaVersion: '8.0', start: { inputs: {}, contexts: {} }, settings: { executionOrder: 'deterministic', activationBudget: 10000 }, nodes: [{ id: 'trigger', key: 'source', type: 'set', typeVersion: 1, name: 'Set', disabled: false, protected: false, parameters: {}, contextWrites: [], resourceReferences: [], settings: {} }, { id: 'exit', key: 'exit', type: 'exit', typeVersion: 1, name: 'End', disabled: false, protected: true, parameters: { outputs: {}, errorOutputs: {} }, contextWrites: [], resourceReferences: [], settings: {} }], connections: [{ id: 'start-trigger', sourceNodeId: '__start__', sourceHandle: 'main', targetNodeId: 'trigger', targetHandle: 'main', order: 0 }, { id: 'trigger-exit', sourceNodeId: 'trigger', sourceHandle: 'main', targetNodeId: 'exit', targetHandle: 'main', order: 0 }], end: { completion: "first_return", outputs: {}, error: { outputs: { } } } },
 }
 
@@ -58,9 +58,71 @@ describe('workflow studio shell', () => {
     }))
   })
 
+  it('waits for the authoritative revision before hydrating a cached editor after publication', async () => {
+    const fallback=vi.mocked(fetch).getMockImplementation()!
+    let release!: (value:Response)=>void
+    const response=new Promise<Response>(resolve=>{release=resolve})
+    vi.mocked(fetch).mockImplementation((input,init)=>String(input).endsWith('/drafts/draft-1') && !init?.method ? response : fallback(input,init))
+    const queryClient=new QueryClient({defaultOptions:{queries:{retry:false}}})
+    queryClient.setQueryData(['workflow-document','workflow-1','draft-1'],draft)
+    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/versions/version-1/editor']}><Routes><Route path="/workflows/:workflowId/versions/:versionId/editor" element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor documentId="draft-1" /></EditorStoreProvider>}/></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
+    expect(useEditorStore.getState().nodes).toEqual([])
+    const fresh=structuredClone(draft)
+    fresh.revision=4
+    fresh.definition.nodes[0]!.name='Published baseline'
+    await act(async()=>{release(json(fresh));await response})
+    await waitFor(()=>expect(useEditorStore.getState().nodes.find(node=>node.id==='trigger')?.data.label).toBe('Published baseline'))
+    act(()=>useEditorStore.getState().updateNode('trigger',{label:'New edit'}))
+    fireEvent.click(screen.getByRole('button',{name:'Save'}))
+    await waitFor(()=>expect(vi.mocked(fetch).mock.calls.some(([,init])=>init?.method==='PUT'&&JSON.parse(String(init.body)).expectedRevision===4)).toBe(true))
+  })
+
+  it('keeps version details read-only for toolbar, node mutations and keyboard shortcuts', async () => {
+    const fallback=vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation((input,init)=>String(input).endsWith('/versions/version-1')
+      ? Promise.resolve(json({...draft,contentHash:draft.definitionHash,sourceRevision:1,nodeManifests:{}})) : fallback(input,init))
+    const queryClient=new QueryClient({defaultOptions:{queries:{retry:false}}})
+    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/versions/version-1']}><Routes><Route path="/workflows/:workflowId/versions/:versionId" element={<EditorStoreProvider store={useEditorStore} readOnly><WorkflowCanvasEditor viewOnly /></EditorStoreProvider>}/></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
+    await screen.findByTestId('workflow-canvas')
+    await waitFor(()=>expect(useEditorStore.getState().nodes).toHaveLength(2))
+    const original=serializeStudio(useEditorStore.getState())
+    for(const name of ['Save','Run','Restore','AI creation']) expect(screen.queryByRole('button',{name})).not.toBeInTheDocument()
+    expect(screen.queryByTestId('node-creator-shell')).not.toBeInTheDocument()
+    act(()=>useEditorStore.getState().updateNode('trigger',{label:'Forbidden'}))
+    fireEvent.keyDown(window,{key:'Delete'})
+    fireEvent.keyDown(window,{key:'s',ctrlKey:true})
+    expect(serializeStudio(useEditorStore.getState())).toEqual(original)
+    expect(vi.mocked(fetch).mock.calls.filter(([,init])=>init?.method==='POST'||init?.method==='PUT')).toHaveLength(0)
+  })
+
+  it('restores the authoritative document only after confirmation and clears history', async () => {
+    const fallback=vi.mocked(fetch).getMockImplementation()!
+    let restored=false
+    vi.mocked(fetch).mockImplementation((input,init)=>{
+      if(String(input).endsWith('/versions/version-1/restore')) {restored=true;return Promise.resolve(json({revision:2,versionId:'version-1'}))}
+      if(restored&&String(input).endsWith('/drafts/draft-1'))return Promise.resolve(json({...draft,revision:2}))
+      return fallback(input,init)
+    })
+    const queryClient=new QueryClient({defaultOptions:{queries:{retry:false}}})
+    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/versions/version-1/editor']}><Routes><Route path="/workflows/:workflowId/versions/:versionId/editor" element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor documentId="draft-1" /></EditorStoreProvider>}/></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
+    await screen.findByTestId('workflow-canvas')
+    act(()=>useEditorStore.getState().updateNode('trigger',{label:'Unsaved modification'}))
+    fireEvent.click(screen.getByRole('button',{name:'Restore'}))
+    fireEvent.click(await screen.findByRole('button',{name:'Cancel'}))
+    expect(restored).toBe(false)
+    expect(useEditorStore.getState().dirty).toBe(true)
+    fireEvent.click(screen.getByRole('button',{name:'Restore'}))
+    fireEvent.click(await screen.findByRole('button',{name:'Confirm restore'}))
+    await waitFor(()=>expect(useEditorStore.getState().dirty).toBe(false))
+    expect(restored).toBe(true)
+    expect(useEditorStore.getState().past).toEqual([])
+    expect(useEditorStore.getState().future).toEqual([])
+    expect(serializeStudio(useEditorStore.getState())).toEqual(serializeStudio(deserializeDraft(draft)))
+  })
+
   it('keeps resolved render contracts stable when a drag only changes toolbar and position state', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/drafts/draft-1/editor']}><Routes><Route element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor /></EditorStoreProvider>} path="/workflows/:workflowId/drafts/:draftId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
+    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/versions/version-1/editor']}><Routes><Route element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor documentId="draft-1" /></EditorStoreProvider>} path="/workflows/:workflowId/versions/:versionId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
     await screen.findByTestId('workflow-canvas')
     const contracts = renderStore.getState().manifests
     expect(contracts.size).toBeGreaterThan(0)
@@ -79,7 +141,7 @@ describe('workflow studio shell', () => {
       return fallback(input, init)
     })
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/drafts/draft-1/editor']}><Routes><Route element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor /></EditorStoreProvider>} path="/workflows/:workflowId/drafts/:draftId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
+    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/versions/version-1/editor']}><Routes><Route element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor documentId="draft-1" /></EditorStoreProvider>} path="/workflows/:workflowId/versions/:versionId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
     fireEvent.change(await screen.findByRole('textbox', { name: 'Search nodes' }), { target: { value: 'set' } })
     fireEvent.click(await screen.findByTestId('palette-action-set'))
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
@@ -105,7 +167,7 @@ describe('workflow studio shell', () => {
   it('keeps local edits and offers all explicit conflict choices', async () => {
     saveConflict = true
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/drafts/draft-1/editor']}><Routes><Route element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor /></EditorStoreProvider>} path="/workflows/:workflowId/drafts/:draftId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
+    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/versions/version-1/editor']}><Routes><Route element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor documentId="draft-1" /></EditorStoreProvider>} path="/workflows/:workflowId/versions/:versionId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
 
     fireEvent.change(await screen.findByRole('textbox', { name: 'Search nodes' }), { target: { value: 'set' } })
     fireEvent.click(screen.getByTestId('palette-action-set'))
@@ -121,7 +183,7 @@ describe('workflow studio shell', () => {
   it('saves an Agent draft with an unconfigured required model slot', async () => {
     requiredAgentBinding = true
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/drafts/draft-1/editor']}><Routes><Route element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor /></EditorStoreProvider>} path="/workflows/:workflowId/drafts/:draftId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
+    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/versions/version-1/editor']}><Routes><Route element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor documentId="draft-1" /></EditorStoreProvider>} path="/workflows/:workflowId/versions/:versionId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
 
     fireEvent.change(await screen.findByRole('textbox', { name: 'Search nodes' }), { target: { value: 'agent' } })
     fireEvent.click(screen.getByTestId('palette-action-agent'))
@@ -140,7 +202,7 @@ describe('workflow studio shell', () => {
 
   it('does not submit or autosave a structurally invalid definition', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/drafts/draft-1/editor']}><Routes><Route element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor /></EditorStoreProvider>} path="/workflows/:workflowId/drafts/:draftId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
+    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/versions/version-1/editor']}><Routes><Route element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor documentId="draft-1" /></EditorStoreProvider>} path="/workflows/:workflowId/versions/:versionId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
 
     await waitFor(() => expect(useEditorStore.getState().nodes).toHaveLength(2))
     vi.mocked(fetch).mockClear()
@@ -164,7 +226,7 @@ describe('workflow studio shell', () => {
   it('locates a validation issue in the selected node details', async () => {
     requiredAgentBinding = true
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/drafts/draft-1/editor']}><Routes><Route element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor /></EditorStoreProvider>} path="/workflows/:workflowId/drafts/:draftId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
+    render(<ThemeProvider><QueryClientProvider client={queryClient}><Tooltip.Provider><ToastProvider><MemoryRouter initialEntries={['/workflows/workflow-1/versions/version-1/editor']}><Routes><Route element={<EditorStoreProvider store={useEditorStore}><WorkflowCanvasEditor documentId="draft-1" /></EditorStoreProvider>} path="/workflows/:workflowId/versions/:versionId/editor" /></Routes></MemoryRouter></ToastProvider></Tooltip.Provider></QueryClientProvider></ThemeProvider>)
 
     fireEvent.change(await screen.findByRole('textbox', { name: 'Search nodes' }), { target: { value: 'agent' } })
     fireEvent.click(screen.getByTestId('palette-action-agent'))

@@ -1,4 +1,76 @@
 {
+  "$defs": {
+    "ApplicationUserIdentityV1": {
+      "additionalProperties": false,
+      "description": "The end user a call acts for. API identities are declarations, not authentication.",
+      "properties": {
+        "externalUserId": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/ApplicationUserSourceV1"
+        },
+        "sourceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "sourceId",
+        "externalUserId"
+      ],
+      "type": "object"
+    },
+    "ApplicationUserSourceV1": {
+      "enum": [
+        "platform",
+        "channel",
+        "api_parameter"
+      ],
+      "type": "string"
+    },
+    "MemoryScopeV1": {
+      "additionalProperties": false,
+      "description": "Stable scope shared by all Mem0 call sites. Runtime data never uses display names.",
+      "properties": {
+        "applicationId": {
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "environmentId": {
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stableNodeId": {
+          "type": "string"
+        },
+        "tenantId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "user": {
+          "$ref": "#/$defs/ApplicationUserIdentityV1"
+        },
+        "workflowId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenantId",
+        "workflowId",
+        "stableNodeId",
+        "user"
+      ],
+      "type": "object"
+    }
+  },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
@@ -14,9 +86,12 @@
     "idempotencyKey": {
       "type": "string"
     },
-    "memoryResourceVersionId": {
+    "memoryResourceId": {
       "format": "uuid",
       "type": "string"
+    },
+    "scope": {
+      "$ref": "#/$defs/MemoryScopeV1"
     },
     "tenantId": {
       "format": "uuid",
@@ -24,10 +99,11 @@
     }
   },
   "required": [
+    "scope",
     "apiVersion",
     "tenantId",
     "applicationId",
-    "memoryResourceVersionId",
+    "memoryResourceId",
     "idempotencyKey"
   ],
   "title": "AgentSubjectMemoryClearRequestV1",

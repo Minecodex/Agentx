@@ -33,7 +33,6 @@ export type SkillWorkspace = components['schemas']['SkillWorkspaceResponse']
 export type SkillWorkspaceEntry = components['schemas']['SkillWorkspaceEntry']
 export type ArtifactUpload = components['schemas']['ArtifactUploadResponse']
 export type Knowledge = components['schemas']['KnowledgeResponse']
-export type MemoryResource = components['schemas']['MemoryResponse']
 export type ExternalConnection = components['schemas']['ConnectionResponse']
 export type HealthCheck = components['schemas']['HealthCheckResponse']
 export type Application = components['schemas']['ApplicationResponse']
@@ -87,3 +86,6 @@ export type GatewayMessage = gatewayComponents['schemas']['MessageResponse']
 export type PageResponse<T> = { items: T[]; page: number; pageSize: number; total: number }
 export type KnowledgeDocument = components['schemas']['KnowledgeDocument']
 export type RetrievalTestResult = components['schemas']['RetrievalTestResult']
+
+export type WorkflowVersionSummary = Omit<WorkflowVersion, "definition" | "editorDocument" | "nodeManifests">
+export type WorkflowEditorContext = { version: WorkflowVersion; document: WorkflowDraft; restoreTarget: { kind: "version" | "initial"; versionNumber?: number } }

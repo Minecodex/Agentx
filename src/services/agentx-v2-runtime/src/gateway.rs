@@ -101,7 +101,28 @@ async fn create_session(
     {
         return Ok((StatusCode::CREATED, Json(response)));
     }
+    if !request.input.is_object() {
+        return Err(RuntimeError::InvalidRequest(
+            "INPUT_SCHEMA_VALIDATION_FAILED",
+            "Session initial input must be an object".into(),
+        ));
+    }
     let mut tx = state.pool.begin().await?;
+    let identity_policy =
+        crate::user_identity::api_policy(&mut tx, caller.tenant_id, caller.application_id).await?;
+    let end_user = crate::user_identity::from_call(
+        caller.caller_type,
+        caller.subject_id,
+        &request.input,
+        &identity_policy,
+    );
+    let external_user_id = end_user.as_ref().map(|user| user.external_user_id.clone());
+    let user_identity_json = end_user
+        .as_ref()
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(|error| RuntimeError::Internal(error.into()))?;
+
     let route = sqlx::query("SELECT r.active_bundle_id,b.deployment_id,b.workflow_version_id,CAST(JSON_UNQUOTE(JSON_EXTRACT(r.runtime_policy_json,'$.sessionVersionPolicy')) AS CHAR) session_policy FROM application_routes r JOIN deployment_bundles b ON b.id=r.active_bundle_id AND b.tenant_id=r.tenant_id WHERE r.tenant_id=? AND r.application_id=? AND r.status='active' FOR SHARE")
         .bind(caller.tenant_id).bind(caller.application_id).fetch_optional(&mut *tx).await?.ok_or(RuntimeError::NotFound)?;
     let policy = route
@@ -112,20 +133,21 @@ async fn create_session(
     let pinned_bundle = (policy != "follow_deployment").then_some(bundle_id);
     let workflow_version_id: Uuid = route.try_get("workflow_version_id")?;
     let id = Uuid::now_v7();
-    sqlx::query("INSERT INTO application_sessions(id,tenant_id,application_id,application_deployment_id,workflow_version_id,bundle_id,head_bundle_id,version_policy,external_user_id,title,created_by_user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
-        .bind(id).bind(caller.tenant_id).bind(caller.application_id).bind(route.try_get::<Uuid,_>("deployment_id")?).bind((policy != "follow_deployment").then_some(workflow_version_id)).bind(pinned_bundle).bind(bundle_id).bind(&policy).bind(&request.external_user_id).bind(&request.title).bind((caller.caller_type == "user").then_some(caller.subject_id)).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO application_sessions(id,tenant_id,application_id,application_deployment_id,workflow_version_id,bundle_id,head_bundle_id,version_policy,external_user_id,title,created_by_user_id,user_identity_json,initial_input_json,environment_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(id).bind(caller.tenant_id).bind(caller.application_id).bind(route.try_get::<Uuid,_>("deployment_id")?).bind((policy != "follow_deployment").then_some(workflow_version_id)).bind(pinned_bundle).bind(bundle_id).bind(&policy).bind(&external_user_id).bind(&request.title).bind((caller.caller_type == "user").then_some(caller.subject_id)).bind(&user_identity_json).bind(&request.input).bind(identity_policy.get("environmentId").and_then(Value::as_str).and_then(|value| Uuid::parse_str(value).ok())).execute(&mut *tx).await?;
     if let Some(bundle) = pinned_bundle {
         sqlx::query("INSERT INTO bundle_references(id,tenant_id,bundle_id,reference_kind,owner_id) VALUES(?,?,?,'pinned_session',?)")
             .bind(Uuid::now_v7()).bind(caller.tenant_id).bind(bundle).bind(id).execute(&mut *tx).await?;
     }
     let response = SessionResponseV1 {
+        end_user,
         id,
         application_id: caller.application_id,
         application_deployment_id: route.try_get("deployment_id")?,
         workflow_version_id: (policy != "follow_deployment").then_some(workflow_version_id),
         bundle_id: pinned_bundle,
         version_policy: policy_contract,
-        external_user_id: request.external_user_id,
+        external_user_id,
         title: request.title,
         status: "active".into(),
         version: 1,
@@ -236,6 +258,7 @@ async fn invoke(
         caller.tenant_id,
         caller.application_id,
         InvocationCaller {
+            end_user: None,
             caller_type: caller.caller_type,
             caller_id: caller.subject_id,
             token_version: caller.token_version,
@@ -321,6 +344,7 @@ async fn send_message(
         caller.tenant_id,
         caller.application_id,
         InvocationCaller {
+            end_user: None,
             caller_type: caller.caller_type,
             caller_id: caller.subject_id,
             token_version: caller.token_version,
@@ -931,6 +955,7 @@ async fn webhook(
         caller.tenant_id,
         caller.application_id,
         InvocationCaller {
+            end_user: None,
             caller_type: "webhook",
             caller_id: caller.subject_id,
             token_version: None,
@@ -1082,9 +1107,14 @@ async fn load_session(
     caller: &Caller,
     id: Uuid,
 ) -> RuntimeResult<SessionResponseV1> {
-    let row = sqlx::query("SELECT id,application_id,application_deployment_id,workflow_version_id,bundle_id,version_policy,external_user_id,title,status,version,updated_at FROM application_sessions WHERE tenant_id=? AND application_id=? AND id=?")
+    let row = sqlx::query("SELECT id,application_id,application_deployment_id,workflow_version_id,bundle_id,version_policy,external_user_id,title,status,version,updated_at,user_identity_json FROM application_sessions WHERE tenant_id=? AND application_id=? AND id=?")
         .bind(caller.tenant_id).bind(caller.application_id).bind(id).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)?;
     Ok(SessionResponseV1 {
+        end_user: row
+            .try_get::<Option<Value>, _>("user_identity_json")?
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|error| RuntimeError::Internal(error.into()))?,
         id: row.try_get("id")?,
         application_id: row.try_get("application_id")?,
         application_deployment_id: row.try_get("application_deployment_id")?,
@@ -1104,9 +1134,20 @@ async fn load_invocation(
     caller: &Caller,
     id: Uuid,
 ) -> RuntimeResult<InvocationResponseV1> {
-    let row = sqlx::query("SELECT id,application_id,session_id,execution_id,bundle_id,admission_epoch,status,result_json,error_json,created_at,provider_event_id,conversation_id,trigger_context_json FROM application_invocations WHERE tenant_id=? AND application_id=? AND id=?")
+    let row = sqlx::query("SELECT id,application_id,session_id,execution_id,bundle_id,admission_epoch,status,result_json,error_json,created_at,provider_event_id,conversation_id,trigger_context_json,user_identity_json FROM application_invocations WHERE tenant_id=? AND application_id=? AND id=?")
         .bind(caller.tenant_id).bind(caller.application_id).bind(id).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)?;
     Ok(InvocationResponseV1 {
+        user_identity_diagnostic: row
+            .try_get::<Option<Value>, _>("user_identity_json")?
+            .filter(|value| !value.is_null())
+            .is_none()
+            .then(|| "MEMORY_USER_ID_UNAVAILABLE".into()),
+        end_user: row
+            .try_get::<Option<Value>, _>("user_identity_json")?
+            .filter(|value| !value.is_null())
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|error| RuntimeError::Internal(error.into()))?,
         id: row.try_get("id")?,
         application_id: row.try_get("application_id")?,
         session_id: row.try_get("session_id")?,

@@ -88,16 +88,16 @@ test('P8-E2E-01/02/14 Real glm-5.3-flash: create, local edit, save/reopen, Undo 
     cursor = entries.nextCursor
   }
   expect(compacted, 'The real provider must settle an actual compaction, not only normal edit calls').toBeTruthy()
-  const accepted = page.waitForResponse(value => value.url().endsWith(`/drafts/${created.createdDraftId}/debug-executions`) && value.request().method() === 'POST')
+  const accepted = page.waitForResponse(value => value.url().endsWith(`/drafts/${created.documentId}/debug-executions`) && value.request().method() === 'POST')
   await page.getByRole('button', { name: '运行', exact: true }).first().click()
   const response = await accepted
   expect(response.status(), await response.text()).toBe(202)
   const execution = await response.json() as { executionId: string }
   await expect.poll(async () => (await read<{ status: string }>(page, token, `/executions/${execution.executionId}`)).status, { timeout: 120_000 }).toBe('succeeded')
   const result = await read<{ source: { kind: string; draftId: string; revision: number }; workflowVersionId: string | null }>(page, token, `/executions/${execution.executionId}`)
-  expect(result.source).toMatchObject({ kind: 'draft_revision', draftId: created.createdDraftId })
+  expect(result.source).toMatchObject({ kind: 'draft_revision', draftId: created.documentId })
   expect(result.workflowVersionId).toBeNull()
   expect(await count(page, token, created.id)).toBe(1)
   await page.screenshot({ path: testInfo.outputPath('glm-manual-run.png'), fullPage: true })
-  await testInfo.attach('workflow-and-execution.json', { body: JSON.stringify({ workflowId: created.id, draftId: created.createdDraftId, executionId: execution.executionId, source: result.source }), contentType: 'application/json' })
+  await testInfo.attach('workflow-and-execution.json', { body: JSON.stringify({ workflowId: created.id, draftId: created.documentId, executionId: execution.executionId, source: result.source }), contentType: 'application/json' })
 })

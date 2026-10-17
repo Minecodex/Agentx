@@ -432,79 +432,24 @@ impl CompactionRegisterV1 {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub struct TrustedSubjectEvidenceV1 {
-    pub authenticated_subject_id: String,
+pub struct ApplicationUserEvidenceV1 {
+    pub user_identity_id: String,
     pub source: String,
     pub evidence_hash: String,
 }
 
-impl TrustedSubjectEvidenceV1 {
+impl ApplicationUserEvidenceV1 {
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.authenticated_subject_id.trim().is_empty()
+        if self.user_identity_id.trim().is_empty()
             || self.source.trim().is_empty()
             || self.evidence_hash.trim().is_empty()
         {
             return Err("AGENT_LONG_TERM_MEMORY_SUBJECT_REQUIRED");
         }
-        if !matches!(
-            self.source.as_str(),
-            "authenticated_principal"
-                | "workflow_execution_initiator"
-                | "trusted_application_session"
-                | "service_identity"
-        ) {
+        if self.source != "application_user_identity" {
             return Err("AGENT_LONG_TERM_MEMORY_SUBJECT_UNTRUSTED");
         }
         Ok(())
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub struct SubjectMemoryScopeV1 {
-    pub tenant_id: String,
-    pub authenticated_subject_id: String,
-    pub application_id: String,
-    pub memory_resource_version_id: String,
-}
-
-impl SubjectMemoryScopeV1 {
-    pub fn validate(&self) -> Result<(), &'static str> {
-        if self.tenant_id.trim().is_empty()
-            || self.authenticated_subject_id.trim().is_empty()
-            || self.application_id.trim().is_empty()
-            || self.memory_resource_version_id.trim().is_empty()
-        {
-            return Err("AGENT_LONG_TERM_MEMORY_SUBJECT_REQUIRED");
-        }
-        Ok(())
-    }
-
-    pub fn namespace_key(&self) -> String {
-        format!(
-            "subject:{}:{}:{}:{}",
-            self.tenant_id,
-            self.authenticated_subject_id,
-            self.application_id,
-            self.memory_resource_version_id
-        )
-    }
-
-    pub fn from_evidence(
-        tenant_id: impl Into<String>,
-        application_id: impl Into<String>,
-        memory_resource_version_id: impl Into<String>,
-        evidence: &TrustedSubjectEvidenceV1,
-    ) -> Result<Self, &'static str> {
-        evidence.validate()?;
-        let scope = Self {
-            tenant_id: tenant_id.into(),
-            authenticated_subject_id: evidence.authenticated_subject_id.clone(),
-            application_id: application_id.into(),
-            memory_resource_version_id: memory_resource_version_id.into(),
-        };
-        scope.validate()?;
-        Ok(scope)
     }
 }
 
@@ -535,28 +480,13 @@ mod tests {
     }
 
     #[test]
-    fn subject_scope_never_accepts_request_body_identity() {
-        let evidence = TrustedSubjectEvidenceV1 {
-            authenticated_subject_id: "subject-1".into(),
-            source: "request_body".into(),
+    fn inbound_application_user_evidence_accepts_declared_api_users() {
+        let evidence = ApplicationUserEvidenceV1 {
+            user_identity_id: "external-customer-42".into(),
+            source: "application_user_identity".into(),
             evidence_hash: "sha256:abc".into(),
         };
-        assert_eq!(
-            evidence.validate(),
-            Err("AGENT_LONG_TERM_MEMORY_SUBJECT_UNTRUSTED")
-        );
-    }
-
-    #[test]
-    fn subject_scope_isolated_by_application_and_resource_version() {
-        let evidence = TrustedSubjectEvidenceV1 {
-            authenticated_subject_id: "subject-1".into(),
-            source: "authenticated_principal".into(),
-            evidence_hash: "sha256:abc".into(),
-        };
-        let left = SubjectMemoryScopeV1::from_evidence("t", "a", "m1", &evidence).unwrap();
-        let right = SubjectMemoryScopeV1::from_evidence("t", "b", "m1", &evidence).unwrap();
-        assert_ne!(left.namespace_key(), right.namespace_key());
+        assert_eq!(evidence.validate(), Ok(()));
     }
 
     #[test]
@@ -598,8 +528,8 @@ mod tests {
 
     #[test]
     fn trusted_subject_source_is_closed() {
-        let evidence = TrustedSubjectEvidenceV1 {
-            authenticated_subject_id: "subject-1".into(),
+        let evidence = ApplicationUserEvidenceV1 {
+            user_identity_id: "subject-1".into(),
             source: "client_claim".into(),
             evidence_hash: "sha256:abc".into(),
         };
@@ -635,7 +565,7 @@ pub struct AgentSessionProjectionV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub open_operation_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub trusted_subject: Option<TrustedSubjectEvidenceV1>,
+    pub trusted_subject: Option<ApplicationUserEvidenceV1>,
     #[serde(default)]
     pub retention: RetentionPolicyV1,
 }

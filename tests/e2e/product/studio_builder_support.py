@@ -8,12 +8,13 @@ import httpx
 import pytest
 import yaml
 
+from tests.e2e.draft_fixtures import idempotent_headers
 from tests.e2e.runtime.test_agent_attachments import _access_token
 from tests.e2e.support import ROOT, run
 
 
 def post(client: httpx.Client, path: str, payload: dict) -> dict:
-    response = client.post(f"/api/v1{path}", json=payload)
+    response = client.post(f"/api/v1{path}", json=payload, headers=idempotent_headers())
     assert response.status_code in (200, 201, 202), response.text
     return response.json()
 

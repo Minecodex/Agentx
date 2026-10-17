@@ -2,6 +2,7 @@ import { LogOut, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { InspectorShell } from "../inspector-shell";
+import { ReadOnlyForm } from "../../forms/read-only-form";
 
 import { Button } from "../../../../shared/ui/button";
 import { Dialog, DialogContent } from "../../../../shared/ui/dialog";
@@ -53,6 +54,7 @@ export function ExitPanel({
   onClose,
   referenceCatalog,
   errorReferenceCatalog,
+  readOnly = false,
 }: {
   exitId: string;
   end: WorkflowEnd;
@@ -62,6 +64,7 @@ export function ExitPanel({
   onClose: () => void;
   referenceCatalog?: ReferenceCatalog;
   errorReferenceCatalog?: ReferenceCatalog;
+  readOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const current = exits.find((exit) => exit.id === exitId);
@@ -93,7 +96,7 @@ export function ExitPanel({
         <div className="min-w-0 flex-1"><strong className="block text-sm">{current ? localizedExitLabel(current.data.label, t("studio.exit.defaultName")) : t("studio.exit.title")}</strong><span className="text-[10px] text-muted-foreground">{t("studio.exit.description")}</span></div>
         <Button aria-label={t("common.close")} onClick={onClose} size="icon" variant="ghost"><X className="size-4" /></Button>
       </header>
-      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
+      <ReadOnlyForm readOnly={readOnly} className="min-h-0 min-w-0 flex-1 space-y-6 overflow-y-auto p-4">
         <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[10px] leading-4 text-primary" data-testid="exit-shared-banner">{t("studio.exit.sharedBanner")}</div>
         <ContractSection
           catalog={referenceCatalog}
@@ -118,7 +121,7 @@ export function ExitPanel({
           onSave={(update) => onEndChange((currentEnd) => { const currentError = normalizedError(currentEnd.error); return { ...currentEnd, error: { ...currentError, outputs: update(currentError.outputs) } }; })}
         />
         <CompletionMode completion={end.completion} onChange={(completion) => onEndChange((currentEnd) => ({ ...currentEnd, completion }))} />
-      </div>
+      </ReadOnlyForm>
     </InspectorShell>
   );
 }

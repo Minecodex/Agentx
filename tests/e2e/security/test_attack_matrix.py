@@ -20,6 +20,7 @@ from typing import Any
 import httpx
 import pytest
 
+from tests.e2e.draft_fixtures import idempotent_headers
 from tests.e2e.product.test_channel_delivery import (
     _access_token,
     _development_environment_id,
@@ -42,8 +43,12 @@ def attack_app(installed_agentx: dict[str, str], service_urls: dict[str, str]) -
         environment_id = _development_environment_id(control, headers)
         deploy = control.post(
             f"/api/v1/workflows/{workflow['workflowId']}/deployments",
-            headers=headers,
-            json={"environmentId": environment_id, "workflowVersionId": workflow["versionId"]},
+            headers=idempotent_headers(headers),
+            json={
+                "contentSource": "version",
+                "environmentId": environment_id,
+                "workflowVersionId": workflow["versionId"],
+            },
         )
         assert deploy.status_code in (200, 201), deploy.text
         application = control.post(
@@ -140,7 +145,7 @@ def test_idempotency_key_replay_with_different_input_is_rejected(
         session = gateway.post(
             f"/gateway/v1/applications/{attack_app['slug']}/sessions",
             headers={"Authorization": f"Bearer {attack_app['token']}", "Idempotency-Key": f"atk-s-{time.time_ns()}"},
-            json={"title": None, "externalUserId": None},
+            json={"title": None, "input": {}},
         )
         assert session.status_code == 201, session.text
         session_id = session.json()["id"]

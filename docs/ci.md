@@ -1,20 +1,20 @@
 # PR 与 CI 合并规则
 
-日常开发使用功能分支和 PR。默认分支要求 GitHub Actions 的固定 `CI` 检查、同步最新主分支并解决审查讨论；失败、取消或意外跳过不能通过汇总门禁。禁止强推和删除，不设置管理员绕过。
+日常开发使用功能分支和 PR。默认分支要求 GitHub Actions 的固定 `CI` 检查、同步最新主分支并解决审查讨论。PR 和普通主分支提交仅要求源码与前端检查，Kubernetes 系统验收和画布性能改为版本发布门禁；必需 Job 失败、取消或意外跳过不能通过汇总门禁。禁止强推和删除，不设置管理员绕过。
 
 ## 执行层级
 
 | 入口 | 实际范围 |
 | --- | --- |
-| 普通 PR / master push | Windows/Linux 原生源码、前端 lint/单测/构建；临时 Minikube 中 30 项核心系统测试 |
+| 普通 PR / master push | Windows/Linux 原生源码、前端 lint/单测/构建；不创建 Minikube，不运行 Kubernetes E2E 或画布性能 |
 | quality 手动 full / 版本候选 | 全部受控系统、浏览器、提供商容器、权限、故障及升级回归；排除真实模型与生产容量 |
 | full 画布性能 Job | 独立托管 Runner 与全新临时 Minikube，只运行原画布 benchmark，保留原帧率/输入延迟阈值 |
 | agentxctl-release | 同一不可变 Tag 的完整托管软件检查；Windows/Linux 候选包构建、解压和原生执行；只保存 Actions 制品 |
 | 独立环境 | 真实 Kimi/知识记忆质量、冻结容量矩阵和两小时窗口、公共注册表签名及正式发布认证 |
 
-核心测试清单在 [ci_profiles.py](../tests/e2e/ci_profiles.py)。PR 保留安装、镜像归属、初始化、流式模型、应用会话、渠道投递、Loop 恢复、幂等与鉴权，以及画布插件/API-first/应用文档和资源加载的真实浏览器流程。完整提供商、画布性能、复杂业务组合和全部故障矩阵在托管发布范围执行。清单中的测试缺失或选择为空时直接失败。
+核心系统测试清单在 [ci_profiles.py](../tests/e2e/ci_profiles.py)，保留为手动 diagnostics 的聚焦范围，不再随 PR 自动执行。版本发布仍验收安装、镜像归属、初始化、流式模型、应用会话、渠道投递、Loop 恢复、幂等与鉴权，以及画布插件/API-first/应用文档和资源加载的真实浏览器流程；完整提供商、画布性能、复杂业务组合和全部故障矩阵也在托管发布范围执行。清单中的测试缺失或选择为空时直接失败。
 
-当前收集为 PR 30 项、完整受控功能 107 项及独立性能 1 项；默认 independent 保留全部 130 项，包括 22 项真实模型/容量参数化测试。依赖真实 Kimi 凭证的测试必须声明 live_model，遗漏声明在托管收集阶段直接报错。性能 Job 不部署与指标无关的 RAGFlow；仍使用实际安装的 UI/API、实际插件制品和原 benchmark，不在普通 PR 执行。
+`pr` 名称的 profile 仅保留给手动聚焦诊断，实际清单随测试收集更新；`release` 运行全部受控功能，画布性能另起独立 Job，默认 `independent` 保留全部测试，包括真实模型和容量参数化测试。依赖真实模型凭证的测试必须声明 `live_model`，遗漏声明在托管收集阶段直接报错。性能 Job 不部署与指标无关的 RAGFlow；仍使用实际安装的 UI/API、实际插件制品和原 benchmark，不在普通 PR 执行。
 
 性能测量关闭视频和逐操作 DOM/截图 trace，避免记录器进入帧与输入延迟样本；功能套件继续记录。每档原始指标在断言前保存，失败档也保留证据；50/100 ms 输入延迟和原帧率阈值不变，没有按失败结果调参或自动重试。
 
@@ -36,6 +36,8 @@ performance-profile diagnostics 额外记录 300 节点 CPU profile，用于定�
 
 所有 quality Job 默认检出触发时的 github.sha；可复用的发布入口显式传入同一不可变 ref。full 并发组包含候选 SHA/ref，不会因修复分支继续提交而取消另一候选的完整验收；普通 PR 保留只检验当前提交的取消行为。
 
+`quality` 的两个集群 Job 仅在 `full=true` 时执行。版本 Tag `agentxctl-v*` 或 `agentxctl-release` 手动入口均以 `full=true` 调用同一 Tag 的 quality；必须先通过完整源码、前端、系统 E2E 和画布性能检查才能构建候选包。PR 的 `CI` 仅允许这两个发布 Job 按条件跳过；发布验收中两个 Job 的失败、取消或跳过均使门禁失败。也可手动执行 quality 并勾选 full 进行完整预验收。
+
 完整托管软件验证：
 ```sh
 uv run --frozen --group test pytest tests/e2e --minikube --values deploy/values/local.yaml --ci-profile release -m 'not browser_performance'
@@ -54,6 +56,6 @@ Minikube 显式映射的 NodePort 地址/端口在 agentxctl --run-id 作用域�
 
 边界鉴权使用独立 boundary-echo-mcp Deployment/Service 与随机密钥，不修改其他场景的共享 Echo 凭据。连线测试同时核验规范图中只增加一条连接和指定节点对，不把 ReactFlow 延迟挂载的 SVG 总数当作新增操作的起点；最终四条连接的持久化断言保留。diagnostics 的 performance、attachments、studio 仅用于这些聚焦复验，不替代完整发布门禁。
 
-plan8 的 Fixture 模型与真实模型分别由 `studio_models`、`studio_live_models` 提供。PR 核心矩阵包含 AI 编辑、Undo、ACK、版本派生和恢复的 Fixture 场景，不需要读取本地模型或 Vault。真实模型用例标注 `live_model`，仅在已有本地集群中读取已配置的 `glm-5.3-flash` 元数据和凭据；托管 Minikube 不执行此独立环境验收，也不读取旧 Kimi 环境变量。
+plan8 的 Fixture 模型与真实模型分别由 `studio_models`、`studio_live_models` 提供。手动核心诊断和完整发布验收包含 AI 编辑、Undo、ACK、版本派生和恢复的 Fixture 场景，不需要读取本地模型或 Vault。真实模型用例标注 `live_model`，仅在已有本地集群中读取已配置的 `glm-5.3-flash` 元数据和凭据；托管 Minikube 不执行此独立环境验收，也不读取旧 Kimi 环境变量。
 
 Builder 强退测试在收尾时等待 Deployment 副本数收敛、旧 Pod 完成 drain 并退出，再用 Web 代理的匿名身份查询和 Runtime readiness 验证真实服务路径恢复。Web 自身静态健康接口不能证明 Control 可用；不重试后续登录或业务写请求来掩盖尚未完成的故障清理。

@@ -1,4 +1,4 @@
-import { fixtureDraftId } from '../draft-fixtures'
+import { fixtureVersionId } from '../draft-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { useRuntimePortForward } from './playground-helpers'
@@ -113,10 +113,10 @@ test('Studio run panel displays real model deltas and final execution', async ({
   const token = await login(page)
   const appId = process.env.AGENTX_E2E_LIVE_APP_ID
   if (!appId) throw new Error('Real model application is required')
-  const app = await page.request.get(`/api/v1/applications/${appId}`, { headers: { Authorization: `Bearer ${token}` } })
+  const app = await page.request.get(`/api/v1/applications/${appId}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(app.ok()).toBe(true)
   const workflowId = ((await app.json()) as { workflowId: string }).workflowId
-  await page.goto(`/workflows/${workflowId}/drafts/${await fixtureDraftId(page, workflowId)}/editor`)
+  await page.goto(`/workflows/${workflowId}/versions/${await fixtureVersionId(page, workflowId)}/editor`)
   await expect(page.getByTestId('workflow-canvas')).toBeVisible()
   const accepted = page.waitForResponse((response) => response.url().endsWith('/debug-executions') && response.request().method() === 'POST')
   await page.locator('header').getByRole('button', { name: '运行', exact: true }).click()
@@ -132,7 +132,7 @@ test('Studio run panel displays real model deltas and final execution', async ({
   const executionId = ((await (await accepted).json()) as { executionId: string }).executionId
   let output: { status: string; output: { answer?: string } } | undefined
   await expect.poll(async () => {
-    const result = await page.request.get(`/api/v1/executions/${executionId}`, { headers: { Authorization: `Bearer ${token}` } })
+    const result = await page.request.get(`/api/v1/executions/${executionId}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
     expect(result.ok()).toBe(true)
     output = await result.json()
     return output?.status
@@ -151,7 +151,7 @@ test('Insights error links retain the failed workflow and error-code filters', a
   const name = `P7 real Agent ${process.env.AGENTX_E2E_RUN_ID}`
   const workflowId = process.env.AGENTX_E2E_INSIGHTS_WORKFLOW_ID
   if (!workflowId) throw new Error('Controlled Agent failure workflow fixture is required')
-  const response = await page.request.get(`/api/v1/workflows/${workflowId}`, { headers: { Authorization: `Bearer ${token}` } })
+  const response = await page.request.get(`/api/v1/workflows/${workflowId}`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
   expect(response.ok()).toBe(true)
   const workflow = (await response.json()) as { id: string; name: string }
   expect(workflow.id).toBe(workflowId)

@@ -45,15 +45,9 @@ Canvas Plugin 管理状态只在Control域：`canvas_plugins`保存包身份与�
 
 `workflow_drafts`、`workflow_draft_revisions` 和 `workflow_versions` 分别保存 `definition_json/definition_hash` 与 `editor_json/editor_hash`。Definition 是可编译运行图；Editor Document 只保存坐标、视口、注释、分组等 UI 信息。Version 可保留 Editor 快照用于只读查看，但 Worker 不读取它。
 
-workflow_versions 保存：
+`workflow_versions` 保存 publication_status、archived、working_draft_id、base_version_id、source_draft_id/source_revision_id/source_revision、Definition/Editor 与 hash、node_manifests_json、created_by/updated_by、created_at/updated_at/published_at。未发布版本随保存推进；已发布的内容、来源修订、Manifest 与 workflow_version_resources 永久冻结。working_draft_id 在租户内唯一，跨 Workflow 的复合外键保护归属；base_version_id 只记录来源，创建后不修改。
 
-- definition_json
-- compiled_ir
-- content_hash
-- node_version_snapshot
-- asset_reference_snapshot
-- created_by
-- created_at
+`workflow_drafts` 为版本拥有的内部工作文档，不再具有独立名称、状态或管理入口。generation 用于失效旧 Builder 编辑绑定；revision 持续递增，revision 0 为未发布还原基线。已发布版本的还原基线来自自身冻结内容及资源快照。发布、派生后的原工作文档复位、环境指针与 idempotency_records 回执同事务提交，Workflow 行锁串行分配版本号。归档只锁定修改，不改变已部署环境。
 
 `workflow_debug_overlays` 独立保存 node_id、Pin/Mock 类型、Schema Hash、Artifact Reference 和更新人。Overlay 不进入 Definition、Version 或 IR；节点删除时解除引用，资源/输出 Schema 变化时标记为 stale。
 
@@ -184,7 +178,6 @@ Checkpoint 小载荷保存在 `checkpoints.payload_json`。超过配置阈值的
 - rag_connections
 - rag_resources
 - memory_connections
-- memory_namespaces
 - resource_grants
 
 Credential 表只保存加密数据或外部 Secret Reference，不向前端返回明文。
@@ -331,16 +324,20 @@ Artifact 元数据在 MySQL，内容在对象存储。引用包含：
 
 创建 Draft Reference、Grant、Skill Dependency 等多态引用时，目标按 `tenant/type/id` 稳定排序并锁定；删除在同一事务内锁定目标、复查全部引用、清理聚合子表并写审计事件。该锁顺序保证引用创建与删除并发时不会产生悬空引用。所有查询必须包含 tenant 边界，其他租户的同 ID 或引用不参与预检。
 
-Knowledge Resource 和 Memory Namespace 删除后，只在对应 Connection 不再拥有其他 Resource/Namespace 时清理孤立 Connection。MCP Server 删除前聚合其全部 Tool 的 Draft、Version、Dependency、Grant 和 Runtime 历史引用；Model Revision 只有在不存在其他 Alias、历史或子 Revision 引用时才随 Alias 清理。
+Knowledge Resource 删除后，只在对应 Connection 不再拥有其他 Resource 时清理孤立 Connection。Memory Connection 本身就是被引用及授权的资源，不存在独立 Namespace。MCP Server 删除前聚合其全部 Tool 的 Draft、Version、Dependency、Grant 和 Runtime 历史引用；Model Revision 只有在不存在其他 Alias、历史或子 Revision 引用时才随 Alias 清理。
 
 用户输入型唯一索引同时承担并发写入的最终保护。Platform API 写入点登记允许映射的索引名，MySQL 1062 按索引精确映射字段错误，未登记索引不得猜测。MCP 配置 Hash 命中当前版本时只更新元数据，命中历史版本时切换指针，全新 Hash 才按历史最大版本号加一；Skill Version 内容 Hash 幂等复用。
 
 ## plan8 数据增量
 
-Draft/Revision 按 tenant/workflow/draft 隔离，创建 Draft 时原子写不可变 revision 0。Version 记录 source_draft_id/source_revision_id/source_revision/base_version_id，并保存 node_manifests_json；同 Workflow 的编号由 Workflow 行锁串行分配。复合外键保护来源的归属和修订号，历史版本画布与发布使用冻结的精确 Manifest。
+版本工作文档及其 Revision 按 tenant/workflow/draft 隔离，创建未发布版本时原子写不可变 revision 0。Version 记录 source_draft_id/source_revision_id/source_revision/base_version_id，并保存 node_manifests_json；同 Workflow 的编号由 Workflow 行锁串行分配。复合外键保护来源的归属和修订号，历史版本画布与发布使用冻结的精确 Manifest。
 
-Control 新增 studio_builder_sessions/runs/entries/effects。Session 保存完整 Core State，Run 保存模型/凭据/价格及授权修订，Effect 保存命令、ACK/问题及不可变结果。Cursor 和最近 Effect 查询沿专用有序索引读取，大 JSON 不进入排序缓冲。Revision 的 resource_snapshot_json 和全部 Draft 的引用查询参与删除保护。Runtime 模型账本独立记录 studio_target_json/studio_model_binding_json，CHECK 禁止设计来源写业务身份。
+Control 新增 studio_builder_sessions/runs/entries/effects。Session 保存 document_generation 与完整 Core State，Run 保存模型/凭据/价格及授权修订，Effect 保存命令、ACK/问题及不可变结果。Cursor 和最近 Effect 查询沿专用有序索引读取，大 JSON 不进入排序缓冲。Revision 的 resource_snapshot_json 和全部 Draft 的引用查询参与删除保护。Runtime 模型账本独立记录 studio_target_json/studio_model_binding_json，CHECK 禁止设计来源写业务身份。
 
 ### 画布文档与 Builder 的无损 JSON 持久化
 
 Workflow Draft/Revision/Version 的 definition_json、editor_json，以及 Builder Session 的 snapshot/state、Entry payload、Effect input/command/acknowledgement/result 使用 LONGTEXT + JSON_VALID CHECK。MySQL 8.4 的原生 JSON 数字转换已复现将 209.66666666666666 改成 209.66666666666663，破坏文档 hash 和 ACK 身份；这些列必须保留应用序列化后的数值。HTTP DTO 与 SQLx JSON 编解码不变，SQL JSON_EXTRACT 仍可用于标量查询。基线 DDL 直接更新，不提供旧列兼容或增量迁移。重连按当前文档 hash 和持久化快照身份恢复单调序号，不放宽命令/ACK 校验。
+
+应用部署保存 `api_user_id_input`；Runtime 会话和调用保存来源用户 JSON 快照，会话另保存初始业务输入。执行快照的 `endUser` 与 `environmentId` 供记忆作用域及查询使用，平台操作人仍由 `initiator_*` 独立表示。
+
+记忆审计的 `application_user_id` 是来源用户身份的确定性摘要，不能解释为平台账号外键；`memory_connection_id` 指向连接资源，`scope_hash` 覆盖环境、工作流与稳定节点。清理使用相同范围，连接版本不参与个人记忆身份。应用调用的用户身份 JSON 与执行上下文快照保持一致。

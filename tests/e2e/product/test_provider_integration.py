@@ -154,11 +154,13 @@ def _publish_application_deployment(
     application_id: str,
     workflow_version_id: str,
     environment_id: str,
+    api_user_id_input: str | None = None,
 ) -> dict[str, Any]:
     payload = {
         "workflowVersionId": workflow_version_id,
         "environmentId": environment_id,
         "sessionVersionPolicy": "pinned",
+        "apiUserIdInput": api_user_id_input,
     }
     last_error = ""
     for _ in range(4):
@@ -223,10 +225,7 @@ def test_provider_long_term_memory_write_recall(
             environment["id"],
             job_suffix="provider-memory",
             session_policy="application_session",
-            fixture_env={
-                "AGENTX_V2_FIXTURE_MEMORY_OPERATION": "manage",
-                "AGENTX_V2_FIXTURE_MEMORY_ACCESS_MODE": "read_write",
-            },
+            fixture_env={},
         )
         application_id = fixture["applicationId"]
         api_key_response = control.post(
@@ -257,7 +256,7 @@ def test_provider_long_term_memory_write_recall(
                 },
                 json={
                     "title": f"provider memory session {index}",
-                    "externalUserId": "00000000-0000-7000-8000-00000000beef",
+                    "input": {},
                 },
             )
             assert response.status_code == 201, response.text
@@ -302,7 +301,6 @@ def test_provider_long_term_memory_write_recall(
         "SELECT JSON_ARRAYAGG(JSON_OBJECT('operation',operation)) "
         "FROM agent_subject_memory_audit "
         f"WHERE tenant_id=UUID_TO_BIN('{me['companyId']}') AND application_id=UUID_TO_BIN('{application_id}') "
-        f"AND authenticated_subject_id=UUID_TO_BIN('{me['id']}') "
         "AND operation IN ('write','recall');",
     )
     audits = json.loads(audit_json) if audit_json and audit_json.lower() != "null" else []

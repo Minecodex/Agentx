@@ -16,7 +16,7 @@ async function request<T>(page: Page, token: string, path: string, method = 'GET
   const response = await page.request.fetch(`/api/v1${path}`, {
     method,
     data: body,
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
   })
   await expectResponse(response, `${method} ${path}`)
   const text = await response.text()
@@ -117,7 +117,7 @@ test('channel dialog renders provider-specific fields and stream channels hide t
   const rejected = await page.request.fetch(`/api/v1/applications/${application.id}/webhooks`, {
     method: 'POST',
     data: { name: `缺字段 ${suffix}`, providerType: 'dingtalk', channelMode: 'callback', channelConfig: {} },
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() },
   })
   expect(rejected.status()).toBe(422)
 })

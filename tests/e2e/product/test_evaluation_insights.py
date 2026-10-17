@@ -1,4 +1,3 @@
-# ruff: noqa: S608
 """Evaluation and Insights E2E (plan7 P7-C §5, API-level subset).
 
 Covers scenario 2 (un-granted llm_judge model → 422 grant error), scenario 4
@@ -13,6 +12,7 @@ The llm_judge full-chain report and the two-version compare page (scenarios
 
 from __future__ import annotations
 
+# ruff: noqa: S608
 import json
 import time
 from datetime import UTC, datetime, timedelta
@@ -20,6 +20,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 
+from tests.e2e.draft_fixtures import idempotent_headers
 from tests.e2e.product.test_channel_delivery import (
     _access_token,
     _development_environment_id,
@@ -52,8 +53,8 @@ def _drive_one_execution(
     environment_id = _development_environment_id(control, headers)
     deploy = control.post(
         f"/api/v1/workflows/{workflow['workflowId']}/deployments",
-        headers=headers,
-        json={"environmentId": environment_id, "workflowVersionId": workflow["versionId"]},
+        headers=idempotent_headers(headers),
+        json={"contentSource": "version", "environmentId": environment_id, "workflowVersionId": workflow["versionId"]},
     )
     assert deploy.status_code in (200, 201), deploy.text
     application = control.post(

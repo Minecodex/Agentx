@@ -2327,9 +2327,6 @@
         {
           "additionalProperties": false,
           "properties": {
-            "accessMode": {
-              "type": "string"
-            },
             "credential": {
               "anyOf": [
                 {
@@ -2346,20 +2343,11 @@
             "kind": {
               "const": "memory",
               "type": "string"
-            },
-            "memoryVersion": {
-              "type": "string"
-            },
-            "namespace": {
-              "type": "string"
             }
           },
           "required": [
             "kind",
-            "endpoint",
-            "namespace",
-            "memoryVersion",
-            "accessMode"
+            "endpoint"
           ],
           "type": "object"
         },

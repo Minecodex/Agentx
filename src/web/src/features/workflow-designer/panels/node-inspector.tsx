@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "../../../shared/ui/dropdown-menu";
 import { Input } from "../../../shared/ui/input";
+import { ReadOnlyForm } from "../forms/read-only-form";
 import { Select } from "../../../shared/ui/select";
 import { Dialog, DialogContent } from "../../../shared/ui/dialog";
 import {
@@ -201,7 +202,7 @@ export function NodeInspector({
             )}
           </div>
         </div>
-        {onRun && data.editorKind === "action" && (
+        {!readOnly && onRun && data.editorKind === "action" && (
           <Button
             aria-label={t("studio.run")}
             onClick={onRun}
@@ -211,7 +212,7 @@ export function NodeInspector({
             <Play className="size-4" />
           </Button>
         )}
-        <DropdownMenu>
+        {!readOnly && <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               aria-label={t("studio.details.more")}
@@ -241,7 +242,7 @@ export function NodeInspector({
               {t("studio.inspector.delete")}
             </DropdownMenuItem>
           </DropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu>}
         <Button
           aria-label={t("studio.close")}
           onClick={onClose}
@@ -274,7 +275,7 @@ export function NodeInspector({
           className="min-h-0 flex-1 overflow-y-auto p-4"
           value="parameters"
         >
-          <Parameters
+          <ReadOnlyForm readOnly={readOnly} className="min-w-0"><Parameters
             data={data}
             fieldErrors={fieldErrors}
             localized={localized}
@@ -294,7 +295,7 @@ export function NodeInspector({
             sourceNodeId={nodeId}
             t={translate}
             workflowId={workflowId}
-          />
+          /></ReadOnlyForm>
         </TabsContent>
         <TabsContent className="min-h-0 flex-1 overflow-auto p-4" value="input">
           <JsonValue value={selectedRun?.input} />
@@ -304,7 +305,7 @@ export function NodeInspector({
           value="output"
         >
           {resolvedManifest?.plugin?.uiSource && selectedRun?.output !== undefined && <PluginResult manifest={resolvedManifest} value={selectedRun.output} />}
-          <div className="mb-3 flex items-center gap-1">
+          {!readOnly && <div className="mb-3 flex items-center gap-1">
             <Button
               disabled={readOnly || overlay.isPending || data.editorKind !== "action" || selectedRun?.output == null}
               onClick={() => overlay.mutate("pin_data")}
@@ -330,7 +331,7 @@ export function NodeInspector({
             >
               <Trash2 className="size-3.5" />
             </Button>
-          </div>
+          </div>}
           <textarea
             aria-label={t("studio.details.output")}
             className="min-h-[260px] w-full resize-y rounded-md border border-border bg-canvas p-3 font-mono text-[11px] leading-5"
@@ -343,12 +344,12 @@ export function NodeInspector({
           {executionId && selectedRun ? <TraceNodeDetails active={tab === "trace"} executionId={executionId} node={selectedRun} onDownloadArtifact={downloadArtifact} /> : <p className="p-4 text-xs text-muted-foreground">{executionId ? t("trace.noNodeRuns") : t("studio.runtime.noExecution")}</p>}
         </TabsContent>
       </Tabs>
-      <div className="shrink-0 border-t border-border p-4">
+      {!readOnly && <div className="shrink-0 border-t border-border p-4">
         <Button className="w-full" disabled={readOnly} onClick={onDelete} variant="secondary">
           <Trash2 className="size-4" />
           {t("studio.inspector.delete")}
         </Button>
-      </div>
+      </div>}
     </InspectorShell>
   );
 }
