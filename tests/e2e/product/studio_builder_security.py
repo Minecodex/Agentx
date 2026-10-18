@@ -373,7 +373,7 @@ def control_offline(context, urls, models):
                 timeout=70,
             )
             try:
-                unavailable = control.get("/api/v1/studio-builder/model-setting", timeout=3)
+                unavailable = control.get("/api/v1/platform-ai/model-setting", timeout=3)
                 unavailable_status = unavailable.status_code
                 assert unavailable_status >= 500
             except httpx.TransportError:
@@ -446,9 +446,9 @@ def protect_unsettled_sources(context, urls, models):
     with httpx.Client(base_url=urls["web"], timeout=60, trust_env=False) as client:
         token, _ = _access_token(client)
         client.headers.update({"Authorization": f"Bearer {token}"})
-        setting = client.get("/api/v1/studio-builder/model-setting").json()
+        setting = client.get("/api/v1/platform-ai/model-setting").json()
         clear = client.put(
-            "/api/v1/studio-builder/model-setting", json={"expectedVersion": setting["version"], "modelAliasId": None}
+            "/api/v1/platform-ai/model-setting", json={"expectedVersion": setting["version"], "modelAliasId": None}
         )
 
         clear.raise_for_status()
@@ -459,7 +459,7 @@ def protect_unsettled_sources(context, urls, models):
         blocked = client.delete(f"/api/v1/models/aliases/{model}")
         assert blocked.status_code == 409, blocked.text
         reset = client.put(
-            "/api/v1/studio-builder/model-setting",
+            "/api/v1/platform-ai/model-setting",
             json={"expectedVersion": clear.json()["version"], "modelAliasId": model},
         )
         reset.raise_for_status()

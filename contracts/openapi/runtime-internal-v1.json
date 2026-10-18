@@ -3122,6 +3122,14 @@
             "additionalProperties": false,
             "properties": {
               "actualOutput": true,
+              "costByCurrency": {
+                "additionalProperties": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
               "costMicros": {
                 "format": "uint64",
                 "minimum": 0,
@@ -3182,6 +3190,7 @@
               "targetCommandId",
               "status",
               "costMicros",
+              "costByCurrency",
               "rules"
             ],
             "type": "object"
@@ -3252,6 +3261,14 @@
           "RuntimeEvaluationRuleResultV1": {
             "additionalProperties": false,
             "properties": {
+              "costByCurrency": {
+                "additionalProperties": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
               "costMicros": {
                 "format": "uint64",
                 "minimum": 0,
@@ -3303,7 +3320,8 @@
               "profileRuleId",
               "status",
               "detail",
-              "costMicros"
+              "costMicros",
+              "costByCurrency"
             ],
             "type": "object"
           },
@@ -4015,6 +4033,14 @@
             "additionalProperties": false,
             "properties": {
               "actualOutput": true,
+              "costByCurrency": {
+                "additionalProperties": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
               "costMicros": {
                 "format": "uint64",
                 "minimum": 0,
@@ -4075,6 +4101,7 @@
               "targetCommandId",
               "status",
               "costMicros",
+              "costByCurrency",
               "rules"
             ],
             "type": "object"
@@ -4145,6 +4172,14 @@
           "RuntimeEvaluationRuleResultV1": {
             "additionalProperties": false,
             "properties": {
+              "costByCurrency": {
+                "additionalProperties": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
               "costMicros": {
                 "format": "uint64",
                 "minimum": 0,
@@ -4196,7 +4231,8 @@
               "profileRuleId",
               "status",
               "detail",
-              "costMicros"
+              "costMicros",
+              "costByCurrency"
             ],
             "type": "object"
           },
@@ -10410,6 +10446,14 @@
             "additionalProperties": false,
             "properties": {
               "actualOutput": true,
+              "costByCurrency": {
+                "additionalProperties": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
               "costMicros": {
                 "format": "uint64",
                 "minimum": 0,
@@ -10470,6 +10514,7 @@
               "targetCommandId",
               "status",
               "costMicros",
+              "costByCurrency",
               "rules"
             ],
             "type": "object"
@@ -10540,6 +10585,14 @@
           "RuntimeEvaluationRuleResultV1": {
             "additionalProperties": false,
             "properties": {
+              "costByCurrency": {
+                "additionalProperties": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
               "costMicros": {
                 "format": "uint64",
                 "minimum": 0,
@@ -10591,7 +10644,8 @@
               "profileRuleId",
               "status",
               "detail",
-              "costMicros"
+              "costMicros",
+              "costByCurrency"
             ],
             "type": "object"
           },
@@ -17796,31 +17850,16 @@
                     "format": "uuid",
                     "type": "string"
                   },
-                  "expression": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "const": "deterministic_rule",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "kind",
-                  "evaluatorId",
-                  "expression"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "evaluatorId": {
-                    "format": "uuid",
-                    "type": "string"
-                  },
                   "kind": {
                     "const": "model",
                     "type": "string"
+                  },
+                  "model": {
+                    "$ref": "#/$defs/RuntimePlatformEvaluationModelV1"
+                  },
+                  "passThreshold": {
+                    "format": "double",
+                    "type": "number"
                   },
                   "promptObjectId": {
                     "format": "uuid",
@@ -17835,7 +17874,9 @@
                   "kind",
                   "evaluatorId",
                   "resourceId",
-                  "promptObjectId"
+                  "promptObjectId",
+                  "model",
+                  "passThreshold"
                 ],
                 "type": "object"
               }
@@ -17976,9 +18017,16 @@
                 "format": "uuid",
                 "type": "string"
               },
+              "model": {
+                "$ref": "#/$defs/RuntimePlatformEvaluationModelV1"
+              },
               "nodeManifests": {
                 "items": true,
                 "type": "array"
+              },
+              "passThreshold": {
+                "format": "double",
+                "type": "number"
               },
               "promptObjectId": {
                 "format": "uuid",
@@ -17995,7 +18043,9 @@
               "promptObjectId",
               "definition",
               "compiledIr",
-              "nodeManifests"
+              "nodeManifests",
+              "model",
+              "passThreshold"
             ],
             "type": "object"
           },
@@ -18078,6 +18128,63 @@
             "required": [
               "inlineLimitBytes",
               "externalMediaType"
+            ],
+            "type": "object"
+          },
+          "RuntimePlatformEvaluationModelV1": {
+            "additionalProperties": false,
+            "description": "Only a signed, system-generated judge may consume this platform authority.\nIt never joins the business Workflow resource or grant closure.",
+            "properties": {
+              "applicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "batchId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "binding": {
+                "$ref": "#/$defs/RuntimeResourceBindingV1"
+              },
+              "credentialId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "credentialVersion": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "modelAliasVersion": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "parameters": true,
+              "settingVersion": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "tenantId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenantId",
+              "applicationId",
+              "batchId",
+              "settingVersion",
+              "modelAliasVersion",
+              "binding",
+              "parameters"
             ],
             "type": "object"
           },
@@ -21298,6 +21405,23 @@
                 "additionalProperties": false,
                 "properties": {
                   "kind": {
+                    "const": "platform_evaluation",
+                    "type": "string"
+                  },
+                  "state": {
+                    "$ref": "#/$defs/RuntimePlatformEvaluationAuthorizationV1"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "state"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
                     "const": "resource_state",
                     "type": "string"
                   },
@@ -21697,6 +21821,43 @@
               "resourceId",
               "operations",
               "policyEpoch",
+              "enabled"
+            ],
+            "type": "object"
+          },
+          "RuntimePlatformEvaluationAuthorizationV1": {
+            "additionalProperties": false,
+            "properties": {
+              "applicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "batchId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "epoch": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "modelHash": {
+                "type": "string"
+              },
+              "tenantId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenantId",
+              "applicationId",
+              "batchId",
+              "modelHash",
+              "epoch",
               "enabled"
             ],
             "type": "object"
@@ -22754,6 +22915,14 @@
             "additionalProperties": false,
             "properties": {
               "actualOutput": true,
+              "costByCurrency": {
+                "additionalProperties": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
               "costMicros": {
                 "format": "uint64",
                 "minimum": 0,
@@ -22814,6 +22983,7 @@
               "targetCommandId",
               "status",
               "costMicros",
+              "costByCurrency",
               "rules"
             ],
             "type": "object"
@@ -22884,6 +23054,14 @@
           "RuntimeEvaluationRuleResultV1": {
             "additionalProperties": false,
             "properties": {
+              "costByCurrency": {
+                "additionalProperties": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
               "costMicros": {
                 "format": "uint64",
                 "minimum": 0,
@@ -22935,7 +23113,8 @@
               "profileRuleId",
               "status",
               "detail",
-              "costMicros"
+              "costMicros",
+              "costByCurrency"
             ],
             "type": "object"
           },
@@ -28277,31 +28456,16 @@
                     "format": "uuid",
                     "type": "string"
                   },
-                  "expression": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "const": "deterministic_rule",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "kind",
-                  "evaluatorId",
-                  "expression"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "evaluatorId": {
-                    "format": "uuid",
-                    "type": "string"
-                  },
                   "kind": {
                     "const": "model",
                     "type": "string"
+                  },
+                  "model": {
+                    "$ref": "#/$defs/RuntimePlatformEvaluationModelV1"
+                  },
+                  "passThreshold": {
+                    "format": "double",
+                    "type": "number"
                   },
                   "promptObjectId": {
                     "format": "uuid",
@@ -28316,7 +28480,9 @@
                   "kind",
                   "evaluatorId",
                   "resourceId",
-                  "promptObjectId"
+                  "promptObjectId",
+                  "model",
+                  "passThreshold"
                 ],
                 "type": "object"
               }
@@ -28457,9 +28623,16 @@
                 "format": "uuid",
                 "type": "string"
               },
+              "model": {
+                "$ref": "#/$defs/RuntimePlatformEvaluationModelV1"
+              },
               "nodeManifests": {
                 "items": true,
                 "type": "array"
+              },
+              "passThreshold": {
+                "format": "double",
+                "type": "number"
               },
               "promptObjectId": {
                 "format": "uuid",
@@ -28476,7 +28649,9 @@
               "promptObjectId",
               "definition",
               "compiledIr",
-              "nodeManifests"
+              "nodeManifests",
+              "model",
+              "passThreshold"
             ],
             "type": "object"
           },
@@ -28559,6 +28734,63 @@
             "required": [
               "inlineLimitBytes",
               "externalMediaType"
+            ],
+            "type": "object"
+          },
+          "RuntimePlatformEvaluationModelV1": {
+            "additionalProperties": false,
+            "description": "Only a signed, system-generated judge may consume this platform authority.\nIt never joins the business Workflow resource or grant closure.",
+            "properties": {
+              "applicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "batchId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "binding": {
+                "$ref": "#/$defs/RuntimeResourceBindingV1"
+              },
+              "credentialId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "credentialVersion": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "modelAliasVersion": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "parameters": true,
+              "settingVersion": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "tenantId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenantId",
+              "applicationId",
+              "batchId",
+              "settingVersion",
+              "modelAliasVersion",
+              "binding",
+              "parameters"
             ],
             "type": "object"
           },
@@ -34802,6 +35034,68 @@
         "title": "StudioEditorSnapshotV1",
         "type": "object"
       },
+      "TestArtifactCheckV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "schemas": {
+            "items": true,
+            "type": "array"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "values": {
+            "items": true,
+            "type": "array"
+          }
+        },
+        "required": [
+          "tenantId",
+          "applicationId",
+          "schemas",
+          "values"
+        ],
+        "title": "TestArtifactCheckV1",
+        "type": "object"
+      },
+      "TestArtifactIssuesV1": {
+        "$defs": {
+          "TestArtifactIssueV1": {
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "index": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "field",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "items": {
+          "$ref": "#/$defs/TestArtifactIssueV1"
+        },
+        "title": "Array_of_TestArtifactIssueV1",
+        "type": "array"
+      },
       "ToolEffectRequestV1": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -37898,6 +38192,38 @@
           }
         ],
         "summary": "Search Sessions"
+      }
+    },
+    "/internal/runtime/v1/query/test-artifacts": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestArtifactCheckV1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestArtifactIssuesV1"
+                }
+              }
+            },
+            "description": "Applied"
+          }
+        },
+        "security": [
+          {
+            "serviceJwt": []
+          }
+        ],
+        "summary": "Check application test file references"
       }
     },
     "/internal/runtime/v1/references:check": {

@@ -1,11 +1,8 @@
 use agentx_agent_core::{AgentSessionStateV1, ToolResultV1};
-use agentx_domain::{
-    ResourceOperation, ResourceReference, ResourceType, ResourceVersionSnapshot,
-    canonical_content_hash,
-};
+use agentx_domain::canonical_content_hash;
 use agentx_runtime_contracts::{
-    RuntimeResourceBindingV1, StudioAcknowledgementStatusV1, StudioBuilderTargetV1,
-    StudioEditorAcknowledgementV1, StudioEditorCommandV1, StudioEditorSnapshotV1,
+    StudioAcknowledgementStatusV1, StudioBuilderTargetV1, StudioEditorAcknowledgementV1,
+    StudioEditorCommandV1, StudioEditorSnapshotV1,
 };
 use axum::{
     Json, Router,
@@ -94,6 +91,7 @@ async fn command_receipt(
     Ok(Json(CommandReceipt { status }))
 }
 
+#[derive(Clone, Copy)]
 pub(crate) enum DesignRevocation {
     Setting(u64),
     Model(Uuid, u64),
@@ -352,92 +350,6 @@ async fn sync_snapshot(
     Ok(Json(json!({"synced":true})))
 }
 
-async fn freeze_model(
-    state: &ControlApiState,
-    actor: &Actor,
-) -> ApiResult<(
-    Uuid,
-    Option<Uuid>,
-    u64,
-    RuntimeResourceBindingV1,
-    Value,
-    u64,
-    Option<u64>,
-)> {
-    let setting = crate::studio_builder_setting::load(state, actor).await?;
-    if setting.status != "ready" {
-        return Err(ApiError::conflict(
-            "BUILDER_MODEL_UNAVAILABLE",
-            "The tenant canvas AI model is unconfigured or unavailable",
-        ));
-    }
-    let alias = setting.model_alias_id.ok_or_else(|| {
-        ApiError::conflict(
-            "BUILDER_MODEL_UNAVAILABLE",
-            "No canvas AI model is configured",
-        )
-    })?;
-    let credential: Option<Uuid> = sqlx::query_scalar(
-        "SELECT studio_builder_credential_id FROM tenant_settings WHERE tenant_id=?",
-    )
-    .bind(actor.tenant_id)
-    .fetch_one(&state.pool)
-    .await?;
-    let mut reference = ResourceReference {
-        binding_role: None,
-        resource_type: ResourceType::Model,
-        resource_id: alias,
-        resource_version_id: None,
-        operation: ResourceOperation::Use,
-    };
-    let snapshot =
-        crate::workflow_resources::resource_snapshot(state, actor.tenant_id, &mut reference)
-            .await?;
-    let hash = agentx_runtime_contracts::content_hash(&snapshot)
-        .map_err(ApiError::internal)?
-        .to_string();
-    let binding = crate::runtime_resource_binding::from_snapshot(&ResourceVersionSnapshot {
-        node_id: "studio_builder".into(),
-        reference,
-        snapshot: snapshot.clone(),
-        snapshot_hash: hash,
-    })
-    .map_err(ApiError::internal)?;
-    let versions=sqlx::query("SELECT a.version model_version,c.version credential_version FROM model_aliases a LEFT JOIN credentials c ON c.tenant_id=a.tenant_id AND c.id=? WHERE a.tenant_id=? AND a.id=?").bind(credential).bind(actor.tenant_id).bind(alias).fetch_one(&state.pool).await?;
-    Ok((
-        alias,
-        credential,
-        setting.version,
-        binding,
-        {
-            let mut parameters = snapshot
-                .get("defaultParameters")
-                .cloned()
-                .ok_or_else(|| ApiError::internal("Model defaults are missing"))?;
-            let output = snapshot
-                .get("maxOutputTokens")
-                .and_then(Value::as_u64)
-                .ok_or_else(|| ApiError::internal("Model output limit is missing"))?
-                .min(16_384);
-            let limit = if parameters.get("max_completion_tokens").is_some() {
-                "max_completion_tokens"
-            } else {
-                "max_tokens"
-            };
-            parameters[limit] = json!(
-                parameters
-                    .get(limit)
-                    .and_then(Value::as_u64)
-                    .unwrap_or(output)
-                    .min(output)
-            );
-            parameters
-        },
-        versions.try_get("model_version")?,
-        versions.try_get("credential_version")?,
-    ))
-}
-
 async fn create_run(
     State(state): State<ControlApiState>,
     actor: Actor,
@@ -502,7 +414,7 @@ async fn create_run(
         .bind(actor.tenant_id)
         .fetch_one(&mut *tx)
         .await?;
-    let selected=sqlx::query("SELECT a.id,d.credential_id FROM tenant_settings s JOIN model_aliases a ON a.tenant_id=s.tenant_id AND a.id=s.studio_builder_model_alias_id JOIN model_deployments d ON d.tenant_id=a.tenant_id AND d.id=a.deployment_id WHERE s.tenant_id=? FOR SHARE").bind(actor.tenant_id).fetch_optional(&mut *tx).await?.ok_or_else(||ApiError::conflict("BUILDER_MODEL_UNAVAILABLE","No canvas AI model is configured"))?;
+    let selected=sqlx::query("SELECT a.id,d.credential_id FROM tenant_settings s JOIN model_aliases a ON a.tenant_id=s.tenant_id AND a.id=s.platform_ai_model_alias_id JOIN model_deployments d ON d.tenant_id=a.tenant_id AND d.id=a.deployment_id WHERE s.tenant_id=? FOR SHARE").bind(actor.tenant_id).fetch_optional(&mut *tx).await?.ok_or_else(||ApiError::conflict("BUILDER_MODEL_UNAVAILABLE","No platform AI model is configured"))?;
     if let Some(credential) = selected.try_get::<Option<Uuid>, _>("credential_id")? {
         sqlx::query("SELECT id FROM credentials WHERE tenant_id=? AND id=? FOR SHARE")
             .bind(actor.tenant_id)
@@ -518,7 +430,7 @@ async fn create_run(
         ));
     }
     let (model, credential, setting, binding, parameters, model_version, credential_version) =
-        freeze_model(&state, &actor).await?;
+        crate::platform_ai_model::freeze_model(&state, &actor).await?;
     let deadline = OffsetDateTime::now_utc() + time::Duration::minutes(10);
     sqlx::query("INSERT INTO studio_builder_runs(id,tenant_id,session_id,token_version,prompt,edit_scope_json,model_alias_id,model_alias_version,credential_id,credential_version,setting_version,model_binding_json,model_parameters_json,deadline_at,delta_cursors_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,JSON_OBJECT())")
         .bind(input.run_id).bind(actor.tenant_id).bind(session).bind(actor.token_version).bind(&input.prompt).bind(serde_json::to_value(&input.edit_scope).map_err(ApiError::internal)?).bind(model).bind(model_version).bind(credential).bind(credential_version).bind(setting).bind(serde_json::to_value(binding).map_err(ApiError::internal)?).bind(parameters).bind(deadline).execute(&mut *tx).await.map_err(|error| match &error {sqlx::Error::Database(db) if db.is_unique_violation() => ApiError::conflict("BUILDER_SESSION_BUSY","This session already has an open run"),_=>error.into()})?;

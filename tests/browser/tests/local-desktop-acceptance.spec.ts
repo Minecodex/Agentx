@@ -25,7 +25,7 @@ test('desktop pages load in both languages and themes without application errors
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await login(page)
-  for (const path of ['workflows', 'applications', 'playground', 'knowledge', 'memory', 'evaluations', 'insights', 'runtime']) {
+  for (const path of ['workflows', 'applications', 'playground', 'knowledge', 'memory', 'insights', 'runtime']) {
     await page.goto(`/${path}`)
     await expect(page.getByRole('main')).toBeVisible()
     await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible()

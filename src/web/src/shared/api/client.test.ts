@@ -68,7 +68,7 @@ describe('api client', () => {
   it('accepts successful asynchronous responses without a body', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 202 })))
 
-    await expect(apiRequest('/evaluations/run-id/start', { method: 'POST' })).resolves.toBeUndefined()
+    await expect(apiRequest('/applications/app-id/evaluations', { method: 'POST' })).resolves.toBeUndefined()
   })
 
   it('still parses successful JSON responses', async () => {

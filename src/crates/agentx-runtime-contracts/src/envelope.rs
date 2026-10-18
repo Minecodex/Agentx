@@ -118,6 +118,9 @@ pub enum AdmissionTargetV1 {
     ResourceGrant {
         state: crate::RuntimeGrantStateV1,
     },
+    PlatformEvaluation {
+        state: crate::RuntimePlatformEvaluationAuthorizationV1,
+    },
     ResourceState {
         state: crate::RuntimeResourceStateV1,
     },

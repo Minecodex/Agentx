@@ -892,12 +892,12 @@ fn validate_runtime_chat_mapping(
 }
 
 #[derive(Debug)]
-struct ArtifactInputConstraint {
-    path: String,
-    artifact_ids: Vec<Uuid>,
-    content_types: Vec<String>,
-    max_size_bytes: Option<u64>,
-    max_total_size_bytes: Option<u64>,
+pub(crate) struct ArtifactInputConstraint {
+    pub path: String,
+    pub artifact_ids: Vec<Uuid>,
+    pub content_types: Vec<String>,
+    pub max_size_bytes: Option<u64>,
+    pub max_total_size_bytes: Option<u64>,
 }
 
 pub(crate) async fn reference_execution_input_artifacts(
@@ -991,12 +991,28 @@ pub(crate) async fn validate_input_artifacts(
     Ok(referenced)
 }
 
-fn collect_artifact_constraints(
+pub(crate) fn collect_artifact_constraints(
     value: &Value,
     schema: &Value,
     path: &str,
     constraints: &mut Vec<ArtifactInputConstraint>,
 ) -> RuntimeResult<()> {
+    for keyword in ["anyOf", "oneOf"] {
+        if let Some(branches) = schema.get(keyword).and_then(Value::as_array) {
+            for branch in branches {
+                if jsonschema::validator_for(branch)
+                    .is_ok_and(|validator| validator.is_valid(value))
+                {
+                    collect_artifact_constraints(value, branch, path, constraints)?;
+                }
+            }
+        }
+    }
+    if let Some(branches) = schema.get("allOf").and_then(Value::as_array) {
+        for branch in branches {
+            collect_artifact_constraints(value, branch, path, constraints)?;
+        }
+    }
     if schema
         .get("x-agentx-artifact")
         .and_then(Value::as_bool)
@@ -1011,7 +1027,12 @@ fn collect_artifact_constraints(
             .and_then(Value::as_bool)
             .unwrap_or(false)
         {
-            value.as_array().cloned().unwrap_or_default()
+            value.as_array().cloned().ok_or_else(|| {
+                RuntimeError::InvalidRequest(
+                    "ARTIFACT_REFERENCE_INVALID",
+                    format!("{path} requires an array of file references"),
+                )
+            })?
         } else {
             vec![value.clone()]
         };
@@ -1084,7 +1105,7 @@ fn collect_artifact_constraints(
     Ok(())
 }
 
-fn content_type_matches(allowed: &str, actual: &str) -> bool {
+pub(crate) fn content_type_matches(allowed: &str, actual: &str) -> bool {
     allowed == actual
         || allowed
             .strip_suffix("/*")
@@ -1144,6 +1165,9 @@ pub async fn process_command_with_state(
 ) -> RuntimeResult<()> {
     match claim.command_type.as_str() {
         "start_execution" => match crate::engine::start_execution_with_state(state, claim).await {
+            Err(RuntimeError::InvalidRequest(code, detail)) => {
+                reject_start_execution(&state.pool, claim, code, &detail).await
+            }
             Err(RuntimeError::BadRequest(_, message)) => {
                 let (code, detail) = deterministic_rejection(&message);
                 reject_start_execution(&state.pool, claim, code, detail).await
@@ -1392,6 +1416,23 @@ mod tests {
     };
     use agentx_runtime_contracts::ChatMappingV1;
     use serde_json::json;
+
+    #[test]
+    fn nullable_all_complete_file_outputs_keep_reference_constraints() {
+        let id = uuid::Uuid::now_v7();
+        let schema = json!({"type":"object","properties":{"documents":{"type":"array","items":{"anyOf":[{"type":"array","x-agentx-artifact":true,"x-agentx-artifact-array":true,"x-agentx-max-size-bytes":10},{"type":"null"}]}}}});
+        let mut constraints = Vec::new();
+        collect_artifact_constraints(
+            &json!({"documents":[null,[{"artifactId":id}]]}),
+            &schema,
+            "expectedOutput",
+            &mut constraints,
+        )
+        .unwrap();
+        assert_eq!(constraints.len(), 1);
+        assert_eq!(constraints[0].artifact_ids, vec![id]);
+        assert_eq!(constraints[0].max_size_bytes, Some(10));
+    }
 
     #[test]
     fn an_artifact_array_marker_also_enforces_reference_validation() {

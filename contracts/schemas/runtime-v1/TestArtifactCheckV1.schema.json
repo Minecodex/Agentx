@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "applicationId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "schemas": {
+      "items": true,
+      "type": "array"
+    },
+    "tenantId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "values": {
+      "items": true,
+      "type": "array"
+    }
+  },
+  "required": [
+    "tenantId",
+    "applicationId",
+    "schemas",
+    "values"
+  ],
+  "title": "TestArtifactCheckV1",
+  "type": "object"
+}

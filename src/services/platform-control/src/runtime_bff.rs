@@ -29,6 +29,7 @@ use crate::{
 
 #[path = "application_invocations.rs"]
 mod application_invocations;
+pub(crate) use application_invocations::{test_artifacts, test_sample};
 
 pub fn routes() -> Router<ControlApiState> {
     Router::new()

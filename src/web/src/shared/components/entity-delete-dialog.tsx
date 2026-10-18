@@ -89,7 +89,13 @@ function ReferenceRow({ reference }: { reference: DeletionReference }) {
 
 function referenceHref(reference: DeletionReference) {
   const parent = reference.parentId ?? reference.sourceId
-  const routes: Record<string, string> = { workflows: `/workflows/${parent}`, applications: `/applications/${parent}`, executions: `/executions/${parent}`, approvals: `/approvals/${reference.sourceId}`, datasets: `/datasets/${parent}`, evaluations: `/evaluations/${reference.sourceId}`, skills: `/skills/${parent}`, models: `/models/${parent}`, mcp: `/mcp/${parent}`, knowledge: `/knowledge/${parent}`, memory: `/memory/${parent}`, sandbox: `/sandbox-profiles/${parent}`, organization: '/organization', roles: '/roles', resourceGrants: '/resource-grants' }
+  if (reference.sourceModule === 'applications' && reference.parentId) {
+    const root = `/applications/${reference.parentId}?tab=testing`
+    if (reference.sourceType === 'dataset') return `${root}&testTab=datasets&datasetId=${reference.sourceId}`
+    if (reference.sourceType === 'evaluation_profile') return `${root}&testTab=profiles`
+    if (reference.sourceType === 'evaluation_run') return `${root}&testTab=runs&batchId=${reference.sourceId}`
+  }
+  const routes: Record<string, string> = { workflows: `/workflows/${parent}`, applications: `/applications/${parent}`, executions: `/executions/${parent}`, approvals: `/approvals/${reference.sourceId}`, skills: `/skills/${parent}`, models: `/models/${parent}`, mcp: `/mcp/${parent}`, knowledge: `/knowledge/${parent}`, memory: `/memory/${parent}`, sandbox: `/sandbox-profiles/${parent}`, organization: '/organization', roles: '/roles', resourceGrants: '/resource-grants' }
   return routes[reference.sourceModule]
 }
 

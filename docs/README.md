@@ -4,7 +4,7 @@ Agentx 是一个采用 n8n 式画布交互、但使用 Agentx 原生 Workflow/No
 
 平台的主链路是：
 
-设计 Workflow → 手动调试 → 查看执行记录 → 测试集评测 → 发布版本 → 生成应用和 API → 生产运行 → 审批或恢复 → 分析 Trace、成本和错误
+设计 Workflow → 手动调试 → 发布工作流版本 → 创建应用 → 应用内建集与 AI 评测 → 发布应用和 API → 生产运行 → 调用记录回流测试集 → 分析 Trace、成本和错误
 
 本文档集只关注 Workflow 业务上下游，不把项目扩展为通用 OA、通用低代码平台或通用企业基础设施平台。
 
@@ -37,6 +37,8 @@ Agentx 是一个采用 n8n 式画布交互、但使用 Agentx 原生 Workflow/No
 | [plan6/README.md](plan6/README.md) | 画布插件：动态 React UI、TypeScript/Node.js、权威动态契约、调用隔离、文件流和 Trace；SDK/RPC 2 的最新修复与验证范围见 [P6-11](plan6/evidence/p6-11-runtime-boundaries.md) |
 | [plan7/README.md](plan7/README.md) | 产品最后一公里与生产收口（对比 n8n/Dify 后立项）：IM 渠道出站回复闭环、LLM 流式与多模态透传、评测与 Insights 补全、P0 生产认证收口、知识库管理面 |
 | [plan8/README.md](plan8/README.md) | 画布 AI 编辑与历史验收；当前版本生命周期、版本列表和还原规则见 [版本与画布管理](plan8/09-version-canvases.md) |
+| [plan8/12-application-evaluations.md](plan8/12-application-evaluations.md) | 应用内测试集、固定参数契约、平台 AI 评分与批次报告 |
+| [plan8/evidence/2026-10-18-application-evaluations.md](plan8/evidence/2026-10-18-application-evaluations.md) | 应用测试集重构、平台模型授权、桌面流程和真实模型分轮验收 |
 | [plan8/11-knowledge-connections.md](plan8/11-knowledge-connections.md) | 外部知识连接、查询配置、统一授权与多来源检索 |
 | [plan8/10-application-user-memory.md](plan8/10-application-user-memory.md) | 应用用户参数映射、会话归属与固定读写记忆连接 |
 | [plan8/evidence/2026-10-17-application-business-closure.md](plan8/evidence/2026-10-17-application-business-closure.md) | AI 工作流四能力、API 用户记忆隔离、文件往返及平台测试集造数的本地验收 |

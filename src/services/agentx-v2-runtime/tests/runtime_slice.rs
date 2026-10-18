@@ -205,8 +205,7 @@ impl WorkerProvider for StubWorkerProvider {
                     .and_then(Value::as_str)
                     .unwrap();
                 assert!(
-                    prompt.starts_with("Judge ")
-                        && prompt.ends_with("Return passed, score and reason."),
+                    prompt.starts_with("Judge ") && prompt.ends_with("Return score and reason."),
                     "{body}"
                 );
                 assert!(!prompt.contains("{{actualOutput}}"));
@@ -220,7 +219,7 @@ impl WorkerProvider for StubWorkerProvider {
                 json!({
                     "id":"fixture-evaluator-response",
                     "object":"chat.completion",
-                    "choices":[{"index":0,"message":{"role":"assistant","content":"{\"passed\":true,\"score\":0.95,\"reason\":\"fixture accepted the target output\"}"},"finish_reason":"stop"}],
+                    "choices":[{"index":0,"message":{"role":"assistant","content":"{\"score\":0.95,\"reason\":\"fixture accepted the target output\"}"},"finish_reason":"stop"}],
                     "usage":{"prompt_tokens":0,"completion_tokens":7,"total_tokens":7}
                 })
             }

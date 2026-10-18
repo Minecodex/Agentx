@@ -2,14 +2,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import * as TooltipPrimitive from '@radix-ui/react-tooltip'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactElement } from 'react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { i18n } from '../app/i18n'
 import { useAuth } from '../app/providers/auth-provider'
 import { ToastProvider } from '../shared/ui/toast'
 import { ApplicationsPage } from './applications/applications-page'
-import { DatasetDetailPage } from './datasets/dataset-detail-page'
+import { DatasetCreate } from './applications/testing/dataset-create'
 import { QueryForm } from './knowledge/query-form'
 import { McpServersPage } from './mcp/mcp-servers-page'
 import { MemoryPage } from './memory/memory-page'
@@ -178,20 +178,14 @@ describe('resource page uniqueness field errors', () => {
     expect(await within(form).findByText('该沙箱配置名称已存在。')).toBeInTheDocument()
   })
 
-  it('shows Dataset Case Key conflicts', async () => {
-    stubFetch((path, init) => {
-      if (path.endsWith('/datasets/dataset-1/cases') && init?.method === 'POST') return fieldConflict('DATASET_CASE_KEY_EXISTS', 'caseKey')
-      if (path.endsWith('/datasets/dataset-1')) return jsonResponse({ id: 'dataset-1', name: 'Dataset', description: null, visibility: 'department', status: 'active', ownerUserId: 'user-1', ownerDepartmentId: 'department-1', revision: 1, latestVersion: null, caseCount: 0, version: 1, updatedAt: '2026-08-12T00:00:00Z' })
-      if (path.endsWith('/cases') || path.endsWith('/versions')) return jsonResponse([])
-      return jsonResponse(emptyPage)
-    })
-    renderPage(<Routes><Route element={<DatasetDetailPage />} path="/datasets/:id" /></Routes>, '/datasets/dataset-1')
-    fireEvent.click(await screen.findByRole('button', { name: '新增用例' }))
+  it('shows application dataset name conflicts', async () => {
+    stubFetch(() => fieldConflict('DATASET_NAME_EXISTS', 'name'))
+    renderPage(<DatasetCreate applicationId="app-1" versions={[{ id: 'version-1', versionNumber: 1, archived: false, contract: { inputSchema: {}, outputSchema: {}, fingerprint: 'fixed' } }]} onClose={() => undefined} onCreated={async () => undefined} />)
     const form = await screen.findByRole('dialog')
-    fireEvent.change(within(form).getByLabelText('用例标识'), { target: { value: 'case-1' } })
-    fireEvent.change(within(form).getByLabelText('名称'), { target: { value: 'Case' } })
-    fireEvent.click(within(form).getByRole('button', { name: '保存' }))
-    expect(await within(form).findByText('测试集中已存在相同的用例 Key。')).toBeInTheDocument()
+    fireEvent.change(within(form).getByLabelText('测试集名称'), { target: { value: 'Duplicate dataset' } })
+    fireEvent.click(within(form).getByRole('button', { name: '新建' }))
+    expect(await within(form).findByRole('alert')).toBeInTheDocument()
+    await waitFor(() => expect(within(form).getByLabelText('测试集名称')).toHaveFocus())
   })
 
   it('shows a query name conflict within its connection', async () => {

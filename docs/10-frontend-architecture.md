@@ -82,6 +82,8 @@ shared/components 保存 PageContainer、PageHeader、FilterBar、DataTable、Me
 
 Feature 页面优先组合共享组件，不重复定义页面标题、表格密度、状态颜色和空状态。
 
+应用调用记录加入测试集使用同一个确认流程，进入时先校验历史调用的固定参数契约；完整数据直接确认，缺项时打开侧栏补全。测试集与用例名称明确区分并保留编辑状态，参考答案确认合并到最终保存动作。用例编辑复用共享 SchemaForm，并请求服务端对当前草稿与附件引用校验；字段错误按稳定代码本地化，旧请求结果不得覆盖新草稿的准备状态。
+
 `src/web/src/docs` 集中保存面向最终用户的内嵌接入文档、双语内容、动态代码示例和文档展示组件；Feature 页面只传入当前实体、公开 Endpoint 与已发布 Schema，不在业务页面复制长篇说明。Application 的 API Key 与 Webhook 文档以当前激活 Deployment 为数据源，在尚未创建 API Key 或 Webhook 时也必须能直接查看输入/输出 Schema；未创建 Webhook 时只用占位符表示尚未生成的专属 URL 和 Secret。接口参考按 Endpoint 展示请求字段、响应字段和 Curl、Java、Go、Node.js、Python 示例。外部 API 的方法、路径、Header 和 Schema 仍以版本化 OpenAPI 为契约真相，内嵌文档负责快速开始、安全说明和错误排查，不替代 OpenAPI。
 
 ## 5. Feature 边界
@@ -301,3 +303,14 @@ Dialog 打开后分页加载删除影响。无引用时显示不可撤销确认�
 每个草稿或只读版本画布独立创建 Editor Store 和 Canvas Render Store。Query、Overlay、资源申请及 Recovery 携带 Draft 身份；Recovery 同时绑定租户和用户。手动操作与 AI 命令共用 commit/history，一批 AI 命令一个 Undo。完整 localDocumentRevision 和 JCS hash 防止过期覆盖；保存响应只在提交序号仍为当前时清 dirty。
 
 Builder Panel 展示租户模型状态、流式消息、问题、批次、静态报告、使用量和停止操作。ACK 先持久化本地 Recovery，重连通过服务端回执和本地已应用证明去重。历史版本禁用写操作和 AI，静态报告在当前 hash 改变后显示过期。设计编辑器使用平台静态参数控件，不挂载会自动执行 Effect 的自定义插件 UI/通用 Provider。
+
+
+## 应用内测试与评测
+
+全局测试集与评测路由已移除。应用详情以 `tab=testing` 打开统一入口，子 Tab 为 `testTab=datasets|runs|profiles`，通过 datasetId/batchId 保留列表详情深链。调用记录携带 invocationId 进入同一入口。
+
+业务组件位于 `features/applications/testing`，分别负责建集与复制、用例列表与选择、用例侧栏、方案、批次配置与列表、报告。输入与参考输出复用 SchemaForm，附件复用上传网关；表格、Dialog、Tabs、按钮和设计令牌来自现有共享组件。创建和编辑允许不完整草稿，后端逐字段错误决定可评测状态。
+
+测试集元数据编辑和复制操作位于外层列表；复制选择目标版本后立即预览，契约变化使所有复制用例进入草稿，逐条确认。用例列表支持勾选、半选和全选；导入导出相邻，新增用例置于最右侧。导出沿用查看权限并携带选中用例 ID 和修订，后端拒绝过时或越界选择。评测创建必须输入名称，逐行先选测试集、再多选适配版本，不默认勾选版本。记录列表展示方案、对应测试集与版本、完成任务、加权平均分、状态和本地化时间。
+
+报告按测试集分组，最小版本号为默认基线；来源对比与基线选择为客户端派生展示。评分错误没有分数，费用按币种并分别显示业务和裁判金额。正式验收限定桌面 Web，中英文及深浅主题复用全局偏好设置。

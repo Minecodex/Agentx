@@ -59,7 +59,7 @@ Builder Core 不承载 Workflow 调度。设计态运行不创建 Workflow Execu
 
 接口支持提交/查询同一 Effect、流式增量、取消和最终 Receipt。断线后先查同一 effectId；已结算结果复用，外部结果未知按现有 Unknown 规则收敛，不发起新的重复推理。Receipt 含状态、使用量、成本、内容/Artifact 引用，Control 不自行把无 Receipt 的请求记成成功或零成本。
 
-Builder 模型由租户管理员在模型列表统一设定，保存 Alias ID 和授权凭据 ID；设置要求 model:manage/company:manage/resource:grant。租户设置只授权设计态模型调用，不向各 Workflow 写业务 Grant。每个 Run 冻结部署/凭据/价格版本，设置变化影响新 Run；模型/凭据失效停止后续调用，换用其他凭据需要重新设置。
+Builder 模型由租户管理员在模型列表统一设定，保存 Alias ID 和授权凭据 ID；设置要求 model:manage/company:manage/resource:grant。租户设置现已扩展为平台 AI 模型（画布与评测），授权设计态创作和独立的系统评分子执行，不向各 Workflow 写业务 Grant。评测授权按应用/批次签名并经 Admission 撤销，详见 [应用评测](12-application-evaluations.md)。每个 Run 冻结部署/凭据/价格版本，设置变化影响新 Run；模型/凭据失效停止后续调用，换用其他凭据需要重新设置。
 
 ## 4. Core 挂起与恢复
 

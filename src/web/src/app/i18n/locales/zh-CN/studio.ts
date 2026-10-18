@@ -22,11 +22,11 @@ const translations = {
     "staticStale": "画布已变更，此静态检查结果已过期。",
     "staticIssues": "静态检查发现问题，点击定位。",
     "modelReasons": {
-      "unconfigured": "管理员尚未设置画布 AI 模型。",
-      "model_disabled": "画布 AI 模型已禁用，请管理员检查模型列表。",
+      "unconfigured": "管理员尚未设置平台 AI 模型。",
+      "model_disabled": "平台 AI 模型已禁用，请管理员检查模型列表。",
       "deployment_disabled": "所选模型部署不可用。",
       "credential_disabled": "模型凭据已禁用或不可用。",
-      "credential_changed": "模型已更换凭据，需要管理员重新设置画布 AI 模型。"
+      "credential_changed": "模型已更换凭据，需要管理员重新设置平台 AI 模型。"
     },
     "ack": {
       "applied": "已应用一个编辑事务",
@@ -36,8 +36,8 @@ const translations = {
     },
     "title": "AI 创作",
     "model": "创作模型：{{model}}",
-    "unconfigured": "管理员尚未设置画布 AI 模型，请在模型列表配置。",
-    "unavailable": "画布 AI 模型不可用，请管理员检查模型、凭据和授权设置。",
+    "unconfigured": "管理员尚未设置平台 AI 模型，请在模型列表配置。",
+    "unavailable": "平台 AI 模型不可用，请管理员检查模型、凭据和授权设置。",
     "staticOnly": "AI 只编辑和静态校验；运行、测试、创建版本和发布请使用界面按钮。",
     "pendingSave": "画布修改待保存",
     "saved": "画布已保存",

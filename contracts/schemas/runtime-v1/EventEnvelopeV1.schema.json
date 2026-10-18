@@ -53,6 +53,14 @@
       "additionalProperties": false,
       "properties": {
         "actualOutput": true,
+        "costByCurrency": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
         "costMicros": {
           "format": "uint64",
           "minimum": 0,
@@ -113,6 +121,7 @@
         "targetCommandId",
         "status",
         "costMicros",
+        "costByCurrency",
         "rules"
       ],
       "type": "object"
@@ -183,6 +192,14 @@
     "RuntimeEvaluationRuleResultV1": {
       "additionalProperties": false,
       "properties": {
+        "costByCurrency": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
         "costMicros": {
           "format": "uint64",
           "minimum": 0,
@@ -234,7 +251,8 @@
         "profileRuleId",
         "status",
         "detail",
-        "costMicros"
+        "costMicros",
+        "costByCurrency"
       ],
       "type": "object"
     },

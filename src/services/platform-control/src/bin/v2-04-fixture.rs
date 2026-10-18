@@ -1,31 +1,17 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    env,
-};
+use std::{collections::BTreeMap, env};
 
-use agentx_bundle_builder::{
-    WorkPackageBuildSource, build_work_package, compile_workflow_version,
-    compile_workflow_version_with_dependencies,
-};
+use agentx_bundle_builder::{compile_workflow_version, compile_workflow_version_with_dependencies};
 use agentx_control_infrastructure::{
     ControlInfrastructureSettings, connect_control_mysql, control_object_store,
 };
 use agentx_domain::WorkflowDefinition;
-use agentx_runtime_contracts::{
-    CancelWorkPackageRequestV1, ControlRole, ExecuteWorkPackageRequestV1,
-    PrepareWorkPackageRequestV1, RuntimeAuthorizationSnapshotV1, RuntimeCallPurposeV1,
-    RuntimeEvaluationCaseV1, RuntimeEvaluatorV1, RuntimePolicyV1, RuntimeSkillProgramV2,
-    RuntimeWorkPackageOverlayV1, RuntimeWorkPackageSpecV1, ServiceClaimsV1, WorkPackagePurpose,
-    issue_service_token, now_unix,
-};
+use agentx_runtime_contracts::RuntimeSkillProgramV2;
 use anyhow::{Context, Result};
 use bytes::Bytes;
-use ed25519_dalek::{SigningKey, pkcs8::DecodePrivateKey};
 use object_store::{ObjectStore, path::Path as ObjectPath};
-use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use sqlx::{MySql, MySqlPool, Row, Transaction};
+use sqlx::{MySql, Row, Transaction};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -61,8 +47,6 @@ const SKILL_VERSION: &str = "018f0000-0000-7000-8000-00000000042a";
 const SANDBOX_PROFILE: &str = "018f0000-0000-7000-8000-00000000042b";
 const APPROVAL_WORKFLOW: &str = "018f0000-0000-7000-8000-000000000433";
 const APPROVAL_IDENTITY: &str = "018f0000-0000-7000-8000-000000000434";
-const EVALUATION_PACKAGE: &str = "018f0000-0000-7000-8000-000000000441";
-const CANCELLED_EVALUATION_PACKAGE: &str = "018f0000-0000-7000-8000-000000000442";
 
 struct ResourceFixture {
     node_id: &'static str,
@@ -76,40 +60,6 @@ struct ResourceFixture {
 #[tokio::main]
 async fn main() -> Result<()> {
     agentx_service_kit::install_tls_provider();
-    let mode = env::var("AGENTX_V2_FIXTURE_MODE").unwrap_or_else(|_| "seed".into());
-    if mode == "evaluation" {
-        let seed = env::var("AGENTX_V2_FIXTURE_ID_SEED").unwrap_or_default();
-        let success_id = if seed.is_empty() {
-            id(EVALUATION_PACKAGE)?
-        } else {
-            fixture_id(&seed, "evaluation-success")
-        };
-        let cancellation_id = if seed.is_empty() {
-            id(CANCELLED_EVALUATION_PACKAGE)?
-        } else {
-            fixture_id(&seed, "evaluation-cancelled")
-        };
-        let evaluation = publish_evaluation_packages(
-            success_id,
-            cancellation_id,
-            &grandchild_definition()?,
-            &suspension_definition()?,
-        )
-        .await?;
-        println!(
-            "{}",
-            serde_json::to_string(&json!({
-                "apiVersion":"agentx.io/v2-04-fixture/v1",
-                "mode":"evaluation",
-                "evaluation":evaluation
-            }))?
-        );
-        return Ok(());
-    }
-    anyhow::ensure!(
-        mode == "seed",
-        "AGENTX_V2_FIXTURE_MODE must be seed or evaluation"
-    );
     let dependencies_namespace = env::var("AGENTX_V2_FIXTURE_DEPENDENCIES_NAMESPACE")
         .context("AGENTX_V2_FIXTURE_DEPENDENCIES_NAMESPACE is required")?;
     anyhow::ensure!(
@@ -218,133 +168,6 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn publish_evaluation_packages(
-    success_id: Uuid,
-    cancellation_id: Uuid,
-    success_definition: &WorkflowDefinition,
-    cancellation_definition: &WorkflowDefinition,
-) -> Result<Value> {
-    let settings = ControlInfrastructureSettings::from_env()?;
-    let pool = connect_control_mysql(&settings.mysql).await?;
-    let runtime_url = env::var("AGENTX_RUNTIME_INTERNAL_URL")
-        .context("AGENTX_RUNTIME_INTERNAL_URL is required")?
-        .trim_end_matches('/')
-        .to_owned();
-    let signing_key = SigningKey::from_pkcs8_pem(&env::var(
-        "AGENTX_CONTROL_WORK_PACKAGE_ED25519_PRIVATE_KEY_PEM",
-    )?)?;
-    let signing_kid = env::var("AGENTX_CONTROL_WORK_PACKAGE_KEY_ID")?;
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()?;
-    persist_evaluation_intent(&pool, success_id, "V2 Evaluation Fixture").await?;
-    let success = build_evaluation_package(
-        success_id,
-        success_definition.clone(),
-        2,
-        &signing_kid,
-        &signing_key,
-    )?;
-    runtime_post::<agentx_runtime_contracts::PublishReceiptV1, _>(
-        &client,
-        &runtime_url,
-        "runtime.work-packages.prepare",
-        "/internal/runtime/v1/work-packages:prepare",
-        &PrepareWorkPackageRequestV1 {
-            api_version: 1,
-            idempotency_key: format!("v2-04:evaluation:prepare:{success_id}"),
-            work_package: success,
-        },
-    )
-    .await?;
-    let success_receipt = runtime_post::<agentx_runtime_contracts::ApplyReceiptV1, _>(
-        &client,
-        &runtime_url,
-        "runtime.work-packages.execute",
-        &format!("/internal/runtime/v1/work-packages/{success_id}:execute"),
-        &ExecuteWorkPackageRequestV1 {
-            api_version: 1,
-            idempotency_key: format!("v2-04:evaluation:execute:{success_id}"),
-            package_id: success_id,
-            input: Value::Null,
-        },
-    )
-    .await?;
-
-    persist_evaluation_intent(&pool, cancellation_id, "V2 Cancelled Evaluation Fixture").await?;
-    let cancellation = build_evaluation_package(
-        cancellation_id,
-        cancellation_definition.clone(),
-        1,
-        &signing_kid,
-        &signing_key,
-    )?;
-    runtime_post::<agentx_runtime_contracts::PublishReceiptV1, _>(
-        &client,
-        &runtime_url,
-        "runtime.work-packages.prepare",
-        "/internal/runtime/v1/work-packages:prepare",
-        &PrepareWorkPackageRequestV1 {
-            api_version: 1,
-            idempotency_key: format!("v2-04:evaluation:prepare:{cancellation_id}"),
-            work_package: cancellation,
-        },
-    )
-    .await?;
-    let cancellation_receipt = runtime_post::<agentx_runtime_contracts::ApplyReceiptV1, _>(
-        &client,
-        &runtime_url,
-        "runtime.work-packages.execute",
-        &format!("/internal/runtime/v1/work-packages/{cancellation_id}:execute"),
-        &ExecuteWorkPackageRequestV1 {
-            api_version: 1,
-            idempotency_key: format!("v2-04:evaluation:execute:{cancellation_id}"),
-            package_id: cancellation_id,
-            input: Value::Null,
-        },
-    )
-    .await?;
-    let cancellation_version = cancellation_receipt.object_version;
-    let cancelled = runtime_post::<agentx_runtime_contracts::ApplyReceiptV1, _>(
-        &client,
-        &runtime_url,
-        "runtime.work-packages.cancel",
-        &format!("/internal/runtime/v1/work-packages/{cancellation_id}:cancel"),
-        &CancelWorkPackageRequestV1 {
-            api_version: 1,
-            tenant_id: id(TENANT)?,
-            package_id: cancellation_id,
-            expected_version: cancellation_version,
-            idempotency_key: format!("v2-04:evaluation:cancel:{cancellation_id}"),
-        },
-    )
-    .await?;
-    Ok(json!({
-        "completedPackageId":success_id,
-        "completedExecutionIds":success_receipt.result.get("executionIds").cloned().unwrap_or(Value::Null),
-        "cancelledPackageId":cancellation_id,
-        "cancelledExecutionIds":cancellation_receipt.result.get("executionIds").cloned().unwrap_or(Value::Null),
-        "cancelReceiptApplied":cancelled.applied
-    }))
-}
-
-async fn persist_evaluation_intent(pool: &MySqlPool, package_id: Uuid, name: &str) -> Result<()> {
-    sqlx::query("INSERT INTO evaluation_runs(id,tenant_id,name,workflow_version_id,dataset_version_id,evaluation_profile_version_id,work_package_id,intent_version,parameters_json,status,created_by,owner_department_id,visibility) VALUES(?,?,?,?,?,?,?,1,?,'queued',?,?,'private') ON DUPLICATE KEY UPDATE name=VALUES(name),work_package_id=VALUES(work_package_id)")
-        .bind(fixture_id(&package_id.to_string(), "control-evaluation-run"))
-        .bind(id(TENANT)?)
-        .bind(name)
-        .bind(id(VERSION)?)
-        .bind(fixture_id(&package_id.to_string(), "dataset-version"))
-        .bind(fixture_id(&package_id.to_string(), "profile-version"))
-        .bind(package_id)
-        .bind(json!({"fixture": "v2-evaluation", "packageId": package_id}))
-        .bind(id(USER)?)
-        .bind(id(DEPARTMENT)?)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
-
 fn fixture_id(seed: &str, purpose: &str) -> Uuid {
     let mut digest = Sha256::new();
     digest.update(seed.as_bytes());
@@ -356,115 +179,6 @@ fn fixture_id(seed: &str, purpose: &str) -> Uuid {
     bytes[6] = (bytes[6] & 0x0f) | 0x80;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     Uuid::from_bytes(bytes)
-}
-
-fn build_evaluation_package(
-    package_id: Uuid,
-    definition: WorkflowDefinition,
-    case_count: usize,
-    signing_kid: &str,
-    signing_key: &SigningKey,
-) -> Result<agentx_runtime_contracts::RuntimeWorkPackageV1> {
-    let created_at = OffsetDateTime::now_utc();
-    let cases = (0..case_count)
-        .map(|index| RuntimeEvaluationCaseV1 {
-            case_id: Uuid::now_v7(),
-            input: json!({"message":format!("v2-04-evaluation-{}",index + 1)}),
-            expected_output: None,
-        })
-        .collect();
-    Ok(build_work_package(
-        WorkPackageBuildSource {
-            package_id,
-            tenant_id: id(TENANT)?,
-            workflow: agentx_runtime_contracts::ExecutionWorkflowSnapshotV1 {
-                id: id(WORKFLOW)?,
-                name: "V2-04 Evaluation Workflow".into(),
-                source: agentx_runtime_contracts::WorkflowDesignSourceV1::Version {
-                    version_id: package_id,
-                    version_number: 1,
-                },
-                version_id: Some(package_id),
-                version_number: Some(1),
-                owner_department: None,
-            },
-            origin: agentx_runtime_contracts::ExecutionOriginV1::system(None),
-            purpose: WorkPackagePurpose::Evaluation,
-            call_purpose: RuntimeCallPurposeV1::Evaluation,
-            spec: RuntimeWorkPackageSpecV1::Evaluation {
-                dataset_version_id: Uuid::now_v7(),
-                profile_version_id: Uuid::now_v7(),
-                cases,
-                evaluators: vec![RuntimeEvaluatorV1::DeterministicRule {
-                    evaluator_id: Uuid::now_v7(),
-                    expression: "not_null".into(),
-                }],
-            },
-            source_revision: format!("v2-04-evaluation:{package_id}"),
-            definition,
-            dependency_versions: Default::default(),
-            plugin_manifests: vec![],
-            supported_capabilities: BTreeSet::from(["builtin".into(), "plugin_nodejs".into()]),
-            overlay: RuntimeWorkPackageOverlayV1::default(),
-            resources: vec![],
-            authorization: RuntimeAuthorizationSnapshotV1 {
-                schema_version: 1,
-                tenant_id: id(TENANT)?,
-                service_identity_id: id(IDENTITY)?,
-                workflow_id: id(WORKFLOW)?,
-                policy_epoch: 1,
-                grant_ids: vec![],
-                grant_bindings: vec![],
-                capabilities: BTreeSet::from(["builtin".into()]),
-                maximum_policy_staleness_seconds: 72 * 60 * 60,
-                captured_at: created_at,
-            },
-            objects: vec![],
-            runtime_policy: RuntimePolicyV1::default(),
-            created_at,
-            expires_at: created_at + time::Duration::hours(24),
-        },
-        signing_kid,
-        signing_key,
-    )?)
-}
-
-async fn runtime_post<T: DeserializeOwned, B: Serialize>(
-    client: &reqwest::Client,
-    runtime_url: &str,
-    scope: &str,
-    path: &str,
-    body: &B,
-) -> Result<T> {
-    let now = now_unix();
-    let token = issue_service_token(
-        &env::var("AGENTX_CONTROL_PUBLISHER_JWT_KID")?,
-        env::var("AGENTX_CONTROL_PUBLISHER_JWT_PRIVATE_KEY_PEM")?.as_bytes(),
-        &ServiceClaimsV1 {
-            iss: "agentx-control".into(),
-            aud: "agentx-runtime-internal".into(),
-            sub: "v2-04-fixture".into(),
-            role: ControlRole::Publisher,
-            scope: BTreeSet::from([scope.into()]),
-            iat: now,
-            exp: now + 300,
-            jti: Uuid::now_v7(),
-        },
-    )?;
-    let response = client
-        .post(format!("{runtime_url}{path}"))
-        .bearer_auth(token)
-        .json(body)
-        .send()
-        .await?;
-    let status = response.status();
-    let bytes = response.bytes().await?;
-    anyhow::ensure!(
-        status.is_success(),
-        "Runtime Work Package request {path} failed with HTTP {status}: {}",
-        String::from_utf8_lossy(&bytes)
-    );
-    serde_json::from_slice(&bytes).map_err(Into::into)
 }
 
 fn id(value: &str) -> Result<Uuid> {

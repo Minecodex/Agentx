@@ -1,3 +1,5 @@
+#[path = "application_testing_openapi.rs"]
+mod application_testing;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -20,13 +22,14 @@ pub(crate) fn requested_output() -> Result<Option<PathBuf>> {
 
 pub(crate) fn write(path: &Path) -> Result<()> {
     let mut contract: Value = serde_json::from_str(CONTRACT).context("invalid Platform OpenAPI")?;
+    application_testing::apply(&mut contract)?;
     contract["x-agentx-generator"] = Value::String("platform-control".into());
     contract["x-agentx-contract-version"] = Value::String("plan8".into());
-    contract["components"]["schemas"]["BuilderModelSetting"] = serde_json::to_value(
-        schemars::schema_for!(crate::studio_builder_setting::BuilderModelSetting),
+    contract["components"]["schemas"]["PlatformAiModelSetting"] = serde_json::to_value(
+        schemars::schema_for!(crate::platform_ai_model::PlatformAiModelSetting),
     )?;
-    contract["components"]["schemas"]["SetBuilderModel"] = serde_json::to_value(
-        schemars::schema_for!(crate::studio_builder_setting::SetBuilderModel),
+    contract["components"]["schemas"]["SetPlatformAiModel"] = serde_json::to_value(
+        schemars::schema_for!(crate::platform_ai_model::SetPlatformAiModel),
     )?;
     add_schema::<agentx_runtime_contracts::StudioEditorSnapshotV1>(
         &mut contract,

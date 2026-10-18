@@ -10,6 +10,8 @@
 
 2026-10-16 已完成追加的节点面板、Markdown、自动布局与回执恢复修复并发布本地版本。13 类内置节点的固定输入和真实 GLM 场景共 26 项经分轮验证/复测通过，最终 6 项恢复协议通过，详见 [AI 节点编辑回归](evidence/2026-10-15-node-editing.md)。
 
+2026-10-18 [应用内测试集与平台 AI 评测](12-application-evaluations.md) 已实现并完成本地定向验收：应用内统一入口、固定输入输出契约、复制补全、不可变快照、多集多版本批次及独立平台裁判授权均已落地。完整系统场景和真实模型增量分轮通过，详细结果与恢复记录见 [应用评测验收](evidence/2026-10-18-application-evaluations.md)。本次未重置常驻数据库或部署产品版本。
+
 2026-10-16 使用反馈增量验收已关闭：真实 LightRAG 无命中、用户身份投影恢复及错误执行可见性已修复；AI 默认优先复用兼容结束节点。9 个增量系统场景分轮通过，已发布本地版本 `local-plan8-empty-20261016`，原工作流 revision 25 的真实空检索 → Agent → End 执行成功。详见 [修复与验收报告](evidence/2026-10-16-empty-results-and-execution-visibility.md)。
 
 2026-10-16 追加的 [资源补全、独立知识检索与错误出口](08-resource-completion-and-knowledge.md) 已实现并发布本地版本；17 个系统场景经同一最终候选分轮验证/复测通过，真实 GLM 创作、无损保存与 SSE 修复均已验证。失败历史、复测与原数据保留证据见 [增量验收记录](evidence/2026-10-16-knowledge-and-resources.md)。
@@ -36,6 +38,8 @@
 |---|---|
 | [01-product-and-versioning.md](01-product-and-versioning.md) | 用户流程、版本工作文档、版本来源、界面与产品边界 |
 | [09-version-canvases.md](09-version-canvases.md) | 版本列表、定稿与发布、只读详情、还原和本次重构验收 |
+| [12-application-evaluations.md](12-application-evaluations.md) | 应用内测试集、完整契约、平台 AI 评分与批次报告 |
+| [evidence/2026-10-18-application-evaluations.md](evidence/2026-10-18-application-evaluations.md) | 应用评测重构的代码、单元/契约、桌面和真实模型验收记录 |
 | [11-knowledge-connections.md](11-knowledge-connections.md) | 外部知识连接、查询配置、跨连接多来源检索与验收 |
 | [02-architecture-and-contracts.md](02-architecture-and-contracts.md) | Core/Host、数据所有权、模型设计态 Effect、恢复与授权 |
 | [03-tools-and-context.md](03-tools-and-context.md) | 七个业务工具、静态闭环、上下文投影与限制 |

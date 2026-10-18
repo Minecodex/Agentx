@@ -178,6 +178,45 @@ pub async fn prepare_work_package(
         &composites,
     )
     .await?;
+    if let agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Evaluation { cases, .. } =
+        &package.payload.spec
+    {
+        let input_schema = &package.payload.definition["start"]["inputs"];
+        let all_complete = package.payload.definition["end"]["completion"] == "all_complete";
+        let output_schema = serde_json::json!({"type":"object","properties":package.payload.definition["end"]["outputs"].as_object().map(|outputs|outputs.iter().map(|(key,output)| {
+            let schema = output["schema"].clone();
+            let schema = if all_complete { json!({"type":"array","items":if output["required"]==true {schema} else {json!({"anyOf":[schema,{"type":"null"}]})}}) } else {schema};
+            (key.clone(),schema)
+        }).collect::<serde_json::Map<_,_>>()).unwrap_or_default()});
+        for case in cases {
+            for (value, schema) in [
+                (&case.input, input_schema),
+                (
+                    case.expected_output
+                        .as_ref()
+                        .unwrap_or(&serde_json::Value::Null),
+                    &output_schema,
+                ),
+            ] {
+                let ids = crate::execution::validate_input_artifacts(
+                    &mut tx,
+                    package.payload.tenant_id,
+                    value,
+                    schema,
+                )
+                .await?;
+                for id in ids {
+                    sqlx::query("INSERT IGNORE INTO artifact_references(tenant_id,artifact_id,owner_type,owner_id,reference_role,retention_until) VALUES(?,?,'evaluation',?,'test_snapshot',?)").bind(package.payload.tenant_id).bind(id).bind(package.payload.package_id.to_string()).bind(package.payload.expires_at).execute(&mut *tx).await?;
+                }
+            }
+        }
+    }
+    for judge in &package.payload.model_evaluator_executions {
+        crate::platform_evaluation::prepare(&mut tx, &judge.model).await?;
+        let binding = &judge.model.binding;
+        sqlx::query("INSERT IGNORE INTO runtime_resource_states(tenant_id,resource_kind,resource_id,resource_version,state_epoch,status,content_hash) VALUES(?,'model',?,?,?,'active',?)")
+            .bind(package.payload.tenant_id).bind(binding.resource_id).bind(&binding.resource_version).bind(binding.state_epoch).bind(binding.content_hash.as_str()).execute(&mut *tx).await?;
+    }
     tx.commit().await?;
     Ok(Json(package_receipt(package.payload.package_id, false)))
 }
@@ -305,6 +344,23 @@ pub async fn cancel_work_package(
     .await?
     .ok_or(RuntimeError::NotFound)?;
     let version: u64 = row.try_get("version")?;
+    let tenant_id: Uuid = row.try_get("tenant_id")?;
+    if tenant_id != request.tenant_id {
+        return Err(RuntimeError::Unauthorized);
+    }
+    let current_status: String = row.try_get("status")?;
+    if !matches!(
+        current_status.as_str(),
+        "prepared" | "running" | "cancelled"
+    ) {
+        tx.commit().await?;
+        return Ok(Json(apply_receipt(
+            package_id,
+            version,
+            true,
+            json!({"packageId":package_id,"status":current_status}),
+        )));
+    }
     if let Some(key) = row.try_get::<Option<String>, _>("cancel_idempotency_key")? {
         if key != request.idempotency_key {
             return Err(RuntimeError::Conflict(
@@ -326,7 +382,6 @@ pub async fn cancel_work_package(
             "Work Package Version changed".into(),
         ));
     }
-    let tenant_id: Uuid = row.try_get("tenant_id")?;
     sqlx::query(
         "UPDATE runtime_work_packages SET status='cancelled',version=version+1,cancellation_version=cancellation_version+1,cancel_idempotency_key=?,completed_at=UTC_TIMESTAMP(6) WHERE id=? AND status IN ('prepared','running')",
     )
@@ -364,6 +419,7 @@ pub async fn cancel_work_package(
     .bind(package_id)
     .execute(&mut *tx)
     .await?;
+    crate::work_package_execution::publish_cancellation(&mut tx, tenant_id, package_id).await?;
     tx.commit().await?;
     Ok(Json(apply_receipt(
         package_id,

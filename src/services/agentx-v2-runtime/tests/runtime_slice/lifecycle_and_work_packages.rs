@@ -276,13 +276,34 @@ impl Fixture {
                     expected_output: Some(json!({"message":"case-two"})),
                 },
             ],
-            evaluators: vec![
-                agentx_runtime_contracts::RuntimeEvaluatorV1::DeterministicRule {
-                    evaluator_id: Uuid::now_v7(),
-                    expression: "exact_match".into(),
-                },
-            ],
+            evaluators: vec![agentx_runtime_contracts::RuntimeEvaluatorV1::Model {
+                evaluator_id: Uuid::from_u128(551),
+                resource_id: Uuid::from_u128(552),
+                prompt_object_id: Uuid::from_u128(553),
+                model: test_judge(self.tenant_id, Uuid::from_u128(552)),
+                pass_threshold: 0.8,
+            }],
         };
+        source.supported_capabilities.insert("model".into());
+        let bytes=br#"{"prompt":"Judge the data. Return score and reason.","criteria":"Semantic equivalence"}"#;
+        let hash = agentx_runtime_contracts::content_hash(
+            &serde_json::from_slice::<Value>(bytes).unwrap(),
+        )
+        .unwrap();
+        // Content bytes are canonicalized by the fixture upload below.
+        source.objects.push(RuntimeObjectReferenceV1 {
+            tenant_id: self.tenant_id,
+            storage_domain: StorageDomain::Runtime,
+            object_id: Uuid::from_u128(553),
+            object_key: RuntimeObjectReferenceV1::canonical_key(
+                self.tenant_id,
+                Uuid::from_u128(553),
+                &hash,
+            ),
+            content_hash: hash,
+            size_bytes: bytes.len() as u64,
+            media_type: "application/json".into(),
+        });
         source
     }
 
@@ -554,6 +575,27 @@ async fn work_package_prepare_execute_cancel_are_independently_signed_and_idempo
 }
 
 async fn evaluation_work_package_creates_cases_converges_and_cancels_atomically(fixture: &Fixture) {
+    let prompt_id = Uuid::from_u128(553);
+    let prompt=agentx_runtime_contracts::canonical_bytes(&json!({"prompt":"Judge the data. Return score and reason.","criteria":"Semantic equivalence"})).unwrap();
+    let hash =
+        agentx_runtime_contracts::content_hash(&serde_json::from_slice::<Value>(&prompt).unwrap())
+            .unwrap();
+    persist_upload(
+        &fixture.state,
+        RuntimeObjectUploadMetadataV1 {
+            api_version: 1,
+            idempotency_key: "test-default-judge-prompt".into(),
+            tenant_id: fixture.tenant_id,
+            object_id: prompt_id,
+            content_hash: hash,
+            size_bytes: prompt.len() as u64,
+            media_type: "application/json".into(),
+        },
+        Bytes::from(prompt),
+    )
+    .await
+    .unwrap();
+
     ensure_builtin_data_runtime_object(fixture).await;
     let now = OffsetDateTime::now_utc();
     let package_id = Uuid::now_v7();
@@ -636,6 +678,7 @@ async fn evaluation_work_package_creates_cases_converges_and_cancels_atomically(
         .await
         .unwrap();
     complete_claimed_work_package_executions(fixture, owner, &commands, &execution_ids[..1]).await;
+    complete_model_evaluators(fixture, package_id).await;
     let first_case: Uuid = sqlx::query_scalar(
         "SELECT id FROM evaluation_run_cases WHERE tenant_id=? AND target_execution_id=? AND status='completed'",
     )
@@ -662,6 +705,7 @@ async fn evaluation_work_package_creates_cases_converges_and_cancels_atomically(
     .await
     .expect("finishing another Case must not lock historical Cases or Rules");
     historical.rollback().await.unwrap();
+    complete_model_evaluators(fixture, package_id).await;
     let run_status: String = sqlx::query_scalar(
         "SELECT status FROM evaluation_runs WHERE tenant_id=? AND work_package_id=?",
     )
@@ -687,12 +731,11 @@ async fn evaluation_work_package_creates_cases_converges_and_cancels_atomically(
             .unwrap();
     assert_eq!(package_status, "succeeded");
 
-    let endpoint = "https://provider.example.test/evaluate".to_owned();
     let model_package_id = Uuid::now_v7();
     let model_id = Uuid::now_v7();
     let evaluator_id = Uuid::now_v7();
     let prompt_object_id = Uuid::now_v7();
-    let prompt = Bytes::from_static(br#"{"prompt":"Judge {{actualOutput}} against {{expectedOutput}}. Return passed, score and reason."}"#);
+    let prompt = Bytes::from_static(br#"{"prompt":"Judge the data. Return score and reason.","criteria":"Semantic equivalence"}"#);
     let prompt_hash = agentx_runtime_contracts::ContentHash::parse(format!(
         "sha256:{:x}",
         Sha256::digest(&prompt)
@@ -737,43 +780,18 @@ async fn evaluation_work_package_creates_cases_converges_and_cancels_atomically(
         .capabilities
         .insert("model".into());
     model_source.objects.push(prompt_reference);
-    model_source
-        .resources
-        .push(agentx_runtime_contracts::RuntimeResourceBindingV1 {
-            resource_kind: agentx_runtime_contracts::RuntimeResourceKindV1::Model,
-            resource_id: model_id,
-            resource_version: "model-fixture:1".into(),
-            state_epoch: 1,
-            content_hash: agentx_runtime_contracts::content_hash(&json!({
-                "modelId":model_id,
-                "version":1
-            }))
-            .unwrap(),
-            configuration: agentx_runtime_contracts::RuntimeResourceConfigurationV1::Model {
-                capabilities: Vec::new(),
-                provider: "openai_compatible".into(),
-                endpoint,
-                model: "evaluator-fixture".into(),
-                context_window: 128_000,
-                price: agentx_runtime_contracts::RuntimeModelPriceV1 {
-                    version_id: "price:1".into(),
-                    currency: "USD".into(),
-                    input_per_million: "1".into(),
-                    output_per_million: "2".into(),
-                },
-                credential: None,
-            },
-            object_ids: vec![],
-        });
     let agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Evaluation { evaluators, .. } =
         &mut model_source.spec
     else {
         unreachable!()
     };
+    evaluators.clear();
     evaluators.push(agentx_runtime_contracts::RuntimeEvaluatorV1::Model {
         evaluator_id,
         resource_id: model_id,
         prompt_object_id,
+        model: test_judge(fixture.tenant_id, model_id),
+        pass_threshold: 0.8,
     });
     let model_package = build_work_package(
         model_source,
@@ -844,6 +862,8 @@ async fn evaluation_work_package_creates_cases_converges_and_cancels_atomically(
             .await
             .unwrap();
     assert_eq!(model_package_status, "succeeded");
+    revoked_judges_settle_without_provider_calls(fixture).await;
+
     let cancelled_id = Uuid::now_v7();
     let cancelled_package = build_work_package(
         fixture.evaluation_work_package_source(cancelled_id, now, now + time::Duration::hours(24)),
@@ -905,6 +925,17 @@ async fn evaluation_work_package_creates_cases_converges_and_cancels_atomically(
     )
     .await
     .unwrap();
+    let cancelled_report: Value = sqlx::query_scalar("SELECT payload_json FROM execution_outbox WHERE JSON_UNQUOTE(JSON_EXTRACT(payload_json,'$.kind'))='evaluation_changed' AND JSON_UNQUOTE(JSON_EXTRACT(payload_json,'$.workPackageId'))=? ORDER BY created_at DESC,id DESC LIMIT 1")
+        .bind(cancelled_id.to_string()).fetch_one(&fixture.state.pool).await.unwrap();
+    assert_eq!(cancelled_report["status"], "cancelled");
+    assert_eq!(cancelled_report["completedCases"], 2);
+    assert!(
+        cancelled_report["report"]["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|case| case["status"] == "cancelled")
+    );
     let cancel_owner = Uuid::now_v7();
     for command in claim_commands(&fixture.state.pool, cancel_owner, 100)
         .await
@@ -944,6 +975,149 @@ async fn evaluation_work_package_creates_cases_converges_and_cancels_atomically(
     .await
     .unwrap();
     assert_eq!(active_reservations, 0);
+}
+
+async fn revoked_judges_settle_without_provider_calls(fixture: &Fixture) {
+    let package_id = Uuid::now_v7();
+    let now = OffsetDateTime::now_utc();
+    let model = test_judge(fixture.tenant_id, Uuid::now_v7());
+    let mut source =
+        fixture.evaluation_work_package_source(package_id, now, now + time::Duration::hours(24));
+    let agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Evaluation { evaluators, .. } =
+        &mut source.spec
+    else {
+        unreachable!()
+    };
+    let agentx_runtime_contracts::RuntimeEvaluatorV1::Model {
+        resource_id,
+        model: snapshot,
+        ..
+    } = &mut evaluators[0];
+    *resource_id = model.binding.resource_id;
+    *snapshot = model.clone();
+    let package = build_work_package(
+        source,
+        "work-package-current",
+        &fixture.work_package_signing_key,
+    )
+    .unwrap();
+    let _ = prepare_work_package(
+        State(fixture.state.clone()),
+        publisher_headers("runtime.work-packages.prepare"),
+        Json(PrepareWorkPackageRequestV1 {
+            api_version: 1,
+            idempotency_key: format!("prepare:{package_id}"),
+            work_package: package,
+        }),
+    )
+    .await
+    .unwrap();
+    let started = execute_work_package(
+        State(fixture.state.clone()),
+        Path(package_id),
+        publisher_headers("runtime.work-packages.execute"),
+        Json(ExecuteWorkPackageRequestV1 {
+            api_version: 1,
+            idempotency_key: format!("execute:{package_id}"),
+            package_id,
+            input: Value::Null,
+        }),
+    )
+    .await
+    .unwrap()
+    .0;
+    let targets: Vec<Uuid> =
+        serde_json::from_value(started.result["executionIds"].clone()).unwrap();
+    complete_work_package_executions(fixture, &targets).await;
+    let judges:Vec<Uuid> = sqlx::query_scalar("SELECT evaluator_execution_id FROM evaluation_rule_results rr JOIN evaluation_run_cases c ON c.id=rr.evaluation_run_case_id JOIN evaluation_runs r ON r.id=c.evaluation_run_id WHERE r.work_package_id=? ORDER BY rr.id").bind(package_id).fetch_all(&fixture.state.pool).await.unwrap();
+    assert_eq!(judges.len(), 2);
+    let owner = Uuid::now_v7();
+    let commands = claim_commands(&fixture.state.pool, owner, 100)
+        .await
+        .unwrap();
+    // Revoke one judge before Worker claim and the other before execution start.
+    let first = commands
+        .iter()
+        .find(|c| c.execution_id == judges[0])
+        .unwrap();
+    process_command_with_state(&fixture.state, first)
+        .await
+        .unwrap();
+    apply_target(
+        fixture,
+        2,
+        AdmissionTargetV1::PlatformEvaluation {
+            state: agentx_runtime_contracts::RuntimePlatformEvaluationAuthorizationV1 {
+                tenant_id: fixture.tenant_id,
+                application_id: model.application_id,
+                batch_id: model.batch_id,
+                model_hash: agentx_runtime_contracts::content_hash(&model).unwrap(),
+                epoch: 2,
+                enabled: false,
+            },
+        },
+    )
+    .await;
+    let second = commands
+        .iter()
+        .find(|c| c.execution_id == judges[1])
+        .unwrap();
+    process_command_with_state(&fixture.state, second)
+        .await
+        .unwrap();
+    let dispatch = claim_dispatch(&fixture.state.pool, owner)
+        .await
+        .unwrap()
+        .unwrap();
+    let task = dispatch.task().unwrap();
+    assert_eq!(task.execution_id, judges[0]);
+    complete_dispatch(&fixture.state.pool, &dispatch)
+        .await
+        .unwrap();
+    let worker = Uuid::now_v7();
+    agentx_v2_runtime::engine::register_worker(
+        &fixture.state.pool,
+        worker,
+        "model",
+        env!("CARGO_PKG_VERSION"),
+    )
+    .await
+    .unwrap();
+    assert!(
+        agentx_v2_runtime::engine::claim_worker_attempt(
+            &fixture.state.pool,
+            worker,
+            "model",
+            &task
+        )
+        .await
+        .unwrap()
+        .is_none()
+    );
+    let results:Vec<(String,Option<f64>,Value)> = sqlx::query_as("SELECT rr.status,CAST(rr.score AS DOUBLE),rr.detail_json FROM evaluation_rule_results rr JOIN evaluation_run_cases c ON c.id=rr.evaluation_run_case_id JOIN evaluation_runs r ON r.id=c.evaluation_run_id WHERE r.work_package_id=?").bind(package_id).fetch_all(&fixture.state.pool).await.unwrap();
+    assert_eq!(results.len(), 2);
+    for (status, score, detail) in results {
+        assert_eq!(status, "error");
+        assert_eq!(score, None);
+        assert_eq!(
+            detail["error"]["code"],
+            "PLATFORM_EVALUATION_AUTHORIZATION_REVOKED"
+        );
+    }
+    let calls: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM runtime_calls WHERE execution_id IN (?,?)")
+            .bind(judges[0])
+            .bind(judges[1])
+            .fetch_one(&fixture.state.pool)
+            .await
+            .unwrap();
+    assert_eq!(calls, 0);
+    let status: String = sqlx::query_scalar("SELECT status FROM runtime_work_packages WHERE id=?")
+        .bind(package_id)
+        .fetch_one(&fixture.state.pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "failed");
 }
 
 async fn complete_work_package_executions(fixture: &Fixture, execution_ids: &[Uuid]) {
@@ -1450,4 +1624,43 @@ async fn stale_head_and_sequence_are_rejected(
         unordered.rejection.unwrap().code,
         agentx_runtime_contracts::RuntimePublishErrorCodeV1::ActivationSequenceConflict
     ));
+}
+
+fn test_judge(
+    tenant_id: Uuid,
+    resource_id: Uuid,
+) -> agentx_runtime_contracts::RuntimePlatformEvaluationModelV1 {
+    let configuration = agentx_runtime_contracts::RuntimeResourceConfigurationV1::Model {
+        capabilities: vec![],
+        provider: "openai_compatible".into(),
+        endpoint: "https://provider.example.test/evaluate".into(),
+        model: "evaluator-fixture".into(),
+        context_window: 128000,
+        price: agentx_runtime_contracts::RuntimeModelPriceV1 {
+            version_id: "price:1".into(),
+            currency: "USD".into(),
+            input_per_million: "1".into(),
+            output_per_million: "2".into(),
+        },
+        credential: None,
+    };
+    agentx_runtime_contracts::RuntimePlatformEvaluationModelV1 {
+        tenant_id,
+        application_id: Uuid::from_u128(554),
+        batch_id: agentx_runtime_contracts::deterministic_uuid(resource_id, b"batch"),
+        setting_version: 1,
+        model_alias_version: 1,
+        credential_id: None,
+        credential_version: None,
+        parameters: json!({}),
+        binding: agentx_runtime_contracts::RuntimeResourceBindingV1 {
+            resource_kind: agentx_runtime_contracts::RuntimeResourceKindV1::Model,
+            resource_id,
+            resource_version: "model-fixture:1".into(),
+            state_epoch: 1,
+            content_hash: agentx_runtime_contracts::content_hash(&configuration).unwrap(),
+            configuration,
+            object_ids: vec![],
+        },
+    }
 }

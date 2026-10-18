@@ -56,16 +56,16 @@ export async function setModel(page: Page, alias: string) {
   await page.goto('/models')
   const row = page.getByRole('row').filter({ hasText: alias })
   await expect(row).toBeVisible()
-  if (await row.getByRole('button', { name: '设为画布 AI 模型', exact: true }).count()) {
-    const saved = page.waitForResponse(value => value.url().endsWith('/studio-builder/model-setting') && value.request().method() === 'PUT')
-    await row.getByRole('button', { name: '设为画布 AI 模型', exact: true }).click()
+  if (await row.getByRole('button', { name: '设为平台 AI 模型', exact: true }).count()) {
+    const saved = page.waitForResponse(value => value.url().endsWith('/platform-ai/model-setting') && value.request().method() === 'PUT')
+    await row.getByRole('button', { name: '设为平台 AI 模型', exact: true }).click()
     expect((await saved).status()).toBe(200)
   } else if (await row.getByRole('button',{name:'重新设置',exact:true}).count()) {
-    const saved=page.waitForResponse(value=>value.url().endsWith('/studio-builder/model-setting')&&value.request().method()==='PUT')
+    const saved=page.waitForResponse(value=>value.url().endsWith('/platform-ai/model-setting')&&value.request().method()==='PUT')
     await row.getByRole('button',{name:'重新设置',exact:true}).click()
     expect((await saved).status()).toBe(200)
   }
-  await expect(row.getByText('画布 AI 模型', { exact: true })).toBeVisible()
+  await expect(row.getByText('平台 AI 模型（画布与评测）', { exact: true })).toBeVisible()
 }
 
 export async function create(page: Page, name: string) {

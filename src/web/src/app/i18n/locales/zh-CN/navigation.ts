@@ -17,8 +17,6 @@ const translations = {
   "insights": "运行洞察",
   "approvals": "待审批",
   "notifications": "消息中心",
-  "datasets": "测试集",
-  "evaluations": "评测报告",
   "runtime": "运行状态",
   "agentSessions": "智能体会话",
   "models": "模型服务",

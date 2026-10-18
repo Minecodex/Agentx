@@ -1037,14 +1037,8 @@ fn validate_work_package_payload(
             let evaluator_ids = evaluators
                 .iter()
                 .map(|evaluator| match evaluator {
-                    crate::RuntimeEvaluatorV1::DeterministicRule { evaluator_id, .. }
-                    | crate::RuntimeEvaluatorV1::Model { evaluator_id, .. } => *evaluator_id,
+                    crate::RuntimeEvaluatorV1::Model { evaluator_id, .. } => *evaluator_id,
                 })
-                .collect::<std::collections::BTreeSet<_>>();
-            let resource_ids = payload
-                .resources
-                .iter()
-                .map(|resource| (resource.resource_kind, resource.resource_id))
                 .collect::<std::collections::BTreeSet<_>>();
             let object_ids = payload
                 .objects
@@ -1058,8 +1052,8 @@ fn validate_work_package_payload(
                         evaluator_id,
                         resource_id,
                         prompt_object_id,
+                        ..
                     } => Some((*evaluator_id, *resource_id, *prompt_object_id)),
-                    crate::RuntimeEvaluatorV1::DeterministicRule { .. } => None,
                 })
                 .collect::<std::collections::BTreeSet<_>>();
             let evaluator_executions = payload
@@ -1074,16 +1068,61 @@ fn validate_work_package_payload(
                 })
                 .collect::<std::collections::BTreeSet<_>>();
             let evaluators_resolve = evaluators.iter().all(|evaluator| match evaluator {
-                crate::RuntimeEvaluatorV1::DeterministicRule { expression, .. } => {
-                    !expression.trim().is_empty()
-                }
                 crate::RuntimeEvaluatorV1::Model {
+                    evaluator_id,
                     resource_id,
                     prompt_object_id,
-                    ..
+                    model,
+                    pass_threshold,
                 } => {
-                    resource_ids.contains(&(RuntimeResourceKindV1::Model, *resource_id))
+                    model.tenant_id == payload.tenant_id
+                        && !model.application_id.is_nil()
+                        && !model.batch_id.is_nil()
+                        && model.binding.resource_kind == RuntimeResourceKindV1::Model
+                        && model.binding.resource_id == *resource_id
+                        && pass_threshold.is_finite()
+                        && (0.0..=1.0).contains(pass_threshold)
+                        && model.parameters.is_object()
+                        && (model.credential_id.is_some() == model.credential_version.is_some())
                         && object_ids.contains(prompt_object_id)
+                        && payload.model_evaluator_executions.iter().any(|execution| {
+                            execution.evaluator_id == *evaluator_id
+                                && execution.pass_threshold == *pass_threshold
+                                && serde_json::to_value(&execution.model).ok()
+                                    == serde_json::to_value(model).ok()
+                                && execution.compiled_ir.nodes.len() == 1
+                                && execution.compiled_ir.exits.len() == 1
+                                && execution.compiled_ir.exits.contains_key("__exit__")
+                                && execution.compiled_ir.nodes.iter().all(|node| {
+                                    matches!(
+                                        (node.id.as_str(), node.node_type.as_str()),
+                                        ("evaluate", "model")
+                                    ) && node.agent.is_none()
+                                        && node.capability
+                                            == agentx_node_protocol::NodeCapability::Model
+                                        && node.context_writes.is_empty()
+                                })
+                                && execution.definition["nodes"]
+                                    .as_array()
+                                    .is_some_and(|nodes| {
+                                        nodes.len() == 2
+                                            && nodes.iter().all(|node| {
+                                                let refs = node["resourceReferences"].as_array();
+                                                match node["type"].as_str() {
+                                                    Some("model") => refs.is_some_and(|refs| {
+                                                        refs.len() == 1
+                                                            && refs[0]["resourceType"] == "model"
+                                                            && refs[0]["resourceId"]
+                                                                == resource_id.to_string()
+                                                    }),
+                                                    Some("exit") => {
+                                                        refs.is_none_or(|refs| refs.is_empty())
+                                                    }
+                                                    _ => false,
+                                                }
+                                            })
+                                    })
+                        })
                 }
             });
             !cases.is_empty()

@@ -339,3 +339,15 @@ ALTER TABLE sandbox_leases
 -- compatibility tables are intentionally removed before any V2-04 data exists.
 DROP TABLE credential_secret_versions;
 DROP TABLE credentials;
+
+-- Platform judge authority is scoped to one accepted application evaluation batch.
+CREATE TABLE platform_evaluation_authorizations (
+    tenant_id BINARY(16) NOT NULL,
+    application_id BINARY(16) NOT NULL,
+    batch_id BINARY(16) NOT NULL,
+    model_hash CHAR(71) NOT NULL,
+    epoch BIGINT UNSIGNED NOT NULL,
+    enabled BOOLEAN NOT NULL,
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (tenant_id,batch_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

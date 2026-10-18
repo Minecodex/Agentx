@@ -201,6 +201,8 @@ Application 可以：
 
 长连接在应用部署发布后启动。尚未发布且没有运行连接记录时，渠道详情显示“待发布”和创建部署入口；已发布但未取得运行状态时，显示“连接状态暂不可用”。等待连接、已连接、重连中和连接异常来自 Runtime 实际状态；已有连接的配置发生变更时，单独提示当前连接仍使用已发布配置。发布完成后刷新应用与渠道数据，已发布长连接持续刷新状态。
 
+应用详情的“渠道对接”包含“渠道配置”和“投递记录”两个子 Tab，默认进入渠道配置。投递记录汇总当前应用所有渠道的消息投递，保留状态筛选、失败原因和死信重放操作；页面通过 `tab=channels&channelTab=config|deliveries` 保存子 Tab，支持刷新和浏览器前进、后退。
+
 ## 9. Session 和 Message
 
 一个 Session 包含多轮 Message，每轮用户输入产生一次独立 Workflow Execution：
@@ -264,46 +266,25 @@ Runtime 启动执行时，统一依据冻结的 Start 输入 Schema 校验附件
 
 ## 11. Dataset
 
-Dataset 包含不可变 Dataset Version。Test Case 包含：
+测试集属于应用，在应用详情的“测试与评测”中管理。创建时选择应用关联工作流的已发布版本，固定输入输出 Schema 和规范化契约指纹。任何验证语义变化（包括新增可选字段）均需新建测试集；标题、说明、字段排列、required 与枚举排列不改变契约。
 
-- Input
-- Expected Output
-- Context
-- Tags
-- Evaluation Profile Rule Override
+用例保存输入、参考输出、标签、来源调用和稳定来源标识，允许保存待补全草稿。输入与参考输出均按固定契约检查；缺失/过期附件引用也列入待补全。复制仅带入同路径、同类型且符合目标约束的数据，不猜测改名或转换类型。调用样本通过 Runtime 授权查询读取执行当时的输入、输出及已发布版本，参考答案需用户确认。
 
-测试数据改变后生成新版本，保证历史报告可复现。
+评测前统一检查完整性并自动创建或复用该修订的不可变 Dataset Version，用户无需手动发布测试数据。快照保留完整用例数据与来源关系。历史报告引用的测试集禁止删除。
 
 ## 12. Evaluation
 
-Evaluation Run 将一个 Workflow Version、一个 Dataset Version 和一个不可变 Evaluation Profile Version 绑定，批量创建 Test Execution。
+应用评测方案只保存自然语言评分标准和通过分，修改两者生成不可变方案版本。默认通过分 80；内部标准范围 0–1。移除规则类型、权重、聚合策略、逐用例规则覆盖及方案独立模型选择。
 
-Evaluation Profile 是用户唯一需要管理的评测配置。一个 Profile 包含多条评分规则、聚合策略和通过阈值；发布后生成不可变 Profile Version。首期评分规则：
+发起评测时选择多个测试集，再为每集选择契约相同的多个已发布版本；一次生成一份批次报告。每个“数据快照 × 工作流版本”是一个 Runtime WorkPackage，接受请求前完成归属、修订、发布状态、完整契约、数据完整性及模型可用性检查。Idempotency-Key、事务内快照与 Outbox 保证重复提交和进程恢复不会产生重复执行。
 
-- Exact Match
-- Contains
-- Regex
-- JSON Schema
-- 自定义代码
-- LLM Judge
-- Tool 是否正确调用
-- Tool 参数是否正确
-- 是否出现 Agent 循环
-- 节点错误次数
-- 总成本
-- 总耗时
+批次冻结数据、工作流、方案、系统提示词、模型 Deployment、参数、凭据和价格。裁判使用“平台 AI 模型（画布与评测）”的选中模型，通过签名包内的租户/应用/批次授权运行；授权在 Runtime 独立持久化并可通过 Admission 撤销，不加入业务工作流的资源及 Grant。裁判只运行系统生成的 Model/Exit 子执行，没有工具。输入、参考输出、实际输出和标准作为用户数据传入固定系统提示词。
 
-LLM Judge 启动前分别校验 Workflow Service Identity 对模型及其凭证的授权。仅有 Model Grant 时不得读取或调用未授权 Credential；缺少任一授权即拒绝启动评测，不生成已接受的评测调用。
+模型只返回 score 和 reason，平台根据固定阈值决定是否通过。质量未通过仍为正常完成；工作流执行错误和评分错误使批次失败，错误不写伪造零分。部分失败保留其他结果，取消通过持久任务传播到未完成运行，重新评测创建新批次。
 
-报告内容：
+报告提供进度、评分、质量通过率、错误、业务与评分耗时、按币种分开的业务/评分成本，以及两份 Trace。同一快照的版本对比默认以最小版本号为基线，可显式切换；跨测试集只按稳定来源对齐并标记数据变化，不推断相同名称/caseKey 是同一用例，不生成无条件整体优劣结论。
 
-- 总通过率
-- 每个 Case 的结果
-- Workflow Version 对比
-- 失败节点分布
-- Tool 错误分布
-- 成本和耗时分布
-- 失败 Case 的 Trace 链接
+本期边界是工作流单次输入输出，不评测会话、渠道、用户记忆或附件正文。[实现及验收](plan8/12-application-evaluations.md)。
 
 ## 13. 消息中心
 
@@ -332,6 +313,8 @@ Workflow、Environment、Application、Credential、Model Alias、MCP Server、S
 
 Dataset 导入先检查文件内重复，再在事务中检查现有 Case，并用 `details.caseKey/line` 定位。Artifact 写入必须位于可执行的业务前检之后；后续事务失败立即补偿对象和配额，补偿失败由 Retention 兜底。
 
-## 租户画布 AI 模型
+## 平台 AI 模型（画布与评测）
 
-模型列表支持设置、清除及当前模型标记。`tenant_settings` 保存 Alias ID、授权 Credential ID，复用修订号并发控制。配置同时要求 model:manage、company:manage、resource:grant；该授权仅用于设计态调用，不向 Workflow Service Identity 自动写资源 Grant。编辑者可使用租户配置，画布没有模型选择器。配置变化影响新 Run；禁用或撤销阻断后续效果，Alias 改用其他凭据需重新设置。
+模型列表保留一个选中项，统一接口为 `/api/v1/platform-ai/model-setting`，字段为 `platform_ai_model_alias_id`、`platform_ai_credential_id`。设置权限继续要求 model:manage、company:manage、resource:grant；工作流编辑者和评测用户可读取名称及可用状态。
+
+这份租户配置明确授权画布创作与系统评测，均不向业务 Workflow 自动写 Grant。每个新 Run/批次冻结具体部署、凭据、参数和价格；普通切换影响新任务。清除设置、停用模型或凭据通过持久 Admission 撤销相关未完成评分授权，错误进入报告，不切换备用模型。Alias 使用另一凭据后须重新设置。

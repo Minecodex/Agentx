@@ -74,7 +74,9 @@ def capacity_runner(installed_agentx):
         yield
 
 
-def test_frozen_capacity_matrix(installed_agentx, service_urls, streaming_application, capacity_runner, pytestconfig):
+def test_frozen_capacity_matrix(
+    installed_agentx, service_urls, streaming_application, capacity_runner, pytestconfig, e2e_providers
+):
     context = installed_agentx
     smoke = pytestconfig.getoption("--capacity-smoke")
     previous = pytestconfig.getoption("--previous-worker-image")
@@ -162,7 +164,7 @@ def test_frozen_capacity_matrix(installed_agentx, service_urls, streaming_applic
                 assert observed["attempts"] >= 5000, observed
             row.update(status="passed", load=summary, observed=observed)
             write_report(context, "capacity/capacity-report.json", report)
-        matrix.append(case_matrix(service_urls["web"], short))
+        matrix.append(case_matrix(service_urls["web"], short, e2e_providers["echo_mcp"]))
         sse = sse_matrix(context, streaming_application, streaming_keys, collector)
         subscriber_deadline = time.monotonic() + 30
         while time.monotonic() < subscriber_deadline:

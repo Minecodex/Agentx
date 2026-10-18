@@ -1,3 +1,4 @@
+import { beginApplicationEvaluation } from '../support/application-testing'
 import { publishFixtureVersion } from '../draft-fixtures'
 import { fixtureDraftId } from '../draft-fixtures'
 import { expect, type APIResponse, type Page, test } from '@playwright/test'
@@ -144,25 +145,8 @@ test('V2-08 API-first empty-domain closure creates product facts without SQL fix
     return messages.map(item => item.role)
   }, { timeout: 10_000, intervals: [100, 250, 500] }).toContain('assistant')
 
-  const dataset = await request<{ id: string }>(page, token, '/datasets', 'POST', { name: `V2-08 Dataset ${suffix}`, description: 'API-first', visibility: 'company' })
-  await request(page, token, `/datasets/${dataset.id}/cases`, 'POST', {
-    expectedRevision: 0, caseKey: 'case-1', name: 'Case 1', input: { message: 'evaluation' },
-    expectedOutput: { message: 'evaluation' }, context: null, tags: ['v2-08'], evaluatorOverride: null,
-  })
-  const datasetVersion = await request<{ id: string }>(page, token, `/datasets/${dataset.id}/versions`, 'POST')
-  const profile = await request<{ versionId: string }>(page, token, '/evaluation-profiles', 'POST', {
-    name: `V2-08 Exact ${suffix}`, description: 'API-first', visibility: 'company', aggregation: 'all', passThreshold: '1',
-    rules: [{ key: 'exact', name: 'Exact', evaluatorType: 'exact', configuration: {}, weight: '1', required: true }],
-  })
-  const evaluation = await request<{ id: string }>(page, token, '/evaluations', 'POST', {
-    name: `V2-08 Evaluation ${suffix}`, workflowVersionId: version.id, datasetVersionId: datasetVersion.id,
-    evaluationProfileVersionId: profile.versionId, visibility: 'company', parameters: {},
-  })
-  await request(page, token, `/evaluations/${evaluation.id}/start`, 'POST')
-  await expect.poll(async () => {
-    const response = await page.request.get(`/api/v1/evaluations/${evaluation.id}/report`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
-    return response.status()
-  }, { timeout: 180_000, intervals: [500, 1_000, 2_000] }).toBe(200)
+  const evaluation = await beginApplicationEvaluation(page, token, { applicationId: application.id, workflowId: workflow.id, versionId: version.id, name: `V2-08 Evaluation ${suffix}`, input: { message: 'evaluation' }, expectedOutput: { message: 'evaluation' } })
+  await expect.poll(async () => (await request<{ status: string }>(page, token, evaluation.reportPath)).status, { timeout: 180_000 }).toBe('completed')
 
   const contextPath = process.env.AGENTX_V2_08_CONTEXT_OUTPUT
   if (!contextPath) throw new Error('AGENTX_V2_08_CONTEXT_OUTPUT is required')

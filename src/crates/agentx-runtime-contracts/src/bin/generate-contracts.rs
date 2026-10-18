@@ -89,6 +89,11 @@ fn main() -> Result<()> {
 
 fn contract_schemas() -> Result<Map<String, Value>> {
     let mut schemas = Map::new();
+    insert::<agentx_runtime_contracts::TestArtifactCheckV1>(&mut schemas, "TestArtifactCheckV1")?;
+    insert::<Vec<agentx_runtime_contracts::TestArtifactIssueV1>>(
+        &mut schemas,
+        "TestArtifactIssuesV1",
+    )?;
     insert::<agentx_runtime_contracts::DesignModelEffectRequestV1>(
         &mut schemas,
         "DesignModelEffectRequestV1",
@@ -285,6 +290,7 @@ fn internal_openapi(schemas: Map<String, Value>) -> Value {
             "/internal/runtime/v1/governance-snapshots:export": post("Export Governance Snapshot", "GovernanceSnapshotRequestV1", "GovernanceSnapshotPageV1"),
             "/internal/runtime/v1/query/executions:search": post("Search Executions", "ExecutionSearchRequestV1", "ExecutionSearchPageV1"),
             "/internal/runtime/v1/chat-mappings:apply": post("Apply Chat Mapping", "ApplyChatMappingRequestV1", "ApplyChatMappingReceiptV1"),
+            "/internal/runtime/v1/query/test-artifacts": post("Check application test file references", "TestArtifactCheckV1", "TestArtifactIssuesV1"),
             "/internal/runtime/v1/query/invocations:search": post("Search Invocations", "InvocationSearchRequestV1", "InvocationSearchPageV1"),
             "/internal/runtime/v1/query/invocations/{id}": get_with_id("Get Invocation", "InvocationDetailV1", "runtime.query.invocation"),
             "/internal/runtime/v1/query/executions/{id}": {

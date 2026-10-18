@@ -245,15 +245,20 @@ Approval Task 记录：
 
 ## 8. 测试和评测表
 
-- datasets
-- dataset_versions
-- test_cases
-- evaluators
-- evaluation_runs
-- evaluation_case_results
-- evaluation_metrics
+Control 所有权：
 
-Evaluation Case Result 需要引用对应的 Workflow Execution，便于直接跳转到 Trace。
+- `datasets`：application_id、source_workflow_version_id、contract_json、contract_fingerprint 固定；修订号控制用例并发编辑。
+- `dataset_cases`：可编辑草稿、lineage_id、source_invocation_id、reference_confirmed、pending_fields_json（复制后需填写或确认不使用的字段）；契约变化的副本统一将 reference_confirmed 置为 false，即使字段值仍有效也须逐条确认；不保存独立可见范围或规则覆盖。
+- `dataset_versions` / `dataset_version_cases`：自动生成的不可变完整数据快照，同修订可复用。
+- `evaluation_profiles` / `evaluation_profile_versions`：应用内名称与不可变自然语言标准、通过阈值；无规则表。
+- `evaluation_batches`：应用、方案版本、模型/操作者/触发来源快照、固定系统提示词及批次状态。
+- `evaluation_runs`：批次下的一份数据快照 × 一个已发布工作流版本，引用稳定 WorkPackage ID。
+- `evaluation_case_projection` / `evaluation_rule_results`：Runtime 结果投影，单个 AI 评分、错误、两份执行引用及按币种成本。
+- `outbox` / `runtime_work_package_publications`：持久派发和取消、带 fencing 的租约、精确的签名包与待上传对象快照。
+
+Runtime 所有权：`platform_evaluation_authorizations` 保存租户、应用、批次、完整模型快照 hash、epoch 和有效状态。授权只用于系统评分子执行，不进入业务资源快照。模型停用、凭据撤销和设置清除通过既有 Admission/Outbox 撤销；评分开始、Worker Claim 和完成收敛均检查授权。
+
+附件继续由 Runtime Artifact、引用和 Retention 管理；评测快照建立引用，草稿中缺失/过期的附件标记待补全。所有新表直接写入初始化 DDL，不迁移历史数据。详细字段和生成协议以 `deploy/migrations`、`contracts` 为准。
 
 ## 9. ClickHouse Trace 表
 

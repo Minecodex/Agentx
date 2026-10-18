@@ -246,68 +246,70 @@ def report(state, name, value):
     write_report(state["context"], f"product/{name}.json", {"status": "passed", **value})
 
 
-def profile(control, model, name):
-    return post(
+def profile(control, model, name, workflow):
+    application = post(
         control,
-        "/evaluation-profiles",
+        "/applications",
         {
             "name": name,
+            "slug": "evaluation-" + secrets.token_hex(8),
+            "workflowId": workflow["workflowId"],
             "visibility": "company",
-            "aggregation": "all",
-            "passThreshold": "1",
-            "rules": [
-                {
-                    "key": "judge",
-                    "name": "Judge",
-                    "evaluatorType": "llm_judge",
-                    "configuration": {
-                        "modelId": model["id"],
-                        "prompt": "Compare {{actualOutput}} against {{expectedOutput}}. Return JSON passed, score, reason.",
-                    },
-                    "weight": "1",
-                    "required": True,
-                }
-            ],
         },
     )
+    setting = get(control, "/platform-ai/model-setting")
+    response = control.put(
+        "/api/v1/platform-ai/model-setting", json={"expectedVersion": setting["version"], "modelAliasId": model["id"]}
+    )
+    assert response.status_code == 200, response.text
+    value = post(
+        control,
+        f"/applications/{application['id']}/evaluation-profiles",
+        {
+            "name": name,
+            "criteria": "Judge semantic correctness against the reference output. Equivalent wording is allowed.",
+            "passThreshold": 0.8,
+        },
+    )
+    return {**value, "applicationId": application["id"]}
 
 
-def evaluation(control, workflow, profile_value, name, keys=("shared",), *, expected_start=202):
-    dataset = post(control, "/datasets", {"name": name, "visibility": "company"})
+def evaluation(control, workflow, profile_value, name, keys=("shared",)):
+    path = f"/applications/{profile_value['applicationId']}"
+    dataset = post(control, path + "/datasets", {"name": name, "workflowVersionId": workflow["versionId"]})
     post(
         control,
-        f"/datasets/{dataset['id']}/import",
+        f"{path}/datasets/{dataset['id']}/import",
         {
             "expectedRevision": dataset["revision"],
             "format": "jsonl",
             "content": "\n".join(
-                json.dumps({"caseKey": k, "name": k, "input": {"message": k}, "expectedOutput": {"answer": k}})
-                for k in keys
+                json.dumps({"name": key, "input": {"message": key}, "expectedOutput": {"answer": key}}) for key in keys
             ),
         },
     )
-    version = post(control, f"/datasets/{dataset['id']}/versions", {"expectedRevision": dataset["revision"] + 1})
-    result = post(
-        control,
-        "/evaluations",
-        {
+    response = control.post(
+        "/api/v1" + path + "/evaluations",
+        headers={"Idempotency-Key": secrets.token_hex(16)},
+        json={
             "name": name,
-            "workflowVersionId": workflow["versionId"],
-            "datasetVersionId": version["id"],
-            "evaluationProfileVersionId": profile_value["versionId"],
-            "visibility": "company",
-            "parameters": {"concurrency": 1},
+            "profileVersionId": profile_value["versionId"],
+            "selections": [
+                {
+                    "datasetId": dataset["id"],
+                    "expectedRevision": dataset["revision"] + 1,
+                    "workflowVersionIds": [workflow["versionId"]],
+                }
+            ],
         },
     )
-    started = control.post(f"/api/v1/evaluations/{result['id']}/start")
-    assert started.status_code == expected_start, started.text
-    if expected_start != 202:
-        return result["id"], started.json()
+    assert response.status_code == 202, response.text
+    batch = response.json()
     deadline = time.monotonic() + 240
     while True:
-        value = get(control, f"/evaluations/{result['id']}/report")
-        if value["run"]["status"] in {"completed", "failed", "cancelled"}:
-            return result["id"], value
+        value = get(control, f"{path}/evaluations/{batch['id']}/report")
+        if value["status"] in {"completed", "failed", "cancelled"}:
+            return batch["id"], value
         assert time.monotonic() < deadline, value
         time.sleep(0.5)
 

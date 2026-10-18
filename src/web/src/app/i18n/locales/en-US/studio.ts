@@ -22,11 +22,11 @@ const translations = {
     "staticStale": "The canvas changed. This static validation result is outdated.",
     "staticIssues": "Static checks found issues. Select an issue to locate it.",
     "modelReasons": {
-      "unconfigured": "An administrator has not configured a canvas AI model.",
-      "model_disabled": "The canvas AI model is disabled. Ask an administrator to check the Models list.",
+      "unconfigured": "An administrator has not configured a platform AI model.",
+      "model_disabled": "The platform AI model is disabled. Ask an administrator to check the Models list.",
       "deployment_disabled": "The selected model deployment is unavailable.",
       "credential_disabled": "The model credential is disabled or unavailable.",
-      "credential_changed": "The model credential changed. An administrator must set the canvas AI model again."
+      "credential_changed": "The model credential changed. An administrator must set the platform AI model again."
     },
     "ack": {
       "applied": "Applied one edit transaction",
@@ -36,8 +36,8 @@ const translations = {
     },
     "title": "AI creation",
     "model": "Creation model: {{model}}",
-    "unconfigured": "An administrator must configure the canvas AI model in the model list.",
-    "unavailable": "Canvas AI model is unavailable. Ask an administrator to check the model, credential and authorization.",
+    "unconfigured": "An administrator must configure the platform AI model in the model list.",
+    "unavailable": "Platform AI model is unavailable. Ask an administrator to check the model, credential and authorization.",
     "staticOnly": "AI edits and statically validates. Use UI buttons to run, test, create versions and publish.",
     "pendingSave": "Canvas changes awaiting save",
     "saved": "Canvas saved",

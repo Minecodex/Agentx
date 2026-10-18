@@ -219,8 +219,8 @@ async fn project_evaluation_retention_and_notification(
 ) {
     let evaluation_id = Uuid::now_v7();
     let package_id = Uuid::now_v7();
-    sqlx::query("INSERT INTO evaluation_runs(id,tenant_id,name,workflow_version_id,dataset_version_id,evaluation_profile_version_id,work_package_id,intent_version,parameters_json,status,created_by,owner_department_id) VALUES(?,?,?,?,?,?,?,1,JSON_OBJECT(),'created',?,?)")
-        .bind(evaluation_id).bind(tenant_id).bind("Projection test").bind(Uuid::now_v7()).bind(Uuid::now_v7()).bind(Uuid::now_v7()).bind(package_id).bind(user_id).bind(Uuid::now_v7()).execute(&projector.pool).await.unwrap();
+    sqlx::query("INSERT INTO evaluation_runs(id,tenant_id,application_id,batch_id,name,workflow_version_id,dataset_version_id,evaluation_profile_version_id,work_package_id,intent_version,parameters_json,status,created_by,owner_department_id) VALUES(?,?,?,?,?,?,?,?,?,1,JSON_OBJECT(),'created',?,?)")
+        .bind(evaluation_id).bind(tenant_id).bind(Uuid::now_v7()).bind(Uuid::now_v7()).bind("Projection test").bind(Uuid::now_v7()).bind(Uuid::now_v7()).bind(Uuid::now_v7()).bind(package_id).bind(user_id).bind(Uuid::now_v7()).execute(&projector.pool).await.unwrap();
     let case_id = Uuid::now_v7();
     let judge_execution_id = Uuid::now_v7();
     let report = RuntimeEvaluationReportV1 {
@@ -233,6 +233,7 @@ async fn project_evaluation_retention_and_notification(
             actual_output: Some(json!({"answer":"ok"})),
             duration_ms: Some(12),
             cost_micros: 7,
+            cost_by_currency: Default::default(),
             error_code: None,
             error_message: None,
             rules: vec![RuntimeEvaluationRuleResultV1 {
@@ -245,6 +246,7 @@ async fn project_evaluation_retention_and_notification(
                 detail: json!({"matched":true}),
                 duration_ms: Some(2),
                 cost_micros: 1,
+                cost_by_currency: Default::default(),
             }],
         }],
         metrics: RuntimeEvaluationMetricsV1 {

@@ -2,7 +2,7 @@ import { expect, type Page } from '@playwright/test'
 import { test, completed, count, create, createVersion, editorPath, login, read, saved, send, setModel, type Draft } from '../studio-builder-support'
 
 type Setting={version:number;modelAliasId:string|null;status:string;canManage:boolean;reason:string|null}
-const setting=(page:Page,token:string)=>read<Setting>(page,token,'/studio-builder/model-setting')
+const setting=(page:Page,token:string)=>read<Setting>(page,token,'/platform-ai/model-setting')
 
 async function modelStatus(page:Page,token:string,id:string,status:string,overrides:Record<string,unknown>={}) {
   const model=await read<Record<string,unknown>>(page,token,`/models/aliases/${id}`)
@@ -47,7 +47,7 @@ test('P8-MODEL-01/P8-E2E-16: tenant model is shared with workflow editors; model
   })
   const editor=await loginAs(other,'EDITOR')
   expect(await setting(other,editor)).toMatchObject({modelAliasId:value.modelAliasId,canManage:false,status:'ready'})
-  const denied=await other.request.put('/api/v1/studio-builder/model-setting',{headers:{Authorization:`Bearer ${editor}`},data:{expectedVersion:value.version,modelAliasId:null}})
+  const denied=await other.request.put('/api/v1/platform-ai/model-setting',{headers:{Authorization:`Bearer ${editor}`},data:{expectedVersion:value.version,modelAliasId:null}})
   expect(denied.status()).toBe(403)
   await other.goto(editorPath(created))
   await other.getByRole('button',{name:'AI 创作',exact:true}).click()
@@ -125,7 +125,7 @@ test('P8-MODEL-02: explicit clearing, disabled model, deletion protection and ma
   const blocked=await page.request.delete(`/api/v1/models/aliases/${id}`,{headers:{Authorization:`Bearer ${token}`}})
   expect(blocked.status()).toBe(409)
   const row=page.getByRole('row').filter({hasText:alias})
-  const cleared=page.waitForResponse(response=>response.url().endsWith('/studio-builder/model-setting')&&response.request().method()==='PUT')
+  const cleared=page.waitForResponse(response=>response.url().endsWith('/platform-ai/model-setting')&&response.request().method()==='PUT')
   await row.getByRole('button',{name:'清除设置',exact:true}).click()
   expect((await cleared).status()).toBe(200)
   expect(await setting(page,token)).toMatchObject({modelAliasId:null,status:'unconfigured'})
@@ -150,7 +150,7 @@ test('P8-MODEL-03: CAS conflicts and model snapshots across old and new runs',as
   await setModel(page,process.env.AGENTX_E2E_STUDIO_FIXTURE_ALIAS!)
   const first=await setting(page,token)
   const headers={Authorization:`Bearer ${token}`}
-  const competing=await Promise.all([page.request.put('/api/v1/studio-builder/model-setting',{headers,data:{expectedVersion:first.version,modelAliasId:process.env.AGENTX_E2E_STUDIO_FIXTURE_ID}}),page.request.put('/api/v1/studio-builder/model-setting',{headers,data:{expectedVersion:first.version,modelAliasId:process.env.AGENTX_E2E_STUDIO_ALTERNATE_ID}})])
+  const competing=await Promise.all([page.request.put('/api/v1/platform-ai/model-setting',{headers,data:{expectedVersion:first.version,modelAliasId:process.env.AGENTX_E2E_STUDIO_FIXTURE_ID}}),page.request.put('/api/v1/platform-ai/model-setting',{headers,data:{expectedVersion:first.version,modelAliasId:process.env.AGENTX_E2E_STUDIO_ALTERNATE_ID}})])
   expect(competing.map(value=>value.status()).sort()).toEqual([200,409])
   await setModel(page,process.env.AGENTX_E2E_STUDIO_FIXTURE_ALIAS!)
   const created=await create(page,`P8 frozen models ${Date.now()}`)
