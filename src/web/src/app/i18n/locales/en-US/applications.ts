@@ -100,6 +100,7 @@ const translations = {
   "inputMappings": "Input mappings",
   "fixedInputs": "Fixed inputs",
   "channelDetails": "Channel details",
+  "channelConfiguration": "Channel configuration",
   "productionEndpoint": "Production endpoint",
   "endpointInactive": "The endpoint is not active yet. Publish the application and sync the runtime configuration first.",
   "sourceMapping": "Standard source fields",

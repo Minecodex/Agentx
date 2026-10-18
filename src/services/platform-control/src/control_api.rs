@@ -38,7 +38,7 @@ use crate::control_helpers::{
 
 const REFRESH_COOKIE: &str = "agentx_refresh";
 #[path = "application_webhooks.rs"]
-mod application_webhooks;
+pub(crate) mod application_webhooks;
 mod playground_config;
 #[path = "webhook_provider_templates.rs"]
 mod webhook_provider_templates;
@@ -265,11 +265,11 @@ fn routes() -> Router<ControlApiState> {
         .merge(crate::catalog_api::routes())
         .merge(crate::canvas_plugin_api::routes())
         .merge(crate::credential_api::routes())
-        .merge(crate::dataset_api::routes())
+        .merge(crate::application_testing::routes())
         .merge(crate::deletion_api::routes())
         .merge(crate::sandbox_profile_api::routes())
         .merge(crate::model_api::routes())
-        .merge(crate::studio_builder_setting::routes())
+        .merge(crate::platform_ai_model::routes())
         .merge(crate::studio_builder_api::routes())
         .merge(crate::workflow_versions::routes())
         .merge(crate::operations_api::routes())
@@ -303,7 +303,7 @@ pub(crate) struct Claims {
     exp: i64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct Actor {
     pub(crate) tenant_id: Uuid,
     pub(crate) user_id: Uuid,

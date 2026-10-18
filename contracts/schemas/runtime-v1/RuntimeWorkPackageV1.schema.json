@@ -2021,31 +2021,16 @@
               "format": "uuid",
               "type": "string"
             },
-            "expression": {
-              "type": "string"
-            },
-            "kind": {
-              "const": "deterministic_rule",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "evaluatorId",
-            "expression"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "evaluatorId": {
-              "format": "uuid",
-              "type": "string"
-            },
             "kind": {
               "const": "model",
               "type": "string"
+            },
+            "model": {
+              "$ref": "#/$defs/RuntimePlatformEvaluationModelV1"
+            },
+            "passThreshold": {
+              "format": "double",
+              "type": "number"
             },
             "promptObjectId": {
               "format": "uuid",
@@ -2060,7 +2045,9 @@
             "kind",
             "evaluatorId",
             "resourceId",
-            "promptObjectId"
+            "promptObjectId",
+            "model",
+            "passThreshold"
           ],
           "type": "object"
         }
@@ -2201,9 +2188,16 @@
           "format": "uuid",
           "type": "string"
         },
+        "model": {
+          "$ref": "#/$defs/RuntimePlatformEvaluationModelV1"
+        },
         "nodeManifests": {
           "items": true,
           "type": "array"
+        },
+        "passThreshold": {
+          "format": "double",
+          "type": "number"
         },
         "promptObjectId": {
           "format": "uuid",
@@ -2220,7 +2214,9 @@
         "promptObjectId",
         "definition",
         "compiledIr",
-        "nodeManifests"
+        "nodeManifests",
+        "model",
+        "passThreshold"
       ],
       "type": "object"
     },
@@ -2303,6 +2299,63 @@
       "required": [
         "inlineLimitBytes",
         "externalMediaType"
+      ],
+      "type": "object"
+    },
+    "RuntimePlatformEvaluationModelV1": {
+      "additionalProperties": false,
+      "description": "Only a signed, system-generated judge may consume this platform authority.\nIt never joins the business Workflow resource or grant closure.",
+      "properties": {
+        "applicationId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "batchId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "binding": {
+          "$ref": "#/$defs/RuntimeResourceBindingV1"
+        },
+        "credentialId": {
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "credentialVersion": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "modelAliasVersion": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "parameters": true,
+        "settingVersion": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tenantId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenantId",
+        "applicationId",
+        "batchId",
+        "settingVersion",
+        "modelAliasVersion",
+        "binding",
+        "parameters"
       ],
       "type": "object"
     },

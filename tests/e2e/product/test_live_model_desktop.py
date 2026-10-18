@@ -22,6 +22,7 @@ def test_real_model_playground_history_stop_trace_and_comparison(
         "AGENTX_E2E_BASE_URL": service_urls["web"],
         "AGENTX_E2E_RUNTIME_URL": service_urls["runtime"],
         "AGENTX_E2E_LIVE_APP_ID": live_application["applicationId"],
+        "AGENTX_E2E_COMPARE_BATCH": live_comparison["batchId"],
         "AGENTX_E2E_COMPARE_BASELINE": live_comparison["baselineId"],
         "AGENTX_E2E_COMPARE_CANDIDATE": live_comparison["candidateId"],
         "AGENTX_E2E_JUDGE_MODEL_ALIAS": live_application["modelAlias"],

@@ -100,6 +100,7 @@ const translations = {
   "inputMappings": "输入映射",
   "fixedInputs": "固定输入",
   "channelDetails": "渠道详情",
+  "channelConfiguration": "渠道配置",
   "productionEndpoint": "生产接入地址",
   "endpointInactive": "地址尚未激活。发布应用并同步运行时配置后才可复制。",
   "sourceMapping": "标准来源字段",

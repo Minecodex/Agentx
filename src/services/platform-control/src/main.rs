@@ -40,6 +40,8 @@ use uuid::Uuid;
 
 mod api_error;
 mod application_catalog_api;
+mod application_evaluation_dispatch;
+mod application_testing;
 mod bootstrap_api;
 mod canvas_plugin_api;
 mod canvas_plugin_resolution;
@@ -47,7 +49,6 @@ mod catalog_api;
 mod control_api;
 mod control_helpers;
 mod credential_api;
-mod dataset_api;
 mod deletion_api;
 mod external_resource_api;
 mod governance_api;
@@ -59,6 +60,7 @@ mod mcp_api;
 mod model_api;
 mod openapi_contract;
 mod operations_api;
+mod platform_ai_model;
 mod projector;
 mod resource_api;
 mod retention;
@@ -77,8 +79,8 @@ mod studio_builder_layout;
 mod studio_builder_retention;
 mod studio_builder_runtime;
 mod studio_builder_scope;
-mod studio_builder_setting;
 mod studio_builder_tools;
+mod test_contract;
 mod work_packages;
 mod workflow_api;
 mod workflow_drafts;
@@ -221,6 +223,18 @@ async fn main() -> Result<()> {
             role_health::watchdog("studio-builder", &health, &lifecycle, &metrics).await;
         tasks.spawn(async move {
             studio_builder_host::run_loop(builder_state, builder_lifecycle, builder_progress).await
+        });
+        let evaluation_state = api_state.clone();
+        let evaluation_lifecycle = lifecycle.clone();
+        let evaluation_progress =
+            role_health::watchdog("application-evaluations", &health, &lifecycle, &metrics).await;
+        tasks.spawn(async move {
+            application_evaluation_dispatch::run_loop(
+                evaluation_state,
+                evaluation_lifecycle,
+                evaluation_progress,
+            )
+            .await
         });
         control_api::router(api_state)
     } else {

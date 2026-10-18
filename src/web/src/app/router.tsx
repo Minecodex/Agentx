@@ -17,10 +17,6 @@ const ApplicationDetailPage = lazy(() => import('../features/applications/applic
 const ApprovalsPage = lazy(() => import('../features/approvals/approvals-page').then((module) => ({ default: module.ApprovalsPage })))
 const ApprovalDetailPage = lazy(() => import('../features/approvals/approval-detail-page').then((module) => ({ default: module.ApprovalDetailPage })))
 const ResourceGrantRequestDetailPage = lazy(() => import('../features/approvals/resource-grant-request-detail-page').then((module) => ({ default: module.ResourceGrantRequestDetailPage })))
-const DatasetsPage = lazy(() => import('../features/datasets/datasets-page').then((module) => ({ default: module.DatasetsPage })))
-const DatasetDetailPage = lazy(() => import('../features/datasets/dataset-detail-page').then((module) => ({ default: module.DatasetDetailPage })))
-const EvaluationsPage = lazy(() => import('../features/evaluations/evaluations-page').then((module) => ({ default: module.EvaluationsPage })))
-const EvaluationDetailPage = lazy(() => import('../features/evaluations/evaluation-detail-page').then((module) => ({ default: module.EvaluationDetailPage })))
 const ExecutionsPage = lazy(() => import('../features/executions/executions-page').then((module) => ({ default: module.ExecutionsPage })))
 const ExecutionDetailPage = lazy(() => import('../features/executions/execution-detail-page').then((module) => ({ default: module.ExecutionDetailPage })))
 const NotificationsPage = lazy(() => import('../features/notifications/notifications-page').then((module) => ({ default: module.NotificationsPage })))
@@ -79,11 +75,7 @@ const routes: RouteObject[] = [
       { path: 'approvals/resource-grants/:id', element: deferred(<RequirePermission permission="workflow:view"><ResourceGrantRequestDetailPage /></RequirePermission>) },
       { path: 'approvals/:id', element: deferred(<RequirePermission permission="approval:view"><ApprovalDetailPage /></RequirePermission>) },
       { path: 'notifications', element: deferred(<RequirePermission permission="notification:view"><NotificationsPage /></RequirePermission>) },
-      { path: 'datasets', element: deferred(<RequirePermission permission="dataset:view"><DatasetsPage /></RequirePermission>) },
-      { path: 'datasets/:id', element: deferred(<RequirePermission permission="dataset:view"><DatasetDetailPage /></RequirePermission>) },
       { path: 'insights', element: deferred(<RequirePermission permission="execution:view"><InsightsPage /></RequirePermission>) },
-      { path: 'evaluations', element: deferred(<RequirePermission permission="evaluation:view"><EvaluationsPage /></RequirePermission>) },
-      { path: 'evaluations/:id', element: deferred(<RequirePermission permission="evaluation:view"><EvaluationDetailPage /></RequirePermission>) },
       { path: 'runtime', element: deferred(<RequirePermission permission="runtime:view"><RuntimeStatusPage /></RequirePermission>) },
       { path: 'agent-sessions', element: deferred(<RequirePermission permission="execution:view"><AgentSessionsPage /></RequirePermission>) },
       { path: 'credentials', element: deferred(<RequirePermission permission="credential:view"><CredentialsPage /></RequirePermission>) },

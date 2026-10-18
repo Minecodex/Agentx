@@ -869,114 +869,138 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
     .await;
     assert_eq!(status, 201, "skill version response: {skill_version}");
 
+    let (status, testing_app)=request(&app,"POST","/api/v1/applications",Some(&token),Some(json!({"name":"API Testing","slug":"api-testing","workflowId":resource_workflow_id,"visibility":"company"}))).await;
+    assert_eq!(status, 201, "{testing_app}");
+    let path = format!(
+        "/api/v1/applications/{}",
+        testing_app["id"].as_str().unwrap()
+    );
     let (status, dataset) = request(
         &app,
         "POST",
-        "/api/v1/datasets",
+        &format!("{path}/datasets"),
         Some(&token),
-        Some(json!({"name":"API Dataset","description":"closure","visibility":"company"})),
+        Some(json!({"name":"API Dataset","workflowVersionId":resource_version["id"]})),
     )
     .await;
-    assert_eq!(status, 201, "dataset response: {dataset}");
+    assert_eq!(status, 201, "{dataset}");
     let dataset_id = dataset["id"].as_str().unwrap();
-    let (status, case) = request(
+    let (status,case)=request(&app,"POST",&format!("{path}/datasets/{dataset_id}/cases"),Some(&token),Some(json!({"expectedRevision":0,"name":"Case 1","input":{"value":1},"expectedOutput":{},"tags":["api"]}))).await;
+    assert_eq!(status, 200, "{case}");
+    let (status,profile)=request(&app,"POST",&format!("{path}/evaluation-profiles"),Some(&token),Some(json!({"name":"AI Profile","criteria":"Evaluate correctness of the output","passThreshold":0.8}))).await;
+    assert_eq!(status, 201, "{profile}");
+    let (_, setting) = request(
         &app,
-        "POST",
-        &format!("/api/v1/datasets/{dataset_id}/cases"),
-        Some(&token),
-        Some(json!({
-            "expectedRevision":0,"caseKey":"case-1","name":"Case 1","input":{"value":1},
-            "expectedOutput":{"value":1},"context":null,"tags":["api"],"evaluatorOverride":null
-        })),
-    )
-    .await;
-    assert_eq!(status, 201, "dataset case response: {case}");
-    let (status, dataset_version) = request(
-        &app,
-        "POST",
-        &format!("/api/v1/datasets/{dataset_id}/versions"),
+        "GET",
+        "/api/v1/platform-ai/model-setting",
         Some(&token),
         None,
     )
     .await;
-    assert_eq!(status, 201, "dataset version response: {dataset_version}");
-
-    let (status, profile) = request(
+    let (status, setting) = request(
         &app,
-        "POST",
-        "/api/v1/evaluation-profiles",
+        "PUT",
+        "/api/v1/platform-ai/model-setting",
         Some(&token),
-        Some(json!({
-            "name":"Exact Profile","description":"closure","visibility":"company",
-            "aggregation":"all","passThreshold":"1","rules":[{
-                "key":"exact","name":"Exact","evaluatorType":"exact","configuration":{},
-                "weight":"1","required":true
-            }]
-        })),
+        Some(json!({"expectedVersion":setting["version"],"modelAliasId":model["id"]})),
     )
     .await;
-    assert_eq!(status, 201, "evaluation profile response: {profile}");
-    let (status, evaluation) = request(
-        &app,
-        "POST",
-        "/api/v1/evaluations",
-        Some(&token),
-        Some(json!({
-            "name":"API Evaluation","workflowVersionId":resource_version["id"],
-            "datasetVersionId":dataset_version["id"],"evaluationProfileVersionId":profile["versionId"],
-            "visibility":"company","parameters":{}
-        })),
-    )
-    .await;
-    assert_eq!(status, 201, "evaluation response: {evaluation}");
-    let evaluation_id = evaluation["id"].as_str().unwrap();
-    let (status, started) = request(
-        &app,
-        "POST",
-        &format!("/api/v1/evaluations/{evaluation_id}/start"),
-        Some(&token),
-        None,
-    )
-    .await;
-    assert_eq!(status, 202, "evaluation start response: {started}");
-    let evaluation_package: Value = sqlx::query_scalar(
-        "SELECT package_json FROM runtime_work_package_publications WHERE source_type='evaluation_run' AND source_id=?",
-    )
-    .bind(Uuid::parse_str(evaluation_id).unwrap())
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    assert_eq!(status, 200, "{setting}");
+    let (status,batch)=request(&app,"POST",&format!("{path}/evaluations"),Some(&token),Some(json!({"name":"API Evaluation","profileVersionId":profile["versionId"],"selections":[{"datasetId":dataset_id,"expectedRevision":1,"workflowVersionIds":[resource_version["id"]]}]}))).await;
+    assert_eq!(status, 202, "{batch}");
+    crate::application_evaluation_dispatch::dispatch_one(&state, Uuid::now_v7())
+        .await
+        .unwrap();
+    let evaluation_id: Uuid = sqlx::query_scalar("SELECT id FROM evaluation_runs WHERE batch_id=?")
+        .bind(Uuid::parse_str(batch["id"].as_str().unwrap()).unwrap())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let run_state: (String, Option<Value>) =
+        sqlx::query_as("SELECT status,dispatch_error_json FROM evaluation_runs WHERE id=?")
+            .bind(evaluation_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_ne!(run_state.0, "failed", "Evaluation dispatch: {run_state:?}");
+    let evaluation_package:Value=sqlx::query_scalar("SELECT package_json FROM runtime_work_package_publications WHERE source_type='evaluation_run' AND source_id=?").bind(evaluation_id).fetch_one(&pool).await.unwrap();
     assert!(
         evaluation_package["payload"]["resources"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|binding| {
-                binding["resourceKind"] == "credential" && binding["resourceId"] == credential_id
-            }),
-        "Evaluation Work Package must carry the immutable Workflow Version Resource closure"
+            .any(|binding| binding["resourceKind"] == "credential"
+                && binding["resourceId"] == credential_id)
     );
-    let (status, evaluations) =
-        request(&app, "GET", "/api/v1/evaluations", Some(&token), None).await;
-    assert_eq!(status, 200, "evaluation list response: {evaluations}");
-    assert_eq!(evaluations[0]["workflowName"], "Credential Workflow");
-    assert_eq!(evaluations[0]["datasetName"], "API Dataset");
+    let business_model = evaluation_package["payload"]["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|binding| binding["resourceKind"] == "model" && binding["resourceId"] == model["id"]);
+    assert!(
+        !business_model,
+        "The judge must not enlarge the business resource closure"
+    );
+    assert_eq!(
+        evaluation_package["payload"]["modelEvaluatorExecutions"][0]["model"]["binding"]["resourceId"],
+        model["id"]
+    );
     let (status, report) = request(
         &app,
         "GET",
-        &format!("/api/v1/evaluations/{evaluation_id}/report"),
+        &format!(
+            "{path}/evaluations/{}/report",
+            batch["id"].as_str().unwrap()
+        ),
         Some(&token),
         None,
     )
     .await;
-    assert_eq!(status, 200, "evaluation report response: {report}");
-    assert_eq!(report["run"]["workflowName"], "Credential Workflow");
-    assert_eq!(report["run"]["datasetName"], "API Dataset");
-    assert!(
-        report["metrics"].is_array(),
-        "the public Evaluation Report contract keeps the existing metric array: {report}"
-    );
-    assert!(report["results"].is_array());
+    assert_eq!(status, 200, "{report}");
+    assert_eq!(report["runs"][0]["datasetName"], "API Dataset");
+    assert!(report["runs"][0]["cases"].is_array());
+
+    // Simulate projection completion before the background batch aggregation.
+    // Cancelling in this window must neither change the terminal report nor
+    // enqueue a cancellation for an already finished run.
+    sqlx::query("UPDATE evaluation_runs SET status='completed' WHERE id=?")
+        .bind(evaluation_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, _) = request(
+        &app,
+        "POST",
+        &format!(
+            "{path}/evaluations/{}/cancel",
+            batch["id"].as_str().unwrap()
+        ),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(status, 202);
+    let (status, settled) = request(
+        &app,
+        "GET",
+        &format!(
+            "{path}/evaluations/{}/report",
+            batch["id"].as_str().unwrap()
+        ),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{settled}");
+    assert_eq!(settled["status"], "completed");
+    let cancel_events: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM outbox WHERE event_type='EvaluationRunCancelRequested' AND aggregate_id=?",
+    )
+    .bind(evaluation_id.to_string())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(cancel_events, 0);
 
     let credential_rows: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM credential_secret_versions WHERE provider='vault_kv_v2'",

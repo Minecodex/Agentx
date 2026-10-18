@@ -763,3 +763,19 @@ pub struct ObservabilityAggregatePageV1 {
     pub rows: Vec<ObservabilityAggregateRowV1>,
     pub degraded: bool,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TestArtifactCheckV1 {
+    pub tenant_id: Uuid,
+    pub application_id: Uuid,
+    pub schemas: Vec<serde_json::Value>,
+    pub values: Vec<serde_json::Value>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TestArtifactIssueV1 {
+    pub index: usize,
+    pub field: String,
+    pub message: String,
+}

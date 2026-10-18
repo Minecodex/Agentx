@@ -481,6 +481,10 @@ async fn apply_admission_inner(
             sqlx::query("INSERT INTO resource_grant_projection(grant_id,tenant_id,subject_id,resource_type,resource_id,operations_json,policy_epoch,status) VALUES(?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE subject_id=IF(policy_epoch<=VALUES(policy_epoch),VALUES(subject_id),subject_id),resource_type=IF(policy_epoch<=VALUES(policy_epoch),VALUES(resource_type),resource_type),resource_id=IF(policy_epoch<=VALUES(policy_epoch),VALUES(resource_id),resource_id),operations_json=IF(policy_epoch<=VALUES(policy_epoch),VALUES(operations_json),operations_json),status=IF(policy_epoch<=VALUES(policy_epoch),VALUES(status),status),policy_epoch=GREATEST(policy_epoch,VALUES(policy_epoch))")
                 .bind(grant.grant_id).bind(grant.tenant_id).bind(grant.identity_id).bind(&grant.resource_type).bind(grant.resource_id).bind(json!(grant.operations)).bind(grant.policy_epoch).bind(if grant.enabled{"active"}else{"revoked"}).execute(&mut *tx).await?;
         }
+        AdmissionTargetV1::PlatformEvaluation { state: authority } => {
+            ensure_tenant(tenant_id, authority.tenant_id)?;
+            crate::platform_evaluation::apply(&mut tx, authority).await?;
+        }
         AdmissionTargetV1::ResourceState { state: resource } => {
             ensure_tenant(tenant_id, resource.tenant_id)?;
             let resource_kind = serde_json::to_value(resource.resource_kind)

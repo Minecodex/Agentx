@@ -13,7 +13,7 @@ from tests.e2e.support import run_playwright
 pytestmark = [pytest.mark.cluster, pytest.mark.product]
 
 
-def test_desktop_loading_error_recovery_empty_permission_and_five_run_comparison(boundary_state, five_comparisons):
+def test_desktop_loading_error_recovery_empty_permission(boundary_state):
     state = boundary_state
     role = post(
         state["control"],
@@ -33,8 +33,6 @@ def test_desktop_loading_error_recovery_empty_permission_and_five_run_comparison
         "AGENTX_E2E_STAGE": "helm-agentxctl",
         "AGENTX_E2E_BASE_URL": state["urls"]["web"],
         "AGENTX_E2E_RUNTIME_URL": state["urls"]["runtime"],
-        "AGENTX_E2E_FIVE_COMPARE_IDS": json.dumps(five_comparisons["ids"]),
-        "AGENTX_E2E_FIVE_COMPARE_NAMES": json.dumps([r["run"]["name"] for r in five_comparisons["reports"]]),
         "AGENTX_E2E_PERMISSION_USER": user["username"],
         "AGENTX_E2E_PERMISSION_PASSWORD": user["password"].value,
         "AGENTX_E2E_PERMISSION_ROLE": json.dumps({k: role[k] for k in ("id", "name", "description", "version")}),

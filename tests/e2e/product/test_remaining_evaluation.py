@@ -76,37 +76,14 @@ def test_real_model_nonzero_price_matches_calls_execution_and_insights(
     )
 
 
-def test_three_to_five_reports_preserve_baseline_missing_cases_and_costs(five_comparisons):
-    state = five_comparisons["state"]
-    ids = five_comparisons["ids"]
-    evidence = []
-    for count in (3, 4, 5):
-        for order in (ids[:count], list(reversed(ids[:count]))):
-            response = state["control"].get("/api/v1/evaluations/compare", params={"runIds": ",".join(order)})
-            assert response.status_code == 200, response.text
-            value = response.json()
-            assert [r["runId"] for r in value["runs"]] == order, value
-            assert value["alignedCaseCount"] == 1 and value["totalCaseCount"] == count, value
-            shared = next(c for c in value["caseDeltas"] if c["caseKey"] == "shared")
-            assert all(s == "completed" for s in shared["statusByRun"]), shared
-            assert all(c > 0 for c in shared["costMicrosByRun"]), shared
-            assert shared["costDelta"] == shared["costMicrosByRun"][1] - shared["costMicrosByRun"][0], shared
-            assert any(None in c["statusByRun"] for c in value["caseDeltas"]), value
-            evidence.append(value)
-    for order in (ids[:1], [*ids, ids[0]], [ids[0], ids[0]]):
-        response = state["control"].get("/api/v1/evaluations/compare", params={"runIds": ",".join(order)})
-        assert response.status_code == 400, response.text
-    report(state, "remaining-evaluation-five-runs", {"runIds": ids, "comparisons": evidence, "judgeCostIncluded": True})
-
-
 @pytest.mark.parametrize("missing", ["model", "credential"])
-def test_judge_requires_each_resource_grant(boundary_state, missing):
+def test_platform_judge_is_independent_of_business_resource_grants(boundary_state, missing):
     state = boundary_state
     target = new_model(state, f"target-{missing}")
     workflow = model_workflow(state, target, f"target-{missing}")
     judge = new_model(state, f"unauthorized-{missing}")
     if missing == "credential":
-        # A lone model grant cannot bypass the separate credential grant.
+        # A legacy business-model grant is irrelevant to the independent platform judge authority.
         identity = get(state["control"], f"/workflows/{workflow['workflowId']}")["serviceIdentityId"]
         from tests.e2e.product.live_text_support import post
 
@@ -120,12 +97,11 @@ def test_judge_requires_each_resource_grant(boundary_state, missing):
                 "operation": "use",
             },
         )
-    value = profile(state["control"], judge, f"Boundary missing {missing} {state['runId']}")
-    run_id, refusal = evaluation(
-        state["control"], workflow, value, f"Boundary refused {missing} {state['runId']}", expected_start=422
-    )
-    assert "GRANT" in refusal["code"], refusal
-    report(state, f"remaining-judge-grant-{missing}", {"runId": run_id, "refusal": refusal})
+    value = profile(state["control"], judge, f"Boundary independent {missing} {state['runId']}", workflow)
+    run_id, result = evaluation(state["control"], workflow, value, f"Boundary independent {missing} {state['runId']}")
+    case = result["runs"][0]["cases"][0]
+    assert result["status"] == "completed" and case["status"] == "passed", result
+    report(state, f"remaining-platform-judge-{missing}", {"runId": run_id, "case": case})
 
 
 @pytest.mark.parametrize("upstream", ["echo-invalid-judge", "echo-unavailable"])
@@ -135,12 +111,12 @@ def test_judge_invalid_or_failed_provider_never_passes(boundary_state, upstream)
     workflow = model_workflow(state, target, f"target-{upstream}")
     judge = new_model(state, upstream, upstream=upstream)
     authorize(state["control"], workflow["workflowId"], reference("model", judge["id"], judge["deploymentId"]))
-    value = profile(state["control"], judge, f"Boundary invalid Judge {upstream} {state['runId']}")
+    value = profile(state["control"], judge, f"Boundary invalid Judge {upstream} {state['runId']}", workflow)
     run_id, result = evaluation(state["control"], workflow, value, f"Boundary invalid {upstream} {state['runId']}")
-    rule = result["results"][0]["ruleResults"][0]
-    assert rule["status"] in {"error", "failed"} and rule["passed"] is not True, rule
-    assert rule["evaluatorExecutionId"], rule
-    detail = get(state["control"], f"/executions/{rule['evaluatorExecutionId']}")
+    rule = result["runs"][0]["cases"][0]
+    assert rule["status"] == "error" and rule["score"] is None, rule
+    assert rule["judgeExecutionId"], rule
+    detail = get(state["control"], f"/executions/{rule['judgeExecutionId']}")
     assert detail["status"] in {"failed", "cancelled", "timed_out"}, detail
     report(
         state,

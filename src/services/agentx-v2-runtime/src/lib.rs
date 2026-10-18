@@ -27,6 +27,7 @@ pub mod gc;
 pub mod internal_engine;
 pub mod object_upload;
 mod output_contract;
+mod platform_evaluation;
 pub mod plugin_design;
 pub mod provider_breaker;
 pub mod publish;

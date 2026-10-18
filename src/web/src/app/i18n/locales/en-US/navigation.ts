@@ -17,8 +17,6 @@ const translations = {
   "insights": "Insights",
   "approvals": "Approvals",
   "notifications": "Notifications",
-  "datasets": "Datasets",
-  "evaluations": "Evaluation Reports",
   "runtime": "Runtime Status",
   "agentSessions": "Agent Sessions",
   "models": "Model Services",

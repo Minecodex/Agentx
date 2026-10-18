@@ -442,15 +442,40 @@ pub struct RuntimeEvaluationCaseV1 {
     deny_unknown_fields
 )]
 pub enum RuntimeEvaluatorV1 {
-    DeterministicRule {
-        evaluator_id: Uuid,
-        expression: String,
-    },
     Model {
         evaluator_id: Uuid,
         resource_id: Uuid,
         prompt_object_id: Uuid,
+        model: RuntimePlatformEvaluationModelV1,
+        pass_threshold: f64,
     },
+}
+
+/// Only a signed, system-generated judge may consume this platform authority.
+/// It never joins the business Workflow resource or grant closure.
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RuntimePlatformEvaluationModelV1 {
+    pub tenant_id: Uuid,
+    pub application_id: Uuid,
+    pub batch_id: Uuid,
+    pub setting_version: u64,
+    pub model_alias_version: u64,
+    pub credential_id: Option<Uuid>,
+    pub credential_version: Option<u64>,
+    pub binding: RuntimeResourceBindingV1,
+    pub parameters: Value,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RuntimePlatformEvaluationAuthorizationV1 {
+    pub tenant_id: Uuid,
+    pub application_id: Uuid,
+    pub batch_id: Uuid,
+    pub model_hash: crate::ContentHash,
+    pub epoch: u64,
+    pub enabled: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -462,6 +487,8 @@ pub struct RuntimeModelEvaluatorExecutionV1 {
     pub definition: Value,
     pub compiled_ir: CompiledWorkflowV1,
     pub node_manifests: Vec<Value>,
+    pub model: RuntimePlatformEvaluationModelV1,
+    pub pass_threshold: f64,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -931,6 +958,7 @@ pub struct RuntimeEvaluationRuleResultV1 {
     pub detail: Value,
     pub duration_ms: Option<u64>,
     pub cost_micros: u64,
+    pub cost_by_currency: std::collections::BTreeMap<String, u64>,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -944,6 +972,7 @@ pub struct RuntimeEvaluationCaseResultV1 {
     pub actual_output: Option<Value>,
     pub duration_ms: Option<u64>,
     pub cost_micros: u64,
+    pub cost_by_currency: std::collections::BTreeMap<String, u64>,
     pub error_code: Option<String>,
     pub error_message: Option<String>,
     pub rules: Vec<RuntimeEvaluationRuleResultV1>,

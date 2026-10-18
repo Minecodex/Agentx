@@ -48,7 +48,7 @@ pub async fn start(
         } => {
             let run_id = stable_id(package.package_id, b"evaluation-run");
             sqlx::query(
-                "INSERT INTO evaluation_runs(id,work_package_id,bundle_id,tenant_id,name,workflow_version_id,dataset_version_id,evaluation_profile_version_id,parameters_json,version,status,created_by,owner_department_id,visibility,started_at) VALUES(?,?,NULL,?,'Runtime Evaluation',?,?,?, ?,1,'running',?,?,'private',UTC_TIMESTAMP(6))",
+                "INSERT INTO evaluation_runs(id,work_package_id,bundle_id,tenant_id,name,workflow_version_id,dataset_version_id,evaluation_profile_version_id,parameters_json,version,status,created_by,owner_department_id,started_at) VALUES(?,?,NULL,?,'Runtime Evaluation',?,?,?, ?,1,'running',?,?,UTC_TIMESTAMP(6))",
             )
             .bind(run_id)
             .bind(package.package_id)
@@ -88,20 +88,15 @@ pub async fn start(
                 .await?;
                 for evaluator in evaluators {
                     let (evaluator_id, detail) = match evaluator {
-                        RuntimeEvaluatorV1::DeterministicRule {
-                            evaluator_id,
-                            expression,
-                        } => (
-                            *evaluator_id,
-                            json!({"kind":"deterministic_rule","expression":expression,"expectedOutput":case.expected_output}),
-                        ),
                         RuntimeEvaluatorV1::Model {
                             evaluator_id,
                             resource_id,
                             prompt_object_id,
+                            pass_threshold,
+                            ..
                         } => (
                             *evaluator_id,
-                            json!({"kind":"model","resourceId":resource_id,"promptObjectId":prompt_object_id,"expectedOutput":case.expected_output}),
+                            json!({"kind":"model","resourceId":resource_id,"promptObjectId":prompt_object_id,"expectedOutput":case.expected_output,"sourceInput":case.input,"passThreshold":pass_threshold}),
                         ),
                     };
                     sqlx::query(
@@ -254,7 +249,6 @@ async fn converge_evaluation(
     }
 
     let case_status = if terminal_status == "completed" {
-        evaluate_deterministic_rules(tx, tenant_id, case_id, output).await?;
         start_model_evaluators(tx, tenant_id, package_id, execution_id, case_id, output).await?;
         evaluation_scoring_status(tx, tenant_id, case_id).await?
     } else if terminal_status == "cancelled" {
@@ -338,6 +332,7 @@ async fn start_model_evaluators(
         let expected_output = detail.get("expectedOutput").cloned().unwrap_or(Value::Null);
         let input = json!({
             "actualOutput": actual_output,
+            "sourceInput": detail.get("sourceInput"),
             "expectedOutput": expected_output,
             "targetExecutionId": target_execution_id,
             "promptObjectId": execution.prompt_object_id,
@@ -387,12 +382,13 @@ async fn insert_evaluator_execution(
     }))
     .map_err(|error| RuntimeError::Internal(error.into()))?;
     sqlx::query(
-        "INSERT INTO workflow_executions(id,tenant_id,workflow_id,workflow_version_id,bundle_id,work_package_id,parent_execution_id,parent_node_execution_id,admission_epoch,state_version,trace_id,trigger_type,initiator_user_id,initiator_user_name,initiator_department_id,initiator_department_name,trigger_source_id,trigger_name,status,started_at,input_json) VALUES(?,?,?,?,?,?,?,?,1,1,?,'evaluation',?,?,?,?,?,?,'queued',?,?)",
+        "INSERT INTO workflow_executions(id,tenant_id,workflow_id,workflow_version_id,application_id,bundle_id,work_package_id,parent_execution_id,parent_node_execution_id,admission_epoch,state_version,trace_id,trigger_type,initiator_user_id,initiator_user_name,initiator_department_id,initiator_department_name,trigger_source_id,trigger_name,status,started_at,input_json) VALUES(?,?,?,?,?,?,?,?,?,1,1,?,'evaluation',?,?,?,?,?,?,'queued',?,?)",
     )
     .bind(execution_id)
     .bind(package.tenant_id)
     .bind(package.authorization.workflow_id)
     .bind(evaluator.evaluator_id)
+    .bind(evaluator.model.application_id)
     .bind(package.package_id)
     .bind(package.package_id)
     .bind(target_execution_id)
@@ -420,16 +416,7 @@ async fn insert_evaluator_execution(
     .bind(serde_json::to_value(&evaluator.compiled_ir).map_err(|error| RuntimeError::Internal(error.into()))?)
     .bind(&evaluator.compiled_ir.canonical_hash)
     .bind(&evaluator.compiled_ir.compiler_version)
-    .bind(serde_json::to_value(
-        package
-            .resources
-            .iter()
-            .filter(|resource| {
-                resource.resource_kind == agentx_runtime_contracts::RuntimeResourceKindV1::Model
-                    && resource.resource_id == evaluator.resource_id
-            })
-            .collect::<Vec<_>>(),
-    ).map_err(|error| RuntimeError::Internal(error.into()))?)
+    .bind(serde_json::to_value(vec![&evaluator.model.binding]).map_err(|error| RuntimeError::Internal(error.into()))?)
     .bind(serde_json::to_value(&package.authorization).map_err(|error| RuntimeError::Internal(error.into()))?)
     .bind(serde_json::to_value(&package.runtime_policy).map_err(|error| RuntimeError::Internal(error.into()))?)
     .bind(serde_json::to_value(crate::execution_context::create_snapshot(
@@ -440,7 +427,7 @@ async fn insert_evaluator_execution(
             workflow: {let mut workflow=package.workflow.clone();workflow.name=format!("{} / Model evaluator",workflow.name);workflow},
             trigger_type: "evaluation",
             origin: &package.origin,
-            application_id: None,
+            application_id: Some(evaluator.model.application_id),
             invocation_id: None,
             session: None,
         },
@@ -450,6 +437,7 @@ async fn insert_evaluator_execution(
     .bind(json!({
         "runtimePolicy": &package.runtime_policy,
         "workPackageSpec": &package.spec,
+        "platformEvaluation": &evaluator.model,
         "workPackageOverlay": &package.overlay,
         "agentBundle": &package.agent_bundle,
     }))
@@ -518,25 +506,39 @@ async fn converge_model_evaluator(
     let run_id: Uuid = rule.try_get("evaluation_run_id")?;
     let mut detail: Value = rule.try_get("detail_json")?;
     let evaluation = output.get("evaluation").unwrap_or(output);
-    let passed = terminal_status == "completed"
-        && evaluation
-            .get("passed")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-    let score = evaluation
-        .get("score")
+    let score = judge_score(evaluation);
+    let settings:Value=sqlx::query_scalar("SELECT runtime_settings_json FROM execution_snapshots WHERE tenant_id=? AND execution_id=?").bind(tenant_id).bind(execution_id).fetch_one(&mut **tx).await?;
+    let authorized = match crate::platform_evaluation::authorize(tx, tenant_id, &settings).await {
+        Ok(()) => true,
+        Err(RuntimeError::InvalidRequest(..)) => false,
+        Err(error) => return Err(error),
+    };
+    let valid = terminal_status == "completed" && score.is_some() && authorized;
+    let threshold = detail
+        .get("passThreshold")
         .and_then(Value::as_f64)
-        .unwrap_or(if passed { 1.0 } else { 0.0 });
+        .ok_or_else(|| {
+            RuntimeError::Internal(anyhow::anyhow!(
+                "Judge threshold missing from signed evaluation"
+            ))
+        })?;
+    let passed = valid && score.is_some_and(|value| value >= threshold);
     let rule_status = if terminal_status == "cancelled" {
         "cancelled"
-    } else if terminal_status != "completed" {
+    } else if !valid {
         "error"
     } else if passed {
         "passed"
     } else {
         "failed"
     };
-    detail["modelResult"] = output.clone();
+    detail["modelResult"] = evaluation.clone();
+    if !valid && terminal_status == "completed" {
+        detail["error"] = json!({"code":"INVALID_EVALUATION_RESULT","message":"The judge must return a score between 0 and 1 and a reason"});
+    }
+    if !authorized {
+        detail["error"] = json!({"code":"PLATFORM_EVALUATION_AUTHORIZATION_REVOKED","message":"The frozen model authorization was revoked"});
+    }
     if let Some(error) = error {
         detail["error"] = error.clone();
     }
@@ -545,8 +547,8 @@ async fn converge_model_evaluator(
         "UPDATE evaluation_rule_results SET status=?,passed=?,score=?,detail_json=?,duration_ms=?,cost_micros=?,completed_at=UTC_TIMESTAMP(6) WHERE tenant_id=? AND id=? AND status='running'",
     )
     .bind(rule_status)
-    .bind(if terminal_status == "completed" { Some(passed) } else { None })
-    .bind(score)
+    .bind(if valid { Some(passed) } else { None })
+    .bind(if valid {score} else {None})
     .bind(detail)
     .bind(duration_ms)
     .bind(cost_micros)
@@ -568,6 +570,17 @@ async fn converge_model_evaluator(
         .await?;
     }
     converge_evaluation_run(tx, tenant_id, package_id, run_id, execution_id).await
+}
+
+fn judge_score(evaluation: &Value) -> Option<f64> {
+    let object = evaluation.as_object()?;
+    if object.len() != 2 || !object.get("reason")?.is_string() {
+        return None;
+    }
+    object
+        .get("score")?
+        .as_f64()
+        .filter(|score| score.is_finite() && (0.0..=1.0).contains(score))
 }
 
 async fn evaluation_scoring_status(
@@ -609,106 +622,6 @@ async fn execution_measurements(
         .bind(tenant_id).bind(execution_id).bind(tenant_id).bind(execution_id).fetch_one(&mut **tx).await?)
 }
 
-async fn evaluate_deterministic_rules(
-    tx: &mut Transaction<'_, MySql>,
-    tenant_id: Uuid,
-    case_id: Uuid,
-    actual_output: &Value,
-) -> RuntimeResult<()> {
-    let rules = sqlx::query(
-        "SELECT id,detail_json FROM evaluation_rule_results WHERE tenant_id=? AND evaluation_run_case_id=? AND status='queued' FOR UPDATE",
-    )
-    .bind(tenant_id)
-    .bind(case_id)
-    .fetch_all(&mut **tx)
-    .await?;
-    for rule in rules {
-        let rule_id: Uuid = rule.try_get("id")?;
-        let mut detail: Value = rule.try_get("detail_json")?;
-        if detail.get("kind").and_then(Value::as_str) != Some("deterministic_rule") {
-            continue;
-        }
-        let expression = detail
-            .get("expression")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned();
-        let expected = detail.get("expectedOutput").cloned().unwrap_or(Value::Null);
-        let (passed, evaluation_error) =
-            evaluate_deterministic_expression(&expression, actual_output, &expected);
-        detail["actualOutput"] = actual_output.clone();
-        if let Some(error) = evaluation_error {
-            detail["error"] = json!(error);
-        }
-        sqlx::query(
-            "UPDATE evaluation_rule_results SET status=?,passed=?,score=?,detail_json=?,completed_at=UTC_TIMESTAMP(6) WHERE tenant_id=? AND id=? AND status='queued'",
-        )
-        .bind(if passed { "passed" } else { "failed" })
-        .bind(passed)
-        .bind(if passed { 1.0_f64 } else { 0.0_f64 })
-        .bind(detail)
-        .bind(tenant_id)
-        .bind(rule_id)
-        .execute(&mut **tx)
-        .await?;
-    }
-    Ok(())
-}
-
-fn evaluate_deterministic_expression(
-    expression: &str,
-    actual: &Value,
-    expected: &Value,
-) -> (bool, Option<String>) {
-    if expression == "exact_match" {
-        return (*actual == *expected, None);
-    }
-    if expression == "not_null" {
-        return (!actual.is_null(), None);
-    }
-    let Ok(spec) = serde_json::from_str::<Value>(expression) else {
-        return (
-            false,
-            Some("unsupported deterministic evaluator expression".into()),
-        );
-    };
-    let kind = spec.get("type").and_then(Value::as_str).unwrap_or_default();
-    let configuration = spec.get("configuration").unwrap_or(&Value::Null);
-    match kind {
-        "exact" => (*actual == *expected, None),
-        "contains" => {
-            let actual = actual.as_str().unwrap_or_default();
-            let expected = expected.as_str().unwrap_or_default();
-            (actual.contains(expected), None)
-        }
-        "regex" => {
-            let Some(pattern) = configuration.get("pattern").and_then(Value::as_str) else {
-                return (false, Some("regex evaluator requires pattern".into()));
-            };
-            match regex::Regex::new(pattern) {
-                Ok(pattern) => (pattern.is_match(actual.as_str().unwrap_or_default()), None),
-                Err(error) => (false, Some(format!("invalid regex evaluator: {error}"))),
-            }
-        }
-        "json_schema" => {
-            let Some(schema) = configuration.get("schema") else {
-                return (false, Some("JSON Schema evaluator requires schema".into()));
-            };
-            match jsonschema::validator_for(schema) {
-                Ok(validator) => (validator.is_valid(actual), None),
-                Err(error) => (
-                    false,
-                    Some(format!("invalid JSON Schema evaluator: {error}")),
-                ),
-            }
-        }
-        _ => (
-            false,
-            Some("unsupported deterministic evaluator expression".into()),
-        ),
-    }
-}
-
 async fn converge_evaluation_run(
     tx: &mut Transaction<'_, MySql>,
     tenant_id: Uuid,
@@ -735,7 +648,7 @@ async fn converge_evaluation_run(
     let failed: u64 = counts.try_get("failed")?;
     let cancelled: u64 = counts.try_get("cancelled")?;
     let run_status = if total as u64 == terminal {
-        if cancelled == total as u64 {
+        if cancelled > 0 {
             "cancelled"
         } else if failed > 0 {
             "failed"
@@ -746,13 +659,12 @@ async fn converge_evaluation_run(
         "running"
     };
     let changed = sqlx::query(
-        "UPDATE evaluation_runs SET status=?,version=version+1,completed_at=IF(? IN ('completed','failed','cancelled'),UTC_TIMESTAMP(6),NULL) WHERE tenant_id=? AND id=? AND status<>?",
+        "UPDATE evaluation_runs SET status=?,version=version+1,completed_at=IF(? IN ('completed','failed','cancelled'),UTC_TIMESTAMP(6),NULL) WHERE tenant_id=? AND id=?",
     )
     .bind(run_status)
     .bind(run_status)
     .bind(tenant_id)
     .bind(run_id)
-    .bind(run_status)
     .execute(&mut **tx)
     .await?;
     if run_status != "running" {
@@ -783,11 +695,7 @@ async fn converge_evaluation_run(
                 .bind(run_id)
                 .fetch_one(&mut **tx)
                 .await?;
-        let report = if run_status == "running" {
-            None
-        } else {
-            Some(load_evaluation_report(tx, tenant_id, run_id).await?)
-        };
+        let report = Some(load_evaluation_report(tx, tenant_id, run_id).await?);
         let event = RuntimeEventPayloadV1::EvaluationChanged {
             run_id,
             run_version,
@@ -798,6 +706,26 @@ async fn converge_evaluation_run(
             report,
         };
         insert_governance_event(tx, tenant_id, execution_id, &event).await?;
+    }
+    Ok(())
+}
+
+pub(crate) async fn publish_cancellation(
+    tx: &mut Transaction<'_, MySql>,
+    tenant: Uuid,
+    package: Uuid,
+) -> RuntimeResult<()> {
+    let row = sqlx::query("SELECT r.id,c.target_execution_id FROM evaluation_runs r JOIN evaluation_run_cases c ON c.tenant_id=r.tenant_id AND c.evaluation_run_id=r.id WHERE r.tenant_id=? AND r.work_package_id=? ORDER BY c.id LIMIT 1")
+        .bind(tenant).bind(package).fetch_optional(&mut **tx).await?;
+    if let Some(row) = row {
+        converge_evaluation_run(
+            tx,
+            tenant,
+            package,
+            row.try_get("id")?,
+            row.try_get("target_execution_id")?,
+        )
+        .await?;
     }
     Ok(())
 }
@@ -855,6 +783,12 @@ async fn load_evaluation_report(
                 detail: rule.try_get("detail_json")?,
                 duration_ms: rule.try_get("duration_ms")?,
                 cost_micros: rule.try_get("cost_micros")?,
+                cost_by_currency: cost_by_currency(
+                    tx,
+                    tenant_id,
+                    rule.try_get("evaluator_execution_id")?,
+                )
+                .await?,
             });
         }
         let status: String = row.try_get("status")?;
@@ -872,6 +806,8 @@ async fn load_evaluation_report(
             actual_output: row.try_get("actual_output_json")?,
             duration_ms: row.try_get("duration_ms")?,
             cost_micros,
+            cost_by_currency: cost_by_currency(tx, tenant_id, row.try_get("target_execution_id")?)
+                .await?,
             error_code: row.try_get("error_code")?,
             error_message: row.try_get("error_message")?,
             rules,
@@ -925,16 +861,21 @@ async fn insert_execution(
     trigger_type: &str,
 ) -> RuntimeResult<()> {
     let started_at = time::OffsetDateTime::now_utc();
+    let application_id = package
+        .model_evaluator_executions
+        .first()
+        .map(|judge| judge.model.application_id);
     let state_hash =
         agentx_runtime_contracts::content_hash(&json!({"status":"queued","input":input}))
             .map_err(|error| RuntimeError::Internal(error.into()))?;
     sqlx::query(
-        "INSERT INTO workflow_executions(id,tenant_id,workflow_id,workflow_version_id,bundle_id,work_package_id,admission_epoch,state_version,trace_id,trigger_type,initiator_user_id,initiator_user_name,initiator_department_id,initiator_department_name,trigger_source_id,trigger_name,status,started_at,input_json) VALUES(?,?,?,?,?,?,1,1,?,?,?,?,?,?,?,?,'queued',?,?)",
+        "INSERT INTO workflow_executions(id,tenant_id,workflow_id,workflow_version_id,application_id,bundle_id,work_package_id,admission_epoch,state_version,trace_id,trigger_type,initiator_user_id,initiator_user_name,initiator_department_id,initiator_department_name,trigger_source_id,trigger_name,status,started_at,input_json) VALUES(?,?,?,?,?,?,?,1,1,?,?,?,?,?,?,?,?,'queued',?,?)",
     )
     .bind(execution_id)
     .bind(package.tenant_id)
     .bind(package.authorization.workflow_id)
     .bind(package.package_id)
+    .bind(application_id)
     .bind(package.package_id)
     .bind(package.package_id)
     .bind(Uuid::now_v7())
@@ -972,7 +913,7 @@ async fn insert_execution(
             workflow: package.workflow.clone(),
             trigger_type,
             origin: &package.origin,
-            application_id: None,
+            application_id,
             invocation_id: None,
             session: None,
         },
@@ -1013,9 +954,28 @@ fn stable_id(namespace: Uuid, label: &[u8]) -> Uuid {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    #[test]
+    fn judge_results_have_no_fabricated_scores_or_model_pass_decisions() {
+        for value in [
+            serde_json::json!({}),
+            serde_json::json!({"score":-0.1,"reason":"bad"}),
+            serde_json::json!({"score":1.1,"reason":"bad"}),
+            serde_json::json!({"score":0.8,"reason":3}),
+            serde_json::json!({"score":0.8,"reason":"ok","passed":true}),
+        ] {
+            assert!(super::judge_score(&value).is_none());
+        }
+        for score in [0.0, 0.799999, 0.8, 1.0] {
+            assert_eq!(
+                super::judge_score(
+                    &serde_json::json!({"score":score,"reason":"semantic judgment"})
+                ),
+                Some(score)
+            );
+        }
+    }
 
-    use super::{evaluate_deterministic_expression, scoring_status};
+    use super::scoring_status;
 
     #[test]
     fn multiple_judges_settle_without_losing_an_earlier_error() {
@@ -1035,38 +995,12 @@ mod tests {
             "cancelled"
         );
     }
+}
 
-    #[test]
-    fn deterministic_evaluators_cover_the_public_profile_types() {
-        assert!(
-            evaluate_deterministic_expression(
-                r#"{"type":"exact","configuration":{}}"#,
-                &json!({"answer": 42}),
-                &json!({"answer": 42})
-            )
-            .0
-        );
-        assert!(
-            evaluate_deterministic_expression(
-                r#"{"type":"contains","configuration":{}}"#,
-                &json!("agentx runtime"),
-                &json!("runtime")
-            )
-            .0
-        );
-        assert!(
-            evaluate_deterministic_expression(
-                r#"{"type":"regex","configuration":{"pattern":"^agentx"}}"#,
-                &json!("agentx runtime"),
-                &json!(null)
-            )
-            .0
-        );
-        assert!(evaluate_deterministic_expression(
-            r#"{"type":"json_schema","configuration":{"schema":{"type":"integer","minimum":1}}}"#,
-            &json!(2),
-            &json!(null)
-        )
-        .0);
-    }
+async fn cost_by_currency(
+    tx: &mut Transaction<'_, MySql>,
+    tenant: Uuid,
+    execution: Option<Uuid>,
+) -> RuntimeResult<std::collections::BTreeMap<String, u64>> {
+    Ok(sqlx::query_as::<_,(String,u64)>("SELECT cost_currency,CAST(SUM(cost_micros) AS UNSIGNED) FROM runtime_calls WHERE tenant_id=? AND execution_id=? AND cost_currency IS NOT NULL GROUP BY cost_currency").bind(tenant).bind(execution).fetch_all(&mut **tx).await?.into_iter().collect())
 }

@@ -189,6 +189,21 @@ async fn deletion_impact(
 ) -> ApiResult<Json<DeletionImpactResponse>> {
     let entity = EntityType::from_str(&entity_type)?;
     actor.require(entity.permission())?;
+    if matches!(entity, EntityType::Dataset | EntityType::EvaluationProfile) {
+        let query = if entity == EntityType::Dataset {
+            "SELECT application_id FROM datasets WHERE tenant_id=? AND id=?"
+        } else {
+            "SELECT application_id FROM evaluation_profiles WHERE tenant_id=? AND id=?"
+        };
+        let application: Uuid = sqlx::query_scalar(query)
+            .bind(actor.tenant_id)
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or_else(|| ApiError::not_found("Deletion target"))?;
+        crate::application_testing::authorize(&state, &actor, application, entity.permission())
+            .await?;
+    }
     let target = load_target(&state.pool, actor.tenant_id, entity, id).await?;
     let mut references = if target.immutable {
         vec![DeletionReference {
@@ -366,7 +381,7 @@ fn direct_reference_queries(entity: EntityType) -> &'static [&'static str] {
     match entity {
         EntityType::Workflow => &[
             "SELECT 'applications' source_module,'application' source_type,a.id source_id,a.name source_name,'workflow' relation,NULL parent_id,NULL node_id,NULL node_name,FALSE immutable FROM applications a WHERE a.tenant_id=? AND a.workflow_id=?",
-            "SELECT 'evaluations' source_module,'evaluation_run' source_type,e.id source_id,e.name source_name,'workflow_version' relation,e.workflow_version_id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM evaluation_runs e JOIN workflow_versions v ON v.tenant_id=e.tenant_id AND v.id=e.workflow_version_id WHERE e.tenant_id=? AND v.workflow_id=?",
+            "SELECT 'applications' source_module,'evaluation_run' source_type,e.batch_id source_id,e.name source_name,'workflow_version' relation,e.application_id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM evaluation_runs e JOIN workflow_versions v ON v.tenant_id=e.tenant_id AND v.id=e.workflow_version_id WHERE e.tenant_id=? AND v.workflow_id=?",
             "SELECT 'workflows' source_module,'workflow_draft' source_type,w.id source_id,w.name source_name,'subworkflow_draft' relation,NULL parent_id,r.node_id,r.node_name,FALSE immutable FROM workflow_draft_resources r JOIN workflows w ON w.tenant_id=r.tenant_id AND w.id=r.workflow_id WHERE r.tenant_id=? AND r.resource_type='workflow' AND r.resource_id=?",
             "SELECT 'workflows' source_module,'workflow_version' source_type,v.id source_id,CONCAT(w.name,' v',v.version_number) source_name,'subworkflow_version' relation,w.id parent_id,r.node_id,NULL node_name,TRUE immutable FROM workflow_version_resources r JOIN workflow_versions v ON v.tenant_id=r.tenant_id AND v.id=r.workflow_version_id JOIN workflows w ON w.tenant_id=v.tenant_id AND w.id=v.workflow_id WHERE r.tenant_id=? AND r.resource_type='workflow' AND r.resource_id=?",
         ],
@@ -374,12 +389,19 @@ fn direct_reference_queries(entity: EntityType) -> &'static [&'static str] {
             "SELECT 'workflows' source_module,'workflow_deployment' source_type,d.id source_id,CONCAT(w.name,' #',d.sequence_number) source_name,'environment' relation,w.id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM workflow_deployments d JOIN workflows w ON w.tenant_id=d.tenant_id AND w.id=d.workflow_id WHERE d.tenant_id=? AND d.environment_id=?",
             "SELECT 'applications' source_module,'application_deployment' source_type,d.id source_id,CONCAT(a.name,' #',d.sequence_number) source_name,'environment' relation,a.id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM application_deployments d JOIN applications a ON a.tenant_id=d.tenant_id AND a.id=d.application_id WHERE d.tenant_id=? AND d.environment_id=?",
         ],
+        EntityType::Application => &[
+            "SELECT 'applications' source_module,'dataset' source_type,d.id source_id,d.name source_name,'application' relation,d.application_id parent_id,NULL node_id,NULL node_name,FALSE immutable FROM datasets d WHERE d.tenant_id=? AND d.application_id=?",
+            "SELECT 'applications' source_module,'evaluation_profile' source_type,p.id source_id,p.name source_name,'application' relation,p.application_id parent_id,NULL node_id,NULL node_name,FALSE immutable FROM evaluation_profiles p WHERE p.tenant_id=? AND p.application_id=?",
+            "SELECT 'applications' source_module,'evaluation_run' source_type,b.id source_id,b.name source_name,'evaluation_batch' relation,b.application_id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM evaluation_batches b WHERE b.tenant_id=? AND b.application_id=?",
+        ],
         EntityType::Model => &[
-            "SELECT 'models' source_module,'studio_builder_setting' source_type,s.tenant_id source_id,'Canvas AI model setting' source_name,'studio_builder_model' relation,NULL parent_id,NULL node_id,NULL node_name,FALSE immutable FROM tenant_settings s WHERE s.tenant_id=? AND s.studio_builder_model_alias_id=?",
+            "SELECT 'applications' source_module,'evaluation_run' source_type,b.id source_id,b.name source_name,'platform_evaluation_model' relation,b.application_id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM evaluation_batches b WHERE b.tenant_id=? AND JSON_UNQUOTE(JSON_EXTRACT(b.model_snapshot_json,'$.binding.resourceId'))=BIN_TO_UUID(?)",
+            "SELECT 'models' source_module,'platform_ai_model' source_type,s.tenant_id source_id,'Platform AI model setting' source_name,'studio_builder_model' relation,NULL parent_id,NULL node_id,NULL node_name,FALSE immutable FROM tenant_settings s WHERE s.tenant_id=? AND s.platform_ai_model_alias_id=?",
             "SELECT 'workflows' source_module,'studio_builder_run' source_type,r.id source_id,CONCAT(w.name,' / ',CONCAT('v',v.version_number)) source_name,'studio_builder_model' relation,w.id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM studio_builder_runs r JOIN studio_builder_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id JOIN workflows w ON w.tenant_id=s.tenant_id AND w.id=s.workflow_id JOIN workflow_drafts d ON d.tenant_id=s.tenant_id AND d.id=s.draft_id JOIN workflow_versions v ON v.tenant_id=d.tenant_id AND v.working_draft_id=d.id WHERE r.tenant_id=? AND r.model_alias_id=? AND r.status IN ('queued','running','waiting','outcome_unknown')",
         ],
         EntityType::Credential => &[
-            "SELECT 'models' source_module,'studio_builder_setting' source_type,s.tenant_id source_id,'Canvas AI model setting' source_name,'studio_builder_credential' relation,NULL parent_id,NULL node_id,NULL node_name,FALSE immutable FROM tenant_settings s WHERE s.tenant_id=? AND s.studio_builder_credential_id=?",
+            "SELECT 'applications' source_module,'evaluation_run' source_type,b.id source_id,b.name source_name,'platform_evaluation_credential' relation,b.application_id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM evaluation_batches b WHERE b.tenant_id=? AND JSON_UNQUOTE(JSON_EXTRACT(b.model_snapshot_json,'$.credentialId'))=BIN_TO_UUID(?)",
+            "SELECT 'models' source_module,'platform_ai_model' source_type,s.tenant_id source_id,'Platform AI model setting' source_name,'studio_builder_credential' relation,NULL parent_id,NULL node_id,NULL node_name,FALSE immutable FROM tenant_settings s WHERE s.tenant_id=? AND s.platform_ai_credential_id=?",
             "SELECT 'workflows' source_module,'studio_builder_run' source_type,r.id source_id,CONCAT(w.name,' / ',CONCAT('v',v.version_number)) source_name,'studio_builder_credential' relation,w.id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM studio_builder_runs r JOIN studio_builder_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id JOIN workflows w ON w.tenant_id=s.tenant_id AND w.id=s.workflow_id JOIN workflow_drafts d ON d.tenant_id=s.tenant_id AND d.id=s.draft_id JOIN workflow_versions v ON v.tenant_id=d.tenant_id AND v.working_draft_id=d.id WHERE r.tenant_id=? AND r.credential_id=? AND r.status IN ('queued','running','waiting','outcome_unknown')",
             "SELECT 'models' source_module,'model_deployment' source_type,d.id source_id,CONCAT(d.connection_name,' / ',d.model_name) source_name,'credential' relation,NULL parent_id,NULL node_id,NULL node_name,FALSE immutable FROM model_deployments d WHERE d.tenant_id=? AND d.credential_id=?",
             "SELECT 'mcp' source_module,'mcp_server_version' source_type,v.id source_id,CONCAT(s.name,' v',v.version_number) source_name,'credential' relation,s.id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM mcp_server_versions v JOIN mcp_servers s ON s.tenant_id=v.tenant_id AND s.id=v.server_id WHERE v.tenant_id=? AND v.credential_id=?",
@@ -387,10 +409,10 @@ fn direct_reference_queries(entity: EntityType) -> &'static [&'static str] {
             "SELECT 'memory' source_module,'memory_connection' source_type,c.id source_id,c.name source_name,'credential' relation,NULL parent_id,NULL node_id,NULL node_name,FALSE immutable FROM memory_connections c WHERE c.tenant_id=? AND c.credential_id=?",
         ],
         EntityType::Dataset => &[
-            "SELECT 'evaluations' source_module,'evaluation_run' source_type,e.id source_id,e.name source_name,'dataset_version' relation,e.dataset_version_id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM evaluation_runs e JOIN dataset_versions v ON v.tenant_id=e.tenant_id AND v.id=e.dataset_version_id WHERE e.tenant_id=? AND v.dataset_id=?",
+            "SELECT 'applications' source_module,'evaluation_run' source_type,e.batch_id source_id,e.name source_name,'dataset_version' relation,e.application_id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM evaluation_runs e JOIN dataset_versions v ON v.tenant_id=e.tenant_id AND v.id=e.dataset_version_id WHERE e.tenant_id=? AND v.dataset_id=?",
         ],
         EntityType::EvaluationProfile => &[
-            "SELECT 'evaluations' source_module,'evaluation_run' source_type,e.id source_id,e.name source_name,'evaluation_profile_version' relation,e.evaluation_profile_version_id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM evaluation_runs e JOIN evaluation_profile_versions v ON v.tenant_id=e.tenant_id AND v.id=e.evaluation_profile_version_id WHERE e.tenant_id=? AND v.profile_id=?",
+            "SELECT 'applications' source_module,'evaluation_run' source_type,e.batch_id source_id,e.name source_name,'evaluation_profile_version' relation,e.application_id parent_id,NULL node_id,NULL node_name,TRUE immutable FROM evaluation_runs e JOIN evaluation_profile_versions v ON v.tenant_id=e.tenant_id AND v.id=e.evaluation_profile_version_id WHERE e.tenant_id=? AND v.profile_id=?",
         ],
         EntityType::Department => &[
             "SELECT 'organization' source_module,'department' source_type,d.id source_id,d.name source_name,'parent_department' relation,NULL parent_id,NULL node_id,NULL node_name,FALSE immutable FROM departments d WHERE d.tenant_id=? AND d.parent_id=?",

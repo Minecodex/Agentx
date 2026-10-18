@@ -16,6 +16,7 @@ import httpx
 
 from tests.e2e.capacity.loadgen import probe_sse
 from tests.e2e.capacity.runner import cluster_load
+from tests.e2e.product.test_model_streaming import _fixture_credential, _upsert_model
 from tests.e2e.runtime.test_agent_attachments import _runtime_mysql
 from tests.e2e.support import run, start_process
 
@@ -156,19 +157,37 @@ def sse_matrix(context, app, api_keys, collector):
         scale(context, "workflow-worker", 1, collector)
 
 
-def case_matrix(control_url, app):
+def case_matrix(control_url, app, echo_url):
     with httpx.Client(
         base_url=control_url, headers={"Authorization": f"Bearer {app['token']}"}, timeout=180
     ) as control:
+        me = control.get("/api/v1/auth/me")
+        me.raise_for_status()
+        credential = _fixture_credential(control, dict(control.headers), me.json()["departmentId"])
+        alias = f"capacity-judge-{app['applicationId']}"
+        _upsert_model(
+            control, dict(control.headers), alias, echo_url, "echo-model", me.json()["departmentId"], credential
+        )
+        models = control.get("/api/v1/models/aliases", params={"search": alias})
+        models.raise_for_status()
+        model = next(item for item in models.json()["items"] if item["alias"] == alias)
+        setting = control.get("/api/v1/platform-ai/model-setting")
+        setting.raise_for_status()
+        selected = control.put(
+            "/api/v1/platform-ai/model-setting",
+            json={"expectedVersion": setting.json()["version"], "modelAliasId": model["id"]},
+        )
+        selected.raise_for_status()
+        path = f"/api/v1/applications/{app['applicationId']}"
         dataset = control.post(
-            "/api/v1/datasets", json={"name": f"Capacity cases {app['applicationId']}", "visibility": "company"}
+            path + "/datasets",
+            json={"name": f"Capacity cases {app['applicationId']}", "workflowVersionId": app["versionId"]},
         )
         dataset.raise_for_status()
         dataset_id = dataset.json()["id"]
         content = "\n".join(
             json.dumps(
                 {
-                    "caseKey": f"capacity-{index}",
                     "name": f"Case {index}",
                     "input": {"message": f"case {index}"},
                     "expectedOutput": {"answer": f"case {index}"},
@@ -177,62 +196,46 @@ def case_matrix(control_url, app):
             for index in range(1000)
         )
         imported = control.post(
-            f"/api/v1/datasets/{dataset_id}/import",
+            f"{path}/datasets/{dataset_id}/import",
             json={"expectedRevision": dataset.json()["revision"], "format": "jsonl", "content": content},
         )
         imported.raise_for_status()
-        version = control.post(
-            f"/api/v1/datasets/{dataset_id}/versions", json={"expectedRevision": dataset.json()["revision"] + 1}
-        )
-        version.raise_for_status()
         profile = control.post(
-            "/api/v1/evaluation-profiles",
+            path + "/evaluation-profiles",
             json={
-                "name": f"Capacity exact {dataset_id}",
-                "visibility": "company",
-                "rules": [
+                "name": f"Capacity correctness {dataset_id}",
+                "criteria": "The answer must preserve the input message and match the reference semantically.",
+                "passThreshold": 0.8,
+            },
+        )
+        profile.raise_for_status()
+        accepted = control.post(
+            path + "/evaluations",
+            headers={"Idempotency-Key": str(uuid.uuid4())},
+            json={
+                "name": f"Capacity evaluation {dataset_id}",
+                "profileVersionId": profile.json()["versionId"],
+                "selections": [
                     {
-                        "key": "exact",
-                        "name": "Exact",
-                        "evaluatorType": "exact",
-                        "configuration": {},
-                        "weight": "1",
-                        "required": True,
+                        "datasetId": dataset_id,
+                        "expectedRevision": dataset.json()["revision"] + 1,
+                        "workflowVersionIds": [app["versionId"]],
                     }
                 ],
             },
         )
-        profile.raise_for_status()
-        run_response = control.post(
-            "/api/v1/evaluations",
-            json={
-                "name": f"Capacity evaluation {dataset_id}",
-                "workflowVersionId": app["versionId"],
-                "datasetVersionId": version.json()["id"],
-                "evaluationProfileVersionId": profile.json()["versionId"],
-                "visibility": "company",
-                "parameters": {"concurrency": 20, "sampleSize": 1000},
-            },
-        )
-        run_response.raise_for_status()
-        evaluation_id = run_response.json()["id"]
-        started = control.post(f"/api/v1/evaluations/{evaluation_id}/start")
-        started.raise_for_status()
+        accepted.raise_for_status()
+        batch_id = accepted.json()["id"]
         deadline = time.monotonic() + 1800
         while time.monotonic() < deadline:
-            report = control.get(f"/api/v1/evaluations/{evaluation_id}/report")
+            report = control.get(f"{path}/evaluations/{batch_id}/report")
             report.raise_for_status()
             value = report.json()
-            if value["run"]["status"] == "completed":
-                assert len(value["results"]) == 1000, value["run"]
-                assert all(case["status"] == "completed" for case in value["results"]), value["run"]
-                return {
-                    "scenario": "1000-cases",
-                    "status": "passed",
-                    "evaluationId": evaluation_id,
-                    "completedCases": 1000,
-                }
-            assert value["run"]["status"] not in {"failed", "cancelled"}, value["run"]
+            if value["status"] == "completed":
+                cases = value["runs"][0]["cases"]
+                assert len(cases) == 1000 and all(case["status"] == "passed" for case in cases), value
+                return {"scenario": "1000-cases", "status": "passed", "evaluationId": batch_id, "completedCases": 1000}
+            assert value["status"] not in {"failed", "cancelled"}, value
             time.sleep(2)
         raise TimeoutError("1000-case evaluation did not complete")
 

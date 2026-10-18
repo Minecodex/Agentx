@@ -60,8 +60,8 @@ Runtime 不主动调用 Control。Runtime 当前状态只来自 Runtime MySQL；
 
 | 数据域 | Migration 目录 | 当前 `CREATE TABLE` 数 | 权威内容 |
 |---|---|---:|---|
-| Control MySQL | `deploy/migrations/control` | 112 | IAM、Workflow 草稿/版本/Deployment、画布插件包/导入/版本/对象清理队列、资源元数据/授权、Application 管理、治理投影和 Control Outbox |
-| Runtime MySQL | `deploy/migrations/runtime` | 108 | Route、Session/Message/Invocation、Execution/Snapshot/Attempt、Wait/Approval、Checkpoint/Fork、Runtime Call、Quota、Retention、Event/Trace Outbox |
+| Control MySQL | `deploy/migrations/control` | 113 | IAM、Workflow 草稿/版本/Deployment、画布插件包/导入/版本/对象清理队列、资源元数据/授权、Application 管理、治理投影和 Control Outbox |
+| Runtime MySQL | `deploy/migrations/runtime` | 111 | Route、Session/Message/Invocation、Execution/Snapshot/Attempt、Wait/Approval、Checkpoint/Fork、Runtime Call、Quota、Retention、Event/Trace Outbox |
 | ClickHouse | `deploy/migrations/observability` | 4 | Trace 明细、去重冲突和 Consumer Health；不是 Runtime 当前状态权威 |
 | Runtime Redis | 无业务 Migration | 不适用 | Capability/Trace Stream、Consumer Group、SSE 唤醒和快速配额；可从 MySQL 权威事实重建 |
 | 三域 OSS | 独立 Bucket/Prefix/IAM | 不适用 | Control 源对象、Runtime Bundle/Artifact/Checkpoint、Observability 内容分别隔离 |
@@ -94,3 +94,9 @@ Control 的 studio_builder_* 模块注入同一个 agentx-agent-core，拥有设
 ## 外部知识服务边界
 
 Control 管理连接与 `rag` 查询配置，发现真实 Dataset/workspace，提供只读外部文档浏览和查询测试。Runtime 使用冻结范围与凭证执行，外部系统维护内容与索引。`agentx-runtime-contracts::rag` 负责协议，`retrieval` 负责来源展开、并发 4、RRF、去重和逐来源状态。不存在知识上传、Artifact 源文件或索引调度器。详见 [知识连接与多来源检索](plan8/11-knowledge-connections.md)。
+
+## 应用测试与平台 AI 评测
+
+Control 的 application_testing、application_datasets、application_evaluation_profiles 和 application_evaluations 模块拥有应用内测试集、固定契约、不可变数据/方案版本和批次。evaluation_batches 固定平台模型、凭据版本、参数、价格与系统提示词；evaluation_runs 保持一份测试集快照乘一个工作流版本。Control Outbox 由具备租约、心跳和 Fencing 的评测派发器消费，使用稳定 WorkPackage 标识恢复；Runtime 结果通过既有治理投影返回。
+
+Runtime 的 platform_evaluation_authorizations 保存按租户、应用和批次限定的模型授权，使用签名 Admission 单调推进。系统评分子执行只拥有其冻结模型，业务工作流仍保留自身资源授权；两者不合并。模型撤销后待执行评分以明确错误结束，不切换备用模型。调用样本和附件校验经 Runtime 查询授权访问，Control 不直连 Runtime 数据库。测试与评测不扩展应用会话或记忆评测范围。详见 [应用测试集与平台 AI 评测](plan8/12-application-evaluations.md)。

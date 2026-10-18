@@ -846,15 +846,15 @@ fn build_model_evaluators(
                 evaluator_id,
                 resource_id,
                 prompt_object_id,
-            } => Some((*evaluator_id, *resource_id, *prompt_object_id)),
-            agentx_runtime_contracts::RuntimeEvaluatorV1::DeterministicRule { .. } => None,
+                model,
+                pass_threshold,
+            } => Some((*evaluator_id, *resource_id, *prompt_object_id, model.clone(), *pass_threshold)),
         })
-        .map(|(evaluator_id, resource_id, prompt_object_id)| {
+        .map(|(evaluator_id, resource_id, prompt_object_id, model, pass_threshold)| {
             let evaluation_schema = serde_json::json!({
                 "type":"object", "additionalProperties":false,
-                "required":["passed","score","reason"],
+                "required":["score","reason"],
                 "properties":{
-                    "passed":{"type":"boolean"},
                     "score":{"type":"number","minimum":0,"maximum":1},
                     "reason":{"type":"string"}
                 }
@@ -920,6 +920,8 @@ fn build_model_evaluators(
                     .expect("model evaluator Definition serializes"),
                 compiled_ir,
                 node_manifests,
+                model,
+                pass_threshold,
             })
         })
         .collect()
@@ -1417,27 +1419,75 @@ mod tests {
 
     #[test]
     fn model_evaluator_rejects_empty_malformed_and_out_of_range_verdicts() {
+        let binding = structured_model_source("openai_compatible")
+            .resources
+            .remove(0);
+        let resource_id = binding.resource_id;
+        let model = agentx_runtime_contracts::RuntimePlatformEvaluationModelV1 {
+            tenant_id: Uuid::from_u128(1),
+            application_id: Uuid::now_v7(),
+            batch_id: Uuid::now_v7(),
+            setting_version: 1,
+            model_alias_version: 1,
+            credential_id: None,
+            credential_version: None,
+            binding,
+            parameters: json!({"temperature":0}),
+        };
         let spec = agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Evaluation {
             dataset_version_id: Uuid::now_v7(),
             profile_version_id: Uuid::now_v7(),
             cases: vec![],
             evaluators: vec![agentx_runtime_contracts::RuntimeEvaluatorV1::Model {
                 evaluator_id: Uuid::now_v7(),
-                resource_id: Uuid::now_v7(),
+                resource_id,
                 prompt_object_id: Uuid::now_v7(),
+                model,
+                pass_threshold: 0.8,
             }],
         };
+        let mut source = work_package_source();
+        source.supported_capabilities.insert("model".into());
+        source.purpose = WorkPackagePurpose::Evaluation;
+        source.call_purpose = RuntimeCallPurposeV1::Evaluation;
+        source.spec = spec.clone();
+        if let agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Evaluation {
+            cases,
+            evaluators,
+            ..
+        } = &mut source.spec
+        {
+            cases.push(agentx_runtime_contracts::RuntimeEvaluationCaseV1 {
+                case_id: Uuid::now_v7(),
+                input: json!({}),
+                expected_output: Some(json!({})),
+            });
+            let agentx_runtime_contracts::RuntimeEvaluatorV1::Model {
+                prompt_object_id, ..
+            } = &mut evaluators[0];
+            *prompt_object_id = source.objects[0].object_id;
+        }
+        let package =
+            build_work_package(source, "judge-test", &SigningKey::generate(&mut OsRng)).unwrap();
+        assert!(package.payload.resources.is_empty());
+        assert_eq!(
+            package.payload.model_evaluator_executions[0]
+                .compiled_ir
+                .nodes
+                .len(),
+            1
+        );
         let executions = build_model_evaluators(&spec, &NodeRegistry::m5_defaults()).unwrap();
         let schema = &executions[0].definition["nodes"][0]["parameters"]["structuredSchema"];
         let validator = jsonschema::validator_for(schema).unwrap();
-        assert!(validator.is_valid(&json!({"passed":true,"score":0.95,"reason":"matches"})));
-        assert!(validator.is_valid(&json!({"passed":false,"score":0,"reason":"does not match"})));
+        assert!(validator.is_valid(&json!({"score":0.95,"reason":"matches"})));
+        assert!(validator.is_valid(&json!({"score":0,"reason":"does not match"})));
         for invalid in [
             json!({}),
             json!({"passed":"true","score":1,"reason":"bad type"}),
-            json!({"passed":true,"score":2,"reason":"bad score"}),
-            json!({"passed":true,"score":1}),
-            json!({"passed":true,"score":1,"reason":"ok","usage":{}}),
+            json!({"score":2,"reason":"bad score"}),
+            json!({"score":1}),
+            json!({"score":1,"reason":"ok","usage":{}}),
         ] {
             assert!(!validator.is_valid(&invalid), "{invalid}");
         }

@@ -21,7 +21,7 @@ async function login(page: Page, username = 'admin', password = 'agentx-e2e-admi
 const lists = [
   ['workflows', 'workflows'], ['applications', 'applications'], ['models', 'models/aliases'],
   ['credentials', 'credentials'], ['mcp', 'mcp/servers'], ['skills', 'skills'],
-  ['knowledge', 'knowledge/connections'], ['memory', 'memory/namespaces'], ['evaluations', 'evaluations'],
+  ['knowledge', 'knowledge/connections'], ['memory', 'memory/namespaces'],
 ] as const
 
 for (const [path, api] of lists) {
@@ -95,32 +95,6 @@ test('Runtime failure never displays healthy zeroes and recovers', async ({ page
   expect(errors).toEqual([])
 })
 
-test('five real evaluations display absent cases and follow changed baseline order', async ({ page }, testInfo) => {
-  const ids = JSON.parse(required('AGENTX_E2E_FIVE_COMPARE_IDS')) as string[]
-  const names = JSON.parse(required('AGENTX_E2E_FIVE_COMPARE_NAMES')) as string[]
-  await login(page)
-  for (const order of [ids, [...ids].reverse()]) {
-    await page.goto(`/evaluations/${order[0]}?${new URLSearchParams({ tab: 'compare', runIds: order.join(',') })}`)
-    await expect(page.getByText('已对齐 1 / 5 个用例', { exact: true })).toBeVisible()
-    const headers = page.getByRole('table').first().getByRole('columnheader')
-    await expect(headers).toHaveCount(6)
-    await expect(headers.nth(1)).toHaveText(names[ids.indexOf(order[0])])
-    const missing = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'baseline_only', exact: true }) })
-    await expect(missing.getByRole('cell', { name: '缺失', exact: true })).toHaveCount(4)
-    await expect(page.getByRole('link', { name: '评测 Trace', exact: true }).first()).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath(`comparison-baseline-${ids.indexOf(order[0])}.png`), fullPage: true })
-  }
-  await page.getByRole('button', { name: '选择评估运行', exact: true }).click()
-  await page.getByRole('option', { name: names[4], exact: true }).click()
-  await expect(page).toHaveURL(new RegExp(`runIds=${ids[3]}`))
-  await expect(page.getByText('已对齐 1 / 4 个用例', { exact: true })).toBeVisible()
-  await page.keyboard.press('Escape')
-  await page.getByRole('link', { name: '评测 Trace', exact: true }).first().click()
-  await expect(page).toHaveURL(/\/executions\//)
-  await expect(page.getByRole('main').getByRole('heading', { level: 1 }).first()).toBeVisible()
-  await expect(page.getByText('Unexpected Application Error!', { exact: false })).toHaveCount(0)
-})
-
 test('permission denial and revocation refresh the existing browser session', async ({ browser }, testInfo) => {
   const options = { baseURL: required('AGENTX_E2E_BASE_URL'), viewport: { width: 1440, height: 900 }, locale: 'zh-CN' }
   const adminContext = await browser.newContext(options)
@@ -159,7 +133,7 @@ test('desktop states remain usable in English and both themes', async ({ page },
   for (const dark of [true, false]) {
     await page.getByRole('button', { name: 'Theme', exact: true }).click()
     await page.getByRole('menuitemradio', { name: dark ? 'Dark' : 'Light', exact: true }).click()
-    for (const [path, title] of [['/knowledge', 'Knowledge connections'], ['/runtime', 'Runtime status'], ['/evaluations', 'Evaluation Reports']]) {
+    for (const [path, title] of [['/knowledge', 'Knowledge connections'], ['/runtime', 'Runtime status']]) {
       await page.goto(path)
       await expect(page.getByRole('main').getByRole('heading', { name: title, exact: true })).toBeVisible()
       if (path === '/runtime') {

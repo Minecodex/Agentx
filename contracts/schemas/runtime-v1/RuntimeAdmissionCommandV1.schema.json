@@ -150,6 +150,23 @@
           "additionalProperties": false,
           "properties": {
             "kind": {
+              "const": "platform_evaluation",
+              "type": "string"
+            },
+            "state": {
+              "$ref": "#/$defs/RuntimePlatformEvaluationAuthorizationV1"
+            }
+          },
+          "required": [
+            "kind",
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
               "const": "resource_state",
               "type": "string"
             },
@@ -549,6 +566,43 @@
         "resourceId",
         "operations",
         "policyEpoch",
+        "enabled"
+      ],
+      "type": "object"
+    },
+    "RuntimePlatformEvaluationAuthorizationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "applicationId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "batchId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "epoch": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "modelHash": {
+          "type": "string"
+        },
+        "tenantId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenantId",
+        "applicationId",
+        "batchId",
+        "modelHash",
+        "epoch",
         "enabled"
       ],
       "type": "object"

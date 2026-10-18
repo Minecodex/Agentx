@@ -1,3 +1,4 @@
+import testing from './testing'
 import common from './common'
 import navigation from './navigation'
 import auth from './auth'
@@ -7,8 +8,6 @@ import applications from './applications'
 import executions from './executions'
 import approvals from './approvals'
 import notifications from './notifications'
-import datasets from './datasets'
-import evaluations from './evaluations'
 import runtime from './runtime'
 import credentials from './credentials'
 import models from './models'
@@ -26,4 +25,4 @@ import agentSessions from './agentSessions'
 import canvasPlugins from './canvasPlugins'
 import insights from './insights'
 
-export const translation = { common, navigation, auth, workflows, studio, applications, executions, approvals, notifications, datasets, evaluations, runtime, trace, agentSessions, credentials, models, mcp, canvasPlugins, skills, knowledge, memory, sandbox, resourceGrants, organization, roles, errors, insights } as const
+export const translation = { testing, common, navigation, auth, workflows, studio, applications, executions, approvals, notifications, runtime, trace, agentSessions, credentials, models, mcp, canvasPlugins, skills, knowledge, memory, sandbox, resourceGrants, organization, roles, errors, insights } as const

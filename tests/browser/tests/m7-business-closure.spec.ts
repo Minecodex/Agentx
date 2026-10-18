@@ -1,3 +1,4 @@
+import { beginApplicationEvaluation } from '../support/application-testing'
 import { publishFixtureVersion } from '../draft-fixtures'
 import { fixtureDraftId } from '../draft-fixtures'
 import { createHmac } from 'node:crypto'
@@ -22,17 +23,9 @@ type Grant = { id: string; subjectType: string; subjectId: string; resourceVersi
 type Environment = { id: string; code: string }
 type Application = { id: string; name: string; slug: string; status: string; description?: string; visibility: string; version: number }
 type ApplicationDeployment = { id: string; status: string; publishErrorCode?: string | null; publishErrorMessage?: string | null }
-type Invocation = { id: string; executionId?: string; status: string }
+type Invocation = { id: string; executionId?: string; status: string; outputs?: Record<string, unknown> }
 type Execution = { id: string; status: string; error?: unknown }
 type Approval = { id: string; executionId: string; workflowId: string; status: string }
-type Dataset = { id: string; revision: number }
-type DatasetVersion = { id: string }
-type EvaluationProfile = { versionId: string }
-type EvaluationRun = { id: string; status: string }
-type EvaluationReport = {
-  run: EvaluationRun
-  results: Array<{ targetExecutionId?: string; status: string; ruleResults: Array<{ status: string }> }>
-}
 type Webhook = { publicId: string; secret: string }
 type RetentionRun = { id: string; status: string; dryRun: boolean }
 type Schedule = { id: string; name: string; cronExpression: string; timezone: string; input: unknown; misfirePolicy: string; status: string; version: number }
@@ -539,7 +532,8 @@ test('M7 closes Application, Trigger, Evaluation, Approval and governance paths 
   const firstInvocation = await first.json() as Invocation
   const secondInvocation = await second.json() as Invocation
   expect(secondInvocation.id).toBe(firstInvocation.id)
-  await approveInvocation(page, approvalPage, token, firstInvocation.id)
+  const referenceInvocation = await approveInvocation(page, approvalPage, token, firstInvocation.id)
+  expect(referenceInvocation.outputs).toBeTruthy()
 
   const webhook = await request<Webhook>(page, token, `/applications/${application.id}/webhooks`, 'POST', { name: 'M7 Signed Webhook' })
   const body = JSON.stringify({ question: 'webhook-e2e', attachments: [] })
@@ -579,41 +573,9 @@ test('M7 closes Application, Trigger, Evaluation, Approval and governance paths 
   expect(webhookResponse.status()).toBe(202)
   await approveInvocation(page, approvalPage, token, (await webhookResponse.json() as Invocation).id)
 
-  const dataset = await request<Dataset>(page, token, '/datasets', 'POST', {
-    name: `M7 Dataset ${suffix}`,
-    description: 'M7 real Version Execution evaluation',
-    visibility: 'company',
-  })
-  await request(page, token, `/datasets/${dataset.id}/cases`, 'POST', {
-    caseKey: 'm7-closure',
-    name: 'M7 Closure Case',
-    input: { question: 'evaluation-e2e', attachments: [] },
-    expectedOutput: null,
-    context: null,
-    evaluatorOverride: null,
-    tags: ['m7'],
-    expectedRevision: dataset.revision,
-  })
-  const datasetVersion = await request<DatasetVersion>(page, token, `/datasets/${dataset.id}/versions`, 'POST')
-  const profile = await request<EvaluationProfile>(page, token, '/evaluation-profiles', 'POST', {
-    name: `M7 Profile ${suffix}`,
-    description: 'Validate that Runtime produced JSON',
-    visibility: 'company',
-    aggregation: 'weighted',
-    passThreshold: '1',
-    rules: [{ key: 'runtime_json', name: 'Runtime JSON', evaluatorType: 'json_schema', configuration: { schema: {} }, weight: '1', required: true }],
-  })
-  const evaluation = await request<EvaluationRun>(page, token, '/evaluations', 'POST', {
-    name: `M7 Evaluation ${suffix}`,
-    workflowVersionId: version!.id,
-    datasetVersionId: datasetVersion.id,
-    evaluationProfileVersionId: profile.versionId,
-    parameters: {},
-    visibility: 'company',
-  })
   const approvalsBeforeEvaluation = await request<PageResponse<Approval>>(page, token, '/approvals?pageSize=100')
-  const existingApprovalIds = new Set(approvalsBeforeEvaluation.items.map((item) => item.id))
-  await request(page, token, `/evaluations/${evaluation.id}/start`, 'POST')
+  const existingApprovalIds = new Set(approvalsBeforeEvaluation.items.map(item => item.id))
+  const evaluation = await beginApplicationEvaluation(page, token, { applicationId: application!.id, workflowId: workflow!.id, versionId: version!.id, name: `M7 Evaluation ${suffix}`, input: { question: 'evaluation-e2e', attachments: [] }, expectedOutput: referenceInvocation.outputs })
   let evaluationApproval: Approval | undefined
   await expect.poll(async () => {
     const approvals = await request<PageResponse<Approval>>(page, token, '/approvals?pageSize=100')
@@ -624,14 +586,13 @@ test('M7 closes Application, Trigger, Evaluation, Approval and governance paths 
     return evaluationApproval?.id
   }, { timeout: 150_000, intervals: [500, 1_000, 2_000] }).toBeTruthy()
   await approveApproval(approvalPage, token, evaluationApproval!)
-  let report: EvaluationReport | undefined
+  let report: { status: string; runs: { cases: { executionId: string; status: string }[] }[] } | undefined
   await expect.poll(async () => {
-    report = await request<EvaluationReport>(page, token, `/evaluations/${evaluation.id}/report`)
-    return report.run.status
+    report = await request(page, token, evaluation.reportPath)
+    return report!.status
   }, { timeout: 180_000, intervals: [750, 1_000, 2_000] }).toBe('completed')
-  expect(report!.results[0].targetExecutionId).toBe(evaluationApproval!.executionId)
-  expect(report!.results[0].status).toBe('completed')
-  expect(report!.results[0].ruleResults[0].status).toBe('passed')
+  expect(report!.runs[0].cases[0].executionId).toBe(evaluationApproval!.executionId)
+  expect(report!.runs[0].cases[0].status).toBe('passed')
 
   const capabilities = await request<Array<{ status: string }>>(page, token, '/runtime/capabilities')
   expect(capabilities.some((item) => item.status === 'ready')).toBeTruthy()
@@ -705,7 +666,7 @@ test('M7 closes Application, Trigger, Evaluation, Approval and governance paths 
   const pages = [
     { key: 'playground', path: '/playground' },
     { key: 'application-trigger', path: `/applications/${triggerApplication.id}` },
-    { key: 'evaluation', path: `/evaluations/${evaluation.id}` },
+    { key: 'evaluation', path: `/applications/${evaluation.applicationId}?tab=testing&testTab=runs&batchId=${evaluation.id}` },
     { key: 'approval', path: `/approvals/${completedApproval!.id}` },
     { key: 'runtime', path: '/runtime' },
   ]

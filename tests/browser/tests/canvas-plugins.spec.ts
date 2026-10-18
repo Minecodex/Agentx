@@ -1,3 +1,4 @@
+import { beginApplicationEvaluation } from '../support/application-testing'
 import { publishFixtureResponse } from '../draft-fixtures'
 import { fixtureVersionId, fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
 import { connect, login } from '../support/canvas-plugin'
@@ -253,24 +254,8 @@ test('imports a TypeScript canvas plugin and edits its static platform controls'
   await expect.poll(async () => (await api<{ status: string }>(page, token, `/executions/${parentExecutionId}`)).status, { timeout: 120_000 }).toBe('succeeded')
   const parentNodes = await api<{ items: Array<{ nodeType: string; status: string }> }>(page, token, `/executions/${parentExecutionId}/nodes`)
   expect(parentNodes.items).toContainEqual(expect.objectContaining({ nodeType: 'sub_workflow', status: 'succeeded' }))
-  const evaluationSuffix = Date.now().toString()
-  const datasetResponse = await page.request.post('/api/v1/datasets', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { name: `Plugin dataset ${evaluationSuffix}`, description: 'Plugin closure', visibility: 'company' } })
-  expect(datasetResponse.status()).toBe(201)
-  const dataset = await datasetResponse.json() as { id: string }
-  const caseResponse = await page.request.post(`/api/v1/datasets/${dataset.id}/cases`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { expectedRevision: 0, caseKey: 'plugin-case', name: 'Plugin case', input: {}, expectedOutput: { mapped: 1 }, context: null, tags: ['plugin'], evaluatorOverride: null } })
-  expect(caseResponse.status()).toBe(201)
-  const datasetVersionResponse = await page.request.post(`/api/v1/datasets/${dataset.id}/versions`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
-  expect(datasetVersionResponse.status()).toBe(201)
-  const datasetVersion = await datasetVersionResponse.json() as { id: string }
-  const profileResponse = await page.request.post('/api/v1/evaluation-profiles', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { name: `Plugin exact ${evaluationSuffix}`, description: 'Plugin closure', visibility: 'company', aggregation: 'all', passThreshold: '1', rules: [{ key: 'exact', name: 'Exact', evaluatorType: 'exact', configuration: {}, weight: '1', required: true }] } })
-  expect(profileResponse.status()).toBe(201)
-  const profile = await profileResponse.json() as { versionId: string }
-  const evaluationResponse = await page.request.post('/api/v1/evaluations', { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() }, data: { name: `Plugin evaluation ${evaluationSuffix}`, workflowVersionId: workflowVersion.id, datasetVersionId: datasetVersion.id, evaluationProfileVersionId: profile.versionId, visibility: 'company', parameters: {} } })
-  expect(evaluationResponse.status()).toBe(201)
-  const evaluation = await evaluationResponse.json() as { id: string }
-  const evaluationStart = await page.request.post(`/api/v1/evaluations/${evaluation.id}/start`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })
-  expect(evaluationStart.status()).toBe(202)
-  await expect.poll(async () => (await page.request.get(`/api/v1/evaluations/${evaluation.id}/report`, { headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key':crypto.randomUUID() } })).status(), { timeout: 180_000, intervals: [500, 1_000, 2_000] }).toBe(200)
+  const evaluation = await beginApplicationEvaluation(page, token, { workflowId: workflow.id, versionId: workflowVersion.id, name: `Plugin evaluation ${Date.now()}`, input: {}, expectedOutput: { mapped: 1 } })
+  await expect.poll(async () => (await api<{ status: string }>(page, token, evaluation.reportPath)).status, { timeout: 180_000 }).toBe('completed')
 
   const installed = (await api<{ items: Array<{ id: string; packageId: string; version: number; versions: Array<{ id: string; packageVersion: string; bundleDigest: string }> }> }>(page, token, '/canvas-plugins?pageSize=100')).items.find((plugin) => plugin.packageId === 'acme/json-mapper')!
   const version = installed.versions.find((candidate) => candidate.packageVersion === '1.0.0')!

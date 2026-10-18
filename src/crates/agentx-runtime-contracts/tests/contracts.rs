@@ -625,6 +625,16 @@ fn model_evaluator_resource_and_prompt_tampering_are_rejected() {
     resource_tampered.payload.model_evaluator_executions[0].resource_id = Uuid::now_v7();
     assert!(resource_tampered.verify(&key.verifying_key()).is_err());
 
+    let mut wrong_tenant = evaluation_work_package_payload();
+    let agentx_runtime_contracts::RuntimeWorkPackageSpecV1::Evaluation { evaluators, .. } =
+        &mut wrong_tenant.spec
+    else {
+        unreachable!()
+    };
+    let agentx_runtime_contracts::RuntimeEvaluatorV1::Model { model, .. } = &mut evaluators[0];
+    model.tenant_id = Uuid::now_v7();
+    wrong_tenant.model_evaluator_executions[0].model = model.clone();
+    assert!(RuntimeWorkPackageV1::signed(wrong_tenant, "evaluation-current", &key).is_err());
     let mut prompt_tampered = package;
     prompt_tampered.payload.model_evaluator_executions[0].prompt_object_id = Uuid::now_v7();
     assert!(prompt_tampered.verify(&key.verifying_key()).is_err());
@@ -720,6 +730,31 @@ fn evaluation_work_package_payload() -> RuntimeWorkPackagePayloadV1 {
         },
         credential: None,
     };
+    let model = agentx_runtime_contracts::RuntimePlatformEvaluationModelV1 {
+        tenant_id,
+        application_id: Uuid::now_v7(),
+        batch_id: Uuid::now_v7(),
+        setting_version: 1,
+        model_alias_version: 1,
+        credential_id: None,
+        credential_version: None,
+        parameters: json!({}),
+        binding: agentx_runtime_contracts::RuntimeResourceBindingV1 {
+            resource_kind: agentx_runtime_contracts::RuntimeResourceKindV1::Model,
+            resource_id,
+            resource_version: "model:1".into(),
+            state_epoch: 1,
+            content_hash: agentx_runtime_contracts::content_hash(&model_configuration).unwrap(),
+            configuration: model_configuration.clone(),
+            object_ids: vec![],
+        },
+    };
+    let mut judge = compiled_workflow();
+    judge.nodes=[("evaluate","model")].iter().enumerate().map(|(index,(id,node_type))|serde_json::from_value(json!({"index":index,"id":id,"key":id,"name":id,"nodeType":node_type,"typeVersion":1,"parameters":{},"parameterSchema":{},"contextWrites":[],"settings":{},"capability":if *node_type=="model"{"model"}else{"builtin"},"executionStyle":"action","readiness":"any","requiredInputPorts":[],"outputPorts":[],"effectiveOutputContract":{"portSchemas":{},"cardinalities":{}},"sideEffectLevel":"none","incomingConnections":[],"outgoingConnections":[],"componentIndex":0})).unwrap()).collect();
+    judge.exits.insert(
+        "__exit__".into(),
+        serde_json::from_value(json!({})).unwrap(),
+    );
     RuntimeWorkPackagePayloadV1 {
         schema_version: 1,
         package_id: Uuid::now_v7(),
@@ -750,6 +785,8 @@ fn evaluation_work_package_payload() -> RuntimeWorkPackagePayloadV1 {
                 evaluator_id,
                 resource_id,
                 prompt_object_id,
+                model: model.clone(),
+                pass_threshold: 0.8,
             }],
         },
         model_evaluator_executions: vec![
@@ -757,9 +794,11 @@ fn evaluation_work_package_payload() -> RuntimeWorkPackagePayloadV1 {
                 evaluator_id,
                 resource_id,
                 prompt_object_id,
-                definition: json!({"schemaVersion":"6.0","kind":"model_evaluator"}),
-                compiled_ir: compiled_workflow(),
+                definition: json!({"nodes":[{"id":"evaluate","type":"model","resourceReferences":[{"resourceType":"model","resourceId":resource_id}]},{"id":"__exit__","type":"exit"}]}),
+                compiled_ir: judge,
                 node_manifests: vec![],
+                model: model.clone(),
+                pass_threshold: 0.8,
             },
         ],
         source_revision: "evaluation:1".into(),
@@ -775,15 +814,7 @@ fn evaluation_work_package_payload() -> RuntimeWorkPackagePayloadV1 {
             ..RuntimeWorkPackageOverlayV1::default()
         },
         resource_closure: DependencyClosureV1 { entries: vec![] },
-        resources: vec![agentx_runtime_contracts::RuntimeResourceBindingV1 {
-            resource_kind: agentx_runtime_contracts::RuntimeResourceKindV1::Model,
-            resource_id,
-            resource_version: "model:1".into(),
-            state_epoch: 1,
-            content_hash: agentx_runtime_contracts::content_hash(&model_configuration).unwrap(),
-            configuration: model_configuration,
-            object_ids: vec![],
-        }],
+        resources: vec![],
         authorization: authorization(tenant_id, workflow_id),
         objects: vec![RuntimeObjectReferenceV1 {
             tenant_id,

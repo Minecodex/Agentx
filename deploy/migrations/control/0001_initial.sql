@@ -273,7 +273,10 @@ CREATE TABLE dataset_cases (
     expected_output_json JSON NULL,
     context_json JSON NULL,
     tags_json JSON NOT NULL,
-    evaluator_override_json JSON NULL,
+    pending_fields_json JSON NOT NULL DEFAULT (JSON_ARRAY()),
+    lineage_id BINARY(16) NOT NULL,
+    source_invocation_id BINARY(16) NULL,
+    reference_confirmed BOOLEAN NOT NULL DEFAULT TRUE,
     sort_order BIGINT UNSIGNED NOT NULL,
     version BIGINT UNSIGNED NOT NULL DEFAULT 1,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
@@ -293,7 +296,10 @@ CREATE TABLE dataset_version_cases (
     expected_output_json JSON NULL,
     context_json JSON NULL,
     tags_json JSON NOT NULL,
-    evaluator_override_json JSON NULL,
+    pending_fields_json JSON NOT NULL DEFAULT (JSON_ARRAY()),
+    lineage_id BINARY(16) NOT NULL,
+    source_invocation_id BINARY(16) NULL,
+    reference_confirmed BOOLEAN NOT NULL DEFAULT TRUE,
     sort_order BIGINT UNSIGNED NOT NULL,
     content_hash CHAR(64) NOT NULL,
     PRIMARY KEY (tenant_id, dataset_version_id, source_case_id),
@@ -318,9 +324,13 @@ CREATE TABLE dataset_versions (
 CREATE TABLE datasets (
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
+    application_id BINARY(16) NOT NULL,
+    source_workflow_version_id BINARY(16) NOT NULL,
+    contract_json JSON NOT NULL,
+    contract_fingerprint CHAR(64) NOT NULL,
+    source_dataset_id BINARY(16) NULL,
     name VARCHAR(160) NOT NULL,
     description VARCHAR(1000) NULL,
-    visibility ENUM('private', 'department', 'company') NOT NULL DEFAULT 'private',
     owner_user_id BINARY(16) NOT NULL,
     owner_department_id BINARY(16) NOT NULL,
     status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
@@ -329,7 +339,8 @@ CREATE TABLE datasets (
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
-    KEY idx_datasets_tenant (tenant_id, status, updated_at),
+    UNIQUE KEY uq_datasets_application_name (tenant_id, application_id, name),
+    KEY idx_datasets_application (tenant_id, application_id, status, updated_at),
     KEY idx_datasets_department (tenant_id, owner_department_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -371,87 +382,36 @@ CREATE TABLE deployment_history (
     KEY idx_deployment_history (tenant_id, workflow_id, environment_id, occurred_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE evaluation_case_results (
-    id BINARY(16) NOT NULL,
-    tenant_id BINARY(16) NOT NULL,
-    evaluation_run_id BINARY(16) NOT NULL,
-    source_case_id BINARY(16) NOT NULL,
-    execution_id BINARY(16) NOT NULL,
-    status ENUM('passed', 'failed', 'error', 'cancelled') NOT NULL,
-    score DECIMAL(12,6) NULL,
-    detail_json JSON NOT NULL,
-    duration_ms BIGINT UNSIGNED NULL,
-    cost_micros BIGINT UNSIGNED NOT NULL DEFAULT 0,
-    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    PRIMARY KEY (id),
-    UNIQUE KEY uq_evaluation_case_result (tenant_id, evaluation_run_id, source_case_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
-CREATE TABLE evaluation_comparisons (
-    id BINARY(16) NOT NULL,
-    tenant_id BINARY(16) NOT NULL,
-    name VARCHAR(160) NOT NULL,
-    baseline_run_id BINARY(16) NOT NULL,
-    candidate_run_id BINARY(16) NOT NULL,
-    created_by BINARY(16) NOT NULL,
-    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    PRIMARY KEY (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
-CREATE TABLE evaluation_metrics (
-    tenant_id BINARY(16) NOT NULL,
-    evaluation_run_id BINARY(16) NOT NULL,
-    metric_key VARCHAR(128) NOT NULL,
-    metric_value DECIMAL(24,8) NOT NULL,
-    detail_json JSON NULL,
-    PRIMARY KEY (tenant_id, evaluation_run_id, metric_key)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
-CREATE TABLE evaluation_profile_rules (
-    id BINARY(16) NOT NULL,
-    tenant_id BINARY(16) NOT NULL,
-    profile_version_id BINARY(16) NOT NULL,
-    rule_key VARCHAR(128) NOT NULL,
-    name VARCHAR(160) NOT NULL,
-    evaluator_type ENUM('exact', 'contains', 'regex', 'json_schema', 'llm_judge', 'custom_code') NOT NULL,
-    configuration_json JSON NOT NULL,
-    weight DECIMAL(10,4) NOT NULL DEFAULT 1,
-    required BOOLEAN NOT NULL DEFAULT TRUE,
-    sort_order INT UNSIGNED NOT NULL,
-    PRIMARY KEY (id),
-    UNIQUE KEY uq_evaluation_profile_rule (tenant_id, profile_version_id, rule_key),
-    KEY idx_evaluation_profile_rule_order (tenant_id, profile_version_id, sort_order)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
 CREATE TABLE evaluation_profile_versions (
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
     profile_id BINARY(16) NOT NULL,
     version_number BIGINT UNSIGNED NOT NULL,
-    aggregation ENUM('all', 'any', 'weighted') NOT NULL DEFAULT 'all',
-    pass_threshold DECIMAL(8,6) NOT NULL DEFAULT 1,
+    criteria TEXT NOT NULL,
+    pass_threshold DECIMAL(8,6) NOT NULL DEFAULT 0.8,
     content_hash CHAR(64) NOT NULL,
     created_by BINARY(16) NOT NULL,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
     UNIQUE KEY uq_evaluation_profile_version (tenant_id, profile_id, version_number),
-    UNIQUE KEY uq_evaluation_profile_version_hash (tenant_id, profile_id, content_hash)
+    KEY idx_evaluation_profile_version_hash (tenant_id, profile_id, content_hash)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE evaluation_profiles (
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
+    application_id BINARY(16) NOT NULL,
     name VARCHAR(160) NOT NULL,
     description VARCHAR(1000) NULL,
     owner_user_id BINARY(16) NOT NULL,
     owner_department_id BINARY(16) NOT NULL,
-    visibility ENUM('private', 'department', 'company') NOT NULL DEFAULT 'private',
     status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
     version BIGINT UNSIGNED NOT NULL DEFAULT 1,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
-    KEY idx_evaluation_profiles (tenant_id, updated_at)
+    UNIQUE KEY uq_profiles_application_name (tenant_id, application_id, name),
+    KEY idx_evaluation_profiles (tenant_id, application_id, updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE evaluation_rule_results (
@@ -467,6 +427,7 @@ CREATE TABLE evaluation_rule_results (
     detail_json JSON NOT NULL,
     duration_ms BIGINT UNSIGNED NULL,
     cost_micros BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    cost_by_currency_json JSON NULL,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     completed_at TIMESTAMP(6) NULL,
     PRIMARY KEY (id),
@@ -485,6 +446,7 @@ CREATE TABLE evaluation_case_projection (
     actual_output_json JSON NULL,
     duration_ms BIGINT UNSIGNED NULL,
     cost_micros BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    cost_by_currency_json JSON NULL,
     error_code VARCHAR(128) NULL,
     error_message VARCHAR(1000) NULL,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
@@ -498,15 +460,17 @@ CREATE TABLE evaluation_case_projection (
 CREATE TABLE evaluation_runs (
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
+    application_id BINARY(16) NOT NULL,
+    batch_id BINARY(16) NOT NULL,
     name VARCHAR(160) NOT NULL,
     workflow_version_id BINARY(16) NOT NULL,
     dataset_version_id BINARY(16) NOT NULL,
     evaluation_profile_version_id BINARY(16) NOT NULL,
     parameters_json JSON NOT NULL,
+    dispatch_error_json JSON NULL,
     status ENUM('created', 'queued', 'running', 'completed', 'failed', 'cancelled') NOT NULL DEFAULT 'created',
     created_by BINARY(16) NOT NULL,
     owner_department_id BINARY(16) NOT NULL,
-    visibility ENUM('private', 'department', 'company') NOT NULL DEFAULT 'private',
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     started_at TIMESTAMP(6) NULL,
     completed_at TIMESTAMP(6) NULL,
@@ -1287,8 +1251,8 @@ CREATE TABLE skills (
 
 CREATE TABLE tenant_settings (
     tenant_id BINARY(16) NOT NULL,
-    studio_builder_model_alias_id BINARY(16) NULL,
-    studio_builder_credential_id BINARY(16) NULL,
+    platform_ai_model_alias_id BINARY(16) NULL,
+    platform_ai_credential_id BINARY(16) NULL,
     locale VARCHAR(16) NOT NULL,
     timezone VARCHAR(64) NOT NULL,
     version BIGINT UNSIGNED NOT NULL DEFAULT 1,
@@ -1690,5 +1654,24 @@ ALTER TABLE studio_builder_effects
     ADD KEY idx_builder_effect_order (tenant_id,run_id,created_at,id);
 
 ALTER TABLE tenant_settings
-    ADD CONSTRAINT fk_studio_builder_model FOREIGN KEY (studio_builder_model_alias_id) REFERENCES model_aliases(id),
-    ADD CONSTRAINT fk_studio_builder_credential FOREIGN KEY (studio_builder_credential_id) REFERENCES credentials(id);
+    ADD CONSTRAINT fk_studio_builder_model FOREIGN KEY (platform_ai_model_alias_id) REFERENCES model_aliases(id),
+    ADD CONSTRAINT fk_studio_builder_credential FOREIGN KEY (platform_ai_credential_id) REFERENCES credentials(id);
+
+
+CREATE TABLE evaluation_batches (
+    id BINARY(16) NOT NULL,
+    tenant_id BINARY(16) NOT NULL,
+    application_id BINARY(16) NOT NULL,
+    name VARCHAR(160) NOT NULL,
+    profile_version_id BINARY(16) NOT NULL,
+    model_snapshot_json JSON NOT NULL,
+    system_prompt TEXT NOT NULL,
+    actor_snapshot_json JSON NOT NULL,
+    origin_snapshot_json JSON NOT NULL,
+    status ENUM('queued','running','completed','failed','cancelled') NOT NULL DEFAULT 'queued',
+    version BIGINT UNSIGNED NOT NULL DEFAULT 1,
+    created_by BINARY(16) NOT NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY(id),
+    KEY idx_evaluation_batches_application(tenant_id,application_id,created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

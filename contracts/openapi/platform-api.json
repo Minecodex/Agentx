@@ -649,6 +649,48 @@
         ],
         "type": "object"
       },
+      "ApplicationTestContract": {
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          },
+          "contract": {
+            "$ref": "#/components/schemas/ApplicationTestContract_TestContract"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "versionNumber": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "versionNumber",
+          "archived",
+          "contract"
+        ],
+        "title": "VersionContract",
+        "type": "object"
+      },
+      "ApplicationTestContract_TestContract": {
+        "properties": {
+          "fingerprint": {
+            "type": "string"
+          },
+          "inputSchema": true,
+          "outputSchema": true
+        },
+        "required": [
+          "inputSchema",
+          "outputSchema",
+          "fingerprint"
+        ],
+        "type": "object"
+      },
       "ApplicationUserIdentity": {
         "additionalProperties": false,
         "description": "The end user a call acts for. API identities are declarations, not authentication.",
@@ -971,48 +1013,6 @@
           "cancelled"
         ],
         "type": "string"
-      },
-      "BuilderModelSetting": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "properties": {
-          "canManage": {
-            "type": "boolean"
-          },
-          "modelAlias": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "modelAliasId": {
-            "format": "uuid",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "reason": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "status": {
-            "type": "string"
-          },
-          "version": {
-            "format": "uint64",
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "version",
-          "status",
-          "canManage"
-        ],
-        "title": "BuilderModelSetting",
-        "type": "object"
       },
       "CancelResourceGrantRequest": {
         "properties": {
@@ -1555,6 +1555,36 @@
           "version"
         ],
         "title": "ConnectionResponse",
+        "type": "object"
+      },
+      "CopyDatasetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expectedRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "name",
+          "workflowVersionId"
+        ],
+        "title": "CopyDataset",
         "type": "object"
       },
       "CreateApiKeyRequest": {
@@ -4002,6 +4032,7 @@
         "type": "object"
       },
       "CreateDatasetRequest": {
+        "additionalProperties": false,
         "properties": {
           "description": {
             "type": [
@@ -4009,16 +4040,69 @@
               "null"
             ]
           },
+          "initialCase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CreateDatasetRequest_CaseDraft"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "name": {
             "type": "string"
           },
-          "visibility": {
+          "workflowVersionId": {
+            "format": "uuid",
             "type": "string"
           }
         },
         "required": [
           "name",
-          "visibility"
+          "workflowVersionId"
+        ],
+        "title": "CreateDatasetRequest",
+        "type": "object"
+      },
+      "CreateDatasetRequest_CaseDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedOutput": true,
+          "input": true,
+          "name": {
+            "type": "string"
+          },
+          "pendingFields": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "referenceConfirmed": {
+            "default": true,
+            "type": "boolean"
+          },
+          "sourceInvocationId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "input",
+          "expectedOutput"
         ],
         "type": "object"
       },
@@ -4081,67 +4165,55 @@
         ],
         "type": "object"
       },
-      "CreateEvaluationProfileRequest": {
+      "CreateEvaluationRequest": {
+        "additionalProperties": false,
         "properties": {
-          "aggregation": {
-            "type": "string"
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "name": {
             "type": "string"
           },
-          "passThreshold": {
+          "profileVersionId": {
+            "format": "uuid",
             "type": "string"
           },
-          "rules": {
+          "selections": {
             "items": {
-              "$ref": "#/components/schemas/EvaluationRuleInput"
+              "$ref": "#/components/schemas/CreateEvaluationRequest_Selection"
             },
             "type": "array"
-          },
-          "visibility": {
-            "type": "string"
           }
         },
         "required": [
           "name",
-          "rules"
+          "profileVersionId",
+          "selections"
         ],
+        "title": "CreateEvaluation",
         "type": "object"
       },
-      "CreateEvaluationRunRequest": {
+      "CreateEvaluationRequest_Selection": {
+        "additionalProperties": false,
         "properties": {
-          "datasetVersionId": {
+          "datasetId": {
             "format": "uuid",
             "type": "string"
           },
-          "evaluationProfileVersionId": {
-            "format": "uuid",
-            "type": "string"
+          "expectedRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
           },
-          "name": {
-            "type": "string"
-          },
-          "parameters": {},
-          "visibility": {
-            "type": "string"
-          },
-          "workflowVersionId": {
-            "format": "uuid",
-            "type": "string"
+          "workflowVersionIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
-          "name",
-          "workflowVersionId",
-          "datasetVersionId",
-          "evaluationProfileVersionId",
-          "parameters"
+          "datasetId",
+          "expectedRevision",
+          "workflowVersionIds"
         ],
         "type": "object"
       },
@@ -4749,12 +4821,206 @@
         ],
         "type": "object"
       },
-      "DatasetResponse": {
+      "DatasetCopyPreview": {
         "properties": {
           "caseCount": {
-            "format": "int64",
+            "format": "uint",
             "minimum": 0,
             "type": "integer"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetCopyPreview_CaseResponse"
+            },
+            "type": "array"
+          },
+          "contractChanged": {
+            "type": "boolean"
+          },
+          "incompleteCount": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "caseCount",
+          "incompleteCount",
+          "contractChanged",
+          "cases"
+        ],
+        "title": "CopyPreview",
+        "type": "object"
+      },
+      "DatasetCopyPreview_CaseErrorCode": {
+        "enum": [
+          "REQUIRED",
+          "INVALID_VALUE",
+          "INVALID_CONTRACT",
+          "PENDING_FIELD",
+          "REFERENCE_UNCONFIRMED",
+          "ARTIFACT_UNAVAILABLE"
+        ],
+        "type": "string"
+      },
+      "DatasetCopyPreview_CaseFieldError": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/DatasetCopyPreview_CaseErrorCode"
+          },
+          "field": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "DatasetCopyPreview_CaseResponse": {
+        "properties": {
+          "caseKey": {
+            "type": "string"
+          },
+          "expectedOutput": true,
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "input": true,
+          "lineageId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pendingFields": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "referenceConfirmed": {
+            "default": true,
+            "type": "boolean"
+          },
+          "sortOrder": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sourceInvocationId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "validationErrors": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetCopyPreview_CaseFieldError"
+            },
+            "type": "array"
+          },
+          "version": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "caseKey",
+          "lineageId",
+          "version",
+          "sortOrder",
+          "name",
+          "input",
+          "expectedOutput",
+          "validationErrors"
+        ],
+        "type": "object"
+      },
+      "DatasetExportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "caseIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "expectedRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "caseIds"
+        ],
+        "title": "ExportCases",
+        "type": "object"
+      },
+      "DatasetImportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "expectedRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "format": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "content",
+          "format"
+        ],
+        "title": "ImportCases",
+        "type": "object"
+      },
+      "DatasetResponse": {
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "caseCount": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "compatibleVersions": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "contract": {
+            "$ref": "#/components/schemas/DatasetResponse_TestContract"
           },
           "description": {
             "type": [
@@ -4766,97 +5032,75 @@
             "format": "uuid",
             "type": "string"
           },
-          "latestVersion": {
-            "format": "int64",
+          "incompleteCount": {
+            "format": "uint",
             "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "name": {
             "type": "string"
           },
-          "ownerDepartmentId": {
-            "format": "uuid",
-            "type": "string"
-          },
           "revision": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
+          },
+          "sourceWorkflowVersionId": {
+            "format": "uuid",
+            "type": "string"
           },
           "status": {
             "type": "string"
           },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
           "version": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
-          },
-          "visibility": {
-            "type": "string"
           }
         },
         "required": [
           "id",
+          "applicationId",
           "name",
-          "visibility",
           "status",
-          "ownerDepartmentId",
           "revision",
-          "caseCount",
           "version",
-          "updatedAt"
+          "sourceWorkflowVersionId",
+          "contract",
+          "caseCount",
+          "incompleteCount",
+          "compatibleVersions"
+        ],
+        "title": "DatasetResponse",
+        "type": "object"
+      },
+      "DatasetResponse_TestContract": {
+        "properties": {
+          "fingerprint": {
+            "type": "string"
+          },
+          "inputSchema": true,
+          "outputSchema": true
+        },
+        "required": [
+          "inputSchema",
+          "outputSchema",
+          "fingerprint"
         ],
         "type": "object"
       },
-      "DatasetVersionResponse": {
+      "DatasetRevisionRequest": {
         "properties": {
-          "caseCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "contentHash": {
-            "type": "string"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "datasetId": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "sourceRevision": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "versionNumber": {
-            "format": "int64",
+          "expectedRevision": {
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
           }
         },
         "required": [
-          "id",
-          "datasetId",
-          "versionNumber",
-          "sourceRevision",
-          "contentHash",
-          "caseCount",
-          "createdAt"
+          "expectedRevision"
         ],
+        "title": "Revision",
         "type": "object"
       },
       "DebugExecutionRequest": {
@@ -5541,29 +5785,107 @@
         ],
         "type": "object"
       },
-      "EvaluationCaseResultResponse": {
+      "EvaluationBatchReport": {
         "properties": {
-          "caseId": {
+          "applicationId": {
             "format": "uuid",
             "type": "string"
           },
-          "caseKey": {
+          "createdAt": {
             "type": "string"
           },
-          "costMicros": {
-            "format": "int64",
+          "criteria": {
+            "type": "string"
+          },
+          "durationMs": {
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
           },
-          "detail": {},
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "modelId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "modelName": {
+            "type": "string"
+          },
+          "modelParameters": true,
+          "modelVersion": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "passThreshold": {
+            "format": "double",
+            "type": "number"
+          },
+          "profileName": {
+            "type": "string"
+          },
+          "profileVersionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationBatchReport_RunReport"
+            },
+            "type": "array"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "applicationId",
+          "name",
+          "status",
+          "profileName",
+          "profileVersionId",
+          "criteria",
+          "passThreshold",
+          "modelId",
+          "modelVersion",
+          "modelName",
+          "modelParameters",
+          "createdAt",
+          "durationMs",
+          "runs"
+        ],
+        "title": "BatchReport",
+        "type": "object"
+      },
+      "EvaluationBatchReport_CaseReport": {
+        "properties": {
+          "actualOutput": true,
+          "businessCostByCurrency": {
+            "additionalProperties": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "businessCostMicros": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "durationMs": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": [
               "integer",
               "null"
             ]
           },
+          "error": true,
           "errorCode": {
             "type": [
               "string",
@@ -5576,11 +5898,59 @@
               "null"
             ]
           },
-          "ruleResults": {
-            "items": {
-              "$ref": "#/components/schemas/EvaluationRuleResultResponse"
+          "executionId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expectedOutput": true,
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "input": true,
+          "judgeCostByCurrency": {
+            "additionalProperties": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
             },
-            "type": "array"
+            "type": "object"
+          },
+          "judgeCostMicros": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "judgeDurationMs": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "judgeExecutionId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lineageId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "score": {
             "format": "double",
@@ -5589,34 +5959,199 @@
               "null"
             ]
           },
-          "sourceCaseId": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "lineageId",
+          "input",
+          "status",
+          "businessCostMicros",
+          "judgeCostMicros",
+          "businessCostByCurrency",
+          "judgeCostByCurrency"
+        ],
+        "type": "object"
+      },
+      "EvaluationBatchReport_RunReport": {
+        "properties": {
+          "averageScore": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "businessCostByCurrency": {
+            "additionalProperties": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "businessCostMicros": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationBatchReport_CaseReport"
+            },
+            "type": "array"
+          },
+          "contractFingerprint": {
+            "type": "string"
+          },
+          "datasetId": {
             "format": "uuid",
             "type": "string"
+          },
+          "datasetName": {
+            "type": "string"
+          },
+          "datasetVersionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "dispatchError": true,
+          "errorCount": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failedCount": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "judgeCostByCurrency": {
+            "additionalProperties": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "judgeCostMicros": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "passRate": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "passedCount": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "scoredCount": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sourceRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
           },
           "status": {
             "type": "string"
           },
-          "targetExecutionId": {
+          "totalCases": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "workflowVersionId": {
             "format": "uuid",
+            "type": "string"
+          },
+          "workflowVersionNumber": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "datasetId",
+          "datasetName",
+          "contractFingerprint",
+          "datasetVersionId",
+          "sourceRevision",
+          "workflowVersionId",
+          "workflowVersionNumber",
+          "status",
+          "totalCases",
+          "passedCount",
+          "failedCount",
+          "errorCount",
+          "scoredCount",
+          "businessCostMicros",
+          "judgeCostMicros",
+          "businessCostByCurrency",
+          "judgeCostByCurrency",
+          "cases"
+        ],
+        "type": "object"
+      },
+      "EvaluationProfileDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "criteria": {
+            "type": "string"
+          },
+          "description": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "passThreshold": {
+            "format": "double",
+            "type": "number"
+          },
+          "version": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
               "null"
             ]
           }
         },
         "required": [
-          "caseId",
-          "sourceCaseId",
-          "caseKey",
-          "status",
-          "costMicros",
-          "ruleResults"
+          "name",
+          "criteria",
+          "passThreshold"
         ],
+        "title": "ProfileDraft",
         "type": "object"
       },
       "EvaluationProfileResponse": {
         "properties": {
-          "aggregation": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "criteria": {
             "type": "string"
           },
           "description": {
@@ -5632,24 +6167,12 @@
           "name": {
             "type": "string"
           },
-          "ownerDepartmentId": {
-            "format": "uuid",
-            "type": "string"
-          },
           "passThreshold": {
-            "type": "string"
-          },
-          "rules": {
-            "items": {
-              "$ref": "#/components/schemas/EvaluationRuleResponse"
-            },
-            "type": "array"
-          },
-          "status": {
-            "type": "string"
+            "format": "double",
+            "type": "number"
           },
           "version": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
           },
@@ -5658,250 +6181,22 @@
             "type": "string"
           },
           "versionNumber": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
-          },
-          "visibility": {
-            "type": "string"
           }
         },
         "required": [
           "id",
+          "applicationId",
+          "name",
+          "version",
           "versionId",
           "versionNumber",
-          "name",
-          "visibility",
-          "ownerDepartmentId",
-          "status",
-          "aggregation",
-          "passThreshold",
-          "rules",
-          "version"
+          "criteria",
+          "passThreshold"
         ],
-        "type": "object"
-      },
-      "EvaluationReportResponse": {
-        "properties": {
-          "metrics": {
-            "items": {},
-            "type": "array"
-          },
-          "reportStatus": {
-            "type": "string"
-          },
-          "results": {
-            "items": {
-              "$ref": "#/components/schemas/EvaluationCaseResultResponse"
-            },
-            "type": "array"
-          },
-          "run": {
-            "$ref": "#/components/schemas/EvaluationRunResponse"
-          }
-        },
-        "required": [
-          "run",
-          "results",
-          "metrics",
-          "reportStatus"
-        ],
-        "type": "object"
-      },
-      "EvaluationRuleInput": {
-        "properties": {
-          "configuration": {},
-          "evaluatorType": {
-            "type": "string"
-          },
-          "key": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "required": {
-            "type": "boolean"
-          },
-          "weight": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "key",
-          "name",
-          "evaluatorType",
-          "configuration"
-        ],
-        "type": "object"
-      },
-      "EvaluationRuleResponse": {
-        "properties": {
-          "configuration": {},
-          "evaluatorType": {
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "key": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "required": {
-            "type": "boolean"
-          },
-          "sortOrder": {
-            "format": "int32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "weight": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "key",
-          "name",
-          "evaluatorType",
-          "configuration",
-          "weight",
-          "required",
-          "sortOrder"
-        ],
-        "type": "object"
-      },
-      "EvaluationRuleResultResponse": {
-        "properties": {
-          "costMicros": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "detail": {},
-          "durationMs": {
-            "format": "int64",
-            "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "evaluatorExecutionId": {
-            "format": "uuid",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "evaluatorType": {
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "key": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "passed": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "score": {
-            "format": "double",
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "status": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "key",
-          "name",
-          "evaluatorType",
-          "status",
-          "detail",
-          "costMicros"
-        ],
-        "type": "object"
-      },
-      "EvaluationRunResponse": {
-        "properties": {
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "datasetName": {
-            "type": "string"
-          },
-          "datasetVersionId": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "evaluationProfileVersionId": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "ownerDepartmentId": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "parameters": {},
-          "resultCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "status": {
-            "type": "string"
-          },
-          "visibility": {
-            "type": "string"
-          },
-          "workflowName": {
-            "type": "string"
-          },
-          "workflowVersionId": {
-            "format": "uuid",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "workflowVersionId",
-          "workflowName",
-          "datasetVersionId",
-          "datasetName",
-          "evaluationProfileVersionId",
-          "visibility",
-          "ownerDepartmentId",
-          "status",
-          "resultCount",
-          "parameters",
-          "createdAt"
-        ],
+        "title": "ProfileResponse",
         "type": "object"
       },
       "ExecutionCommandResponse": {
@@ -6545,6 +6840,92 @@
           "workflowId",
           "createdVersionId",
           "definitionHash"
+        ],
+        "type": "object"
+      },
+      "InvocationTestSample": {
+        "properties": {
+          "contract": {
+            "$ref": "#/components/schemas/InvocationTestSample_TestContract"
+          },
+          "expectedOutput": true,
+          "input": true,
+          "invocationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "referenceConfirmed": {
+            "type": "boolean"
+          },
+          "validationErrors": {
+            "items": {
+              "$ref": "#/components/schemas/InvocationTestSample_CaseFieldError"
+            },
+            "type": "array"
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "invocationId",
+          "workflowVersionId",
+          "contract",
+          "input",
+          "expectedOutput",
+          "name",
+          "referenceConfirmed",
+          "validationErrors"
+        ],
+        "title": "InvocationSample",
+        "type": "object"
+      },
+      "InvocationTestSample_CaseErrorCode": {
+        "enum": [
+          "REQUIRED",
+          "INVALID_VALUE",
+          "INVALID_CONTRACT",
+          "PENDING_FIELD",
+          "REFERENCE_UNCONFIRMED",
+          "ARTIFACT_UNAVAILABLE"
+        ],
+        "type": "string"
+      },
+      "InvocationTestSample_CaseFieldError": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/InvocationTestSample_CaseErrorCode"
+          },
+          "field": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "InvocationTestSample_TestContract": {
+        "properties": {
+          "fingerprint": {
+            "type": "string"
+          },
+          "inputSchema": true,
+          "outputSchema": true
+        },
+        "required": [
+          "inputSchema",
+          "outputSchema",
+          "fingerprint"
         ],
         "type": "object"
       },
@@ -7880,6 +8261,48 @@
         ],
         "type": "object"
       },
+      "PlatformAiModelSetting": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "canManage": {
+            "type": "boolean"
+          },
+          "modelAlias": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "modelAliasId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "status",
+          "canManage"
+        ],
+        "title": "PlatformAiModelSetting",
+        "type": "object"
+      },
       "PlaygroundConfigResponse": {
         "properties": {
           "applicationId": {
@@ -8892,37 +9315,121 @@
         "type": "object"
       },
       "RetrievalTestResult": {
-        "type": "object",
         "additionalProperties": false,
-        "required": [
-          "text",
-          "documents",
-          "files",
-          "partial",
-          "sources",
-          "elapsedMs"
-        ],
         "properties": {
-          "text": {
-            "type": "string"
-          },
           "documents": {
-            "type": "array",
             "items": {
-              "type": "object",
               "additionalProperties": false,
               "properties": {
+                "chunkId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "content": {
+                  "type": "string"
+                },
                 "documentId": {
                   "type": [
                     "string",
                     "null"
                   ]
                 },
-                "chunkId": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                "fusionScore": {
+                  "type": "number"
+                },
+                "metadata": {
+                  "type": "object"
+                },
+                "queryIds": {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "sources": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "connectionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "connectionVersion": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "queryIds": {
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "rank": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "rawScore": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "scope": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "datasetIds": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "minItems": 1,
+                                "type": "array"
+                              },
+                              "kind": {
+                                "const": "ragflow"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "datasetIds"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "lightrag"
+                              },
+                              "workspace": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "workspace"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "queryIds",
+                      "connectionId",
+                      "connectionVersion",
+                      "scope",
+                      "rawScore",
+                      "rank"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "title": {
                   "type": [
@@ -8935,104 +9442,6 @@
                     "string",
                     "null"
                   ]
-                },
-                "content": {
-                  "type": "string"
-                },
-                "metadata": {
-                  "type": "object"
-                },
-                "queryIds": {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "format": "uuid"
-                  }
-                },
-                "fusionScore": {
-                  "type": "number"
-                },
-                "sources": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "queryIds": {
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "format": "uuid"
-                        }
-                      },
-                      "connectionId": {
-                        "type": "string",
-                        "format": "uuid"
-                      },
-                      "connectionVersion": {
-                        "type": "integer",
-                        "minimum": 1
-                      },
-                      "scope": {
-                        "oneOf": [
-                          {
-                            "type": "object",
-                            "properties": {
-                              "kind": {
-                                "const": "ragflow"
-                              },
-                              "datasetIds": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                },
-                                "minItems": 1
-                              }
-                            },
-                            "required": [
-                              "kind",
-                              "datasetIds"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "kind": {
-                                "const": "lightrag"
-                              },
-                              "workspace": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "kind",
-                              "workspace"
-                            ],
-                            "additionalProperties": false
-                          }
-                        ]
-                      },
-                      "rawScore": {
-                        "type": [
-                          "number",
-                          "null"
-                        ]
-                      },
-                      "rank": {
-                        "type": "integer",
-                        "minimum": 1
-                      }
-                    },
-                    "required": [
-                      "queryIds",
-                      "connectionId",
-                      "connectionVersion",
-                      "scope",
-                      "rawScore",
-                      "rank"
-                    ],
-                    "additionalProperties": false
-                  }
                 }
               },
               "required": [
@@ -9045,28 +9454,27 @@
                 "queryIds",
                 "fusionScore",
                 "sources"
-              ]
-            }
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "elapsedMs": {
+            "minimum": 0,
+            "type": "integer"
           },
           "files": {
-            "type": "array",
+            "description": "External attachment source references, not platform Artifacts or downloaded originals.",
             "items": {
-              "type": "object",
               "additionalProperties": false,
               "properties": {
+                "contentType": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "documentId": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "referenceId": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "uri": {
                   "type": [
                     "string",
                     "null"
@@ -9078,56 +9486,65 @@
                     "null"
                   ]
                 },
-                "contentType": {
+                "referenceId": {
                   "type": [
                     "string",
                     "null"
                   ]
                 },
                 "sources": {
-                  "type": "array",
                   "items": {
-                    "type": "object",
+                    "additionalProperties": false,
                     "properties": {
-                      "queryIds": {
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "format": "uuid"
-                        }
-                      },
                       "connectionId": {
-                        "type": "string",
-                        "format": "uuid"
+                        "format": "uuid",
+                        "type": "string"
                       },
                       "connectionVersion": {
-                        "type": "integer",
-                        "minimum": 1
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "queryIds": {
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "rank": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "rawScore": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
                       },
                       "scope": {
                         "oneOf": [
                           {
-                            "type": "object",
+                            "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "ragflow"
-                              },
                               "datasetIds": {
-                                "type": "array",
                                 "items": {
                                   "type": "string"
                                 },
-                                "minItems": 1
+                                "minItems": 1,
+                                "type": "array"
+                              },
+                              "kind": {
+                                "const": "ragflow"
                               }
                             },
                             "required": [
                               "kind",
                               "datasetIds"
                             ],
-                            "additionalProperties": false
+                            "type": "object"
                           },
                           {
-                            "type": "object",
+                            "additionalProperties": false,
                             "properties": {
                               "kind": {
                                 "const": "lightrag"
@@ -9140,19 +9557,9 @@
                               "kind",
                               "workspace"
                             ],
-                            "additionalProperties": false
+                            "type": "object"
                           }
                         ]
-                      },
-                      "rawScore": {
-                        "type": [
-                          "number",
-                          "null"
-                        ]
-                      },
-                      "rank": {
-                        "type": "integer",
-                        "minimum": 1
                       }
                     },
                     "required": [
@@ -9163,8 +9570,15 @@
                       "rawScore",
                       "rank"
                     ],
-                    "additionalProperties": false
-                  }
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "uri": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 }
               },
               "required": [
@@ -9174,57 +9588,83 @@
                 "name",
                 "contentType",
                 "sources"
-              ]
+              ],
+              "type": "object"
             },
-            "description": "External attachment source references, not platform Artifacts or downloaded originals."
+            "type": "array"
           },
           "partial": {
             "type": "boolean"
           },
           "sources": {
-            "type": "array",
             "items": {
-              "type": "object",
+              "additionalProperties": false,
               "properties": {
-                "queryIds": {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "format": "uuid"
-                  }
-                },
                 "connectionId": {
-                  "type": "string",
-                  "format": "uuid"
+                  "format": "uuid",
+                  "type": "string"
                 },
                 "connectionVersion": {
-                  "type": "integer",
-                  "minimum": 1
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "elapsedMs": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "error": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "queryIds": {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "scope": {
                   "oneOf": [
                     {
-                      "type": "object",
+                      "additionalProperties": false,
                       "properties": {
-                        "kind": {
-                          "const": "ragflow"
-                        },
                         "datasetIds": {
-                          "type": "array",
                           "items": {
                             "type": "string"
                           },
-                          "minItems": 1
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "kind": {
+                          "const": "ragflow"
                         }
                       },
                       "required": [
                         "kind",
                         "datasetIds"
                       ],
-                      "additionalProperties": false
+                      "type": "object"
                     },
                     {
-                      "type": "object",
+                      "additionalProperties": false,
                       "properties": {
                         "kind": {
                           "const": "lightrag"
@@ -9237,7 +9677,7 @@
                         "kind",
                         "workspace"
                       ],
-                      "additionalProperties": false
+                      "type": "object"
                     }
                   ]
                 },
@@ -9245,32 +9685,6 @@
                   "enum": [
                     "succeeded",
                     "failed"
-                  ]
-                },
-                "elapsedMs": {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                "error": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ]
-                    }
                   ]
                 }
               },
@@ -9283,14 +9697,23 @@
                 "elapsedMs",
                 "error"
               ],
-              "additionalProperties": false
-            }
+              "type": "object"
+            },
+            "type": "array"
           },
-          "elapsedMs": {
-            "type": "integer",
-            "minimum": 0
+          "text": {
+            "type": "string"
           }
-        }
+        },
+        "required": [
+          "text",
+          "documents",
+          "files",
+          "partial",
+          "sources",
+          "elapsedMs"
+        ],
+        "type": "object"
       },
       "ReviewResourceGrantRequest": {
         "properties": {
@@ -10010,6 +10433,62 @@
         ],
         "type": "object"
       },
+      "SaveTestCaseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedOutput": true,
+          "expectedRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "input": true,
+          "name": {
+            "type": "string"
+          },
+          "pendingFields": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "referenceConfirmed": {
+            "default": true,
+            "type": "boolean"
+          },
+          "sourceInvocationId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "version": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "name",
+          "input",
+          "expectedOutput"
+        ],
+        "title": "SaveCase",
+        "type": "object"
+      },
       "ScheduleResponse": {
         "properties": {
           "cronExpression": {
@@ -10120,7 +10599,7 @@
         ],
         "type": "object"
       },
-      "SetBuilderModel": {
+      "SetPlatformAiModel": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
@@ -10138,7 +10617,7 @@
           "expectedVersion",
           "modelAliasId"
         ],
-        "title": "SetBuilderModel",
+        "title": "SetPlatformAiModel",
         "type": "object"
       },
       "SideEffectConfirmationRequest": {
@@ -14969,30 +15448,57 @@
           "caseKey": {
             "type": "string"
           },
-          "context": {},
-          "evaluatorOverride": {},
-          "expectedOutput": {},
+          "expectedOutput": true,
           "id": {
             "format": "uuid",
             "type": "string"
           },
-          "input": {},
+          "input": true,
+          "lineageId": {
+            "format": "uuid",
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
-          "sortOrder": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "tags": {
+          "pendingFields": {
+            "default": [],
             "items": {
               "type": "string"
             },
             "type": "array"
           },
+          "referenceConfirmed": {
+            "default": true,
+            "type": "boolean"
+          },
+          "sortOrder": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sourceInvocationId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "validationErrors": {
+            "items": {
+              "$ref": "#/components/schemas/TestCaseResponse_CaseFieldError"
+            },
+            "type": "array"
+          },
           "version": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
           }
@@ -15000,11 +15506,136 @@
         "required": [
           "id",
           "caseKey",
+          "lineageId",
+          "version",
+          "sortOrder",
           "name",
           "input",
-          "tags",
-          "sortOrder",
-          "version"
+          "expectedOutput",
+          "validationErrors"
+        ],
+        "title": "CaseResponse",
+        "type": "object"
+      },
+      "TestCaseResponse_CaseErrorCode": {
+        "enum": [
+          "REQUIRED",
+          "INVALID_VALUE",
+          "INVALID_CONTRACT",
+          "PENDING_FIELD",
+          "REFERENCE_UNCONFIRMED",
+          "ARTIFACT_UNAVAILABLE"
+        ],
+        "type": "string"
+      },
+      "TestCaseResponse_CaseFieldError": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/TestCaseResponse_CaseErrorCode"
+          },
+          "field": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "TestCaseValidation": {
+        "properties": {
+          "validationErrors": {
+            "items": {
+              "$ref": "#/components/schemas/TestCaseValidation_CaseFieldError"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "validationErrors"
+        ],
+        "title": "CaseValidation",
+        "type": "object"
+      },
+      "TestCaseValidationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedOutput": true,
+          "input": true,
+          "name": {
+            "type": "string"
+          },
+          "pendingFields": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "referenceConfirmed": {
+            "default": true,
+            "type": "boolean"
+          },
+          "sourceInvocationId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflowVersionId",
+          "name",
+          "input",
+          "expectedOutput"
+        ],
+        "title": "ValidateCase",
+        "type": "object"
+      },
+      "TestCaseValidation_CaseErrorCode": {
+        "enum": [
+          "REQUIRED",
+          "INVALID_VALUE",
+          "INVALID_CONTRACT",
+          "PENDING_FIELD",
+          "REFERENCE_UNCONFIRMED",
+          "ARTIFACT_UNAVAILABLE"
+        ],
+        "type": "string"
+      },
+      "TestCaseValidation_CaseFieldError": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/TestCaseValidation_CaseErrorCode"
+          },
+          "field": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "code",
+          "message"
         ],
         "type": "object"
       },
@@ -15516,6 +16147,7 @@
         "type": "object"
       },
       "UpdateDatasetRequest": {
+        "additionalProperties": false,
         "properties": {
           "description": {
             "type": [
@@ -15530,20 +16162,17 @@
             "type": "string"
           },
           "version": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
-          },
-          "visibility": {
-            "type": "string"
           }
         },
         "required": [
           "name",
-          "visibility",
           "status",
           "version"
         ],
+        "title": "UpdateDataset",
         "type": "object"
       },
       "UpdateDepartmentRequest": {
@@ -18224,6 +18853,1116 @@
         ]
       }
     },
+    "/api/v1/applications/{application}/datasets": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DatasetResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDatasetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetResponse"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/datasets/{dataset}": {
+      "delete": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expectedVersion",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetResponse"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDatasetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetResponse"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/datasets/{dataset}/cases": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TestCaseResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveTestCaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/datasets/{dataset}/cases/{case}": {
+      "delete": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatasetRevisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveTestCaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/datasets/{dataset}/copies": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopyDatasetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetResponse"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/datasets/{dataset}/copy-preview": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopyDatasetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetCopyPreview"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/datasets/{dataset}/export": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatasetExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "JSON Lines dataset cases"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/datasets/{dataset}/import": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatasetImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/evaluation-profiles": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvaluationProfileResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationProfileDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationProfileResponse"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/evaluation-profiles/{profile}": {
+      "delete": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expectedVersion",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationProfileDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationProfileResponse"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/evaluation-profiles/{profile}/versions": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvaluationProfileResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/evaluations": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvaluationBatchReport"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEvaluationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/evaluations/{batch}/cancel": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "batch",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/evaluations/{batch}/report": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "batch",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationBatchReport"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/invocations/{invocation}/test-sample": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "invocation",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvocationTestSample"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/test-case-validation": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestCaseValidationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestCaseValidation"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/test-contracts": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApplicationTestContract"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/applications/{id}": {
       "delete": {
         "operationId": "delete_application",
@@ -19732,206 +21471,6 @@
         ]
       }
     },
-    "/api/v1/datasets": {
-      "get": {
-        "operationId": "list_datasets",
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      },
-      "post": {
-        "operationId": "create_dataset",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateDatasetRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      }
-    },
-    "/api/v1/datasets/{id}": {
-      "delete": {
-        "operationId": "delete_dataset",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "expectedVersion",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "minimum": 0,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "tags": [
-          "deletion"
-        ]
-      },
-      "get": {
-        "operationId": "get_dataset",
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      },
-      "patch": {
-        "operationId": "update_dataset",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateDatasetRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      }
-    },
-    "/api/v1/datasets/{id}/cases": {
-      "get": {
-        "operationId": "list_cases",
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      },
-      "post": {
-        "operationId": "create_case",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateCaseRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      }
-    },
-    "/api/v1/datasets/{id}/cases/{case_id}": {
-      "delete": {
-        "operationId": "delete_case",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeleteCaseRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      },
-      "patch": {
-        "operationId": "update_case",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateCaseRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      }
-    },
-    "/api/v1/datasets/{id}/export": {
-      "get": {
-        "operationId": "export_cases",
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      }
-    },
-    "/api/v1/datasets/{id}/import": {
-      "post": {
-        "operationId": "import_cases",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ImportCasesRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      }
-    },
-    "/api/v1/datasets/{id}/versions": {
-      "get": {
-        "operationId": "list_dataset_versions",
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      },
-      "post": {
-        "operationId": "publish_version",
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      }
-    },
     "/api/v1/deletion-impact/{entity_type}/{id}": {
       "get": {
         "operationId": "get_deletion_impact",
@@ -20506,165 +22045,6 @@
         "responses": {},
         "tags": [
           "workflows"
-        ]
-      }
-    },
-    "/api/v1/evaluation-profiles": {
-      "get": {
-        "operationId": "list_profiles",
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      },
-      "post": {
-        "operationId": "create_profile",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateEvaluationProfileRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      }
-    },
-    "/api/v1/evaluation-profiles/{id}": {
-      "delete": {
-        "operationId": "delete_evaluation_profile",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "expectedVersion",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "minimum": 0,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "tags": [
-          "deletion"
-        ]
-      }
-    },
-    "/api/v1/evaluations": {
-      "get": {
-        "operationId": "list_evaluations",
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      },
-      "post": {
-        "operationId": "create_evaluation",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateEvaluationRunRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      }
-    },
-    "/api/v1/evaluations/compare": {
-      "get": {
-        "operationId": "compareEvaluations",
-        "parameters": [
-          {
-            "explode": false,
-            "in": "query",
-            "name": "runIds",
-            "required": true,
-            "schema": {
-              "items": {
-                "format": "uuid",
-                "type": "string"
-              },
-              "maxItems": 5,
-              "minItems": 2,
-              "type": "array"
-            },
-            "style": "form"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Comparison report"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "tags": [
-          "evaluations"
-        ]
-      }
-    },
-    "/api/v1/evaluations/{id}/cancel": {
-      "post": {
-        "operationId": "cancel_evaluation",
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      }
-    },
-    "/api/v1/evaluations/{id}/report": {
-      "get": {
-        "operationId": "get_report",
-        "responses": {},
-        "tags": [
-          "datasets"
-        ]
-      }
-    },
-    "/api/v1/evaluations/{id}/start": {
-      "post": {
-        "operationId": "start_evaluation",
-        "responses": {},
-        "tags": [
-          "datasets"
         ]
       }
     },
@@ -22839,6 +24219,58 @@
         ]
       }
     },
+    "/api/v1/platform-ai/model-setting": {
+      "get": {
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformAiModelSetting"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPlatformAiModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformAiModelSetting"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/resource-grant-requests": {
       "get": {
         "operationId": "list_resource_grant_requests",
@@ -23841,58 +25273,6 @@
         "responses": {},
         "tags": [
           "skills_control"
-        ]
-      }
-    },
-    "/api/v1/studio-builder/model-setting": {
-      "get": {
-        "parameters": [],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BuilderModelSetting"
-                }
-              }
-            },
-            "description": "Success"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetBuilderModel"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BuilderModelSetting"
-                }
-              }
-            },
-            "description": "Success"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
         ]
       }
     },

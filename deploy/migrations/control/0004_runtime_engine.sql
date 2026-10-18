@@ -16,6 +16,7 @@ CREATE TABLE runtime_work_package_publications (
     signature_key_id VARCHAR(128) NOT NULL,
     package_json JSON NOT NULL,
     object_manifest_json JSON NOT NULL,
+    pending_objects_json JSON NULL,
     status ENUM('building','prepared','running','completed','failed','cancelled','expired') NOT NULL,
     runtime_version BIGINT UNSIGNED NOT NULL DEFAULT 0,
     prepare_idempotency_key VARCHAR(192) NOT NULL,

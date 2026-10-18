@@ -79,30 +79,7 @@ pub(crate) fn default_channel_mode() -> String {
     "callback".into()
 }
 
-pub(crate) fn workflow_schemas(definition: &agentx_domain::WorkflowDefinition) -> (Value, Value) {
-    let all_complete = definition.end.completion == agentx_domain::WorkflowCompletion::AllComplete;
-    let properties = definition.end.outputs.iter().map(|(name, value)| {
-        let mut schema = value.schema.clone();
-        if let Some(object) = schema.as_object_mut() {
-            object.insert("x-agentx-sensitive".into(), json!(value.sensitive));
-        }
-        if all_complete {
-            schema = json!({"type":"array", "items": if value.required { schema } else { json!({"anyOf":[schema,{"type":"null"}]}) }});
-        }
-        (name.clone(), schema)
-    }).collect::<serde_json::Map<_, _>>();
-    let required = definition
-        .end
-        .outputs
-        .iter()
-        .filter(|(_, value)| all_complete || value.required)
-        .map(|(name, _)| name)
-        .collect::<Vec<_>>();
-    (
-        definition.start.inputs.clone(),
-        json!({"type":"object", "properties":properties, "required":required, "additionalProperties":false}),
-    )
-}
+pub(crate) use crate::test_contract::workflow_schemas;
 
 async fn configuration_schemas(
     state: &ControlApiState,

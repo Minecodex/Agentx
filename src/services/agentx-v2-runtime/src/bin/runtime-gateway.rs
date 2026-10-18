@@ -166,6 +166,10 @@ async fn main() -> Result<()> {
             get(agentx_v2_runtime::stream::channel_status),
         )
         .route(
+            "/internal/runtime/v1/query/test-artifacts",
+            post(agentx_v2_runtime::query::check_test_artifacts),
+        )
+        .route(
             "/internal/runtime/v1/query/invocations:search",
             post(agentx_v2_runtime::query::search_invocations),
         )

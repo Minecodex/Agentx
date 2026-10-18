@@ -144,6 +144,19 @@
     "owning_task": "plan7 P7-A"
   },
   {
+    "table": "evaluation_batches",
+    "plane": "control",
+    "schema_file": "deploy/migrations/control/0001_initial.sql",
+    "authoritative_writer": "platform-control application evaluation acceptance and dispatcher",
+    "allowed_readers": [
+      "platform-control application testing API",
+      "platform-control evaluation dispatcher"
+    ],
+    "cross_plane_contract": "Signed RuntimeWorkPackageV1 and RuntimeEventPayloadV1 evaluation report",
+    "retention_and_delete_rule": "Immutable model/profile/data references retained with evaluation history; application deletion blocked by batches.",
+    "owning_task": "plan8/application-evaluations"
+  },
+  {
     "table": "execution_children",
     "plane": "runtime",
     "authoritative_writer": "workflow-runtime composite coordinator",
@@ -251,6 +264,19 @@
     "cross_plane_contract": "consumer health and degraded state",
     "retention_and_delete_rule": "retain the latest row per consumer identity",
     "owning_task": "V2Q-005"
+  },
+  {
+    "table": "platform_evaluation_authorizations",
+    "plane": "runtime",
+    "schema_file": "deploy/migrations/runtime/0004_runtime_engine.sql",
+    "authoritative_writer": "runtime-gateway signed WorkPackage preparation and Admission handler",
+    "allowed_readers": [
+      "workflow-runtime judge start and convergence",
+      "workflow-worker judge attempt claim"
+    ],
+    "cross_plane_contract": "RuntimePlatformEvaluationModelV1 and RuntimeAdmissionCommandV1::PlatformEvaluation",
+    "retention_and_delete_rule": "Preserve monotonic batch revocation while the signed package or evaluation history may be replayed.",
+    "owning_task": "plan8/application-evaluations"
   },
   {
     "table": "projection_rebuild_items",

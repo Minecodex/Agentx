@@ -1,0 +1,32 @@
+{
+  "$defs": {
+    "TestArtifactIssueV1": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "index": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "field",
+        "message"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "items": {
+    "$ref": "#/$defs/TestArtifactIssueV1"
+  },
+  "title": "Array_of_TestArtifactIssueV1",
+  "type": "array"
+}

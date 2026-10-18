@@ -62,7 +62,7 @@ impl OutboxDispatcher for MySqlControlOutboxDispatcher {
             .await
             .context("begin Control outbox claim")?;
         let rows = sqlx::query(
-            "SELECT id FROM outbox WHERE status IN ('pending','failed') AND published_at IS NULL AND available_at<=UTC_TIMESTAMP(6) AND (locked_until IS NULL OR locked_until<=UTC_TIMESTAMP(6)) ORDER BY occurred_at,id LIMIT ? FOR UPDATE SKIP LOCKED",
+            "SELECT id FROM outbox WHERE aggregate_type NOT IN ('evaluation_dispatch','evaluation_model_admission') AND status IN ('pending','failed') AND published_at IS NULL AND available_at<=UTC_TIMESTAMP(6) AND (locked_until IS NULL OR locked_until<=UTC_TIMESTAMP(6)) ORDER BY occurred_at,id LIMIT ? FOR UPDATE SKIP LOCKED",
         )
         .bind(batch_size.clamp(1, DEFAULT_BATCH_SIZE))
         .fetch_all(&mut *transaction)

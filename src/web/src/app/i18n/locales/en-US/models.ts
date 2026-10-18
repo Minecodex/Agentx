@@ -1,11 +1,11 @@
 const translations = {
-  "builderReset": "Set again",
-  "builderSet": "Set as canvas AI model",
-  "builderSelected": "Canvas AI model",
-  "builderClear": "Clear setting",
-  "builderSaved": "Canvas AI model setting saved",
-  "builderAuthorization": "Authorize this model and its credential for canvas creation by tenant workflow editors",
-  "builderPermission": "Requires model management, company management, and resource grant permissions",
+  "platformAiReset": "Set again",
+  "platformAiSet": "Set as platform AI model",
+  "platformAiSelected": "Platform AI model (canvas and evaluations)",
+  "platformAiClear": "Clear setting",
+  "platformAiSaved": "Platform AI model setting saved",
+  "platformAiAuthorization": "Authorize this model and credential for canvas creation and application AI evaluation; business Workflows retain their own resource grants",
+  "platformAiPermission": "Requires model management, company management, and resource grant permissions",
 
   "create": "New model",
   "details": "Details",

@@ -1,5 +1,7 @@
 # 阶段 06：测试集和评测
 
+此页为历史阶段记录；原全局入口、规则评分和手动发布测试数据流程已由 [应用内测试集与 AI 评测](../plan8/12-application-evaluations.md) 取代。当前实现与验收以该文档及产品主文档为准。
+
 ## 1. 目标与用户价值
 
 提供可复现的 Dataset Version、Test Case、Evaluation Profile 和 Evaluation Report 控制面，使 Workflow Version 在引擎接入后可以直接批量评测，而不改变报告模型。

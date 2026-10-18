@@ -1,3 +1,4 @@
+import { beginApplicationEvaluation } from '../support/application-testing'
 import { expect, type APIResponse, type Locator, type Page, test } from '@playwright/test'
 
 const adminPassword = 'agentx-e2e-admin-password'
@@ -84,8 +85,9 @@ async function createImpactFixtures(page: Page, token: string) {
   const workflow = workflows.items.find((item) => item.name === 'MCP Echo Workflow') ?? workflows.items[0]
   if (!workflow) throw new Error('A workflow fixture is required for safe deletion impact tests')
   const versions = await request<WorkflowVersion[]>(page, token, `/workflows/${workflow.id}/versions`)
-  const version = versions.find((item) => item.versionNumber === 1) ?? versions[0]
-  if (!version) throw new Error('A workflow version fixture is required for safe deletion impact tests')
+  const selectedVersion = versions.find((item) => item.versionNumber === 1) ?? versions[0]
+  if (!selectedVersion) throw new Error('A workflow version fixture is required for safe deletion impact tests')
+  const version = await request<WorkflowVersion>(page, token, `/workflows/${workflow.id}/versions/${selectedVersion.id}`)
   const environments = await request<Array<{ id: string; code: string }>>(page, token, '/environments')
   const environment = environments.find((item) => item.code === 'development') ?? environments[0]
   if (!environment) throw new Error('An environment fixture is required for safe deletion impact tests')
@@ -100,13 +102,18 @@ async function createImpactFixtures(page: Page, token: string) {
     return status
   }, { timeout: 180_000, intervals: [500, 1_000, 2_000] }).toBe('active')
   const session = await mutate<{ id: string }>(page, token, `/applications/${application.slug}/sessions`, 'POST', { title: 'Safe deletion session' }, true)
-  await mutate(page, token, `/applications/${application.slug}/invocations`, 'POST', { input: safeInvocationInput(version), sessionId: session.id }, true)
+  const invocation = await mutate<{ id: string }>(page, token, `/applications/${application.slug}/invocations`, 'POST', { input: safeInvocationInput(version), sessionId: session.id }, true)
+  let referenceOutput: unknown
+  await expect.poll(async () => {
+    const response = await page.request.get(`${gatewayBase}/gateway/v1/invocations/${invocation.id}`, { headers: { Authorization: `Bearer ${token}` } })
+    expect(response.ok()).toBeTruthy()
+    const value = await response.json() as { status: string; outputs?: unknown }
+    referenceOutput = value.outputs
+    return value.status
+  }, { timeout: 120_000 }).toBe('completed')
 
-  const dataset = await mutate<{ id: string; name: string; revision: number }>(page, token, '/datasets', 'POST', { name: `Safe Deletion Dataset ${suffix}`, description: 'Safe deletion E2E fixture', visibility: 'company' })
-  await mutate(page, token, `/datasets/${dataset.id}/cases`, 'POST', { expectedRevision: dataset.revision, caseKey: 'safe-deletion-case', name: 'Safe deletion case', input: { question: 'safe deletion', attachments: [] }, expectedOutput: { text: 'safe deletion' } })
-  const datasetVersion = await mutate<{ id: string }>(page, token, `/datasets/${dataset.id}/versions`, 'POST', {})
-  const profile = await mutate<{ versionId: string }>(page, token, '/evaluation-profiles', 'POST', { name: `Safe Deletion Profile ${suffix}`, visibility: 'company', aggregation: 'all', passThreshold: '1', rules: [{ key: 'exact', name: 'Exact output', evaluatorType: 'exact', configuration: {}, weight: '1', required: true }] })
-  await mutate(page, token, '/evaluations', 'POST', { name: `Safe Deletion Evaluation ${suffix}`, workflowVersionId: version.id, datasetVersionId: datasetVersion.id, evaluationProfileVersionId: profile.versionId, visibility: 'company', parameters: {} })
+  const evaluation = await beginApplicationEvaluation(page, token, { applicationId: application.id, workflowId: workflow.id, versionId: version.id, name: `Safe Deletion Dataset ${suffix}`, input: safeInvocationInput(version), expectedOutput: referenceOutput })
+  const dataset = evaluation.dataset
   return { application, dataset, workflow }
 }
 
@@ -167,7 +174,11 @@ test('safe deletion exposes application, evaluation and immutable-version impact
 
   const datasetImpact = await request<{ references: Array<{ sourceType: string }> }>(page, token, `/deletion-impact/dataset/${fixtures.dataset.id}?pageSize=100`)
   expect(datasetImpact.references.map((reference) => reference.sourceType)).toContain('evaluation_run')
-  await expectBlocked(page, '/datasets', fixtures.dataset.name)
+  await page.goto(`/applications/${fixtures.application.id}?tab=testing&testTab=datasets`)
+  await page.getByRole('row').filter({ hasText: fixtures.dataset.name }).getByRole('button', { name: '删除', exact: true }).click()
+  const confirmation = page.getByRole('dialog')
+  await confirmation.getByRole('button', { name: '删除', exact: true }).click()
+  await expect(page.getByText(/已用于评测|referenced|ENTITY_IN_USE|引用/).first()).toBeVisible()
 
   const workflowImpact = await request<{ references: Array<{ sourceType: string; immutable: boolean }> }>(page, token, `/deletion-impact/workflow/${fixtures.workflow.id}?pageSize=100`)
   expect(workflowImpact.references.map((reference) => reference.sourceType)).toContain('application')

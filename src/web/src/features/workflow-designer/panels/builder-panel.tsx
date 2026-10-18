@@ -66,7 +66,7 @@ export function BuilderPanel({ manifests, workflowId, draftId, serverRevision, e
   } }, [])
   const latest = useRef({ serverRevision, persistRecovery, checkDocument, manifests })
   latest.current = { serverRevision, persistRecovery, checkDocument, manifests }
-  const setting = useQuery({ queryKey: ['studio-builder-model-setting', auth.user?.companyId, auth.user?.id], queryFn: () => apiRequest<{ modelAliasId: string | null; modelAlias: string | null; status: string;reason?: string|null }>('/studio-builder/model-setting'), refetchInterval: 5000 })
+  const setting = useQuery({ queryKey: ['platform-ai-model-setting', auth.user?.companyId, auth.user?.id], queryFn: () => apiRequest<{ modelAliasId: string | null; modelAlias: string | null; status: string;reason?: string|null }>('/platform-ai/model-setting'), refetchInterval: 5000 })
 
   const snapshot = useCallback(async (): Promise<Snapshot> => {
     const state = store.getState()

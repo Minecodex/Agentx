@@ -130,7 +130,7 @@ async fn start_execution_resolved(
     let bundle_id: Uuid = execution.try_get("bundle_id")?;
     let work_package_id: Option<Uuid> = execution.try_get("work_package_id")?;
     let snapshot = sqlx::query(
-        "SELECT compiled_ir_json,authorization_snapshot_json,policy_snapshot_json,worker_compatibility_json,resource_snapshot_json FROM execution_snapshots WHERE tenant_id=? AND execution_id=? FOR UPDATE",
+        "SELECT compiled_ir_json,authorization_snapshot_json,policy_snapshot_json,worker_compatibility_json,resource_snapshot_json,runtime_settings_json FROM execution_snapshots WHERE tenant_id=? AND execution_id=? FOR UPDATE",
     )
     .bind(claim.tenant_id)
     .bind(claim.execution_id)
@@ -143,6 +143,12 @@ async fn start_execution_resolved(
         serde_json::from_value(snapshot.try_get("authorization_snapshot_json")?)
             .map_err(|error| RuntimeError::Internal(error.into()))?;
     authorize_snapshot(&mut tx, &authorization).await?;
+    crate::platform_evaluation::authorize(
+        &mut tx,
+        claim.tenant_id,
+        &snapshot.try_get("runtime_settings_json")?,
+    )
+    .await?;
     let resources: Vec<RuntimeResourceBindingV1> =
         serde_json::from_value(snapshot.try_get("resource_snapshot_json")?)
             .map_err(|error| RuntimeError::Internal(error.into()))?;
@@ -910,7 +916,20 @@ pub async fn claim_worker_attempt(
     let resources: Vec<RuntimeResourceBindingV1> =
         serde_json::from_value(row.try_get("resource_snapshot_json")?)
             .map_err(|error| RuntimeError::Internal(error.into()))?;
-    authorize_resources(&mut tx, task.tenant_id, &resources).await?;
+    let platform_denial = match crate::platform_evaluation::authorize(
+        &mut tx,
+        task.tenant_id,
+        &row.try_get("runtime_settings_json")?,
+    )
+    .await
+    {
+        Ok(()) => None,
+        Err(RuntimeError::InvalidRequest(code, message)) => Some((code, message)),
+        Err(error) => return Err(error),
+    };
+    if platform_denial.is_none() {
+        authorize_resources(&mut tx, task.tenant_id, &resources).await?;
+    }
     let changed = sqlx::query(
         "UPDATE node_attempts SET status='running',lease_token=?,locked_until=DATE_ADD(UTC_TIMESTAMP(6),INTERVAL 30 SECOND),heartbeat_at=UTC_TIMESTAMP(6),fencing_token=fencing_token+1,worker_instance_id=?,started_at=COALESCE(started_at,UTC_TIMESTAMP(6)) WHERE id=? AND status='queued' AND (locked_until IS NULL OR locked_until<=UTC_TIMESTAMP(6))",
     )
@@ -945,6 +964,19 @@ pub async fn claim_worker_attempt(
     .bind(locked_until)
     .execute(&mut *tx)
     .await?;
+    if let Some((code, message)) = platform_denial {
+        tx.commit().await?;
+        crate::platform_evaluation::reject_claim(
+            pool,
+            task,
+            worker_id,
+            fencing_token,
+            code,
+            message,
+        )
+        .await?;
+        return Ok(None);
+    }
     let compiled: agentx_runtime_contracts::CompiledWorkflowV1 =
         serde_json::from_value(row.try_get("compiled_ir_json")?)
             .map_err(|error| RuntimeError::Internal(error.into()))?;
@@ -959,6 +991,8 @@ pub async fn claim_worker_attempt(
         })
         .ok_or_else(|| RuntimeError::Internal(anyhow::anyhow!("compiled node is missing")))?;
     let mut raw_parameters = compiled_node.parameters.clone();
+    let frozen_settings: Value = row.try_get("runtime_settings_json")?;
+
     // Project the frozen Agent Bundle into the worker task without consulting
     // Control Plane. The compiled node is used only to prove that the Bundle
     // entry belongs to this exact immutable Workflow snapshot.
@@ -993,36 +1027,40 @@ pub async fn claim_worker_attempt(
     let inputs: BTreeMap<String, Vec<Item>> = serde_json::from_value(row.try_get("input_json")?)
         .map_err(|error| RuntimeError::Internal(error.into()))?;
     let context: Value = row.try_get("context_json")?;
-    let (node_parameters, per_item_parameters, string_conversions) = parameter_resolution::resolve(
-        &node_type,
-        &raw_parameters,
-        &compiled_node.parameter_schema,
-        &inputs,
-        row.try_get::<Option<Value>, _>("loop_frame_json")?
-            .unwrap_or(Value::Null),
-        row.try_get::<Option<Value>, _>("execution_input_json")?
-            .unwrap_or(Value::Null),
-        if parameter_resolution::reads_outputs(&raw_parameters) {
-            load_output_namespace(&mut tx, task.tenant_id, task.execution_id).await?
-        } else {
-            json!({})
-        },
-        context.clone(),
-        crate::execution_context::with_node(
-            row.try_get("execution_context_json")?,
-            &node_id,
-            task.node_execution_id,
-            row.try_get("run_index")?,
-            None,
-            row.try_get("iteration_index")?,
-        ),
-        compiled
-            .nodes
-            .iter()
-            .map(|node| (node.id.clone(), node.key.clone()))
-            .collect(),
-    )
-    .map_err(|error| RuntimeError::Internal(error.into()))?;
+    let (mut node_parameters, per_item_parameters, string_conversions) =
+        parameter_resolution::resolve(
+            &node_type,
+            &raw_parameters,
+            &compiled_node.parameter_schema,
+            &inputs,
+            row.try_get::<Option<Value>, _>("loop_frame_json")?
+                .unwrap_or(Value::Null),
+            row.try_get::<Option<Value>, _>("execution_input_json")?
+                .unwrap_or(Value::Null),
+            if parameter_resolution::reads_outputs(&raw_parameters) {
+                load_output_namespace(&mut tx, task.tenant_id, task.execution_id).await?
+            } else {
+                json!({})
+            },
+            context.clone(),
+            crate::execution_context::with_node(
+                row.try_get("execution_context_json")?,
+                &node_id,
+                task.node_execution_id,
+                row.try_get("run_index")?,
+                None,
+                row.try_get("iteration_index")?,
+            ),
+            compiled
+                .nodes
+                .iter()
+                .map(|node| (node.id.clone(), node.key.clone()))
+                .collect(),
+        )
+        .map_err(|error| RuntimeError::Internal(error.into()))?;
+    if let Some(parameters) = frozen_settings.pointer("/platformEvaluation/parameters") {
+        node_parameters["platformEvaluationParameters"] = parameters.clone();
+    }
     tx.commit().await?;
     Ok(Some(ClaimedWorkerAttempt {
         lease: WorkerAttemptLeaseV1 {

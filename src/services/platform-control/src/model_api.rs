@@ -335,7 +335,18 @@ async fn update_model(
         ));
     }
     insert_history(&mut tx, &actor, id, Some(previous), deployment).await?;
+    let revoked = if input.status == "disabled" {
+        crate::platform_ai_model::enqueue_evaluation_revocations(
+            &mut tx,
+            actor.tenant_id,
+            crate::studio_builder_api::DesignRevocation::Model(id, input.expected_alias_version),
+        )
+        .await?
+    } else {
+        Vec::new()
+    };
     tx.commit().await?;
+    crate::platform_ai_model::publish_evaluation_revocations(&state, revoked).await?;
     if input.status == "disabled" {
         crate::studio_builder_api::revoke_runs(
             &state,
@@ -383,6 +394,11 @@ async fn create_price(
     require_deployment_visible(&state, &actor, id).await?;
     validate_price(&input)?;
     let mut tx = state.pool.begin().await?;
+    sqlx::query("SELECT id FROM model_deployments WHERE tenant_id=? AND id=? FOR UPDATE")
+        .bind(actor.tenant_id)
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await?;
     let next:u64=sqlx::query_scalar("SELECT CAST(COALESCE(MAX(version_number),0)+1 AS UNSIGNED) FROM model_price_versions WHERE tenant_id=? AND deployment_id=?").bind(actor.tenant_id).bind(id).fetch_one(&mut *tx).await?;
     let price_id = insert_price(&mut tx, &actor, id, next, &input).await?;
     tx.commit().await?;
@@ -453,11 +469,13 @@ async fn delete_model(
     let mut tx =
         crate::workflow_revision_resources::begin_delete(&state.pool, actor.tenant_id, "model", id)
             .await?;
-    let builder_reference: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenant_settings WHERE tenant_id=? AND studio_builder_model_alias_id=?) OR EXISTS(SELECT 1 FROM studio_builder_runs WHERE tenant_id=? AND model_alias_id=? AND status IN ('queued','running','waiting','outcome_unknown'))").bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
-    if builder_reference {
+    let builder_reference: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenant_settings WHERE tenant_id=? AND platform_ai_model_alias_id=?) OR EXISTS(SELECT 1 FROM studio_builder_runs WHERE tenant_id=? AND model_alias_id=? AND status IN ('queued','running','waiting','outcome_unknown'))").bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
+    let evaluation_reference: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM evaluation_batches WHERE tenant_id=? AND JSON_UNQUOTE(JSON_EXTRACT(model_snapshot_json,'$.binding.resourceId'))=?)")
+        .bind(actor.tenant_id).bind(id.to_string()).fetch_one(&mut *tx).await?;
+    if builder_reference || evaluation_reference {
         return Err(ApiError::conflict(
             "RESOURCE_REFERENCED",
-            "Clear the canvas AI model setting before deleting this resource",
+            "Model is referenced by platform AI settings or immutable evaluation history",
         ));
     }
     let references:i64=sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM workflow_draft_resources WHERE tenant_id=? AND resource_type='model' AND resource_id=?)+(SELECT COUNT(*) FROM workflow_version_resources WHERE tenant_id=? AND resource_type='model' AND resource_id=?)").bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;

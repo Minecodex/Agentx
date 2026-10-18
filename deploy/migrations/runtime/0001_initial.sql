@@ -552,42 +552,6 @@ CREATE TABLE deployment_history (
     KEY idx_deployment_history (tenant_id, workflow_id, environment_id, occurred_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE evaluation_case_results (
-    id BINARY(16) NOT NULL,
-    tenant_id BINARY(16) NOT NULL,
-    evaluation_run_id BINARY(16) NOT NULL,
-    source_case_id BINARY(16) NOT NULL,
-    execution_id BINARY(16) NOT NULL,
-    status ENUM('passed', 'failed', 'error', 'cancelled') NOT NULL,
-    score DECIMAL(12,6) NULL,
-    detail_json JSON NOT NULL,
-    duration_ms BIGINT UNSIGNED NULL,
-    cost_micros BIGINT UNSIGNED NOT NULL DEFAULT 0,
-    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    PRIMARY KEY (id),
-    UNIQUE KEY uq_evaluation_case_result (tenant_id, evaluation_run_id, source_case_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
-CREATE TABLE evaluation_comparisons (
-    id BINARY(16) NOT NULL,
-    tenant_id BINARY(16) NOT NULL,
-    name VARCHAR(160) NOT NULL,
-    baseline_run_id BINARY(16) NOT NULL,
-    candidate_run_id BINARY(16) NOT NULL,
-    created_by BINARY(16) NOT NULL,
-    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    PRIMARY KEY (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
-CREATE TABLE evaluation_metrics (
-    tenant_id BINARY(16) NOT NULL,
-    evaluation_run_id BINARY(16) NOT NULL,
-    metric_key VARCHAR(128) NOT NULL,
-    metric_value DECIMAL(24,8) NOT NULL,
-    detail_json JSON NULL,
-    PRIMARY KEY (tenant_id, evaluation_run_id, metric_key)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
 CREATE TABLE evaluation_rule_results (
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
@@ -642,7 +606,6 @@ CREATE TABLE evaluation_runs (
     status ENUM('created', 'queued', 'running', 'completed', 'failed', 'cancelled') NOT NULL DEFAULT 'created',
     created_by BINARY(16) NOT NULL,
     owner_department_id BINARY(16) NOT NULL,
-    visibility ENUM('private', 'department', 'company') NOT NULL DEFAULT 'private',
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     started_at TIMESTAMP(6) NULL,
     completed_at TIMESTAMP(6) NULL,

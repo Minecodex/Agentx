@@ -609,58 +609,58 @@
   },
   {
     "current_table": "evaluation_case_results",
-    "decision": "split",
-    "control_replacement": "control.evaluation_case_results",
-    "runtime_replacement": "runtime.evaluation_case_results",
-    "authoritative_writer": "control for control replacement; runtime for runtime replacement",
+    "decision": "delete",
+    "control_replacement": null,
+    "runtime_replacement": null,
+    "authoritative_writer": "none; replaced by application evaluation batches and Runtime report projections",
     "allowed_readers": [
       "control:control replacement",
       "runtime:runtime replacement"
     ],
-    "cross_plane_contract": "versioned Bundle, Admission Command, Runtime Event/Snapshot Export, Receipt or Runtime Query as assigned by the owning task",
-    "retention_and_delete_rule": "No history migration. Retention is owned by the replacement plane; deletion requires its owning task and reference checks.",
-    "owning_task": "V2R-012"
+    "cross_plane_contract": "Signed RuntimeWorkPackageV1 and RuntimeEvaluationReportV1",
+    "retention_and_delete_rule": "Removed from initial DDL; no historical migration or compatibility layer.",
+    "owning_task": "plan8/application-evaluations"
   },
   {
     "current_table": "evaluation_comparisons",
-    "decision": "split",
-    "control_replacement": "control.evaluation_comparisons",
-    "runtime_replacement": "runtime.evaluation_comparisons",
-    "authoritative_writer": "control for control replacement; runtime for runtime replacement",
+    "decision": "delete",
+    "control_replacement": null,
+    "runtime_replacement": null,
+    "authoritative_writer": "none; replaced by application evaluation batches and Runtime report projections",
     "allowed_readers": [
       "control:control replacement",
       "runtime:runtime replacement"
     ],
-    "cross_plane_contract": "versioned Bundle, Admission Command, Runtime Event/Snapshot Export, Receipt or Runtime Query as assigned by the owning task",
-    "retention_and_delete_rule": "No history migration. Retention is owned by the replacement plane; deletion requires its owning task and reference checks.",
-    "owning_task": "V2R-012"
+    "cross_plane_contract": "Signed RuntimeWorkPackageV1 and RuntimeEvaluationReportV1",
+    "retention_and_delete_rule": "Removed from initial DDL; no historical migration or compatibility layer.",
+    "owning_task": "plan8/application-evaluations"
   },
   {
     "current_table": "evaluation_metrics",
-    "decision": "split",
-    "control_replacement": "control.evaluation_metrics",
-    "runtime_replacement": "runtime.evaluation_metrics",
-    "authoritative_writer": "control for control replacement; runtime for runtime replacement",
+    "decision": "delete",
+    "control_replacement": null,
+    "runtime_replacement": null,
+    "authoritative_writer": "none; replaced by application evaluation batches and Runtime report projections",
     "allowed_readers": [
       "control:control replacement",
       "runtime:runtime replacement"
     ],
-    "cross_plane_contract": "versioned Bundle, Admission Command, Runtime Event/Snapshot Export, Receipt or Runtime Query as assigned by the owning task",
-    "retention_and_delete_rule": "No history migration. Retention is owned by the replacement plane; deletion requires its owning task and reference checks.",
-    "owning_task": "V2R-012"
+    "cross_plane_contract": "Signed RuntimeWorkPackageV1 and RuntimeEvaluationReportV1",
+    "retention_and_delete_rule": "Removed from initial DDL; no historical migration or compatibility layer.",
+    "owning_task": "plan8/application-evaluations"
   },
   {
     "current_table": "evaluation_profile_rules",
-    "decision": "control",
-    "control_replacement": "control.evaluation_profile_rules",
+    "decision": "delete",
+    "control_replacement": null,
     "runtime_replacement": null,
-    "authoritative_writer": "control",
+    "authoritative_writer": "none; application AI profiles replace per-rule evaluation",
     "allowed_readers": [
       "control"
     ],
-    "cross_plane_contract": "none; same-plane access only",
-    "retention_and_delete_rule": "No history migration. Retention is owned by the replacement plane; deletion requires its owning task and reference checks.",
-    "owning_task": "V2R-012"
+    "cross_plane_contract": "Evaluation profile version in signed RuntimeWorkPackageV1",
+    "retention_and_delete_rule": "Removed from initial DDL; no historical migration or compatibility layer.",
+    "owning_task": "plan8/application-evaluations"
   },
   {
     "current_table": "evaluation_profile_versions",

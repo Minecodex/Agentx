@@ -67,46 +67,38 @@ test('stop cancels a real model generation after text has arrived', async ({ pag
   await page.screenshot({ path: testInfo.outputPath('cancelled-generation.png'), fullPage: true })
 })
 
-test('real V1/V2 Judge reports show missing cases and open Judge Trace', async ({ page }, testInfo) => {
+test('real app evaluation compares source-linked data and opens Judge Trace', async ({ page }, testInfo) => {
   await login(page)
-  const baseline = process.env.AGENTX_E2E_COMPARE_BASELINE
-  const candidate = process.env.AGENTX_E2E_COMPARE_CANDIDATE
-  if (!baseline || !candidate) throw new Error('Real model Judge reports are required')
-  await page.goto(`/evaluations/${baseline}?tab=compare&runIds=${baseline},${candidate}`)
-  await expect(page.getByText('已对齐 2 / 4 个用例')).toBeVisible()
+  const app = process.env.AGENTX_E2E_LIVE_APP_ID!
+  const batch = process.env.AGENTX_E2E_COMPARE_BATCH!
+  await page.goto(`/applications/${app}?tab=testing&testTab=runs&batchId=${batch}`)
+  await page.getByRole('button', { name: '按来源并排对比', exact: true }).click()
   await expect(page.getByText('baseline_only', { exact: true })).toBeVisible()
   await expect(page.getByText('candidate_only', { exact: true })).toBeVisible()
-  await expect(page.getByText('缺失', { exact: true }).first()).toBeVisible()
-  const traces = page.getByRole('link', { name: '评测 Trace' })
-  await expect(traces).toHaveCount(6)
-  await page.screenshot({ path: testInfo.outputPath('real-v1-v2-comparison.png'), fullPage: true })
-  await traces.first().click()
+  await expect(page.getByText('无对应用例', { exact: true }).first()).toBeVisible()
+  await page.getByRole('button', { name: '查看详情', exact: true }).first().click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('link', { name: 'AI 评分 Trace', exact: true })).toBeVisible()
+  await dialog.getByRole('link', { name: 'AI 评分 Trace', exact: true }).click()
   await expect(page).toHaveURL(/\/executions\/[a-f0-9-]+$/)
-  await page.getByRole('tab', { name: '高级瀑布', exact: true }).click()
-  await expect(page.getByRole('treegrid', { name: 'Trace 层级瀑布' })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('real-judge-trace.png'), fullPage: true })
 })
 
-test('Judge profile saves the actual authorized model', async ({ page }, testInfo) => {
+test('application Judge profile saves natural language and threshold', async ({ page }) => {
   await login(page)
-  const alias = process.env.AGENTX_E2E_JUDGE_MODEL_ALIAS
-  if (!alias) throw new Error('Real model model alias is required')
-  await page.goto('/evaluations?tab=profiles')
-  await page.getByRole('tab', { name: '评测方案', exact: true }).click()
+  await page.goto(`/applications/${process.env.AGENTX_E2E_LIVE_APP_ID}?tab=testing&testTab=profiles`)
   await page.getByRole('button', { name: '新建评测方案', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '新建评测方案' })
-  await dialog.getByRole('combobox', { name: '规则类型' }).click()
-  await page.getByRole('option', { name: 'LLM Judge', exact: true }).click()
-  await dialog.getByRole('combobox', { name: '评估模型' }).click()
-  await page.getByRole('option', { name: alias, exact: true }).click()
-  await dialog.getByRole('textbox', { name: '名称', exact: true }).fill(`Real model UI Judge ${Date.now()}`)
-  await dialog.getByRole('textbox', { name: '规则名称', exact: true }).fill('model Judge')
-  await dialog.getByPlaceholder('Evaluate whether the actual output matches… {{actualOutput}} {{expectedOutput}}').fill('Compare {{actualOutput}} with {{expectedOutput}} and return passed, score and reason.')
-  const saved = page.waitForResponse((response) => response.url().endsWith('/evaluation-profiles') && response.request().method() === 'POST')
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('名称', { exact: true }).fill(`Real semantic profile ${Date.now()}`)
+  await dialog.getByLabel('评分标准', { exact: true }).fill('Accept correct and equivalent wording.')
+  await expect(dialog.getByLabel('通过分（0–100）')).toHaveValue('80')
+  const pending = page.waitForResponse(response => response.url().endsWith('/evaluation-profiles') && response.request().method() === 'POST')
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
-  expect((await saved).status()).toBe(201)
-  await expect(dialog).toHaveCount(0)
-  await page.screenshot({ path: testInfo.outputPath('real-judge-profile-saved.png'), fullPage: true })
+  const response = await pending
+  expect(response.status()).toBe(201)
+  const profile = await response.json()
+  expect(profile.criteria).toBe('Accept correct and equivalent wording.')
+  expect(profile.passThreshold).toBe(0.8)
 })
 
 test('Studio run panel displays real model deltas and final execution', async ({ page }, testInfo) => {

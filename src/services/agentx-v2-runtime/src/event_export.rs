@@ -605,6 +605,12 @@ async fn load_evaluation_report_from_pool(
                 detail: rule.try_get("detail_json")?,
                 duration_ms: rule.try_get("duration_ms")?,
                 cost_micros: rule.try_get("cost_micros")?,
+                cost_by_currency: evaluation_cost_by_currency(
+                    state,
+                    tenant_id,
+                    rule.try_get("evaluator_execution_id")?,
+                )
+                .await?,
             });
         }
         let status: String = row.try_get("status")?;
@@ -622,6 +628,12 @@ async fn load_evaluation_report_from_pool(
             actual_output: row.try_get("actual_output_json")?,
             duration_ms: row.try_get("duration_ms")?,
             cost_micros,
+            cost_by_currency: evaluation_cost_by_currency(
+                state,
+                tenant_id,
+                row.try_get("target_execution_id")?,
+            )
+            .await?,
             error_code: row.try_get("error_code")?,
             error_message: row.try_get("error_message")?,
             rules,
@@ -923,4 +935,12 @@ mod tests {
             None
         );
     }
+}
+
+async fn evaluation_cost_by_currency(
+    state: &RuntimeState,
+    tenant: Uuid,
+    execution: Option<Uuid>,
+) -> RuntimeResult<std::collections::BTreeMap<String, u64>> {
+    Ok(sqlx::query_as::<_,(String,u64)>("SELECT cost_currency,CAST(SUM(cost_micros) AS UNSIGNED) FROM runtime_calls WHERE tenant_id=? AND execution_id=? AND cost_currency IS NOT NULL GROUP BY cost_currency").bind(tenant).bind(execution).fetch_all(&state.pool).await?.into_iter().collect())
 }
