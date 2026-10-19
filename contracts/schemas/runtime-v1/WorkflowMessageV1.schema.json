@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "content": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "executionId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "nodeExecutionId": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "executionId",
+    "nodeExecutionId",
+    "content",
+    "createdAt"
+  ],
+  "title": "WorkflowMessageV1",
+  "type": "object"
+}

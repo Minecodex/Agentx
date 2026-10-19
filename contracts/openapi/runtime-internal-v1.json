@@ -3069,6 +3069,66 @@
       },
       "EventEnvelopeV1": {
         "$defs": {
+          "InputWaitV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": true,
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "nodePath": {
+                "type": "string"
+              },
+              "occurrence": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "resumeUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "waitId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "waitId",
+              "executionId",
+              "nodeExecutionId",
+              "nodeId",
+              "nodePath",
+              "occurrence",
+              "status"
+            ],
+            "type": "object"
+          },
           "Plane": {
             "enum": [
               "control",
@@ -3159,6 +3219,18 @@
                 "format": "uuid",
                 "type": "string"
               },
+              "inputWaits": {
+                "items": {
+                  "$ref": "#/$defs/InputWaitV1"
+                },
+                "type": "array"
+              },
+              "messages": {
+                "items": {
+                  "$ref": "#/$defs/WorkflowMessageV1"
+                },
+                "type": "array"
+              },
               "rules": {
                 "items": {
                   "$ref": "#/$defs/RuntimeEvaluationRuleResultV1"
@@ -3185,6 +3257,8 @@
               }
             },
             "required": [
+              "inputWaits",
+              "messages",
               "id",
               "sourceCaseId",
               "targetCommandId",
@@ -3917,6 +3991,37 @@
                 "type": "object"
               }
             ]
+          },
+          "WorkflowMessageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "executionId",
+              "nodeExecutionId",
+              "content",
+              "createdAt"
+            ],
+            "type": "object"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3988,6 +4093,66 @@
       },
       "EventExportPageV1": {
         "$defs": {
+          "InputWaitV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": true,
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "nodePath": {
+                "type": "string"
+              },
+              "occurrence": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "resumeUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "waitId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "waitId",
+              "executionId",
+              "nodeExecutionId",
+              "nodeId",
+              "nodePath",
+              "occurrence",
+              "status"
+            ],
+            "type": "object"
+          },
           "RuntimeApprovalButtonV1": {
             "additionalProperties": false,
             "properties": {
@@ -4070,6 +4235,18 @@
                 "format": "uuid",
                 "type": "string"
               },
+              "inputWaits": {
+                "items": {
+                  "$ref": "#/$defs/InputWaitV1"
+                },
+                "type": "array"
+              },
+              "messages": {
+                "items": {
+                  "$ref": "#/$defs/WorkflowMessageV1"
+                },
+                "type": "array"
+              },
               "rules": {
                 "items": {
                   "$ref": "#/$defs/RuntimeEvaluationRuleResultV1"
@@ -4096,6 +4273,8 @@
               }
             },
             "required": [
+              "inputWaits",
+              "messages",
               "id",
               "sourceCaseId",
               "targetCommandId",
@@ -4905,6 +5084,37 @@
                 "type": "object"
               }
             ]
+          },
+          "WorkflowMessageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "executionId",
+              "nodeExecutionId",
+              "content",
+              "createdAt"
+            ],
+            "type": "object"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -6258,6 +6468,66 @@
       },
       "ExecutionRuntimeDetailsV1": {
         "$defs": {
+          "InputWaitV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": true,
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "nodePath": {
+                "type": "string"
+              },
+              "occurrence": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "resumeUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "waitId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "waitId",
+              "executionId",
+              "nodeExecutionId",
+              "nodeId",
+              "nodePath",
+              "occurrence",
+              "status"
+            ],
+            "type": "object"
+          },
           "NodeAttemptV1": {
             "additionalProperties": false,
             "properties": {
@@ -6396,6 +6666,37 @@
               "costMicros"
             ],
             "type": "object"
+          },
+          "WorkflowMessageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "executionId",
+              "nodeExecutionId",
+              "content",
+              "createdAt"
+            ],
+            "type": "object"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -6422,12 +6723,26 @@
             },
             "type": "array"
           },
+          "inputWaits": {
+            "items": {
+              "$ref": "#/$defs/InputWaitV1"
+            },
+            "type": "array"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/$defs/WorkflowMessageV1"
+            },
+            "type": "array"
+          },
           "sandboxes": {
             "items": true,
             "type": "array"
           }
         },
         "required": [
+          "messages",
+          "inputWaits",
           "apiVersion",
           "attempts",
           "calls",
@@ -9614,6 +9929,14 @@
                   },
                   "timezone": {
                     "type": "string"
+                  },
+                  "waitInputs": {
+                    "additionalProperties": {
+                      "items": true,
+                      "type": "array"
+                    },
+                    "default": {},
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -10401,6 +10724,66 @@
       },
       "GovernanceSnapshotPageV1": {
         "$defs": {
+          "InputWaitV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": true,
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "nodePath": {
+                "type": "string"
+              },
+              "occurrence": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "resumeUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "waitId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "waitId",
+              "executionId",
+              "nodeExecutionId",
+              "nodeId",
+              "nodePath",
+              "occurrence",
+              "status"
+            ],
+            "type": "object"
+          },
           "RuntimeApprovalButtonV1": {
             "additionalProperties": false,
             "properties": {
@@ -10483,6 +10866,18 @@
                 "format": "uuid",
                 "type": "string"
               },
+              "inputWaits": {
+                "items": {
+                  "$ref": "#/$defs/InputWaitV1"
+                },
+                "type": "array"
+              },
+              "messages": {
+                "items": {
+                  "$ref": "#/$defs/WorkflowMessageV1"
+                },
+                "type": "array"
+              },
               "rules": {
                 "items": {
                   "$ref": "#/$defs/RuntimeEvaluationRuleResultV1"
@@ -10509,6 +10904,8 @@
               }
             },
             "required": [
+              "inputWaits",
+              "messages",
               "id",
               "sourceCaseId",
               "targetCommandId",
@@ -10971,6 +11368,37 @@
               "attemptCount"
             ],
             "type": "object"
+          },
+          "WorkflowMessageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "executionId",
+              "nodeExecutionId",
+              "content",
+              "createdAt"
+            ],
+            "type": "object"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -11075,6 +11503,68 @@
           "limit"
         ],
         "title": "GovernanceSnapshotRequestV1",
+        "type": "object"
+      },
+      "InputWaitV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "content": true,
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nodeExecutionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "nodePath": {
+            "type": "string"
+          },
+          "occurrence": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resumeUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "waitId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "waitId",
+          "executionId",
+          "nodeExecutionId",
+          "nodeId",
+          "nodePath",
+          "occurrence",
+          "status"
+        ],
+        "title": "InputWaitV1",
         "type": "object"
       },
       "InvocationDetailV1": {
@@ -15291,6 +15781,14 @@
                   },
                   "timezone": {
                     "type": "string"
+                  },
+                  "waitInputs": {
+                    "additionalProperties": {
+                      "items": true,
+                      "type": "array"
+                    },
+                    "default": {},
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -17833,7 +18331,15 @@
                 "type": "string"
               },
               "expectedOutput": true,
-              "input": true
+              "input": true,
+              "waitInputs": {
+                "additionalProperties": {
+                  "items": true,
+                  "type": "array"
+                },
+                "default": {},
+                "type": "object"
+              }
             },
             "required": [
               "caseId",
@@ -18729,6 +19235,14 @@
               "input": true,
               "nodeParameters": {
                 "additionalProperties": true,
+                "type": "object"
+              },
+              "waitInputs": {
+                "additionalProperties": {
+                  "items": true,
+                  "type": "array"
+                },
+                "default": {},
                 "type": "object"
               }
             },
@@ -22416,6 +22930,31 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "content": true,
+                  "executionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "submit_input",
+                    "type": "string"
+                  },
+                  "waitId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "executionId",
+                  "waitId",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
                   "executionId": {
                     "format": "uuid",
                     "type": "string"
@@ -22870,6 +23409,66 @@
       },
       "RuntimeIntegrationEventEnvelopeV1": {
         "$defs": {
+          "InputWaitV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": true,
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "nodePath": {
+                "type": "string"
+              },
+              "occurrence": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "resumeUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "waitId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "waitId",
+              "executionId",
+              "nodeExecutionId",
+              "nodeId",
+              "nodePath",
+              "occurrence",
+              "status"
+            ],
+            "type": "object"
+          },
           "RuntimeApprovalButtonV1": {
             "additionalProperties": false,
             "properties": {
@@ -22952,6 +23551,18 @@
                 "format": "uuid",
                 "type": "string"
               },
+              "inputWaits": {
+                "items": {
+                  "$ref": "#/$defs/InputWaitV1"
+                },
+                "type": "array"
+              },
+              "messages": {
+                "items": {
+                  "$ref": "#/$defs/WorkflowMessageV1"
+                },
+                "type": "array"
+              },
               "rules": {
                 "items": {
                   "$ref": "#/$defs/RuntimeEvaluationRuleResultV1"
@@ -22978,6 +23589,8 @@
               }
             },
             "required": [
+              "inputWaits",
+              "messages",
               "id",
               "sourceCaseId",
               "targetCommandId",
@@ -23710,6 +24323,37 @@
                 "type": "object"
               }
             ]
+          },
+          "WorkflowMessageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "executionId",
+              "nodeExecutionId",
+              "content",
+              "createdAt"
+            ],
+            "type": "object"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -26090,6 +26734,14 @@
                   },
                   "timezone": {
                     "type": "string"
+                  },
+                  "waitInputs": {
+                    "additionalProperties": {
+                      "items": true,
+                      "type": "array"
+                    },
+                    "default": {},
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -28439,7 +29091,15 @@
                 "type": "string"
               },
               "expectedOutput": true,
-              "input": true
+              "input": true,
+              "waitInputs": {
+                "additionalProperties": {
+                  "items": true,
+                  "type": "array"
+                },
+                "default": {},
+                "type": "object"
+              }
             },
             "required": [
               "caseId",
@@ -29335,6 +29995,14 @@
               "input": true,
               "nodeParameters": {
                 "additionalProperties": true,
+                "type": "object"
+              },
+              "waitInputs": {
+                "additionalProperties": {
+                  "items": true,
+                  "type": "array"
+                },
+                "default": {},
                 "type": "object"
               }
             },
@@ -35034,6 +35702,18 @@
         "title": "StudioEditorSnapshotV1",
         "type": "object"
       },
+      "SubmitWaitInputV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "content": true
+        },
+        "required": [
+          "content"
+        ],
+        "title": "SubmitWaitInputV1",
+        "type": "object"
+      },
       "TestArtifactCheckV1": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -36423,6 +37103,57 @@
         "title": "TraceSpanDetailV1",
         "type": "object"
       },
+      "WaitInputNodeV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "nodeId",
+          "name"
+        ],
+        "title": "WaitInputNodeV1",
+        "type": "object"
+      },
+      "WaitInputReceiptV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "receiptId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "waitId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "waitId",
+          "executionId",
+          "receiptId",
+          "status"
+        ],
+        "title": "WaitInputReceiptV1",
+        "type": "object"
+      },
       "WorkerAttemptLeaseV1": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -36843,6 +37574,39 @@
           }
         ],
         "title": "WorkflowDesignSourceV1"
+      },
+      "WorkflowMessageV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nodeExecutionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "executionId",
+          "nodeExecutionId",
+          "content",
+          "createdAt"
+        ],
+        "title": "WorkflowMessageV1",
+        "type": "object"
       },
       "WorkspaceAcquireRequestV1": {
         "$defs": {

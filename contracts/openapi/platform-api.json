@@ -682,12 +682,39 @@
             "type": "string"
           },
           "inputSchema": true,
-          "outputSchema": true
+          "outputSchema": true,
+          "waitInputNodes": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationTestContract_WaitInputNodeV1"
+            },
+            "type": "array"
+          }
         },
         "required": [
+          "waitInputNodes",
           "inputSchema",
           "outputSchema",
           "fingerprint"
+        ],
+        "type": "object"
+      },
+      "ApplicationTestContract_WaitInputNodeV1": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "nodeId",
+          "name"
         ],
         "type": "object"
       },
@@ -4097,6 +4124,14 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "waitInputs": {
+            "additionalProperties": {
+              "items": true,
+              "type": "array"
+            },
+            "default": {},
+            "type": "object"
           }
         },
         "required": [
@@ -4578,6 +4613,13 @@
           },
           "timezone": {
             "type": "string"
+          },
+          "waitInputs": {
+            "additionalProperties": {
+              "items": {},
+              "type": "array"
+            },
+            "type": "object"
           }
         },
         "required": [
@@ -4940,6 +4982,14 @@
             "format": "uint64",
             "minimum": 0,
             "type": "integer"
+          },
+          "waitInputs": {
+            "additionalProperties": {
+              "items": true,
+              "type": "array"
+            },
+            "default": {},
+            "type": "object"
           }
         },
         "required": [
@@ -5080,12 +5130,39 @@
             "type": "string"
           },
           "inputSchema": true,
-          "outputSchema": true
+          "outputSchema": true,
+          "waitInputNodes": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetResponse_WaitInputNodeV1"
+            },
+            "type": "array"
+          }
         },
         "required": [
+          "waitInputNodes",
           "inputSchema",
           "outputSchema",
           "fingerprint"
+        ],
+        "type": "object"
+      },
+      "DatasetResponse_WaitInputNodeV1": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "nodeId",
+          "name"
         ],
         "type": "object"
       },
@@ -5135,6 +5212,13 @@
               "string",
               "null"
             ]
+          },
+          "waitInputs": {
+            "additionalProperties": {
+              "items": {},
+              "type": "array"
+            },
+            "type": "object"
           }
         },
         "required": [
@@ -5391,7 +5475,10 @@
           },
           "channelBindingId": {
             "format": "uuid",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "createdAt": {
             "type": "string"
@@ -5439,7 +5526,8 @@
               "delivering",
               "delivered",
               "failed",
-              "dead"
+              "dead",
+              "cancelled"
             ],
             "type": "string"
           },
@@ -5496,7 +5584,10 @@
           },
           "channelBindingId": {
             "format": "uuid",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "createdAt": {
             "type": "string"
@@ -5541,7 +5632,8 @@
               "delivering",
               "delivered",
               "failed",
-              "dead"
+              "dead",
+              "cancelled"
             ],
             "type": "string"
           },
@@ -5911,6 +6003,13 @@
             "type": "string"
           },
           "input": true,
+          "inputWaits": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EvaluationBatchReport_InputWaitV1"
+            },
+            "type": "array"
+          },
           "judgeCostByCurrency": {
             "additionalProperties": {
               "format": "uint64",
@@ -5943,6 +6042,13 @@
             "format": "uuid",
             "type": "string"
           },
+          "messages": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EvaluationBatchReport_WorkflowMessageV1"
+            },
+            "type": "array"
+          },
           "name": {
             "type": "string"
           },
@@ -5973,6 +6079,66 @@
           "judgeCostMicros",
           "businessCostByCurrency",
           "judgeCostByCurrency"
+        ],
+        "type": "object"
+      },
+      "EvaluationBatchReport_InputWaitV1": {
+        "additionalProperties": false,
+        "properties": {
+          "content": true,
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nodeExecutionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "nodePath": {
+            "type": "string"
+          },
+          "occurrence": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resumeUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "waitId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "waitId",
+          "executionId",
+          "nodeExecutionId",
+          "nodeId",
+          "nodePath",
+          "occurrence",
+          "status"
         ],
         "type": "object"
       },
@@ -6106,6 +6272,37 @@
           "businessCostByCurrency",
           "judgeCostByCurrency",
           "cases"
+        ],
+        "type": "object"
+      },
+      "EvaluationBatchReport_WorkflowMessageV1": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nodeExecutionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "executionId",
+          "nodeExecutionId",
+          "content",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -6866,12 +7063,20 @@
             },
             "type": "array"
           },
+          "waitInputs": {
+            "additionalProperties": {
+              "items": true,
+              "type": "array"
+            },
+            "type": "object"
+          },
           "workflowVersionId": {
             "format": "uuid",
             "type": "string"
           }
         },
         "required": [
+          "waitInputs",
           "invocationId",
           "workflowVersionId",
           "contract",
@@ -6920,12 +7125,39 @@
             "type": "string"
           },
           "inputSchema": true,
-          "outputSchema": true
+          "outputSchema": true,
+          "waitInputNodes": {
+            "items": {
+              "$ref": "#/components/schemas/InvocationTestSample_WaitInputNodeV1"
+            },
+            "type": "array"
+          }
         },
         "required": [
+          "waitInputNodes",
           "inputSchema",
           "outputSchema",
           "fingerprint"
+        ],
+        "type": "object"
+      },
+      "InvocationTestSample_WaitInputNodeV1": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "nodeId",
+          "name"
         ],
         "type": "object"
       },
@@ -10070,9 +10302,66 @@
             "minimum": 0,
             "type": "integer"
           },
+          "inputWaits": {
+            "items": {
+              "properties": {
+                "content": {},
+                "nodePath": {
+                  "type": "string"
+                },
+                "occurrence": {
+                  "type": "integer"
+                },
+                "source": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "type": "string"
+                },
+                "waitId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "waitId",
+                "nodePath",
+                "occurrence",
+                "status"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "iterations": {
             "items": {
               "$ref": "#/components/schemas/AgentIterationDetail"
+            },
+            "type": "array"
+          },
+          "messages": {
+            "items": {
+              "properties": {
+                "content": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "nodeExecutionId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "content"
+              ],
+              "type": "object"
             },
             "type": "array"
           },
@@ -10478,6 +10767,14 @@
               "integer",
               "null"
             ]
+          },
+          "waitInputs": {
+            "additionalProperties": {
+              "items": true,
+              "type": "array"
+            },
+            "default": {},
+            "type": "object"
           }
         },
         "required": [
@@ -10515,6 +10812,13 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "waitInputs": {
+            "additionalProperties": {
+              "items": {},
+              "type": "array"
+            },
+            "type": "object"
           }
         },
         "required": [
@@ -10886,7 +11190,14 @@
               "null"
             ]
           },
-          "input": {}
+          "input": {},
+          "waitInputs": {
+            "additionalProperties": {
+              "items": {},
+              "type": "array"
+            },
+            "type": "object"
+          }
         },
         "type": "object"
       },
@@ -15443,6 +15754,17 @@
         },
         "type": "object"
       },
+      "SubmitWaitInput": {
+        "additionalProperties": false,
+        "properties": {
+          "content": true
+        },
+        "required": [
+          "content"
+        ],
+        "title": "SubmitWaitInputV1",
+        "type": "object"
+      },
       "TestCaseResponse": {
         "properties": {
           "caseKey": {
@@ -15501,6 +15823,14 @@
             "format": "uint64",
             "minimum": 0,
             "type": "integer"
+          },
+          "waitInputs": {
+            "additionalProperties": {
+              "items": true,
+              "type": "array"
+            },
+            "default": {},
+            "type": "object"
           }
         },
         "required": [
@@ -15594,6 +15924,14 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "waitInputs": {
+            "additionalProperties": {
+              "items": true,
+              "type": "array"
+            },
+            "default": {},
+            "type": "object"
           },
           "workflowVersionId": {
             "format": "uuid",
@@ -16666,6 +17004,13 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "waitInputs": {
+            "additionalProperties": {
+              "items": {},
+              "type": "array"
+            },
+            "type": "object"
           }
         },
         "required": [
@@ -17001,6 +17346,55 @@
         "required": [
           "version"
         ],
+        "type": "object"
+      },
+      "WaitInputNode": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "nodeId",
+          "name"
+        ],
+        "title": "WaitInputNodeV1",
+        "type": "object"
+      },
+      "WaitInputReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "receiptId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "waitId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "waitId",
+          "executionId",
+          "receiptId",
+          "status"
+        ],
+        "title": "WaitInputReceiptV1",
         "type": "object"
       },
       "WebhookProviderTemplate": {
@@ -20507,6 +20901,51 @@
         ]
       }
     },
+    "/api/v1/applications/{id}/wait-input-nodes": {
+      "get": {
+        "operationId": "applicationWaitNodes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workflowVersionId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WaitInputNode"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Wait nodes in the selected published version"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/applications/{id}/webhooks": {
       "get": {
         "operationId": "list_webhooks",
@@ -21567,7 +22006,8 @@
                 "delivering",
                 "delivered",
                 "failed",
-                "dead"
+                "dead",
+                "cancelled"
               ],
               "type": "string"
             }
@@ -22707,6 +23147,51 @@
         },
         "tags": [
           "operations"
+        ]
+      }
+    },
+    "/api/v1/executions/{id}/waits/{wait_id}/input": {
+      "post": {
+        "operationId": "submitExecutionInput",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "wait_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitWaitInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Accepted input receipt"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
         ]
       }
     },
@@ -27173,6 +27658,66 @@
         ],
         "tags": [
           "workflows"
+        ]
+      }
+    },
+    "/api/v1/workflows/{id}/wait-input-nodes": {
+      "post": {
+        "operationId": "workflowWaitNodes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "definition": {
+                    "type": "object"
+                  },
+                  "includedNodeIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "definition"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WaitInputNode"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Wait nodes in the selected debug scope"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
         ]
       }
     },

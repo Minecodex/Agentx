@@ -384,6 +384,10 @@ async fn save(
             "Invocation and dataset contracts differ",
         ));
     }
+    crate::workflow_wait_inputs::validate_plan(
+        &contract.wait_input_nodes,
+        &input.draft.wait_inputs,
+    )?;
     input.draft.pending_fields = remaining_fields(&input.draft, &contract);
     let id = if let Some(id) = case {
         let provenance:Option<Uuid>=sqlx::query_scalar("SELECT source_invocation_id FROM dataset_cases WHERE tenant_id=? AND dataset_id=? AND id=? FOR UPDATE").bind(actor.tenant_id).bind(dataset).bind(id).fetch_optional(&mut *tx).await?.ok_or_else(||ApiError::not_found("Test case"))?;
@@ -394,8 +398,8 @@ async fn save(
             ));
         }
 
-        let changed=sqlx::query("UPDATE dataset_cases SET name=?,input_json=?,expected_output_json=?,tags_json=?,pending_fields_json=?,source_invocation_id=?,reference_confirmed=?,version=version+1 WHERE tenant_id=? AND dataset_id=? AND id=? AND version=?")
-            .bind(crate::control_helpers::required_name(&input.draft.name)?).bind(&input.draft.input).bind(&input.draft.expected_output).bind(json!(input.draft.tags)).bind(json!(input.draft.pending_fields)).bind(input.draft.source_invocation_id).bind(input.draft.reference_confirmed).bind(actor.tenant_id).bind(dataset).bind(id).bind(input.version).execute(&mut *tx).await?;
+        let changed=sqlx::query("UPDATE dataset_cases SET name=?,input_json=?,expected_output_json=?,wait_inputs_json=?,tags_json=?,pending_fields_json=?,source_invocation_id=?,reference_confirmed=?,version=version+1 WHERE tenant_id=? AND dataset_id=? AND id=? AND version=?")
+            .bind(crate::control_helpers::required_name(&input.draft.name)?).bind(&input.draft.input).bind(&input.draft.expected_output).bind(json!(input.draft.wait_inputs)).bind(json!(input.draft.tags)).bind(json!(input.draft.pending_fields)).bind(input.draft.source_invocation_id).bind(input.draft.reference_confirmed).bind(actor.tenant_id).bind(dataset).bind(id).bind(input.version).execute(&mut *tx).await?;
         if changed.rows_affected() != 1 {
             return Err(ApiError::conflict(
                 "CASE_VERSION_CONFLICT",
@@ -485,6 +489,17 @@ fn copied_draft(case: CaseDraft, old: &TestContract, target: &TestContract) -> C
     pending_fields.sort();
     pending_fields.dedup();
     CaseDraft {
+        wait_inputs: case
+            .wait_inputs
+            .iter()
+            .filter(|(path, _)| {
+                target
+                    .wait_input_nodes
+                    .iter()
+                    .any(|node| &node.path == *path)
+            })
+            .map(|(path, replies)| (path.clone(), replies.clone()))
+            .collect(),
         input,
         expected_output,
         pending_fields,
@@ -879,7 +894,7 @@ pub(crate) async fn snapshot(
     let id = Uuid::now_v7();
     let number:u64=sqlx::query_scalar("SELECT CAST(COALESCE(MAX(version_number),0)+1 AS UNSIGNED) FROM dataset_versions WHERE tenant_id=? AND dataset_id=?").bind(actor.tenant_id).bind(dataset).fetch_one(&mut **tx).await?;
     sqlx::query("INSERT INTO dataset_versions(id,tenant_id,dataset_id,version_number,source_revision,content_hash,case_count,created_by) VALUES(?,?,?,?,?,?,?,?)").bind(id).bind(actor.tenant_id).bind(dataset).bind(number).bind(revision).bind(hash(&cases)?).bind(cases.len() as u64).bind(actor.user_id).execute(&mut **tx).await?;
-    sqlx::query("INSERT INTO dataset_version_cases(tenant_id,dataset_version_id,source_case_id,case_key,name,input_json,expected_output_json,context_json,tags_json,pending_fields_json,lineage_id,source_invocation_id,reference_confirmed,sort_order,content_hash) SELECT tenant_id,?,id,case_key,name,input_json,expected_output_json,context_json,tags_json,pending_fields_json,lineage_id,source_invocation_id,reference_confirmed,sort_order,SHA2(CONCAT(CAST(input_json AS CHAR),CAST(expected_output_json AS CHAR)),256) FROM dataset_cases WHERE tenant_id=? AND dataset_id=?").bind(id).bind(actor.tenant_id).bind(dataset).execute(&mut **tx).await?;
+    sqlx::query("INSERT INTO dataset_version_cases(tenant_id,dataset_version_id,source_case_id,case_key,name,input_json,expected_output_json,wait_inputs_json,context_json,tags_json,pending_fields_json,lineage_id,source_invocation_id,reference_confirmed,sort_order,content_hash) SELECT tenant_id,?,id,case_key,name,input_json,expected_output_json,wait_inputs_json,context_json,tags_json,pending_fields_json,lineage_id,source_invocation_id,reference_confirmed,sort_order,SHA2(CONCAT(CAST(input_json AS CHAR),CAST(expected_output_json AS CHAR),CAST(wait_inputs_json AS CHAR)),256) FROM dataset_cases WHERE tenant_id=? AND dataset_id=?").bind(id).bind(actor.tenant_id).bind(dataset).execute(&mut **tx).await?;
     Ok(id)
 }
 
@@ -903,6 +918,8 @@ fn parse_import(format: &str, content: &str) -> ApiResult<Vec<CaseDraft>> {
                 input: String,
                 expected_output: String,
                 #[serde(default)]
+                wait_inputs: String,
+                #[serde(default)]
                 tags: String,
             }
             csv::Reader::from_reader(content.as_bytes())
@@ -911,6 +928,13 @@ fn parse_import(format: &str, content: &str) -> ApiResult<Vec<CaseDraft>> {
                 .map(|(i, row)| {
                     let row = row.map_err(|error| invalid(format!("Row {}: {error}", i + 2)))?;
                     Ok(CaseDraft {
+                        wait_inputs: if row.wait_inputs.trim().is_empty() {
+                            Default::default()
+                        } else {
+                            serde_json::from_str(&row.wait_inputs).map_err(|error| {
+                                invalid(format!("Row {} waitInputs: {error}", i + 2))
+                            })?
+                        },
                         name: row.name,
                         input: serde_json::from_str(&row.input)
                             .map_err(|error| invalid(format!("Row {} input: {error}", i + 2)))?,
@@ -967,16 +991,19 @@ mod tests {
     #[test]
     fn copying_optional_additions_requires_explicit_completion() {
         let old = TestContract {
+            wait_input_nodes: Vec::new(),
             input_schema: json!({"type":"object","properties":{"question":{"type":"string"}}}),
             output_schema: json!({}),
             fingerprint: "old".into(),
         };
         let target = TestContract {
+            wait_input_nodes: Vec::new(),
             input_schema: json!({"type":"object","properties":{"question":{"type":"string"},"optional":{"type":"string"}}}),
             output_schema: json!({}),
             fingerprint: "new".into(),
         };
         let draft = CaseDraft {
+            wait_inputs: Default::default(),
             name: "Case".into(),
             input: json!({"question":"hello"}),
             expected_output: json!({}),
@@ -998,6 +1025,7 @@ mod tests {
     #[test]
     fn changed_contract_requires_review_even_when_all_copied_values_are_valid() {
         let old = TestContract {
+            wait_input_nodes: Vec::new(),
             input_schema: json!({"type":"object","properties":{"question":{"type":"string","minLength":3}},"required":["question"]}),
             output_schema: json!({"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"]}),
             fingerprint: "old".into(),
@@ -1006,6 +1034,7 @@ mod tests {
         target.input_schema["properties"]["question"]["minLength"] = json!(1);
         target.fingerprint = "new".into();
         let draft = CaseDraft {
+            wait_inputs: Default::default(),
             name: "Reviewed source".into(),
             input: json!({"question":"hello"}),
             expected_output: json!({"answer":"hello"}),
@@ -1028,6 +1057,7 @@ mod tests {
         assert!(
             !copied_draft(
                 CaseDraft {
+                    wait_inputs: Default::default(),
                     reference_confirmed: false,
                     ..draft
                 },
@@ -1053,6 +1083,7 @@ mod tests {
                     version: 1,
                     sort_order: index as u64,
                     draft: CaseDraft {
+                        wait_inputs: Default::default(),
                         name: format!("Case {index}"),
                         input: json!({"question":index}),
                         expected_output: json!({}),

@@ -12,7 +12,7 @@
 - 手动运行保存每个节点的完整输入输出。
 - 发布版本固定节点类型及其版本。
 - Trigger Binding 把外部事件映射为 Start Inputs，并创建一次独立 Execution。
-- Approval、子流程和受控外部交互可以挂起并恢复 Execution；不再暴露独立 Wait 节点。
+- Approval、等待输入和子流程可以持久化挂起并恢复 Execution；等待输入只传递原始内容，不包含审批或意图判断。
 
 这些是 Agentx 自己冻结的运行语义。Studio 可以采用 n8n 式拖拽、配置和调试交互，但不以 n8n Workflow JSON、表达式、npm 社区节点或插件协议作为兼容目标。
 
@@ -192,7 +192,8 @@ Execution Style：
 
 内置节点目录（agentx/core 包）：`agent`、`approval`、`code`、`if`、`loop_over_items`、`merge`、`model`、`sub_workflow`、`mcp_tool`、`skill`、`rag`、`memory`，以及 plan7 P7-A 新增的 IM 回复节点：
 
-- `reply_message`：回复触发本工作流的来源 IM 会话。内容为任意 workflow 变量；目标由 ExecutionOrigin → Invocation Trigger Context 在结算事务内解析，非 IM 来源执行失败 `REPLY_TARGET_UNRESOLVED`。语义为非终态副作用：结算事务入队 `delivery_outbox` 后节点即成功，实际投递异步进行。
+- `reply_message`：在结算事务产生持久化中间消息并继续执行。渠道来源另外异步投递到原会话；其他入口通过事件流、查询或测试界面获取消息。
+- `await_input`：挂起节点激活、可选 Hook 通知、接收原始内容后恢复同一次执行；渠道自动路由和平台预填使用同一接收机制。完整协议见 [工作流交互](14-workflow-interactions.md)。
 - `send_message`：向显式渠道会话主动发送。参数为 content + channelId（+ 可选 targetConversationId/senderId）；渠道无法解析时发布被阻塞（`SEND_CHANNEL_UNRESOLVED`）。
 
 `remote_action` 已整条废弃（plan5）：触发内部 Workflow 由 `sub_workflow` 承载，第三方节点生态位未来归 MCP。

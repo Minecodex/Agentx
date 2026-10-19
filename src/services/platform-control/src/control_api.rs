@@ -260,6 +260,7 @@ fn routes() -> Router<ControlApiState> {
         .merge(crate::bootstrap_api::routes())
         .merge(crate::iam_api::routes())
         .merge(crate::workflow_api::routes())
+        .merge(crate::workflow_wait_inputs::routes())
         .merge(crate::workflow_operations::routes())
         .merge(crate::application_catalog_api::routes())
         .merge(crate::catalog_api::routes())
@@ -912,6 +913,8 @@ struct CreateDeploymentRequest {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ScheduleResponse {
+    #[serde(default)]
+    wait_inputs: agentx_runtime_contracts::WaitInputsV1,
     id: Uuid,
     name: String,
     cron_expression: String,
@@ -925,6 +928,8 @@ struct ScheduleResponse {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct CreateScheduleRequest {
+    #[serde(default)]
+    wait_inputs: agentx_runtime_contracts::WaitInputsV1,
     name: String,
     cron_expression: String,
     timezone: String,
@@ -935,6 +940,8 @@ struct CreateScheduleRequest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct UpdateScheduleRequest {
+    #[serde(default)]
+    wait_inputs: agentx_runtime_contracts::WaitInputsV1,
     name: String,
     cron_expression: String,
     timezone: String,
@@ -1145,7 +1152,7 @@ async fn list_schedules(
 ) -> ApiResult<Json<Vec<ScheduleResponse>>> {
     actor.require("application:view")?;
     require_application(&state, &actor, application_id).await?;
-    let rows = sqlx::query("SELECT id,name,cron_expression,timezone,input_json,misfire_policy,status,version FROM application_schedules WHERE tenant_id=? AND application_id=? ORDER BY created_at DESC")
+    let rows = sqlx::query("SELECT id,name,cron_expression,timezone,input_json,wait_inputs_json,misfire_policy,status,version FROM application_schedules WHERE tenant_id=? AND application_id=? ORDER BY created_at DESC")
         .bind(actor.tenant_id).bind(application_id).fetch_all(&state.pool).await?;
     Ok(Json(
         rows.into_iter()
@@ -1167,12 +1174,12 @@ async fn create_schedule(
         &input.misfire_policy,
     )?;
     let id = Uuid::now_v7();
-    let configuration = json!({"cronExpression":input.cron_expression,"timezone":input.timezone,"input":input.input,"misfirePolicy":input.misfire_policy,"enabled":true});
+    let configuration = json!({"cronExpression":input.cron_expression,"timezone":input.timezone,"input":input.input,"waitInputs":input.wait_inputs,"misfirePolicy":input.misfire_policy,"enabled":true});
     let hash =
         agentx_runtime_contracts::content_hash(&configuration).map_err(ApiError::internal)?;
     let mut tx = state.pool.begin().await?;
-    sqlx::query("INSERT INTO application_schedules(id,tenant_id,application_id,name,cron_expression,timezone,input_json,status,misfire_policy,configuration_revision,configuration_hash,created_by) VALUES(?,?,?,?,?,?,?,'active',?,1,?,?)")
-        .bind(id).bind(actor.tenant_id).bind(application_id).bind(required_name(&input.name)?).bind(&input.cron_expression).bind(&input.timezone).bind(&input.input).bind(&input.misfire_policy).bind(hash.as_str()).bind(actor.user_id).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO application_schedules(id,tenant_id,application_id,name,cron_expression,timezone,input_json,wait_inputs_json,status,misfire_policy,configuration_revision,configuration_hash,created_by) VALUES(?,?,?,?,?,?,?,?,'active',?,1,?,?)")
+        .bind(id).bind(actor.tenant_id).bind(application_id).bind(required_name(&input.name)?).bind(&input.cron_expression).bind(&input.timezone).bind(&input.input).bind(json!(input.wait_inputs)).bind(&input.misfire_policy).bind(hash.as_str()).bind(actor.user_id).execute(&mut *tx).await?;
     rebuild_trigger_revision(&mut tx, &actor, application_id).await?;
     tx.commit().await?;
     Ok((
@@ -1199,12 +1206,12 @@ async fn update_schedule(
             "Schedule status is invalid",
         ));
     }
-    let configuration = json!({"cronExpression":input.cron_expression,"timezone":input.timezone,"input":input.input,"misfirePolicy":input.misfire_policy,"enabled":input.status == "active"});
+    let configuration = json!({"cronExpression":input.cron_expression,"timezone":input.timezone,"input":input.input,"waitInputs":input.wait_inputs,"misfirePolicy":input.misfire_policy,"enabled":input.status == "active"});
     let hash =
         agentx_runtime_contracts::content_hash(&configuration).map_err(ApiError::internal)?;
     let mut tx = state.pool.begin().await?;
-    let changed = sqlx::query("UPDATE application_schedules SET name=?,cron_expression=?,timezone=?,input_json=?,misfire_policy=?,status=?,configuration_revision=configuration_revision+1,configuration_hash=?,version=version+1 WHERE tenant_id=? AND application_id=? AND id=? AND version=?")
-        .bind(required_name(&input.name)?).bind(&input.cron_expression).bind(&input.timezone).bind(&input.input).bind(&input.misfire_policy).bind(&input.status).bind(hash.as_str()).bind(actor.tenant_id).bind(application_id).bind(schedule_id).bind(input.version).execute(&mut *tx).await?;
+    let changed = sqlx::query("UPDATE application_schedules SET name=?,cron_expression=?,timezone=?,input_json=?,wait_inputs_json=?,misfire_policy=?,status=?,configuration_revision=configuration_revision+1,configuration_hash=?,version=version+1 WHERE tenant_id=? AND application_id=? AND id=? AND version=?")
+        .bind(required_name(&input.name)?).bind(&input.cron_expression).bind(&input.timezone).bind(&input.input).bind(json!(input.wait_inputs)).bind(&input.misfire_policy).bind(&input.status).bind(hash.as_str()).bind(actor.tenant_id).bind(application_id).bind(schedule_id).bind(input.version).execute(&mut *tx).await?;
     if changed.rows_affected() != 1 {
         return Err(ApiError::conflict(
             "SCHEDULE_VERSION_CONFLICT",
@@ -1241,6 +1248,8 @@ async fn delete_schedule(
 
 fn schedule_from_row(row: sqlx::mysql::MySqlRow) -> ApiResult<ScheduleResponse> {
     Ok(ScheduleResponse {
+        wait_inputs: serde_json::from_value(row.try_get("wait_inputs_json")?)
+            .map_err(ApiError::internal)?,
         id: row.try_get("id")?,
         name: row.try_get("name")?,
         cron_expression: row.try_get("cron_expression")?,
@@ -1257,7 +1266,7 @@ async fn load_schedule(
     tenant_id: Uuid,
     id: Uuid,
 ) -> ApiResult<ScheduleResponse> {
-    let row = sqlx::query("SELECT id,name,cron_expression,timezone,input_json,misfire_policy,status,version FROM application_schedules WHERE tenant_id=? AND id=?")
+    let row = sqlx::query("SELECT id,name,cron_expression,timezone,input_json,wait_inputs_json,misfire_policy,status,version FROM application_schedules WHERE tenant_id=? AND id=?")
         .bind(tenant_id)
         .bind(id)
         .fetch_optional(&state.pool)

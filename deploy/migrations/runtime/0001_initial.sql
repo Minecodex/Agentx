@@ -1372,3 +1372,60 @@ CREATE TABLE sandbox_design_leases (
     KEY idx_sandbox_design_session (tenant_id, session_id, status),
     KEY idx_sandbox_design_recovery (status,lease_until)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+-- Workflow interactions are independent of approval tasks. NULL active_scope
+-- permits history; its unique index owns the one active channel wait slot.
+CREATE TABLE input_waits (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    tenant_id BINARY(16) NOT NULL,
+    root_execution_id BINARY(16) NOT NULL,
+    execution_id BINARY(16) NOT NULL,
+    invocation_id BINARY(16) NULL,
+    application_id BINARY(16) NULL,
+    node_execution_id BINARY(16) NOT NULL,
+    checkpoint_id BINARY(16) NOT NULL,
+    node_id VARCHAR(191) NOT NULL,
+    node_path TEXT NOT NULL,
+    path_hash BINARY(32) NOT NULL,
+    occurrence INT UNSIGNED NOT NULL,
+    active_scope BINARY(32) NULL,
+    status ENUM('waiting','received','timed_out','cancelled','failed') NOT NULL,
+    resume_status ENUM('not_requested','pending','succeeded','cancelled') NOT NULL DEFAULT 'not_requested',
+    content_json JSON NULL,
+    input_source VARCHAR(32) NULL,
+    receipt_id BINARY(16) NULL,
+    input_key VARCHAR(192) NULL,
+    input_hash VARCHAR(80) NULL,
+    deadline_at TIMESTAMP(6) NULL,
+    received_at TIMESTAMP(6) NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    UNIQUE KEY uq_input_wait_activation (tenant_id, node_execution_id),
+    UNIQUE KEY uq_input_wait_scope (tenant_id, active_scope),
+    UNIQUE KEY uq_input_wait_occurrence (tenant_id, root_execution_id, path_hash, occurrence),
+    KEY idx_input_wait_invocation (tenant_id, invocation_id, status),
+    KEY idx_input_wait_execution (tenant_id, execution_id, status),
+    KEY idx_input_wait_deadline (status, deadline_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE workflow_messages (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    tenant_id BINARY(16) NOT NULL,
+    root_execution_id BINARY(16) NOT NULL,
+    execution_id BINARY(16) NOT NULL,
+    invocation_id BINARY(16) NULL,
+    node_execution_id BINARY(16) NOT NULL,
+    content MEDIUMTEXT NOT NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    UNIQUE KEY uq_workflow_message_activation (tenant_id, node_execution_id),
+    KEY idx_workflow_message_invocation (tenant_id, invocation_id, created_at),
+    KEY idx_workflow_message_execution (tenant_id, root_execution_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE channel_input_receipts (
+    tenant_id BINARY(16) NOT NULL,
+    binding_id BINARY(16) NOT NULL,
+    event_hash BINARY(32) NOT NULL,
+    invocation_id BINARY(16) NOT NULL,
+    wait_id BINARY(16) NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (tenant_id, binding_id, event_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

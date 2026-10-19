@@ -3,7 +3,7 @@
  "nodeType": "reply_message",
  "version": 1,
  "displayName": "Reply Message",
- "description": "Reply to the conversation that triggered this workflow.",
+ "description": "Emit a message and continue the workflow.",
  "category": "logic",
  "keywords": [
   "reply",
@@ -14,7 +14,7 @@
  "localizations": {
   "en-US": {
    "displayName": "Reply Message",
-   "description": "Reply to the conversation that triggered this workflow.",
+   "description": "Emit a message and continue the workflow.",
    "keywords": [
     "reply",
     "message"
@@ -32,7 +32,7 @@
   },
   "zh-CN": {
    "displayName": "回复消息",
-   "description": "向触发本工作流的来源会话回复消息（异步投递）。",
+   "description": "发送一条中间消息，并继续执行后续节点。",
    "keywords": [
     "回复",
     "消息"

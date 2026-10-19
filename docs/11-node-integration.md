@@ -93,3 +93,7 @@ cargo xtask check
 ```
 
 画布的整图动态契约使用 `/api/v1/workflows/{id}/draft/resolve-plugins`，复用保存时依赖解析顺序；单节点 resolve 继续作为 SDK 设计时工具。SDK 2 文件协议与 Trace 预算降级见 `plan6/contracts.md`。
+
+## 工作流输入交互
+
+中间回复和输入等待统一归入 `agentx/core`，持久化与恢复由 Runtime 承担。`input_waits`、`workflow_messages` 和 `channel_input_receipts` 分别保存等待、消息和渠道幂等凭据；Hook 复用 delivery outbox。平台入口共享等待节点发现及回复序列编辑器，定时和测试用例版本冻结 `waitInputs`，评测投影保存实际等待和消息。详见 [工作流交互协议](14-workflow-interactions.md)。

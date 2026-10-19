@@ -7,7 +7,7 @@ import type { Batch, CaseResult, Run } from './types'
 
 function result(overrides: Partial<CaseResult> = {}): CaseResult {
   return {
-    id: 'case', name: 'Example', lineageId: 'origin', input: { question: 'Hello' },
+    inputWaits: [], messages: [], id: 'case', name: 'Example', lineageId: 'origin', input: { question: 'Hello' },
     expectedOutput: { answer: 'Hi' }, actualOutput: { answer: 'Hi' }, status: 'passed',
     score: 1, reason: 'Equivalent meaning', executionId: 'business', judgeExecutionId: 'judge',
     businessCostMicros: 10, judgeCostMicros: 20,

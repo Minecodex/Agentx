@@ -530,6 +530,14 @@ pub async fn resume_execution(pool: &MySqlPool, claim: &RuntimeCommandClaim) -> 
     .bind(node_execution_id)
     .execute(&mut *tx)
     .await?;
+    if let Some(wait_id) = claim
+        .payload
+        .get("waitId")
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
+    {
+        crate::input_waits::resumed(&mut tx, claim.tenant_id, claim.execution_id, wait_id).await?;
+    }
     let approval = sqlx::query(
         "SELECT id FROM approval_tasks WHERE tenant_id=? AND execution_id=? AND node_execution_id=? AND status IN ('decided','timed_out') AND resume_status='pending' FOR UPDATE",
     )

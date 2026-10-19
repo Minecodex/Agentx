@@ -44,6 +44,24 @@ pub(crate) async fn test_sample(
             "The invocation has no execution sample",
         )
     })?;
+    let runtime_details: ExecutionRuntimeDetailsV1 = runtime_execution_get(
+        state,
+        actor,
+        execution,
+        "execution_runtime_details",
+        &format!("/internal/runtime/v1/query/executions/{execution}/runtime-details"),
+    )
+    .await?;
+    let mut wait_inputs = agentx_runtime_contracts::WaitInputsV1::new();
+    for wait in runtime_details
+        .input_waits
+        .into_iter()
+        .filter(|wait| wait.status == "received")
+    {
+        if let Some(content) = wait.content {
+            wait_inputs.entry(wait.node_path).or_default().push(content);
+        }
+    }
     let execution = runtime_execution_detail(state, actor, execution).await?;
     let version = execution.summary.workflow_version_id.ok_or_else(|| {
         ApiError::unprocessable(
@@ -54,6 +72,7 @@ pub(crate) async fn test_sample(
     let contract =
         crate::application_testing::selected_contract(state, actor, application, version).await?;
     let draft = crate::application_testing::CaseDraft {
+        wait_inputs,
         name: format!("Invocation {invocation}"),
         input: execution.input.unwrap_or(Value::Null),
         expected_output: execution.output.unwrap_or(Value::Null),
@@ -71,6 +90,7 @@ pub(crate) async fn test_sample(
     )
     .await?;
     serde_json::to_value(crate::application_testing::InvocationSample {
+        wait_inputs: draft.wait_inputs,
         invocation_id: invocation,
         workflow_version_id: version,
         contract,

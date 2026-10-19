@@ -45,6 +45,8 @@ pub struct ApiKeyCaller {
 
 #[derive(Clone, Debug)]
 pub struct InvocationCaller {
+    pub wait_inputs: Option<agentx_runtime_contracts::WaitInputsV1>,
+    pub trigger_context: Option<Value>,
     pub end_user: Option<agentx_runtime_contracts::ApplicationUserIdentityV1>,
     pub caller_type: &'static str,
     pub caller_id: Uuid,
@@ -332,6 +334,8 @@ pub async fn create_invocation(
         tenant_id,
         application_id,
         InvocationCaller {
+            wait_inputs: None,
+            trigger_context: None,
             end_user: None,
             caller_type: "api_key",
             caller_id,
@@ -439,6 +443,8 @@ async fn create_runtime_invocation_tx_inner(
                 "sessionId": session_id,
                 "callerType": caller.caller_type,
                 "callerId": caller.caller_id,
+                "waitInputs": caller.wait_inputs,
+                "triggerContext": caller.trigger_context,
             }))
             .map_err(|error| RuntimeError::Internal(error.into()))?
         )
@@ -571,6 +577,11 @@ async fn create_runtime_invocation_tx_inner(
             .map_err(|error| RuntimeError::Internal(error.into()))?;
     sqlx::query("INSERT INTO application_invocations(id,tenant_id,application_id,session_id,workflow_version_id,bundle_id,admission_epoch,state_version,execution_id,caller_type,caller_id,caller_token_version,chat_mapping_version,chat_mapping_json,request_hash,idempotency_key,status,input_json) VALUES(?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,'queued',?) ON DUPLICATE KEY UPDATE id=id")
         .bind(invocation_id).bind(tenant_id).bind(application_id).bind(session_id).bind(spec.workflow_version_id).bind(selected_bundle_id).bind(admission_epoch).bind(execution_id).bind(caller.caller_type).bind(caller.caller_id).bind(caller.token_version).bind(chat_mapping_version).bind(&chat_mapping_json).bind(&request_hash).bind(idempotency_key).bind(&input).execute(&mut **tx).await?;
+    if let Some(context) = &caller.trigger_context {
+        sqlx::query("UPDATE application_invocations SET trigger_context_json=?,provider_event_id=?,conversation_id=? WHERE tenant_id=? AND id=?")
+            .bind(context).bind(context.get("providerEventId").and_then(Value::as_str)).bind(context.pointer("/conversation/id").and_then(Value::as_str))
+            .bind(tenant_id).bind(invocation_id).execute(&mut **tx).await?;
+    }
     let stored = sqlx::query("SELECT id,execution_id,bundle_id,admission_epoch,status,request_hash FROM application_invocations WHERE tenant_id=? AND application_id=? AND caller_type=? AND caller_id=? AND idempotency_key=? FOR UPDATE")
         .bind(tenant_id).bind(application_id).bind(caller.caller_type).bind(caller.caller_id).bind(idempotency_key).fetch_one(&mut **tx).await?;
     let stored_id: Uuid = stored.try_get("id")?;
@@ -666,6 +677,8 @@ async fn create_runtime_invocation_tx_inner(
     .bind(json!({
         "runtimePolicy": &spec.runtime_policy,
         "agentBundle": &spec.agent_bundle,
+        "waitInputMode": if caller.wait_inputs.is_some() { "preset" } else { "external" },
+        "waitInputs": &caller.wait_inputs,
     }))
     .bind(state_hash.as_str())
     .execute(&mut **tx)
@@ -1342,6 +1355,9 @@ async fn process_cancel_command(
             .bind(claim.execution_id).bind(claim.tenant_id).execute(&mut *tx).await?;
         sqlx::query("UPDATE execution_outbox SET status='published',published_at=UTC_TIMESTAMP(6),last_error='execution_cancelled_before_dispatch',locked_by=NULL,locked_until=NULL WHERE execution_id=? AND tenant_id=? AND message_type='dispatch_node' AND status='pending'")
             .bind(claim.execution_id).bind(claim.tenant_id).execute(&mut *tx).await?;
+        crate::input_waits::cancel(&mut tx, claim.tenant_id, claim.execution_id).await?;
+        sqlx::query("INSERT IGNORE INTO runtime_commands(id,tenant_id,command_type,aggregate_type,aggregate_id,idempotency_key,payload_json,status) SELECT UUID_TO_BIN(UUID()),tenant_id,'cancel_execution','execution',CAST(BIN_TO_UUID(child_execution_id) AS CHAR),CONCAT('parent-cancel:',BIN_TO_UUID(child_execution_id)),JSON_OBJECT('reason','parent_cancelled'),'pending' FROM execution_children WHERE tenant_id=? AND parent_execution_id=? AND relationship='composite' AND merge_status='pending'")
+            .bind(claim.tenant_id).bind(claim.execution_id).execute(&mut *tx).await?;
         sqlx::query("UPDATE approval_tasks SET status='cancelled',version=version+1,locked_by=NULL,locked_until=NULL WHERE execution_id=? AND tenant_id=? AND status IN ('pending','claimed')")
             .bind(claim.execution_id).bind(claim.tenant_id).execute(&mut *tx).await?;
         sqlx::query("UPDATE node_invocation_handles SET revoked_at=UTC_TIMESTAMP(6) WHERE execution_id=? AND tenant_id=? AND consumed_at IS NULL AND revoked_at IS NULL")

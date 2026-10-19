@@ -20,7 +20,7 @@ async fn build_evaluation(
     let workflow_version_id: Uuid = row.try_get("workflow_version_id")?;
     let dataset_version_id: Uuid = row.try_get("dataset_version_id")?;
     let profile_version_id: Uuid = row.try_get("evaluation_profile_version_id")?;
-    let case_rows=sqlx::query("SELECT source_case_id,input_json,expected_output_json FROM dataset_version_cases WHERE tenant_id=? AND dataset_version_id=? ORDER BY sort_order,source_case_id")
+    let case_rows=sqlx::query("SELECT source_case_id,input_json,expected_output_json,wait_inputs_json FROM dataset_version_cases WHERE tenant_id=? AND dataset_version_id=? ORDER BY sort_order,source_case_id")
         .bind(actor.tenant_id).bind(dataset_version_id).fetch_all(&state.pool).await?;
     if case_rows.is_empty() {
         return Err(ApiError::unprocessable(
@@ -32,6 +32,8 @@ async fn build_evaluation(
         .into_iter()
         .map(|case| {
             Ok(RuntimeEvaluationCaseV1 {
+                wait_inputs: serde_json::from_value(case.try_get("wait_inputs_json")?)
+                    .map_err(|error| sqlx::Error::Decode(Box::new(error)))?,
                 case_id: case.try_get("source_case_id")?,
                 input: case.try_get("input_json")?,
                 expected_output: case.try_get("expected_output_json")?,

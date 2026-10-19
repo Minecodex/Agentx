@@ -89,6 +89,7 @@ mod workflow_publishing;
 mod workflow_resources;
 mod workflow_revision_resources;
 mod workflow_versions;
+mod workflow_wait_inputs;
 
 use control_helpers::{
     control_roles as roles, payload_strings, payload_uuid, payload_uuids, required_env as required,

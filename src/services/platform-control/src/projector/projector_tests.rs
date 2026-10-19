@@ -225,6 +225,8 @@ async fn project_evaluation_retention_and_notification(
     let judge_execution_id = Uuid::now_v7();
     let report = RuntimeEvaluationReportV1 {
         cases: vec![RuntimeEvaluationCaseResultV1 {
+            input_waits: Vec::new(),
+            messages: Vec::new(),
             id: case_id,
             source_case_id: Uuid::now_v7(),
             target_command_id: Uuid::now_v7(),

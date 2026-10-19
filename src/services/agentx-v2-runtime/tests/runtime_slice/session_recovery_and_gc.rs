@@ -39,6 +39,7 @@ async fn session_message_appends_one_assistant_response(fixture: &Fixture) {
                 .header("idempotency-key", "runtime-slice-session-message")
                 .body(Body::from(
                     serde_json::to_vec(&MessageRequestV1 {
+                wait_inputs: Default::default(),
                         parts: vec![MessagePartInputV1 {
                             part_type: "text".into(),
                             content: Some(json!("session-message")),
@@ -169,6 +170,7 @@ async fn session_message_appends_one_assistant_response(fixture: &Fixture) {
                 .header("idempotency-key", "runtime-slice-session-message-v2")
                 .body(Body::from(
                     serde_json::to_vec(&MessageRequestV1 {
+                wait_inputs: Default::default(),
                         parts: vec![MessagePartInputV1 {
                             part_type: "text".into(),
                             content: Some(json!("session-message-v2")),

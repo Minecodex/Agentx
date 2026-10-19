@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "content": true,
+    "executionId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "expiresAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "nodeExecutionId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "nodeId": {
+      "type": "string"
+    },
+    "nodePath": {
+      "type": "string"
+    },
+    "occurrence": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "resumeUrl": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "type": "string"
+    },
+    "waitId": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "waitId",
+    "executionId",
+    "nodeExecutionId",
+    "nodeId",
+    "nodePath",
+    "occurrence",
+    "status"
+  ],
+  "title": "InputWaitV1",
+  "type": "object"
+}

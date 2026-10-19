@@ -318,5 +318,17 @@
       }
     },
     "topK": 5
+  },
+  "await_input": {
+    "timeoutMs": 300000,
+    "hookUrl": {
+      "kind": "reference",
+      "selector": {
+        "namespace": "inputs",
+        "path": [
+          "question"
+        ]
+      }
+    }
   }
 }

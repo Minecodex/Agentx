@@ -521,6 +521,7 @@ fn every_studio_manifest_parameter_has_an_explicit_runtime_consumer() {
             ],
         ),
         ("sub_workflow", &["workflowVersionId", "inputs"]),
+        ("await_input", &["timeoutMs", "hookUrl"]),
         ("knowledge_retrieval", &["query", "topK"]),
         (
             "declarative_http",

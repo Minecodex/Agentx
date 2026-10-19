@@ -266,11 +266,13 @@ impl Fixture {
             profile_version_id: Uuid::now_v7(),
             cases: vec![
                 agentx_runtime_contracts::RuntimeEvaluationCaseV1 {
+                wait_inputs: Default::default(),
                     case_id: Uuid::now_v7(),
                     input: json!({"message":"case-one"}),
                     expected_output: Some(json!({"message":"case-one"})),
                 },
                 agentx_runtime_contracts::RuntimeEvaluationCaseV1 {
+                wait_inputs: Default::default(),
                     case_id: Uuid::now_v7(),
                     input: json!({"message":"case-two"}),
                     expected_output: Some(json!({"message":"case-two"})),

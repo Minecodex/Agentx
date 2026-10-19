@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TestContract {
+    pub wait_input_nodes: Vec<agentx_runtime_contracts::WaitInputNodeV1>,
     pub input_schema: Value,
     pub output_schema: Value,
     pub fingerprint: String,
@@ -16,10 +17,37 @@ impl TestContract {
         let (input_schema, output_schema) = workflow_schemas(definition);
         let fingerprint = fingerprint(&input_schema, &output_schema);
         Self {
+            wait_input_nodes: definition
+                .nodes
+                .iter()
+                .filter(|node| node.node_type == "await_input" && !node.disabled)
+                .map(|node| agentx_runtime_contracts::WaitInputNodeV1 {
+                    path: agentx_runtime_contracts::node_path("", &node.id),
+                    node_id: node.id.clone(),
+                    name: node.name.clone(),
+                })
+                .collect(),
             input_schema,
             output_schema,
             fingerprint,
         }
+    }
+
+    pub fn with_wait_nodes(
+        mut self,
+        nodes: Vec<agentx_runtime_contracts::WaitInputNodeV1>,
+    ) -> Self {
+        let paths = nodes.iter().map(|node| &node.path).collect::<Vec<_>>();
+        self.fingerprint = format!(
+            "{:x}",
+            Sha256::digest(
+                json!({"io":fingerprint(&self.input_schema,&self.output_schema),"waitNodes":paths})
+                    .to_string()
+                    .as_bytes()
+            )
+        );
+        self.wait_input_nodes = nodes;
+        self
     }
 
     pub fn errors(&self, input: &Value, expected: &Value) -> Vec<CaseFieldError> {

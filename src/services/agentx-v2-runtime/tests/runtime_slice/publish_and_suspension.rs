@@ -196,6 +196,7 @@ async fn v2_publish_execution_query_recovery_and_gc_are_fenced_and_idempotent() 
     completed_history_does_not_block_the_next_node(&fixture).await;
     evaluation_work_package_creates_cases_converges_and_cancels_atomically(&fixture).await;
     wait_and_approval_resume_exactly_once(&fixture).await;
+    raw_input_waits_are_durable_idempotent_and_use_the_same_execution(&fixture).await;
     large_worker_results_are_externalized_and_verified(&fixture).await;
     composite_child_uses_immutable_runtime_snapshot_and_merges_on_success(&fixture).await;
     sandbox_manager_is_fenced_and_idempotent(&fixture).await;
@@ -299,6 +300,8 @@ async fn execution_context_projection_changes_only_affect_future_executions(fixt
         fixture.tenant_id,
         fixture.application_id,
         InvocationCaller {
+            wait_inputs: None,
+            trigger_context: None,
             end_user: None,
             caller_type: "user",
             caller_id: user_id,
@@ -346,6 +349,8 @@ async fn execution_context_projection_changes_only_affect_future_executions(fixt
         fixture.tenant_id,
         fixture.application_id,
         InvocationCaller {
+            wait_inputs: None,
+            trigger_context: None,
             end_user: None,
             caller_type: "user",
             caller_id: user_id,
@@ -417,6 +422,8 @@ async fn execution_context_projection_changes_only_affect_future_executions(fixt
             fixture.tenant_id,
             fixture.application_id,
             InvocationCaller {
+            wait_inputs: None,
+            trigger_context: None,
                 end_user: None,
                 caller_type: trigger_type,
                 caller_id: source_id,

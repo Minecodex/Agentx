@@ -30,6 +30,7 @@ pub async fn start(
                 command_id,
                 request_input,
                 "debug",
+                &package.overlay.wait_inputs,
             )
             .await?;
             Ok(StartedWorkPackage {
@@ -73,6 +74,7 @@ pub async fn start(
                     command_id,
                     &case.input,
                     "evaluation",
+                    &case.wait_inputs,
                 )
                 .await?;
                 sqlx::query(
@@ -797,7 +799,20 @@ async fn load_evaluation_report(
         }
         let cost_micros: u64 = row.try_get("cost_micros")?;
         total_cost_micros = total_cost_micros.saturating_add(cost_micros);
+        let target_execution: Option<Uuid> = row.try_get("target_execution_id")?;
+        let input_waits = if let Some(id) = target_execution {
+            crate::input_waits::report(tx, tenant_id, id).await?
+        } else {
+            Vec::new()
+        };
+        let messages = if let Some(id) = target_execution {
+            crate::workflow_interaction::report(tx, tenant_id, id).await?
+        } else {
+            Vec::new()
+        };
         cases.push(RuntimeEvaluationCaseResultV1 {
+            input_waits,
+            messages,
             id: case_id,
             source_case_id: row.try_get("source_case_id")?,
             target_command_id: row.try_get("target_command_id")?,
@@ -859,6 +874,7 @@ async fn insert_execution(
     command_id: Uuid,
     input: &Value,
     trigger_type: &str,
+    wait_inputs: &agentx_runtime_contracts::WaitInputsV1,
 ) -> RuntimeResult<()> {
     let started_at = time::OffsetDateTime::now_utc();
     let application_id = package
@@ -922,6 +938,8 @@ async fn insert_execution(
     .bind(serde_json::to_value(&package.objects).map_err(|error| RuntimeError::Internal(error.into()))?)
     .bind(json!({
         "runtimePolicy": &package.runtime_policy,
+        "waitInputMode": "preset",
+        "waitInputs": wait_inputs,
         "workPackageSpec": &package.spec,
         "workPackageOverlay": &package.overlay,
         "agentBundle": &package.agent_bundle,

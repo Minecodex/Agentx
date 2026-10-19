@@ -7,6 +7,95 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 
 #[test]
+fn raw_input_wait_loop_keeps_intent_in_the_downstream_condition() {
+    let definition: WorkflowDefinition = serde_json::from_str(include_str!(
+        "../../../../contracts/fixtures/workflow-input-loop.json"
+    ))
+    .unwrap();
+    let registry = NodeRegistry::m5_defaults();
+    let compiled = WorkflowCompiler::new(&registry)
+        .compile(&definition, &CompileContext::default())
+        .unwrap();
+    let wait = compiled.nodes.iter().find(|node| node.id == "ask").unwrap();
+    assert_eq!(wait.node_type, "await_input");
+    assert_eq!(
+        wait.execution_style,
+        agentx_node_protocol::ExecutionStyle::Suspend
+    );
+    assert!(compiled.nodes.iter().any(|node| node.node_type == "if"));
+    assert!(wait.parameters.get("cases").is_none());
+    // Enter the first wait before the feedback edge exists, then enter it
+    // again with a distinct activation after a downstream decision.
+    let mut machine = crate::ExecutionMachine::new(compiled, vec![Item::default()]).unwrap();
+    let message = Item {
+        json: json!({"deliveryId":uuid::Uuid::now_v7(),"content":"Please reply","status":"emitted"}),
+        ..Item::default()
+    };
+    let progress = machine.next_ready().unwrap();
+    machine.start_attempt(progress).unwrap();
+    machine
+        .complete(
+            progress,
+            std::collections::BTreeMap::from([("main".into(), vec![message.clone()])]),
+        )
+        .unwrap();
+    let first_wait = machine
+        .next_ready()
+        .expect("wait must not require its feedback edge");
+    assert_eq!(
+        machine.workflow().nodes[machine.activation(first_wait).unwrap().node_index].id,
+        "ask"
+    );
+    machine.start_attempt(first_wait).unwrap();
+    machine.suspend(first_wait).unwrap();
+    let raw = Item {
+        json: json!({"waitId":uuid::Uuid::now_v7(),"content":"我再考虑一下","receivedAt":"2026-10-18T08:00:00Z","source":"api"}),
+        ..Item::default()
+    };
+    machine
+        .resume(first_wait, "main", vec![raw.clone()])
+        .unwrap();
+    let decision = machine.next_ready().unwrap();
+    machine.start_attempt(decision).unwrap();
+    machine
+        .complete(
+            decision,
+            std::collections::BTreeMap::from([("else".into(), vec![raw.clone()])]),
+        )
+        .unwrap();
+    let reprompt = machine.next_ready().unwrap();
+    machine.start_attempt(reprompt).unwrap();
+    machine
+        .complete(
+            reprompt,
+            std::collections::BTreeMap::from([("main".into(), vec![message])]),
+        )
+        .unwrap();
+    let second_wait = machine
+        .next_ready()
+        .expect("feedback must activate another wait");
+    assert_ne!(first_wait, second_wait);
+    assert_eq!(
+        machine.workflow().nodes[machine.activation(second_wait).unwrap().node_index].id,
+        "ask"
+    );
+    machine.start_attempt(second_wait).unwrap();
+    machine.suspend(second_wait).unwrap();
+    machine
+        .resume(second_wait, "main", vec![raw.clone()])
+        .unwrap();
+    let decision = machine.next_ready().unwrap();
+    machine.start_attempt(decision).unwrap();
+    machine
+        .complete(
+            decision,
+            std::collections::BTreeMap::from([("case:confirmed".into(), vec![raw])]),
+        )
+        .unwrap();
+    assert_eq!(machine.status(), crate::RuntimeExecutionStatus::Succeeded);
+}
+
+#[test]
 fn branch_id_errors_identify_the_actual_field_problem() {
     for (node_type, field, reserved) in [
         ("if", "cases", "else"),
@@ -1674,7 +1763,7 @@ fn every_inspector_fixture_uses_valid_parameter_shapes_and_rejects_malformed_val
         "../../../web/src/features/workflow-designer/testing/ai-node-parameters.fixture.json"
     ))
     .unwrap();
-    assert_eq!(fixtures.as_object().unwrap().len(), 14);
+    assert_eq!(fixtures.as_object().unwrap().len(), 15);
     for (node_type, parameters) in fixtures.as_object().unwrap() {
         let version = if node_type == "agent" { 2 } else { 1 };
         let manifest = registry.get(node_type, version).unwrap();

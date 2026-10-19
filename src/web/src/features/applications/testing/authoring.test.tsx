@@ -10,7 +10,7 @@ import { EvaluationCreate } from './evaluation-create'
 import { EvaluationList } from './evaluation-list'
 import type { Batch, ContractVersion, Dataset, Run, TestCase } from './types'
 
-const contract = { fingerprint: 'original', inputSchema: {}, outputSchema: {} }
+const contract = { waitInputNodes: [], fingerprint: 'original', inputSchema: {}, outputSchema: {} }
 const source: Dataset = { id: 'source', applicationId: 'app', name: '原始数据', contract, revision: 3, version: 1, sourceWorkflowVersionId: 'v1', compatibleVersions: ['v1', 'v2'], caseCount: 2, incompleteCount: 0, status: 'active' }
 const copy: Dataset = { ...source, id: 'copy', name: '新版数据', revision: 7, compatibleVersions: ['v3'] }
 const versions: ContractVersion[] = [1, 2, 3].map(number => ({ id: `v${number}`, versionNumber: number, archived: false, contract }))
@@ -101,7 +101,7 @@ it('blocks evaluation when the platform model is unavailable', async () => {
 })
 
 it('supports partial selection and select all for view-only users', () => {
-  const cases: TestCase[] = ['a', 'b'].map(id => ({ id, name: id, caseKey: id, lineageId: id, version: 1, sortOrder: 0, input: {}, expectedOutput: {}, tags: [], pendingFields: [], referenceConfirmed: true, validationErrors: [] }))
+  const cases: TestCase[] = ['a', 'b'].map(id => ({ id, name: id, waitInputs: {}, caseKey: id, lineageId: id, version: 1, sortOrder: 0, input: {}, expectedOutput: {}, tags: [], pendingFields: [], referenceConfirmed: true, validationErrors: [] }))
   function Harness() {
     const [selected, select] = useState<string[]>([])
     return <DatasetCases dataset={source} versions={versions} cases={cases} selectedIds={selected} onSelect={select} canManage={false} onEdit={() => {}} onDelete={() => {}} />

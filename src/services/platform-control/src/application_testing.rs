@@ -136,18 +136,21 @@ pub(crate) async fn version_contracts(
 ) -> ApiResult<Vec<VersionContract>> {
     let rows = sqlx::query("SELECT v.id,v.version_number,v.archived,v.definition_json FROM workflow_versions v JOIN applications a ON a.tenant_id=v.tenant_id AND a.workflow_id=v.workflow_id WHERE a.tenant_id=? AND a.id=? AND v.publication_status='published' ORDER BY v.version_number DESC")
         .bind(actor.tenant_id).bind(application).fetch_all(&state.pool).await?;
-    rows.into_iter()
-        .map(|row| {
-            let definition = serde_json::from_value(row.try_get("definition_json")?)
-                .map_err(ApiError::internal)?;
-            Ok(VersionContract {
-                id: row.try_get("id")?,
-                version_number: row.try_get("version_number")?,
-                archived: row.try_get("archived")?,
-                contract: TestContract::from_definition(&definition),
-            })
-        })
-        .collect()
+    let mut versions = Vec::new();
+    for row in rows {
+        let definition =
+            serde_json::from_value(row.try_get("definition_json")?).map_err(ApiError::internal)?;
+        let nodes =
+            crate::workflow_wait_inputs::discover(&state.pool, actor.tenant_id, &definition)
+                .await?;
+        versions.push(VersionContract {
+            id: row.try_get("id")?,
+            version_number: row.try_get("version_number")?,
+            archived: row.try_get("archived")?,
+            contract: TestContract::from_definition(&definition).with_wait_nodes(nodes),
+        });
+    }
+    Ok(versions)
 }
 
 async fn contracts(
@@ -222,6 +225,8 @@ pub(crate) fn hash(value: &impl Serialize) -> ApiResult<String> {
 #[derive(Clone, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct CaseDraft {
+    #[serde(default)]
+    pub wait_inputs: agentx_runtime_contracts::WaitInputsV1,
     pub name: String,
     pub input: Value,
     pub expected_output: Value,
@@ -254,6 +259,7 @@ pub(crate) struct CaseValidation {
 #[derive(Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct InvocationSample {
+    pub wait_inputs: agentx_runtime_contracts::WaitInputsV1,
     pub invocation_id: Uuid,
     pub workflow_version_id: Uuid,
     pub contract: TestContract,
@@ -287,6 +293,7 @@ pub(crate) async fn validate_draft(
     contract: &TestContract,
     mut draft: CaseDraft,
 ) -> ApiResult<Vec<CaseFieldError>> {
+    crate::workflow_wait_inputs::validate_plan(&contract.wait_input_nodes, &draft.wait_inputs)?;
     draft.pending_fields = datasets::remaining_fields(&draft, contract);
     let mut errors = contract.errors(&draft.input, &draft.expected_output);
     errors.extend(draft.pending_fields.iter().map(|field| CaseFieldError {
@@ -351,6 +358,8 @@ pub(crate) fn case_from_row(
         version: row.try_get("version")?,
         sort_order: row.try_get("sort_order")?,
         draft: CaseDraft {
+            wait_inputs: serde_json::from_value(row.try_get("wait_inputs_json")?)
+                .map_err(ApiError::internal)?,
             name: row.try_get("name")?,
             input,
             expected_output: expected,
@@ -372,8 +381,8 @@ pub(crate) async fn insert_case(
     draft: &CaseDraft,
 ) -> ApiResult<Uuid> {
     let id = Uuid::now_v7();
-    sqlx::query("INSERT INTO dataset_cases(id,tenant_id,dataset_id,case_key,name,input_json,expected_output_json,context_json,tags_json,pending_fields_json,lineage_id,source_invocation_id,reference_confirmed,sort_order) VALUES(?,?,?,?,?,?,?,NULL,?,?,?,?,?,?)")
-        .bind(id).bind(tenant).bind(dataset).bind(id.to_string()).bind(crate::control_helpers::required_name(&draft.name)?).bind(&draft.input).bind(&draft.expected_output).bind(json!(draft.tags)).bind(json!(draft.pending_fields)).bind(lineage.unwrap_or(id)).bind(draft.source_invocation_id).bind(draft.reference_confirmed).bind(order).execute(&mut **tx).await?;
+    sqlx::query("INSERT INTO dataset_cases(id,tenant_id,dataset_id,case_key,name,input_json,expected_output_json,wait_inputs_json,context_json,tags_json,pending_fields_json,lineage_id,source_invocation_id,reference_confirmed,sort_order) VALUES(?,?,?,?,?,?,?,?,NULL,?,?,?,?,?,?)")
+        .bind(id).bind(tenant).bind(dataset).bind(id.to_string()).bind(crate::control_helpers::required_name(&draft.name)?).bind(&draft.input).bind(&draft.expected_output).bind(json!(draft.wait_inputs)).bind(json!(draft.tags)).bind(json!(draft.pending_fields)).bind(lineage.unwrap_or(id)).bind(draft.source_invocation_id).bind(draft.reference_confirmed).bind(order).execute(&mut **tx).await?;
     Ok(id)
 }
 

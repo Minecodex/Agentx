@@ -777,6 +777,7 @@ fn evaluation_work_package_payload() -> RuntimeWorkPackagePayloadV1 {
             dataset_version_id: Uuid::from_u128(33),
             profile_version_id: Uuid::from_u128(33),
             cases: vec![agentx_runtime_contracts::RuntimeEvaluationCaseV1 {
+                wait_inputs: Default::default(),
                 case_id: Uuid::now_v7(),
                 input: json!({"message":"evaluate"}),
                 expected_output: Some(json!({"message":"evaluate"})),

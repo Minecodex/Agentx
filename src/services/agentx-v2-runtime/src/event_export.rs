@@ -619,7 +619,19 @@ async fn load_evaluation_report_from_pool(
         }
         let cost_micros = row.try_get("cost_micros")?;
         total_cost_micros = total_cost_micros.saturating_add(cost_micros);
+        let target: Option<Uuid> = row.try_get("target_execution_id")?;
         cases.push(RuntimeEvaluationCaseResultV1 {
+            input_waits: if let Some(id) = target {
+                crate::input_waits::list(&state.pool, tenant_id, None, Some(id), false).await?
+            } else {
+                Vec::new()
+            },
+            messages: if let Some(id) = target {
+                crate::workflow_interaction::messages(&state.pool, tenant_id, None, Some(id))
+                    .await?
+            } else {
+                Vec::new()
+            },
             id: case_id,
             source_case_id: row.try_get("source_case_id")?,
             target_command_id: row.try_get("target_command_id")?,

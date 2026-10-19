@@ -82,6 +82,7 @@ describe("RunParametersDialog", () => {
       expect(onRun).toHaveBeenCalledWith(
         { question: "What changed?" },
         { apiKey: "secret" },
+        {},
       ),
     );
   });

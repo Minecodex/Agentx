@@ -1,4 +1,5 @@
 const translations = {
+  "retry": "重试",
   "search": "搜索",
   "all": "全部",
   "status": "状态",

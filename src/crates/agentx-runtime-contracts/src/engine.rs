@@ -421,6 +421,8 @@ pub enum RuntimeCallPurposeV1 {
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeWorkPackageOverlayV1 {
+    #[serde(default)]
+    pub wait_inputs: crate::WaitInputsV1,
     pub input: Value,
     pub context: BTreeMap<String, Value>,
     pub node_parameters: BTreeMap<String, Value>,
@@ -429,6 +431,8 @@ pub struct RuntimeWorkPackageOverlayV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeEvaluationCaseV1 {
+    #[serde(default)]
+    pub wait_inputs: crate::WaitInputsV1,
     pub case_id: Uuid,
     pub input: Value,
     pub expected_output: Option<Value>,
@@ -711,6 +715,11 @@ pub enum SideEffectResolutionV1 {
     deny_unknown_fields
 )]
 pub enum ExecutionCommandV1 {
+    SubmitInput {
+        execution_id: Uuid,
+        wait_id: Uuid,
+        content: Value,
+    },
     Cancel {
         execution_id: Uuid,
         expected_state_version: u64,
@@ -964,6 +973,8 @@ pub struct RuntimeEvaluationRuleResultV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeEvaluationCaseResultV1 {
+    pub input_waits: Vec<crate::InputWaitV1>,
+    pub messages: Vec<crate::WorkflowMessageV1>,
     pub id: Uuid,
     pub source_case_id: Uuid,
     pub target_command_id: Uuid,

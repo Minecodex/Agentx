@@ -1,3 +1,4 @@
+import type { WaitInputNode, WaitInputs } from "../../shared/components/wait-inputs-editor";
 import { useAuth } from '../../app/providers/auth-provider';
 import { DesignEffectsContext } from "./model/design-effects";
 import { BuilderPanel } from "./panels/builder-panel";
@@ -273,6 +274,14 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
     [canvasNodes],
   );
   const referenceSource = resolvingDocument;
+  const waitDefinition = useMemo(() => serializeStudio(referenceSource).definition, [referenceSource]);
+  const waitScope = useMemo(() => [...includedActionNodeIds(referenceSource, mode, selected?.data.editorKind === "action" ? selected.id : undefined)], [referenceSource, mode, selected]);
+  const waitNodes = useQuery({
+    queryKey: ["studio-wait-nodes", workflowId, waitDefinition, waitScope],
+    queryFn: () => apiRequest<WaitInputNode[]>(`/workflows/${workflowId}/wait-input-nodes`, { method: "POST", body: JSON.stringify({ definition:waitDefinition, includedNodeIds:waitScope }), headers: { "Content-Type":"application/json" } }),
+    enabled: Boolean(workflowId) && !readOnly,
+  });
+
   const selectedManifest = selected ? manifestForNode(manifestMap, selected) : undefined;
   const pluginVersionContext = useMemo(() => {
     if (!selected || !selectedManifest?.plugin) return undefined;
@@ -600,6 +609,7 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
     input: unknown = {},
     debugMode: DebugMode = mode,
     context: Record<string, unknown> = {},
+    waitInputs: WaitInputs = {},
   ) => {
     if (readOnly) return;
     if (dirty || saveMutation.isPending)
@@ -622,6 +632,7 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
         targetNodeId: target,
         input,
         context,
+        waitInputs,
         inputSource,
         overlayIds: Object.entries(overlayIds)
           .filter(([nodeId]) => included.has(nodeId))
@@ -640,7 +651,7 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
     }
   };
 
-  const run = () => {
+  const run = async () => {
     if (readOnly) return;
     if (dirty || saveMutation.isPending)
       return showToast(t("studio.toasts.saveBeforeRun"));
@@ -648,9 +659,11 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
       selected?.data.editorKind === "action" ? selected.id : undefined;
     if (mode !== "full" && !target)
       return showToast(t("studio.toasts.partialSelect"));
+    const discovered = await waitNodes.refetch();
+    if (discovered.error) return showToast(discovered.error.message);
     if (mode === "single_node" || mode === "from_node")
       return setDebugDialogOpen(true);
-    if (hasRunParameters(referenceSource.start))
+    if (hasRunParameters(referenceSource.start, discovered.data))
       return setRunParametersOpen(true);
     void executeRun();
   };
@@ -1096,7 +1109,7 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
           }
           onResourceAuthorize={authorizeResource}
           onResourceRequest={requestResource}
-          onRun={() => void executeRun(undefined, {}, "single_node")}
+          onRun={() => { setMode("single_node"); setDebugDialogOpen(true); }}
           open={detailsOpen && !interfaceBoundary}
           referenceCatalog={referenceCatalog}
           parameterCatalogs={loopOutputCatalog ? { outputSelector: loopOutputCatalog } : undefined}
@@ -1156,20 +1169,24 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
       />
       <RunParametersDialog
         onClose={() => setRunParametersOpen(false)}
-        onRun={(input, context) =>
-          void executeRun(undefined, input, mode, context)
+        onRun={(input, context, waitInputs) =>
+          void executeRun(undefined, input, mode, context, waitInputs)
         }
         open={runParametersOpen}
         running={runtime.running}
         start={referenceSource.start}
+        waitNodes={waitNodes.data}
       />
       {selected?.data.editorKind === "action" &&
         (mode === "single_node" || mode === "from_node") && (
           <DebugRunDialog
             executionId={executionId}
+            waitNodes={waitNodes.data}
+            discoveryPending={waitNodes.isFetching}
+            discoveryError={waitNodes.error?.message}
             mode={mode}
             onClose={() => setDebugDialogOpen(false)}
-            onRun={(source, input) => void executeRun(source, input)}
+            onRun={(source, input, waitInputs) => void executeRun(source, input, mode, {}, waitInputs)}
             open={debugDialogOpen}
             running={runtime.running}
             targetName={localizedNodeLabel(

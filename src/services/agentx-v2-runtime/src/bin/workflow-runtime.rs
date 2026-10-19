@@ -651,7 +651,32 @@ async fn delivery_loop(
             progress.processed_since(started).await;
             continue;
         };
+        if claim.provider == "input_hook" {
+            let wait_id = claim
+                .payload
+                .get("waitId")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|id| uuid::Uuid::parse_str(id).ok());
+            let waiting: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM input_waits WHERE tenant_id=? AND id=? AND status='waiting')")
+                .bind(claim.tenant_id).bind(wait_id).fetch_one(&pool).await?;
+            if !waiting {
+                sqlx::query("UPDATE delivery_outbox SET status='cancelled',locked_by=NULL,locked_until=NULL WHERE tenant_id=? AND id=? AND locked_by=? AND fencing_token=? AND locked_until>UTC_TIMESTAMP(6)")
+                    .bind(claim.tenant_id).bind(claim.id).bind(claim.owner).bind(claim.fencing_token).execute(&pool).await?;
+                continue;
+            }
+        }
         let outcome = agentx_v2_runtime::delivery_send::send(&vault, &http, &claim).await;
+        if claim.provider == "input_hook" {
+            let status: String =
+                sqlx::query_scalar("SELECT status FROM delivery_outbox WHERE tenant_id=? AND id=?")
+                    .bind(claim.tenant_id)
+                    .bind(claim.id)
+                    .fetch_one(&pool)
+                    .await?;
+            if status == "cancelled" {
+                continue;
+            }
+        }
         let event_payload = match &outcome {
             Ok(provider_message_id) => {
                 if let Err(error) = agentx_v2_runtime::delivery::complete(

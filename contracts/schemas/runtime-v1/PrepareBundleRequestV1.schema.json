@@ -2731,6 +2731,14 @@
             },
             "timezone": {
               "type": "string"
+            },
+            "waitInputs": {
+              "additionalProperties": {
+                "items": true,
+                "type": "array"
+              },
+              "default": {},
+              "type": "object"
             }
           },
           "required": [

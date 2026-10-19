@@ -100,7 +100,7 @@ claim (SKIP LOCKED, next_attempt_at <= now, status pending/retry)
 ```text
 reply_message（L2）
   参数：content（任意 workflow 变量引用，模板可混排）
-  无显式目标参数；执行时若 Execution 无 IM Trigger 来源 → 节点失败 REPLY_TARGET_UNRESOLVED
+  无显式目标参数；先持久化中间消息。存在 IM Trigger 时投递到来源会话；API、手动与测试运行通过事件流或查询读取消息，然后继续执行。
   语义：非终态副作用（入队 delivery_outbox 后节点即成功，投递异步）
 
 send_message（L3）
@@ -114,7 +114,7 @@ send_message（L3）
 
 1. 节点执行（纯函数）只渲染 content、产出结构化投递 intent（provider 无关），输出 `{ deliveryId, status: "queued" }`，其中 `deliveryId = deterministic_uuid(attempt_id, b"delivery:{node_key}")` **确定性派生**，保证节点输出与结算事务写入的 delivery_outbox 行 id 一致；
 2. `engine.rs submit_worker_result_resolved` 结算事务识别 node_type 为 `reply_message`/`send_message` 时，从 intent INSERT `delivery_outbox`（同事务，满足"入队与结算同事务"）；`reply_message` 的目标解析（ExecutionOrigin → invocation trigger_context）也在此处做，数据库 IO 只发生在结算侧；
-3. 非 IM 来源的 `reply_message`：结算侧解析不到目标时不产生 delivery 行，attempt 直接置失败 `REPLY_TARGET_UNRESOLVED`。
+3. `reply_message` 在结算事务写入独立消息记录与 `workflow.message` 事件；非 IM 来源不产生渠道 delivery，节点正常继续。消息 ID 按节点激活稳定生成，渠道投递失败不重复创建消息。输入等待、Hook 与各入口行为见 [工作流交互](../14-workflow-interactions.md)。
 
 ### 3.6 渠道配置扩展（L1）
 
@@ -173,7 +173,7 @@ POST /api/v1/deliveries/{deliveryId}/retry           -- 死信重放（权限 ap
 ### P7-A4 L2 回复消息节点
 
 - [x] builtin manifest + 纯函数 intent 渲染（deliveryId 确定性派生，见 §3.5 两段式设计）；
-- [x] `submit_worker_result_resolved` 结算事务入队 delivery（目标解析在结算侧）；非 IM 来源执行失败路径测试。
+- [x] `submit_worker_result_resolved` 结算事务入队 delivery（目标解析在结算侧）；非 IM 来源中间消息与继续执行路径测试。
 
 ### P7-A5 L3 发送节点与发布门禁
 
@@ -198,7 +198,7 @@ POST /api/v1/deliveries/{deliveryId}/retry           -- 死信重放（权限 ap
 3. `send_message` 主动推送到显式渠道会话 → delivered；
 4. mock 返回 429 → 断言按退避重试后 delivered，attempt_count 正确；
 5. mock 恒 401 → 断言不重试直接 failed、死信归档、UI 可见失败原因、重放后成功；
-6. 无 Deployment/停用渠道/非 IM 触发的 `reply_message` → 终态错误码断言；
+6. 无 Deployment/停用渠道仍按入站授权与发布约束拒绝；非 IM 触发的 `reply_message` → 消息持久化、最终结果与继续执行断言；
 7. 重复终态/重复节点结算 → 幂等键防重复投递断言；
 8. 投递循环 Pod 强杀重启 → 队列中投递不丢失；
 9. UI 覆盖：回复设置表单（含校验失败路径）、投递记录列表/筛选/重试、中英文与深浅主题。

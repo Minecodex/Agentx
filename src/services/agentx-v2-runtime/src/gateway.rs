@@ -68,6 +68,10 @@ pub fn router() -> Router<RuntimeState> {
         )
         .route("/invocations/{id}", get(get_invocation))
         .route(
+            "/invocations/{id}/waits/{wait_id}/input",
+            post(submit_wait_input),
+        )
+        .route(
             "/invocations/{id}/artifacts/{artifact_id}",
             get(download_invocation_artifact),
         )
@@ -257,11 +261,16 @@ async fn invoke(
     if !matches!(mode, "sync" | "async") {
         return Err(bad_request("INVALID_RESPONSE_MODE"));
     }
+    if caller.caller_type != "user" && !request.wait_inputs.is_empty() {
+        return Err(bad_request("WAIT_PRESET_NOT_ALLOWED"));
+    }
     let accepted = create_runtime_invocation(
         &state.pool,
         caller.tenant_id,
         caller.application_id,
         InvocationCaller {
+            wait_inputs: (caller.caller_type == "user").then_some(request.wait_inputs.clone()),
+            trigger_context: None,
             end_user: None,
             caller_type: caller.caller_type,
             caller_id: caller.subject_id,
@@ -276,7 +285,10 @@ async fn invoke(
     let mut response = load_invocation(state, &caller, accepted.invocation_id).await?;
     if mode == "sync" {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-        while !terminal(&response.status) && tokio::time::Instant::now() < deadline {
+        while !terminal(&response.status)
+            && response.active_waits.is_empty()
+            && tokio::time::Instant::now() < deadline
+        {
             tokio::time::sleep(Duration::from_millis(100)).await;
             response = load_invocation(state, &caller, accepted.invocation_id).await?;
         }
@@ -342,12 +354,17 @@ async fn send_message(
         caller.tenant_id,
     )
     .await?;
+    if caller.caller_type != "user" && !request.wait_inputs.is_empty() {
+        return Err(bad_request("WAIT_PRESET_NOT_ALLOWED"));
+    }
     let input = chat_message_payload(&request);
     let accepted = create_chat_runtime_invocation_tx(
         &mut tx,
         caller.tenant_id,
         caller.application_id,
         InvocationCaller {
+            wait_inputs: (caller.caller_type == "user").then_some(request.wait_inputs.clone()),
+            trigger_context: None,
             end_user: None,
             caller_type: caller.caller_type,
             caller_id: caller.subject_id,
@@ -428,6 +445,35 @@ fn inferred_session_title(request: &MessageRequestV1) -> Option<String> {
         .collect::<String>();
     title.push('…');
     Some(title)
+}
+
+async fn submit_wait_input(
+    State(state): State<RuntimeState>,
+    Path((id, wait_id)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(request): Json<agentx_runtime_contracts::SubmitWaitInputV1>,
+) -> RuntimeResult<(
+    StatusCode,
+    Json<agentx_runtime_contracts::WaitInputReceiptV1>,
+)> {
+    let caller = authenticate_resource(&state, &headers, "invocation", id).await?;
+    load_invocation(&state, &caller, id).await?;
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM input_waits WHERE tenant_id=? AND invocation_id=? AND application_id=? AND id=?)")
+        .bind(caller.tenant_id).bind(id).bind(caller.application_id).bind(wait_id).fetch_one(&state.pool).await?;
+    if !exists {
+        return Err(RuntimeError::NotFound);
+    }
+    let key = idempotency_key(&headers)?;
+    let receipt = crate::input_waits::submit(
+        &state.pool,
+        caller.tenant_id,
+        wait_id,
+        key,
+        &request.content,
+        "api",
+    )
+    .await?;
+    Ok((StatusCode::ACCEPTED, Json(receipt)))
 }
 
 async fn get_invocation(
@@ -1001,6 +1047,8 @@ async fn webhook(
         caller.tenant_id,
         caller.application_id,
         InvocationCaller {
+            wait_inputs: None,
+            trigger_context: None,
             end_user: None,
             caller_type: "webhook",
             caller_id: caller.subject_id,
@@ -1183,6 +1231,15 @@ async fn load_invocation(
     let row = sqlx::query("SELECT id,application_id,session_id,execution_id,bundle_id,admission_epoch,status,result_json,error_json,created_at,provider_event_id,conversation_id,trigger_context_json,user_identity_json FROM application_invocations WHERE tenant_id=? AND application_id=? AND id=?")
         .bind(caller.tenant_id).bind(caller.application_id).bind(id).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)?;
     Ok(InvocationResponseV1 {
+        messages: crate::workflow_interaction::messages(
+            &state.pool,
+            caller.tenant_id,
+            Some(id),
+            None,
+        )
+        .await?,
+        active_waits: crate::input_waits::list(&state.pool, caller.tenant_id, Some(id), None, true)
+            .await?,
         user_identity_diagnostic: row
             .try_get::<Option<Value>, _>("user_identity_json")?
             .filter(|value| !value.is_null())
@@ -1302,6 +1359,23 @@ pub fn public_openapi() -> Value {
     insert_public_schema::<ArtifactUploadResponseV1>(&mut schemas, "ArtifactUploadResponse");
     insert_public_schema::<CommandAcceptedV1>(&mut schemas, "CommandAccepted");
     insert_public_schema::<GatewayErrorV1>(&mut schemas, "GatewayError");
+    insert_public_schema::<agentx_runtime_contracts::SubmitWaitInputV1>(
+        &mut schemas,
+        "SubmitWaitInput",
+    );
+    insert_public_schema::<agentx_runtime_contracts::WaitInputReceiptV1>(
+        &mut schemas,
+        "WaitInputReceipt",
+    );
+    let mut submit_input = public_post(
+        "submitWaitInput",
+        "SubmitWaitInput",
+        "WaitInputReceipt",
+        "202",
+    );
+    for name in ["id", "wait_id"] {
+        submit_input["parameters"].as_array_mut().expect("public POST has parameters").push(json!({"name":name,"in":"path","required":true,"schema":{"type":"string","format":"uuid"}}));
+    }
     json!({
         "openapi":"3.1.0",
         "info":{"title":"Agentx Runtime Gateway API","version":"1","description":"Production Runtime ingress. All write operations require Idempotency-Key."},
@@ -1335,6 +1409,7 @@ pub fn public_openapi() -> Value {
                 },
                 "security":[{"runtimeBearer":[]}]
             }},
+            "/gateway/v1/invocations/{id}/waits/{wait_id}/input":{"post":submit_input},
             "/gateway/v1/invocations/{id}/cancel":{"post":public_command("cancelInvocation")},
             "/gateway/v1/invocations/{id}/events":{"get":{
                 "operationId":"streamInvocationEvents",
@@ -1449,6 +1524,7 @@ mod tests {
     #[test]
     fn session_message_builds_mapping_neutral_chat_payload() {
         let input = chat_message_payload(&MessageRequestV1 {
+            wait_inputs: Default::default(),
             parts: vec![MessagePartInputV1 {
                 part_type: "text".into(),
                 content: Some(json!("agentx-v2")),
@@ -1461,6 +1537,7 @@ mod tests {
     #[test]
     fn session_title_uses_normalized_first_question_and_a_bounded_ellipsis() {
         let request = MessageRequestV1 {
+            wait_inputs: Default::default(),
             parts: vec![MessagePartInputV1 {
                 part_type: "text".into(),
                 content: Some(json!(format!("  first\nquestion   {}", "x".repeat(300)))),

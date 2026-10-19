@@ -571,7 +571,7 @@ fn http_provider_services() -> Vec<String> {
         .collect()
 }
 
-fn is_managed_cluster_fixture(url: &Url) -> bool {
+pub(crate) fn is_managed_cluster_fixture(url: &Url) -> bool {
     let Some(host) = url.host_str() else {
         return false;
     };

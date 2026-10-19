@@ -379,6 +379,15 @@ pub async fn get_execution_runtime_details(
     let sandboxes = json_rows(&state, "SELECT JSON_OBJECT('id',BIN_TO_UUID(id),'status',status,'sandboxId',sandbox_id,'expiresAt',DATE_FORMAT(expires_at,'%Y-%m-%dT%H:%i:%s.%fZ'),'terminationAttempts',termination_attempts,'outcomeUnknown',outcome_unknown) value FROM sandbox_leases WHERE tenant_id=? AND execution_id=? ORDER BY created_at,id", claims.tenant_id, id).await?;
     complete_query_receipt(&state, claims.jti, "OK").await?;
     Ok(Json(ExecutionRuntimeDetailsV1 {
+        messages: crate::workflow_interaction::messages(
+            &state.pool,
+            claims.tenant_id,
+            None,
+            Some(id),
+        )
+        .await?,
+        input_waits: crate::input_waits::list(&state.pool, claims.tenant_id, None, Some(id), false)
+            .await?,
         api_version: 1,
         attempts,
         calls,

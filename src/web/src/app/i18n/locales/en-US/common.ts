@@ -1,4 +1,5 @@
 const translations = {
+  "retry": "Retry",
   "search": "Search",
   "all": "All",
   "status": "Status",

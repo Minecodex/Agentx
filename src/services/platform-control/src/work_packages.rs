@@ -264,6 +264,8 @@ impl WorkPackageClient {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct StartDebugRunRequest {
+    #[serde(default)]
+    pub(crate) wait_inputs: agentx_runtime_contracts::WaitInputsV1,
     pub(crate) draft_id: Uuid,
     pub(crate) revision: u64,
     pub(crate) idempotency_key: String,
@@ -303,6 +305,7 @@ pub(crate) async fn start_version_execution(
     actor: &Actor,
     version_id: Uuid,
     input: Value,
+    wait_inputs: agentx_runtime_contracts::WaitInputsV1,
     idempotency_key: String,
 ) -> ApiResult<StartDebugRunResponse> {
     validate_idempotency_key(&idempotency_key)?;
@@ -324,10 +327,17 @@ pub(crate) async fn start_version_execution(
     let version_number: u64 = version.try_get("version_number")?;
     let source_revision: u64 = version.try_get("source_revision")?;
     let version_hash: String = version.try_get("content_hash")?;
+    let wait_definition: WorkflowDefinition =
+        serde_json::from_value(version.try_get("definition_json")?).map_err(ApiError::internal)?;
+    let wait_nodes =
+        crate::workflow_wait_inputs::discover(&state.pool, actor.tenant_id, &wait_definition)
+            .await?;
+    crate::workflow_wait_inputs::validate_plan(&wait_nodes, &wait_inputs)?;
     let request_hash = agentx_runtime_contracts::content_hash(&json!({
         "workflowVersionId": version_id,
         "versionHash": version_hash,
         "input": input,
+        "waitInputs": wait_inputs,
     }))
     .map_err(ApiError::internal)?;
     if let Some(response) = replay(
@@ -434,6 +444,7 @@ pub(crate) async fn start_version_execution(
                 .collect(),
             overlay: RuntimeWorkPackageOverlayV1 {
                 input,
+                wait_inputs,
                 ..Default::default()
             },
             resources,
@@ -532,6 +543,7 @@ pub(crate) async fn start_debug_run(
         "mode": request.mode,
         "targetNodeId": request.target_node_id,
         "inputSource": request.input_source,
+        "waitInputs": request.wait_inputs,
         "sideEffectDecisions": request.side_effect_decisions,
     }))
     .map_err(ApiError::internal)?;
@@ -658,6 +670,14 @@ pub(crate) async fn start_debug_run(
         request.input_source.clone(),
         request.side_effect_decisions.clone(),
     )?;
+    let mut debug_definition = definition.clone();
+    debug_definition
+        .nodes
+        .retain(|node| debug_plan.included_node_ids.contains(&node.id));
+    let wait_nodes =
+        crate::workflow_wait_inputs::discover(&state.pool, actor.tenant_id, &debug_definition)
+            .await?;
+    crate::workflow_wait_inputs::validate_plan(&wait_nodes, &request.wait_inputs)?;
     let package = build_work_package_with_resolved(
         WorkPackageBuildSource {
             package_id,
@@ -697,6 +717,7 @@ pub(crate) async fn start_debug_run(
                 input: request.input,
                 context: request.context,
                 node_parameters: request.node_parameters,
+                wait_inputs: request.wait_inputs,
             },
             resources,
             authorization: RuntimeAuthorizationSnapshotV1 {

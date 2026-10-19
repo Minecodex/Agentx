@@ -6,13 +6,13 @@ import { InvocationImport } from './invocation-import'
 import { CaseEditor } from './case-editor'
 import type { Dataset, InvocationSample, TestCase } from './types'
 
-const contract = {
+const contract = { waitInputNodes: [],
   fingerprint: 'same',
   inputSchema: { type: 'object', properties: { question: { type: 'string', title: '问题' } }, required: ['question'] },
   outputSchema: { type: 'object', properties: { result: { type: 'string', title: '答案' } }, required: ['result'] },
 }
 const dataset: Dataset = { id: 'existing', applicationId: 'app', name: '已有测试集', contract, revision: 3, version: 1, sourceWorkflowVersionId: 'v1', compatibleVersions: ['v1'], caseCount: 0, incompleteCount: 0, status: 'active' }
-const sample: InvocationSample = { invocationId: 'invocation', workflowVersionId: 'v1', input: { question: '你好' }, expectedOutput: { result: '你好！' }, name: 'Invocation invocation', referenceConfirmed: false, contract, validationErrors: [] }
+const sample: InvocationSample = { waitInputs: {}, invocationId: 'invocation', workflowVersionId: 'v1', input: { question: '你好' }, expectedOutput: { result: '你好！' }, name: 'Invocation invocation', referenceConfirmed: false, contract, validationErrors: [] }
 const posts: { path: string; body: Record<string, unknown> }[] = []
 let failValidation = false
 
@@ -44,7 +44,7 @@ describe('invocation dataset import', () => {
     await waitFor(() => expect(submit).not.toBeDisabled())
     fireEvent.click(submit)
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith('existing'))
-    expect(posts).toEqual([{ path: '/api/v1/applications/app/datasets/existing/cases', body: { name: '你好', input: { question: '你好' }, expectedOutput: { result: '你好！' }, sourceInvocationId: 'invocation', referenceConfirmed: true, expectedRevision: 3, tags: [] } }])
+    expect(posts).toEqual([{ path: '/api/v1/applications/app/datasets/existing/cases', body: { waitInputs: {}, name: '你好', input: { question: '你好' }, expectedOutput: { result: '你好！' }, sourceInvocationId: 'invocation', referenceConfirmed: true, expectedRevision: 3, tags: [] } }])
     expect(onClose).not.toHaveBeenCalled()
   })
 
@@ -93,7 +93,7 @@ describe('invocation dataset import', () => {
   })
 
   it('revalidates an existing case rather than displaying saved English errors or requiring another checkbox', async () => {
-    const selected: TestCase = { id: 'case', caseKey: 'case', lineageId: 'origin', version: 1, sortOrder: 1, name: '保留名称', input: sample.input, expectedOutput: sample.expectedOutput, tags: [], pendingFields: [], sourceInvocationId: sample.invocationId, referenceConfirmed: false, validationErrors: [{ field: 'expectedOutput', code: 'REFERENCE_UNCONFIRMED', message: 'Confirm the reference answer before evaluation' }] }
+    const selected: TestCase = { id: 'case', waitInputs: {}, caseKey: 'case', lineageId: 'origin', version: 1, sortOrder: 1, name: '保留名称', input: sample.input, expectedOutput: sample.expectedOutput, tags: [], pendingFields: [], sourceInvocationId: sample.invocationId, referenceConfirmed: false, validationErrors: [{ field: 'expectedOutput', code: 'REFERENCE_UNCONFIRMED', message: 'Confirm the reference answer before evaluation' }] }
     show(<CaseEditor applicationId="app" dataset={dataset} selected={selected} onSaved={async () => {}} onClose={() => {}} />)
     const save = screen.getByRole('button', { name: '确认并保存' })
     await waitFor(() => expect(save).not.toBeDisabled())

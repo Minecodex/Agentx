@@ -9,6 +9,7 @@ mod canonical;
 mod engine;
 mod envelope;
 mod gateway;
+mod interaction;
 mod ir;
 mod legacy;
 mod origin;
@@ -29,6 +30,7 @@ pub use canonical::{
 pub use engine::*;
 pub use envelope::*;
 pub use gateway::*;
+pub use interaction::*;
 pub use ir::*;
 pub use legacy::*;
 pub use origin::*;

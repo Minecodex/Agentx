@@ -102,6 +102,15 @@
               "string",
               "null"
             ]
+          },
+          "waitInputs": {
+            "additionalProperties": {
+              "items": true,
+              "type": "array"
+            },
+            "default": {},
+            "description": "Available only to authenticated platform testing users. API keys cannot select preset mode.",
+            "type": "object"
           }
         },
         "required": [
@@ -141,6 +150,66 @@
             ],
             "type": "string"
           },
+          "InputWaitV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": true,
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "nodePath": {
+                "type": "string"
+              },
+              "occurrence": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "resumeUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "waitId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "waitId",
+              "executionId",
+              "nodeExecutionId",
+              "nodeId",
+              "nodePath",
+              "occurrence",
+              "status"
+            ],
+            "type": "object"
+          },
           "WebhookProviderV1": {
             "enum": [
               "agentx",
@@ -149,11 +218,48 @@
               "feishu"
             ],
             "type": "string"
+          },
+          "WorkflowMessageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "executionId",
+              "nodeExecutionId",
+              "content",
+              "createdAt"
+            ],
+            "type": "object"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "activeWaits": {
+            "items": {
+              "$ref": "#/components/schemas/InvocationResponse/$defs/InputWaitV1"
+            },
+            "type": "array"
+          },
           "admissionEpoch": {
             "format": "uint64",
             "minimum": 0,
@@ -198,6 +304,12 @@
             "format": "uuid",
             "type": "string"
           },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/InvocationResponse/$defs/WorkflowMessageV1"
+            },
+            "type": "array"
+          },
           "outputs": true,
           "provider": {
             "anyOf": [
@@ -234,6 +346,8 @@
           }
         },
         "required": [
+          "messages",
+          "activeWaits",
           "id",
           "applicationId",
           "bundleId",
@@ -297,6 +411,14 @@
               "$ref": "#/components/schemas/MessageRequest/$defs/MessagePartInputV1"
             },
             "type": "array"
+          },
+          "waitInputs": {
+            "additionalProperties": {
+              "items": true,
+              "type": "array"
+            },
+            "default": {},
+            "type": "object"
           }
         },
         "required": [
@@ -486,6 +608,47 @@
           "updatedAt"
         ],
         "title": "SessionResponseV1",
+        "type": "object"
+      },
+      "SubmitWaitInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "content": true
+        },
+        "required": [
+          "content"
+        ],
+        "title": "SubmitWaitInputV1",
+        "type": "object"
+      },
+      "WaitInputReceipt": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "receiptId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "waitId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "waitId",
+          "executionId",
+          "receiptId",
+          "status"
+        ],
+        "title": "WaitInputReceiptV1",
         "type": "object"
       }
     },
@@ -1101,6 +1264,128 @@
             "description": "MySQL-cursor Server-Sent Event stream"
           },
           "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
+    "/gateway/v1/invocations/{id}/waits/{wait_id}/input": {
+      "post": {
+        "operationId": "submitWaitInput",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 192,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "wait_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitWaitInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitInputReceipt"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
             "content": {
               "application/json": {
                 "schema": {

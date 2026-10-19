@@ -21,7 +21,7 @@ pub struct DeliveryEnqueue {
     pub application_id: Uuid,
     pub invocation_id: Option<Uuid>,
     pub execution_id: Uuid,
-    pub channel_binding_id: Uuid,
+    pub channel_binding_id: Option<Uuid>,
     pub provider: String,
     /// Distinguishes L1 terminal replies from L2/L3 node replies so both can
     /// coexist for one execution without colliding on the idempotency key.
@@ -75,7 +75,7 @@ pub struct DeliveryClaim {
     pub application_id: Uuid,
     pub invocation_id: Option<Uuid>,
     pub execution_id: Uuid,
-    pub channel_binding_id: Uuid,
+    pub channel_binding_id: Option<Uuid>,
     pub provider: String,
     pub origin: String,
     pub target: serde_json::Value,

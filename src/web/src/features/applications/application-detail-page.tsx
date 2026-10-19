@@ -1,3 +1,4 @@
+import { useApplicationWaitNodes } from '../../shared/components/wait-inputs-editor'
 import { ApplicationTestingPanel } from './testing/testing-panel'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, Copy, Edit3, ExternalLink, KeyRound, Plus, RotateCw, ShieldOff } from 'lucide-react'
@@ -104,7 +105,7 @@ export function ApplicationDetailPage() {
       if (kind === 'webhookEdit' && selectedWebhook) return apiRequest<ApplicationWebhook>(`/applications/${id}/webhooks/${selectedWebhook.id}`, { method: 'PATCH', body: jsonBody({ name: values.name, status: selectedWebhook.status, providerType: values.providerType, channelMode: effectiveChannelMode(values), channelConfig: buildChannelConfig(templates.data ?? [], values), reply: buildReplyConfig(values, channelSchema?.output, t), ...channelInputs(values, channelSchema?.input, t), version: selectedWebhook.version }) })
       if (kind === 'sessionUpgrade' && selectedSession) return apiRequest<ApplicationSession>(`/sessions/${selectedSession.id}/upgrade`, { method: 'POST', body: jsonBody({ workflowVersionId: values.workflowVersionId, version: selectedSession.version }) })
       const path = kind === 'scheduleEdit' && selectedSchedule ? `/applications/${id}/schedules/${selectedSchedule.id}` : `/applications/${id}/schedules`
-      return apiRequest<ApplicationSchedule>(path, { method: kind === 'scheduleEdit' ? 'PATCH' : 'POST', body: jsonBody({ name: values.name, cronExpression: values.cron, timezone: values.timezone, input: scheduleInput(values.input, channelSchema?.input as JsonSchema | undefined), misfirePolicy: values.misfirePolicy, ...(kind === 'scheduleEdit' ? { status: values.status, version: selectedSchedule?.version } : {}) }) })
+      return apiRequest<ApplicationSchedule>(path, { method: kind === 'scheduleEdit' ? 'PATCH' : 'POST', body: jsonBody({ name: values.name, cronExpression: values.cron, timezone: values.timezone, input: scheduleInput(values.input, channelSchema?.input as JsonSchema | undefined), waitInputs: JSON.parse(values.waitInputs || '{}'), misfirePolicy: values.misfirePolicy, ...(kind === 'scheduleEdit' ? { status: values.status, version: selectedSchedule?.version } : {}) }) })
     },
     onSuccess: async (result, variables) => {
       if (result && typeof result === 'object' && 'secret' in result && typeof result.secret === 'string' && variables.kind !== 'webhook') setShownSecret(result.secret)
@@ -140,6 +141,7 @@ export function ApplicationDetailPage() {
     void queryClient.invalidateQueries({ queryKey: ['application-webhooks', id] })
   }, [id, latestDeploymentId, latestDeploymentStatus, queryClient])
 
+  const waitNodes = useApplicationWaitNodes(id ?? '', application.data?.activeDeploymentId ?? undefined)
   const activeDeployment = deployments.data?.find((item) => item.id === application.data?.activeDeploymentId && item.status === 'active')
   const latestPublished=versions.data?.[0]
   const latestDefinition=useQuery({queryKey:['workflow-version',application.data?.workflowId,latestPublished?.id],enabled:Boolean(latestPublished)&&!activeDeployment,queryFn:()=>apiRequest<WorkflowVersion>(`/workflows/${application.data?.workflowId}/versions/${latestPublished?.id}`)})
@@ -186,8 +188,8 @@ export function ApplicationDetailPage() {
       { name: 'fixedInputs', label: t('applications.fixedInputs'), defaultValue: JSON.stringify(selectedWebhook?.fixedInputs ?? {}, null, 2), render: ({ value: fixed, values, update }) => <FixedInputsEditor mappings={values.inputMappings} schema={channelSchema?.input} value={fixed} onChange={update} /> },
       ...replyConfigFields(t, channelSchema?.output, selectedWebhook?.reply ?? null),
     ],
-    schedule: scheduleFields(t, channelSchema?.input as JsonSchema | undefined),
-    scheduleEdit: scheduleFields(t, channelSchema?.input as JsonSchema | undefined, schedule),
+    schedule: scheduleFields(t, channelSchema?.input as JsonSchema | undefined, null, waitNodes.data),
+    scheduleEdit: scheduleFields(t, channelSchema?.input as JsonSchema | undefined, schedule, waitNodes.data),
     sessionUpgrade: [{ name: 'workflowVersionId', label: t('testing.workflowVersion'), type: 'select', defaultValue: selectedSession?.workflowVersionId ?? '', required: true, options: (versions.data ?? []).map((item) => ({ value: item.id, label: `v${item.versionNumber}` })) }],
   }
   return <PageContainer>
@@ -216,7 +218,7 @@ export function ApplicationDetailPage() {
               {selectedChannel && <div className="space-y-4 py-4">{selectedChannel.channelMode === 'stream' ? <ChannelConnectionStatus channel={selectedChannel} loading={deployments.isLoading} published={endpointActive} publishAction={deployButton} /> : <><p className="text-xs text-muted-foreground">{t('applications.productionEndpoint')}</p>{endpointActive ? <div className="flex items-start gap-2"><code className="min-w-0 flex-1 break-all rounded-md border border-border bg-canvas p-3 text-[11px]">{runtimePublicBaseUrl().replace(/\/$/, '')}{selectedChannel.path}</code><Button aria-label={t('common.copy')} onClick={() => void navigator.clipboard.writeText(`${runtimePublicBaseUrl().replace(/\/$/, '')}${selectedChannel.path}`)} size="icon" variant="ghost"><Copy className="size-4" /></Button></div> : <p className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">{t('applications.endpointInactive')}</p>}</>}<p className="text-xs text-muted-foreground">{t('applications.sourceMapping')}</p><div className="space-y-2 text-[11px]">{(selectedChannel.inputMappings ?? []).map((mapping) => <div key={`${mapping.source}:${mapping.target}`}><strong>{mapping.target}</strong> ← <code>{mapping.source}</code></div>)}{(Object.entries(selectedChannel.fixedInputs ?? {}) as Array<[string, unknown]>).map(([key, item]) => <div key={`fixed:${key}`}><strong>{key}</strong> = <code>{typeof item === 'string' ? item : JSON.stringify(item)}</code></div>)}</div><p className="text-xs text-muted-foreground">{t('applications.replySettings')}</p>{selectedChannel.reply?.enabled ? <div className="rounded-md border border-border p-3 text-[11px]"><p><strong>{t('applications.replyOutputField')}</strong>: <code>{selectedChannel.reply.outputField}</code></p>{selectedChannel.reply.template && <p className="mt-1 break-all"><strong>{t('applications.replyTemplate')}</strong>: <code>{selectedChannel.reply.template}</code></p>}</div> : <p className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">{t('applications.replyDisabled')}</p>}<div className="rounded-md border-l-2 border-primary bg-primary/5 p-3 text-[11px] text-muted-foreground">{t('applications.multiConversationHint')}</div></div>}
             </Section>
           </TabsContent>
-          <TabsContent value="deliveries"><Section action={<Select aria-label={t('applications.deliveryStatusFilter')} className="w-40" onValueChange={setDeliveryStatus} options={[{ value: 'all', label: t('applications.deliveryStatusAll') }, { value: 'pending', label: t('applications.deliveryStatus_pending') }, { value: 'delivering', label: t('applications.deliveryStatus_delivering') }, { value: 'delivered', label: t('applications.deliveryStatus_delivered') }, { value: 'failed', label: t('applications.deliveryStatus_failed') }, { value: 'dead', label: t('applications.deliveryStatus_dead') }]} value={deliveryStatus} />} title={t('applications.deliveries')}>
+          <TabsContent value="deliveries"><Section action={<Select aria-label={t('applications.deliveryStatusFilter')} className="w-40" onValueChange={setDeliveryStatus} options={[{ value: 'all', label: t('applications.deliveryStatusAll') }, { value: 'pending', label: t('applications.deliveryStatus_pending') }, { value: 'delivering', label: t('applications.deliveryStatus_delivering') }, { value: 'delivered', label: t('applications.deliveryStatus_delivered') }, { value: 'failed', label: t('applications.deliveryStatus_failed') }, { value: 'dead', label: t('applications.deliveryStatus_dead') }, { value: 'cancelled', label: t('common.cancelled') }]} value={deliveryStatus} />} title={t('applications.deliveries')}>
             {deliveries.data?.items.map((item) => <Row action={item.status === 'dead' && auth.hasPermission('application:manage') ? <Button aria-label={t('applications.deliveryRetry')} onClick={() => deliveryRetry.mutate(item.id)} size="sm" variant="ghost"><RotateCw className="size-3.5" /></Button> : undefined} detail={<>{providerLabel(item.provider)} · {item.origin}{item.lastErrorCode && <span className="mt-1 block text-danger">{item.lastErrorCode}: {item.lastErrorMessage}</span>}<span className="mt-1 block">{item.lastErrorMessage ?? item.providerMessageId ?? ''}</span></>} key={item.id} status={<StatusBadge label={deliveryStatusLabel(t, item.status)} status={deliveryStatusBadge(item.status)} />} title={`${formatDateTime(item.createdAt)} · ${item.attemptCount} ${t('applications.deliveryAttempts')}`} />)}
             {!deliveries.isLoading && (deliveries.data?.items.length ?? 0) === 0 && <p className="py-8 text-center text-xs text-muted-foreground">{t('applications.noDeliveries')}</p>}
           </Section></TabsContent>
@@ -263,6 +265,7 @@ function deliveryStatusLabel(t: (key: string) => string, status: string) {
     delivered: t('applications.deliveryStatus_delivered'),
     failed: t('applications.deliveryStatus_failed'),
     dead: t('applications.deliveryStatus_dead'),
+    cancelled: t('common.cancelled'),
   }
   return labels[status] ?? status
 }
@@ -276,7 +279,7 @@ function deliveryStatusBadge(status: string): 'active' | 'pending' | 'running' |
 }
 
 function providerLabel(provider?: string) {
-  return provider === 'dingtalk' ? '钉钉' : provider === 'wecom' ? '企业微信' : provider === 'feishu' ? '飞书' : provider === 'agentx' ? 'Agentx' : provider ?? '—'
+  return provider === 'input_hook' ? 'Hook' : provider === 'dingtalk' ? '钉钉' : provider === 'wecom' ? '企业微信' : provider === 'feishu' ? '飞书' : provider === 'agentx' ? 'Agentx' : provider ?? '—'
 }
 
 function modeLabel(t: (key: string) => string, mode?: string) {

@@ -85,7 +85,7 @@ mod tests {
         );
         assert_eq!(
             search(&manifests, "", 0)["items"].as_array().unwrap().len(),
-            15
+            16
         );
         assert!(
             search(&manifests, "no-such-node", 0)["items"]

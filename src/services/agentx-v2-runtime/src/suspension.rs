@@ -74,11 +74,17 @@ pub(crate) async fn resolve_and_create(
     let resolved_parameters = match resolved_parameters {
         Ok(parameters) => parameters,
         Err(error) => {
-            fail_parameter_resolution(tx, &mut request, error.to_string()).await?;
+            fail_suspended_node(
+                tx,
+                &mut request,
+                "DYNAMIC_VALUE_EVALUATION_FAILED",
+                error.to_string(),
+            )
+            .await?;
             return Ok(());
         }
     };
-    create(
+    let result = create(
         tx,
         request.tenant_id,
         request.execution_id,
@@ -92,22 +98,24 @@ pub(crate) async fn resolve_and_create(
         request.machine,
         request.context,
     )
-    .await
+    .await;
+    match result {
+        Err(RuntimeError::InvalidRequest(code, message)) => {
+            fail_suspended_node(tx, &mut request, code, message).await
+        }
+        result => result,
+    }
 }
 
-async fn fail_parameter_resolution(
+async fn fail_suspended_node(
     tx: &mut Transaction<'_, MySql>,
     request: &mut SuspendRequest<'_>,
+    code: &str,
     message: String,
 ) -> RuntimeResult<()> {
     request
         .machine
-        .fail(
-            request.node_execution_id,
-            "DYNAMIC_VALUE_EVALUATION_FAILED",
-            &message,
-            false,
-        )
+        .fail(request.node_execution_id, code, &message, false)
         .map_err(machine_error)?;
     let failed = request
         .machine
@@ -120,11 +128,12 @@ async fn fail_parameter_resolution(
         request.execution_id,
         &failed,
         request.node,
-        "DYNAMIC_VALUE_EVALUATION_FAILED",
+        code,
         &message,
     )
     .await?;
-    sqlx::query("UPDATE node_attempts SET status='failed',error_code='DYNAMIC_VALUE_EVALUATION_FAILED',error_message=?,ended_at=UTC_TIMESTAMP(6) WHERE tenant_id=? AND id=? AND status='suspended'")
+    sqlx::query("UPDATE node_attempts SET status='failed',error_code=?,error_message=?,ended_at=UTC_TIMESTAMP(6) WHERE tenant_id=? AND id=? AND status='suspended'")
+        .bind(code)
         .bind(&message)
         .bind(request.tenant_id)
         .bind(request.attempt_id)
@@ -138,7 +147,7 @@ async fn fail_parameter_resolution(
     );
     trace.node_execution_id = Some(request.node_execution_id.as_uuid());
     trace.attempt_id = Some(request.attempt_id);
-    trace.error_code = Some("DYNAMIC_VALUE_EVALUATION_FAILED".into());
+    trace.error_code = Some(code.into());
     trace.error_message = Some(message);
     crate::trace_delivery::enqueue_best_effort(tx, trace).await;
     Ok(())
@@ -169,7 +178,7 @@ pub async fn enqueue_due(pool: &sqlx::MySqlPool, _owner: Uuid, limit: u32) -> Ru
         crate::event_export::enqueue_approval_event_from_task(&mut tx, tenant_id, task_id).await?;
     }
     tx.commit().await?;
-    Ok(approvals.len() as u64)
+    Ok(approvals.len() as u64 + crate::input_waits::enqueue_due(pool, limit).await?)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -200,7 +209,18 @@ pub(crate) async fn create(
         "node_suspended",
     )
     .await?;
-    if node.node_type == "approval" {
+    if node.node_type == "await_input" {
+        crate::input_waits::create(
+            tx,
+            tenant_id,
+            execution_id,
+            node_execution_id.as_uuid(),
+            checkpoint_id,
+            &node.id,
+            parameters,
+        )
+        .await?;
+    } else if node.node_type == "approval" {
         let task_id = Uuid::now_v7();
         let workflow_id: Uuid = sqlx::query_scalar(
             "SELECT workflow_id FROM workflow_executions WHERE tenant_id=? AND id=?",
@@ -273,8 +293,7 @@ pub(crate) async fn create(
         )
         .await;
     } else {
-        // `wait` is gone; approval is the only suspending builtin left, so an
-        // unknown suspend node type is a definition/registry mismatch.
+        // Suspend nodes must be explicitly backed by a durable domain record.
         return Err(RuntimeError::Internal(anyhow::anyhow!(
             "node type {} cannot suspend",
             node.node_type

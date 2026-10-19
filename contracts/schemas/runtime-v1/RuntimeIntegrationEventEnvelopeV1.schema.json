@@ -1,5 +1,65 @@
 {
   "$defs": {
+    "InputWaitV1": {
+      "additionalProperties": false,
+      "properties": {
+        "content": true,
+        "executionId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nodeExecutionId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "nodePath": {
+          "type": "string"
+        },
+        "occurrence": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "resumeUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "waitId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "waitId",
+        "executionId",
+        "nodeExecutionId",
+        "nodeId",
+        "nodePath",
+        "occurrence",
+        "status"
+      ],
+      "type": "object"
+    },
     "RuntimeApprovalButtonV1": {
       "additionalProperties": false,
       "properties": {
@@ -82,6 +142,18 @@
           "format": "uuid",
           "type": "string"
         },
+        "inputWaits": {
+          "items": {
+            "$ref": "#/$defs/InputWaitV1"
+          },
+          "type": "array"
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/$defs/WorkflowMessageV1"
+          },
+          "type": "array"
+        },
         "rules": {
           "items": {
             "$ref": "#/$defs/RuntimeEvaluationRuleResultV1"
@@ -108,6 +180,8 @@
         }
       },
       "required": [
+        "inputWaits",
+        "messages",
         "id",
         "sourceCaseId",
         "targetCommandId",
@@ -840,6 +914,37 @@
           "type": "object"
         }
       ]
+    },
+    "WorkflowMessageV1": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "executionId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "nodeExecutionId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "executionId",
+        "nodeExecutionId",
+        "content",
+        "createdAt"
+      ],
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
