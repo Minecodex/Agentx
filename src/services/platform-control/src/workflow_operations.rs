@@ -42,6 +42,8 @@ pub fn routes() -> Router<ControlApiState> {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RunRequest {
     #[serde(default)]
+    wait_inputs: agentx_runtime_contracts::WaitInputsV1,
+    #[serde(default)]
     input: Value,
     idempotency_key: Option<String>,
 }
@@ -49,6 +51,8 @@ struct RunRequest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct DebugRequest {
+    #[serde(default)]
+    wait_inputs: agentx_runtime_contracts::WaitInputsV1,
     expected_revision: u64,
     mode: String,
     target_node_id: Option<String>,
@@ -248,7 +252,15 @@ async fn run_workflow(
     actor.require("execution:run")?;
     crate::workflow_api::require_workflow_access(&state, &actor, id, false).await?;
     let version:Uuid=sqlx::query_scalar("SELECT id FROM workflow_versions WHERE tenant_id=? AND workflow_id=? AND publication_status='published' ORDER BY version_number DESC LIMIT 1").bind(actor.tenant_id).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::unprocessable("WORKFLOW_VERSION_REQUIRED","Publish a Workflow Version before running"))?;
-    invoke_version(&state, &actor, version, input.input, input.idempotency_key).await
+    invoke_version(
+        &state,
+        &actor,
+        version,
+        input.input,
+        input.wait_inputs,
+        input.idempotency_key,
+    )
+    .await
 }
 async fn start_version_execution(
     State(state): State<ControlApiState>,
@@ -257,7 +269,15 @@ async fn start_version_execution(
     Json(input): Json<RunRequest>,
 ) -> ApiResult<(StatusCode, Json<Value>)> {
     actor.require("execution:run")?;
-    invoke_version(&state, &actor, version, input.input, input.idempotency_key).await
+    invoke_version(
+        &state,
+        &actor,
+        version,
+        input.input,
+        input.wait_inputs,
+        input.idempotency_key,
+    )
+    .await
 }
 
 async fn invoke_version(
@@ -265,11 +285,19 @@ async fn invoke_version(
     actor: &Actor,
     version: Uuid,
     input: Value,
+    wait_inputs: agentx_runtime_contracts::WaitInputsV1,
     key: Option<String>,
 ) -> ApiResult<(StatusCode, Json<Value>)> {
     let key = key.unwrap_or_else(|| Uuid::now_v7().to_string());
-    let result =
-        crate::work_packages::start_version_execution(state, actor, version, input, key).await?;
+    let result = crate::work_packages::start_version_execution(
+        state,
+        actor,
+        version,
+        input,
+        wait_inputs,
+        key,
+    )
+    .await?;
     let execution_id = result.execution_id.ok_or_else(|| {
         ApiError::conflict(
             "WORK_PACKAGE_EXECUTION_RECEIPT_INVALID",
@@ -357,6 +385,7 @@ async fn debug_execution(
         actor,
         Path(id),
         Json(crate::work_packages::StartDebugRunRequest {
+            wait_inputs: input.wait_inputs,
             draft_id,
             revision: input.expected_revision,
             idempotency_key: input

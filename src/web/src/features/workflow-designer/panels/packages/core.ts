@@ -1,4 +1,6 @@
 import { AgentPanel } from '../inspectors/agent-panel'
+import { AwaitInputPanel } from '../inspectors/await-input-panel'
+import { ReplyMessagePanel } from '../inspectors/reply-message-panel'
 import { ApprovalPanel } from '../inspectors/approval-panel'
 import { CodePanel } from '../inspectors/code-panel'
 import { IfPanel } from '../inspectors/if-panel'
@@ -15,6 +17,8 @@ export const coreNodeUiPackage: BuiltinNodeUiPackage = {
   panels: {
     agent: AgentPanel,
     approval: ApprovalPanel,
+    await_input: AwaitInputPanel,
+    reply_message: ReplyMessagePanel,
     code: CodePanel,
     if: IfPanel,
     loop_over_items: LoopPanel,

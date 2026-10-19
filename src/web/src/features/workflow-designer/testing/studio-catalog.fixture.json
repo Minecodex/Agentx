@@ -606,7 +606,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
+      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -969,7 +969,308 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
+      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
+      "runtimeEntry": "native",
+      "runtimeSource": ""
+    },
+    "providers": [
+      "users"
+    ],
+    "credentials": [],
+    "defaultTimeoutMs": null,
+    "retryPolicy": {
+      "retryable": false,
+      "maxAttempts": 0,
+      "initialBackoffMs": 0,
+      "maxBackoffMs": 0
+    },
+    "sandboxRequired": false,
+    "supportsMock": true,
+    "sideEffectLevel": "none"
+  },
+  {
+    "protocolVersion": "3.0",
+    "nodeType": "await_input",
+    "version": 1,
+    "displayName": "Wait for Input",
+    "description": "Suspend this execution and receive raw content.",
+    "category": "logic",
+    "keywords": [
+      "wait",
+      "input",
+      "等待",
+      "输入"
+    ],
+    "localizations": {
+      "en-US": {
+        "displayName": "Wait for Input",
+        "description": "Suspend this execution and receive raw content.",
+        "keywords": [
+          "wait",
+          "input",
+          "等待",
+          "输入"
+        ],
+        "inputPortLabels": {
+          "main": "Input"
+        },
+        "outputPortLabels": {
+          "error": "Error",
+          "main": "Input received",
+          "timed_out": "Timed out"
+        },
+        "parameterLabels": {
+          "hookUrl": "Hook URL (optional)",
+          "timeoutMs": "Wait timeout (ms)"
+        }
+      },
+      "zh-CN": {
+        "displayName": "等待输入",
+        "description": "挂起当前执行并接收原始内容。",
+        "keywords": [
+          "wait",
+          "input",
+          "等待",
+          "输入"
+        ],
+        "inputPortLabels": {
+          "main": "输入"
+        },
+        "outputPortLabels": {
+          "error": "执行错误",
+          "main": "收到输入",
+          "timed_out": "等待超时"
+        },
+        "parameterLabels": {
+          "hookUrl": "Hook URL（可选）",
+          "timeoutMs": "等待超时（毫秒）"
+        }
+      }
+    },
+    "iconKey": "message-circle",
+    "executionStyle": "suspend",
+    "capability": "builtin",
+    "readiness": "any",
+    "inputPorts": [
+      {
+        "name": "main",
+        "kind": "main",
+        "required": true,
+        "variadic": false
+      }
+    ],
+    "outputPorts": [
+      {
+        "name": "main",
+        "kind": "main",
+        "required": false,
+        "variadic": true
+      },
+      {
+        "name": "timed_out",
+        "kind": "main",
+        "required": false,
+        "variadic": false
+      },
+      {
+        "name": "error",
+        "kind": "error",
+        "required": false,
+        "variadic": false
+      }
+    ],
+    "bindingSlots": [],
+    "parameterSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "hookUrl": {
+          "type": "string",
+          "x-agentx-binding": {
+            "acceptedCardinality": [
+              "single"
+            ],
+            "acceptedKinds": [
+              "literal",
+              "reference",
+              "template"
+            ],
+            "allowedNamespaces": [
+              "inputs",
+              "outputs",
+              "contexts",
+              "execution",
+              "item",
+              "loop"
+            ],
+            "missingPolicies": [
+              "error",
+              "null",
+              "omit"
+            ],
+            "recursive": false
+          }
+        },
+        "timeoutMs": {
+          "maximum": 31536000000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {},
+        "receivedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": "string"
+        },
+        "waitId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "waitId",
+        "content",
+        "receivedAt",
+        "source"
+      ],
+      "type": "object"
+    },
+    "outputPortSchemas": {
+      "error": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object"
+          },
+          "message": {
+            "type": "string"
+          },
+          "nodeExecutionId": {
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "sourceNodeId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable",
+          "details",
+          "sourceNodeId",
+          "nodeExecutionId"
+        ],
+        "type": "object"
+      },
+      "main": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {},
+          "receivedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "waitId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "waitId",
+          "content",
+          "receivedAt",
+          "source"
+        ],
+        "type": "object"
+      },
+      "timed_out": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {},
+          "receivedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "waitId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "waitId",
+          "content",
+          "receivedAt",
+          "source"
+        ],
+        "type": "object"
+      }
+    },
+    "outputCardinality": {
+      "error": "many",
+      "main": "exactly_one",
+      "timed_out": "exactly_one"
+    },
+    "selectorCapabilities": {
+      "namespaces": [
+        "inputs",
+        "outputs",
+        "contexts"
+      ],
+      "supportsCurrent": true,
+      "supportsFirstLast": true,
+      "supportsAll": true,
+      "supportsRunSelection": true
+    },
+    "contextReadCapability": true,
+    "contextWriteCapability": false,
+    "artifactOutputSchema": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "uiSchema": {
+      "fields": {
+        "hookUrl": {
+          "control": "template"
+        },
+        "timeoutMs": {
+          "control": "number"
+        }
+      },
+      "canvas": {
+        "role": "default"
+      }
+    },
+    "plugin": {
+      "packageId": "agentx/core",
+      "packageVersion": "1.0.0",
+      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -1397,7 +1698,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
+      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -2296,7 +2597,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
+      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -2916,7 +3217,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
+      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3711,7 +4012,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
+      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3988,7 +4289,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
+      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4410,7 +4711,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
+      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4432,7 +4733,7 @@
     "nodeType": "reply_message",
     "version": 1,
     "displayName": "Reply Message",
-    "description": "Reply to the conversation that triggered this workflow.",
+    "description": "Emit a message and continue the workflow.",
     "category": "logic",
     "keywords": [
       "reply",
@@ -4443,7 +4744,7 @@
     "localizations": {
       "en-US": {
         "displayName": "Reply Message",
-        "description": "Reply to the conversation that triggered this workflow.",
+        "description": "Emit a message and continue the workflow.",
         "keywords": [
           "reply",
           "message"
@@ -4461,7 +4762,7 @@
       },
       "zh-CN": {
         "displayName": "回复消息",
-        "description": "向触发本工作流的来源会话回复消息（异步投递）。",
+        "description": "发送一条中间消息，并继续执行后续节点。",
         "keywords": [
           "回复",
           "消息"
@@ -4642,7 +4943,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
+      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4910,7 +5211,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
+      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -5354,7 +5655,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:48a8fe607f3a4ca9ad946f8cdddc1354e228818f818e3f1f9925824ff8604dc7",
+      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },

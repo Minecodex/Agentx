@@ -472,7 +472,7 @@ pub(super) async fn rebuild_trigger_revision(
             configuration,
         });
     }
-    let schedules = sqlx::query("SELECT id,name,cron_expression,timezone,input_json,misfire_policy,status,configuration_revision FROM application_schedules WHERE tenant_id=? AND application_id=? ORDER BY id")
+    let schedules = sqlx::query("SELECT id,name,cron_expression,timezone,input_json,wait_inputs_json,misfire_policy,status,configuration_revision FROM application_schedules WHERE tenant_id=? AND application_id=? ORDER BY id")
         .bind(actor.tenant_id).bind(application_id).fetch_all(&mut **tx).await?;
     for row in schedules {
         let policy = match row.try_get::<String, _>("misfire_policy")?.as_str() {
@@ -481,6 +481,8 @@ pub(super) async fn rebuild_trigger_revision(
             _ => return Err(ApiError::internal("invalid stored Schedule Misfire Policy")),
         };
         let configuration = RuntimeTriggerConfigurationV1::Schedule {
+            wait_inputs: serde_json::from_value(row.try_get("wait_inputs_json")?)
+                .map_err(ApiError::internal)?,
             cron_expression: row.try_get("cron_expression")?,
             timezone: row.try_get("timezone")?,
             misfire_policy: policy,

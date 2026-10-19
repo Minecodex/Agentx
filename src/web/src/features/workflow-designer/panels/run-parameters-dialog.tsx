@@ -16,12 +16,15 @@ import type {
   WorkflowStart,
 } from "../model/types";
 
+import { WaitInputsEditor, type WaitInputNode, type WaitInputs } from "../../../shared/components/wait-inputs-editor";
+
 type Values = Record<string, unknown>;
 type FieldErrors = Record<string, string>;
 
-export function hasRunParameters(start: WorkflowStart) {
+export function hasRunParameters(start: WorkflowStart, waitNodes: readonly WaitInputNode[] = []) {
   const schema = asSchema(start.inputs);
   return (
+    waitNodes.length > 0 ||
     Object.keys(schema.properties ?? {}).length > 0 ||
     Object.values(start.contexts).some((context) => context.clientWritable)
   );
@@ -31,14 +34,16 @@ export function RunParametersDialog({
   open,
   running,
   start,
+  waitNodes = [],
   onClose,
   onRun,
 }: {
   open: boolean;
   running: boolean;
   start: WorkflowStart;
+  waitNodes?: readonly WaitInputNode[];
   onClose: () => void;
-  onRun: (input: Values, context: Values) => void;
+  onRun: (input: Values, context: Values, waitInputs: WaitInputs) => void;
 }) {
   const { t } = useTranslation();
   const inputSchema = useMemo(() => asSchema(start.inputs), [start.inputs]);
@@ -53,6 +58,8 @@ export function RunParametersDialog({
       ),
     [start.contexts],
   );
+  const [repliesValid, setRepliesValid] = useState(true);
+  const [waitInputs, setWaitInputs] = useState<WaitInputs>({});
   const [input, setInput] = useState<Values>({});
   const [context, setContext] = useState<Values>({});
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -62,6 +69,7 @@ export function RunParametersDialog({
     setInput(schemaDefaults(inputSchema));
     setContext(contextDefaults(contextFields));
     setErrors({});
+    setWaitInputs({});
   }, [open, inputSchema, contextFields]);
 
   const submit = () => {
@@ -86,7 +94,7 @@ export function RunParametersDialog({
       }
     }
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length === 0) onRun(input, context);
+    if (repliesValid && Object.keys(nextErrors).length === 0) onRun(input, context, waitInputs);
   };
 
   return (
@@ -101,7 +109,8 @@ export function RunParametersDialog({
             {t("studio.runParameters.title")}
           </h2>
         </div>
-        <div className="space-y-6 p-5">
+        <div className="max-h-[65vh] space-y-6 overflow-y-auto p-5">
+          <WaitInputsEditor onValidityChange={setRepliesValid} nodes={waitNodes} value={waitInputs} onChange={setWaitInputs} disabled={running} />
           {inputFields.length > 0 && (
             <FieldSection title={t("studio.runParameters.inputs")}>
               <div className="sm:col-span-2"><SchemaForm errors={Object.fromEntries(Object.entries(errors).filter(([name]) => name.startsWith("input.")).map(([name, message]) => [name.slice(6), message]))} onChange={setInput} schema={inputSchema as JsonSchema} values={input} /></div>
@@ -129,7 +138,7 @@ export function RunParametersDialog({
           <Button onClick={onClose} variant="ghost">
             {t("common.cancel")}
           </Button>
-          <Button disabled={running} onClick={submit}>
+          <Button disabled={running || !repliesValid} onClick={submit}>
             {t("studio.runParameters.run")}
           </Button>
         </div>

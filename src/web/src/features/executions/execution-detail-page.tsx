@@ -1,3 +1,6 @@
+import { WorkflowInteractions } from '../../shared/components/workflow-interactions'
+import { WorkflowHookStatus } from '../../shared/components/workflow-hook-status'
+import type { RuntimeDetails } from '../../shared/api/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Ban, GitFork, Link2, RefreshCw } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -49,6 +52,7 @@ export function ExecutionDetailPage() {
     queryFn: () => apiRequest<Execution>(`/executions/${id}`),
     refetchInterval: (query) => terminalStatuses.has(query.state.data?.status ?? '') ? false : 2_000,
   })
+  const interactions = useQuery({ queryKey: ['execution-interactions', id], queryFn: () => apiRequest<RuntimeDetails>(`/executions/${id}/runtime-details`), enabled: auth.hasPermission('trace:view'), refetchInterval: execution.data && terminalStatuses.has(execution.data.status) ? false : 1000 })
   const nodes = useQuery({ queryKey: ['execution-nodes', id], queryFn: () => apiRequest<ItemResponse<NodeExecution>>(`/executions/${id}/nodes`), refetchInterval: execution.data && !terminalStatuses.has(execution.data.status) ? 2_000 : false })
   const checkpoints = useQuery({ enabled: canViewExecution, queryKey: ['execution-checkpoints', id], queryFn: () => apiRequest<ItemResponse<Checkpoint>>(`/executions/${id}/checkpoints`), refetchInterval: execution.data && !terminalStatuses.has(execution.data.status) ? 2_000 : false })
   const events = useQuery({ enabled: canViewExecution, queryKey: ['execution-recovery-events', id], queryFn: () => apiRequest<{ items: ExecutionEvent[] }>(`/executions/${id}/events?after=0&limit=200`), refetchInterval: execution.data && !terminalStatuses.has(execution.data.status) ? 2_000 : false })
@@ -128,7 +132,7 @@ export function ExecutionDetailPage() {
 
     <Tabs onValueChange={setMainView} value={mainView}>
       <TabsList className="h-11 border-b border-border bg-surface px-6"><TabsTrigger onClick={() => setMainView('trace')} value="trace">{t('executions.mainViews.trace')}</TabsTrigger>{canViewExecution && <TabsTrigger onClick={() => setMainView('recovery')} value="recovery">{t('executions.mainViews.recovery')}</TabsTrigger>}</TabsList>
-      <TabsContent value="trace"><TraceWorkspace active={mainView === 'trace'} className="min-h-[620px]" execution={value} executionId={id} nodes={nodeItems} onDownloadArtifact={downloadArtifact} onNodeSelect={(node) => setSelectedId(node.id)} /></TabsContent>
+      <TabsContent value="trace"><WorkflowInteractions messages={interactions.data?.messages} waits={interactions.data?.inputWaits} />{value.applicationId && auth.hasPermission('application:view') && <WorkflowHookStatus applicationId={value.applicationId} executionId={id} invocationId={value.invocationId} />}<TraceWorkspace active={mainView === 'trace'} className="min-h-[620px]" execution={value} executionId={id} nodes={nodeItems} onDownloadArtifact={downloadArtifact} onNodeSelect={(node) => setSelectedId(node.id)} /></TabsContent>
       {canViewExecution && <TabsContent value="recovery"><div className="min-h-[620px] overflow-hidden"><ExecutionRecoveryRail approvals={executionApprovals} canConfirm={auth.hasPermission('execution:fork')} checkpoints={checkpoints.data?.items ?? []} events={events.data?.items ?? []} nodes={nodeItems} onConfirm={setConfirmationNode} /></div></TabsContent>}
     </Tabs>
 

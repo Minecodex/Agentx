@@ -108,6 +108,13 @@ class Handler(BaseHTTPRequestHandler):
         behavior = resolve_behavior(path)
         record({"method": "POST", "path": path, "behavior": behavior, "body": body, "at": time.time()})
 
+        if path.startswith("/input-hook/"):
+            if behavior == "rate-limit":
+                return self._reply(429, {"error": "retry later"})
+            if behavior == "not-found":
+                return self._reply(404, {"error": "hook unavailable"})
+            return self._reply(200, {"received": True})
+
         if path.startswith("/dingtalk/"):
             # Official robot API subpaths (token then batch/group send).
             if "oauth2/accessToken" in path:

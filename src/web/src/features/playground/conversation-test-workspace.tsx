@@ -1,3 +1,5 @@
+import { WaitInputsEditor, useApplicationWaitNodes, type WaitInputs } from '../../shared/components/wait-inputs-editor'
+import { WorkflowInteractions } from '../../shared/components/workflow-interactions'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bot, ExternalLink, File, MessageSquarePlus, Plus, Send, Settings2, Square, UserRound } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -36,6 +38,11 @@ export function ConversationTestWorkspace({ application, deployment, sessionId, 
   const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
   const [createdSession, setCreatedSession] = useState<GatewaySession | null>(null)
+  const [repliesValid, setRepliesValid] = useState(true);
+  const [waitInputs, setWaitInputs] = useState<WaitInputs>({})
+  const snapshotSession = useQuery({ queryKey:['gateway-session-version',sessionId], queryFn:()=>gatewayRequest<GatewaySession>(`/sessions/${sessionId}`), enabled:Boolean(sessionId) })
+  const waitNodes = useApplicationWaitNodes(application.id, deployment.id, snapshotSession.data?.workflowVersionId ?? deployment.workflowVersionId)
+
   const [message, setMessage] = useState('')
   const [files, setFiles] = useState<ArtifactReference[]>([])
   const [uploading, setUploading] = useState(false)
@@ -74,7 +81,7 @@ export function ConversationTestWorkspace({ application, deployment, sessionId, 
   })
   const saveMapping = useMutation({ mutationFn: (mapping: ChatMapping | null) => apiRequest<PlaygroundConfig>(`/applications/${application.id}/deployments/${deployment.id}/playground-config`, { method: 'PUT', body: jsonBody({ expectedVersion: config.data?.version ?? 0, mapping }) }), onSuccess: (value) => { queryClient.setQueryData(['playground-config', application.id, deployment.id], value); setMappingOpen(false) }, onError: (error: Error) => showToast(error.message) })
   const send = useMutation({
-    mutationFn: () => gatewayRequest<GatewayInvocation>(`/sessions/${sessionId}/messages`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: jsonBody({ parts: [{ partType: 'text', content: message }, ...files.map((file) => ({ partType: artifactPartType(file.contentType), content: file, artifactId: file.artifactId }))] }) }),
+    mutationFn: () => gatewayRequest<GatewayInvocation>(`/sessions/${sessionId}/messages`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: jsonBody({ waitInputs, parts: [{ partType: 'text', content: message }, ...files.map((file) => ({ partType: artifactPartType(file.contentType), content: file, artifactId: file.artifactId }))] }) }),
     onSuccess: async (value) => {
       setInvocationId(value.id)
       setMessage('')
@@ -93,7 +100,7 @@ export function ConversationTestWorkspace({ application, deployment, sessionId, 
     return { ...deployment.inputSchema, properties, required: deployment.inputSchema.required?.filter(name => name in properties) }
   }, [deployment.inputSchema, activeMapping])
   const newSession = () => { if (Object.keys(initialInputSchema.properties).length) setSessionInputsOpen(true); else createSession.mutate({}) }
-  const canSend = Boolean(session?.status === 'active' && activeMapping && !running && !uploading)
+  const canSend = Boolean(session?.status === 'active' && activeMapping && !running && repliesValid && !uploading && !waitNodes.isPending && !waitNodes.error && (!sessionId || !snapshotSession.isPending))
   const chooseFiles = async (selected: FileList | null) => {
     if (!selected?.length) return
     setUploading(true)
@@ -116,6 +123,8 @@ export function ConversationTestWorkspace({ application, deployment, sessionId, 
       }) : <Hint>{t('applications.playground.noSessions')}</Hint>}</div>
     </aside>
     <section className="flex min-h-0 min-w-0 flex-col">
+      <div className="px-6 py-2"><WorkflowInteractions messages={invocation.data?.messages} waits={invocation.data?.activeWaits} /></div>
+      <div className="max-h-64 overflow-y-auto px-6">{waitNodes.error && <p role="alert" className="mb-2 text-xs text-danger">{waitNodes.error.message}<Button size="sm" variant="ghost" onClick={() => void waitNodes.refetch()}>{t('common.retry')}</Button></p>}<WaitInputsEditor onValidityChange={setRepliesValid} nodes={waitNodes.data ?? []} value={waitInputs} onChange={setWaitInputs} disabled={running} /></div>
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-5"><span className="grid size-8 place-items-center rounded-md bg-primary/10 text-primary"><Bot className="size-4" /></span><div><strong className="block text-xs">{application.name}</strong><span className="text-[10px] text-muted-foreground">{config.data?.publishStatus === 'publishing' ? t('applications.playground.mappingPublishing') : config.data?.mapping ? t('applications.playground.mappingVersion', { version: config.data.publishedVersion ?? config.data.version }) : t('applications.playground.mappingMissing')}</span></div><Tooltip content={t('applications.playground.mappingButton')}><Button aria-label={t('applications.playground.mappingButton')} className="ml-auto" onClick={() => setMappingOpen(true)} size="icon" variant="secondary"><Settings2 className="size-4" /></Button></Tooltip>{invocation.data && <Badge tone={invocation.data.status === 'failed' ? 'danger' : running ? 'warning' : 'success'}>{localizedValue(t, 'common', invocation.data.status)}</Badge>}{running && <Button aria-label={t('applications.playground.stop')} onClick={() => cancel.mutate()} size="icon" variant="ghost"><Square className="size-4" /></Button>}</div>
       {config.data?.publishStatus === 'failed' && <div className="border-b border-danger/20 bg-danger/10 px-5 py-2 text-xs text-danger">{config.data.errorCode}: {config.data.errorMessage}</div>}
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{!session ? <Empty icon={<UserRound className="size-6" />} text={t('applications.playground.selectSessionHint')} /> : messages.isLoading ? <Hint>{t('common.loading')}</Hint> : !messages.data?.length ? <Empty icon={<Bot className="size-6" />} text={t('applications.playground.firstMessageHint')} /> : <div className="space-y-4">{messages.data.map((item) => <MessageBubble key={item.id} message={item} locale={i18n.resolvedLanguage} />)}{running && deltaBuffer && <div className="flex justify-start"><div className="max-w-[78%] whitespace-pre-wrap break-words rounded-md border border-border bg-muted/40 px-4 py-3 text-xs leading-5">{deltaBuffer}<span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-primary align-middle" /></div></div>}</div>}</div>

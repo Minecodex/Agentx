@@ -234,6 +234,10 @@ fn default_manifests() -> Vec<NodeManifestVersion> {
             include_str!("../../../plugins/builtin/core/nodes/approval.json"),
         ),
         (
+            "nodes/await_input.json",
+            include_str!("../../../plugins/builtin/core/nodes/await_input.json"),
+        ),
+        (
             "nodes/code.json",
             include_str!("../../../plugins/builtin/core/nodes/code.json"),
         ),
@@ -687,6 +691,7 @@ mod tests {
             BTreeSet::from([
                 "agent",
                 "approval",
+                "await_input",
                 "code",
                 "declarative_http",
                 "if",

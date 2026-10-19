@@ -100,3 +100,7 @@ Control 管理连接与 `rag` 查询配置，发现真实 Dataset/workspace，�
 Control 的 application_testing、application_datasets、application_evaluation_profiles 和 application_evaluations 模块拥有应用内测试集、固定契约、不可变数据/方案版本和批次。evaluation_batches 固定平台模型、凭据版本、参数、价格与系统提示词；evaluation_runs 保持一份测试集快照乘一个工作流版本。Control Outbox 由具备租约、心跳和 Fencing 的评测派发器消费，使用稳定 WorkPackage 标识恢复；Runtime 结果通过既有治理投影返回。
 
 Runtime 的 platform_evaluation_authorizations 保存按租户、应用和批次限定的模型授权，使用签名 Admission 单调推进。系统评分子执行只拥有其冻结模型，业务工作流仍保留自身资源授权；两者不合并。模型撤销后待执行评分以明确错误结束，不切换备用模型。调用样本和附件校验经 Runtime 查询授权访问，Control 不直连 Runtime 数据库。测试与评测不扩展应用会话或记忆评测范围。详见 [应用测试集与平台 AI 评测](plan8/12-application-evaluations.md)。
+
+## 工作流输入交互
+
+中间回复和输入等待统一归入 `agentx/core`，持久化与恢复由 Runtime 承担。`input_waits`、`workflow_messages` 和 `channel_input_receipts` 分别保存等待、消息和渠道幂等凭据；Hook 复用 delivery outbox。平台入口共享等待节点发现及回复序列编辑器，定时和测试用例版本冻结 `waitInputs`，评测投影保存实际等待和消息。详见 [工作流交互协议](14-workflow-interactions.md)。

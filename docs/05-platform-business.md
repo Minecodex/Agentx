@@ -318,3 +318,7 @@ Dataset 导入先检查文件内重复，再在事务中检查现有 Case，并�
 模型列表保留一个选中项，统一接口为 `/api/v1/platform-ai/model-setting`，字段为 `platform_ai_model_alias_id`、`platform_ai_credential_id`。设置权限继续要求 model:manage、company:manage、resource:grant；工作流编辑者和评测用户可读取名称及可用状态。
 
 这份租户配置明确授权画布创作与系统评测，均不向业务 Workflow 自动写 Grant。每个新 Run/批次冻结具体部署、凭据、参数和价格；普通切换影响新任务。清除设置、停用模型或凭据通过持久 Admission 撤销相关未完成评分授权，错误进入报告，不切换备用模型。Alias 使用另一凭据后须重新设置。
+
+## 工作流输入交互
+
+中间回复和输入等待统一归入 `agentx/core`，持久化与恢复由 Runtime 承担。`input_waits`、`workflow_messages` 和 `channel_input_receipts` 分别保存等待、消息和渠道幂等凭据；Hook 复用 delivery outbox。平台入口共享等待节点发现及回复序列编辑器，定时和测试用例版本冻结 `waitInputs`，评测投影保存实际等待和消息。详见 [工作流交互协议](14-workflow-interactions.md)。

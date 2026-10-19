@@ -1,0 +1,294 @@
+{
+  "protocolVersion": "3.0",
+  "nodeType": "await_input",
+  "version": 1,
+  "displayName": "Wait for Input",
+  "description": "Suspend this execution and receive raw content.",
+  "category": "logic",
+  "keywords": [
+    "wait",
+    "input",
+    "等待",
+    "输入"
+  ],
+  "localizations": {
+    "en-US": {
+      "displayName": "Wait for Input",
+      "description": "Suspend this execution and receive raw content.",
+      "keywords": [
+        "wait",
+        "input",
+        "等待",
+        "输入"
+      ],
+      "inputPortLabels": {
+        "main": "Input"
+      },
+      "outputPortLabels": {
+        "main": "Input received",
+        "timed_out": "Timed out",
+        "error": "Error"
+      },
+      "parameterLabels": {
+        "timeoutMs": "Wait timeout (ms)",
+        "hookUrl": "Hook URL (optional)"
+      }
+    },
+    "zh-CN": {
+      "displayName": "等待输入",
+      "description": "挂起当前执行并接收原始内容。",
+      "keywords": [
+        "wait",
+        "input",
+        "等待",
+        "输入"
+      ],
+      "inputPortLabels": {
+        "main": "输入"
+      },
+      "outputPortLabels": {
+        "main": "收到输入",
+        "timed_out": "等待超时",
+        "error": "执行错误"
+      },
+      "parameterLabels": {
+        "timeoutMs": "等待超时（毫秒）",
+        "hookUrl": "Hook URL（可选）"
+      }
+    }
+  },
+  "iconKey": "message-circle",
+  "executionStyle": "suspend",
+  "capability": "builtin",
+  "readiness": "any",
+  "inputPorts": [
+    {
+      "name": "main",
+      "kind": "main",
+      "required": true,
+      "variadic": false
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "main",
+      "kind": "main",
+      "required": false,
+      "variadic": true
+    },
+    {
+      "name": "timed_out",
+      "kind": "main",
+      "required": false,
+      "variadic": false
+    },
+    {
+      "name": "error",
+      "kind": "error",
+      "required": false,
+      "variadic": false
+    }
+  ],
+  "bindingSlots": [],
+  "parameterSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "timeoutMs": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 31536000000
+      },
+      "hookUrl": {
+        "type": "string",
+        "x-agentx-binding": {
+          "acceptedCardinality": [
+            "single"
+          ],
+          "acceptedKinds": [
+            "literal",
+            "reference",
+            "template"
+          ],
+          "allowedNamespaces": [
+            "inputs",
+            "outputs",
+            "contexts",
+            "execution",
+            "item",
+            "loop"
+          ],
+          "missingPolicies": [
+            "error",
+            "null",
+            "omit"
+          ],
+          "recursive": false
+        }
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "waitId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "content": {},
+      "receivedAt": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "source": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "waitId",
+      "content",
+      "receivedAt",
+      "source"
+    ]
+  },
+  "outputPortSchemas": {
+    "main": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "waitId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "content": {},
+        "receivedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "waitId",
+        "content",
+        "receivedAt",
+        "source"
+      ]
+    },
+    "timed_out": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "waitId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "content": {},
+        "receivedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "waitId",
+        "content",
+        "receivedAt",
+        "source"
+      ]
+    },
+    "error": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "details": {
+          "type": "object"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nodeExecutionId": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "sourceNodeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable",
+        "details",
+        "sourceNodeId",
+        "nodeExecutionId"
+      ],
+      "type": "object"
+    }
+  },
+  "outputCardinality": {
+    "main": "exactly_one",
+    "timed_out": "exactly_one",
+    "error": "many"
+  },
+  "selectorCapabilities": {
+    "namespaces": [
+      "inputs",
+      "outputs",
+      "contexts"
+    ],
+    "supportsCurrent": true,
+    "supportsFirstLast": true,
+    "supportsAll": true,
+    "supportsRunSelection": true
+  },
+  "contextReadCapability": true,
+  "contextWriteCapability": false,
+  "artifactOutputSchema": {
+    "items": {
+      "type": "object"
+    },
+    "type": "array"
+  },
+  "uiSchema": {
+    "fields": {
+      "timeoutMs": {
+        "control": "number"
+      },
+      "hookUrl": {
+        "control": "template"
+      }
+    },
+    "canvas": {
+      "role": "default"
+    }
+  },
+  "providers": [
+    "users"
+  ],
+  "credentials": [],
+  "defaultTimeoutMs": null,
+  "retryPolicy": {
+    "retryable": false,
+    "maxAttempts": 0,
+    "initialBackoffMs": 0,
+    "maxBackoffMs": 0
+  },
+  "sandboxRequired": false,
+  "supportsMock": true,
+  "sideEffectLevel": "none"
+}

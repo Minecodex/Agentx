@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "executionId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "receiptId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "waitId": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "waitId",
+    "executionId",
+    "receiptId",
+    "status"
+  ],
+  "title": "WaitInputReceiptV1",
+  "type": "object"
+}

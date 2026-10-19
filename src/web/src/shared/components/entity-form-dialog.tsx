@@ -63,6 +63,8 @@ export function EntityFormDialog({ cancelLabel, fields, onClose, onSubmit, open,
   }
   const submit = async (event: FormEvent) => {
     event.preventDefault()
+    const invalidCustom = [...(formRef.current?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input,textarea') ?? [])].find(control => control.validity.customError)
+    if (invalidCustom) { invalidCustom.reportValidity(); invalidCustom.focus(); return }
     const requiredErrors = Object.fromEntries(fieldsRef.current
       .filter((field) => (field.visible?.(values) ?? true) && field.required && (field.type === 'checkbox' ? values[field.name] !== 'true' : !values[field.name]?.trim()))
       .map((field) => [field.name, t('errors.requiredField')]))

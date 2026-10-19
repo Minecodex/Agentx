@@ -2004,7 +2004,15 @@
           "type": "string"
         },
         "expectedOutput": true,
-        "input": true
+        "input": true,
+        "waitInputs": {
+          "additionalProperties": {
+            "items": true,
+            "type": "array"
+          },
+          "default": {},
+          "type": "object"
+        }
       },
       "required": [
         "caseId",
@@ -2900,6 +2908,14 @@
         "input": true,
         "nodeParameters": {
           "additionalProperties": true,
+          "type": "object"
+        },
+        "waitInputs": {
+          "additionalProperties": {
+            "items": true,
+            "type": "array"
+          },
+          "default": {},
           "type": "object"
         }
       },

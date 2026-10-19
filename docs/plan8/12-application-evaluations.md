@@ -39,3 +39,7 @@
 - [x] 单元、契约、临时 Kubernetes 和 Playwright 验收
 
 系统 E2E 统一使用 pytest tests/e2e；证据存入 .local/artifacts，完成后清理临时资源并恢复开发副本。所有完成记录以实际验证结果为准。
+
+## 工作流输入交互
+
+中间回复和输入等待统一归入 `agentx/core`，持久化与恢复由 Runtime 承担。`input_waits`、`workflow_messages` 和 `channel_input_receipts` 分别保存等待、消息和渠道幂等凭据；Hook 复用 delivery outbox。平台入口共享等待节点发现及回复序列编辑器，定时和测试用例版本冻结 `waitInputs`，评测投影保存实际等待和消息。详见 [工作流交互协议](../14-workflow-interactions.md)。

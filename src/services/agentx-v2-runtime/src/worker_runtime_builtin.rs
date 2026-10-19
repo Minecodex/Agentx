@@ -36,12 +36,14 @@ fn reply_or_send(claim: &ClaimedWorkerAttempt, send: bool) -> WorkerExecution {
             false,
         );
     }
-    let delivery_id =
-        agentx_runtime_contracts::deterministic_uuid(claim.lease.attempt_id, b"delivery:node");
+    let delivery_id = agentx_runtime_contracts::deterministic_uuid(
+        claim.task.execution_id,
+        format!("node:{}:0", claim.task.node_execution_id).as_bytes(),
+    );
     let mut intent = serde_json::json!({
         "content": content,
         "deliveryId": delivery_id.to_string(),
-        "status": "queued",
+        "status": if send { "queued" } else { "emitted" },
     });
     if send {
         for field in ["channelId", "targetConversationId", "senderId"] {

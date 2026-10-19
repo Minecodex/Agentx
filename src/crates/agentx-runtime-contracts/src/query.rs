@@ -421,6 +421,8 @@ pub struct RuntimeCallDetailV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExecutionRuntimeDetailsV1 {
+    pub messages: Vec<crate::WorkflowMessageV1>,
+    pub input_waits: Vec<crate::InputWaitV1>,
     #[serde(deserialize_with = "crate::deserialize_v1")]
     pub api_version: u32,
     pub attempts: Vec<NodeAttemptV1>,

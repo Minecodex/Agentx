@@ -114,6 +114,7 @@ pub async fn execute(pool: &sqlx::MySqlPool, claim: &TriggerClaim) -> RuntimeRes
             misfire_policy,
             grace_seconds,
             input,
+            ..
         } => {
             let due = claim.due_at.ok_or_else(|| {
                 RuntimeError::Internal(anyhow::anyhow!(
@@ -156,6 +157,13 @@ pub async fn execute(pool: &sqlx::MySqlPool, claim: &TriggerClaim) -> RuntimeRes
             claim.tenant_id,
             claim.application_id,
             InvocationCaller {
+                wait_inputs: match &claim.configuration.configuration {
+                    RuntimeTriggerConfigurationV1::Schedule { wait_inputs, .. } => {
+                        Some(wait_inputs.clone())
+                    }
+                    _ => None,
+                },
+                trigger_context: None,
                 end_user: None,
                 caller_type: match claim.kind.as_str() {
                     "schedule" => "schedule",

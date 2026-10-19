@@ -1,0 +1,218 @@
+{
+  "schemaVersion": "8.0",
+  "start": {
+    "inputs": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "contexts": {}
+  },
+  "nodes": [
+    {
+      "id": "exit",
+      "key": "exit",
+      "type": "exit",
+      "typeVersion": 1,
+      "name": "End",
+      "protected": true,
+      "parameters": {
+        "outputs": {
+          "answer": {
+            "kind": "reference",
+            "selector": {
+              "namespace": "outputs",
+              "sourceNodeId": "ask",
+              "port": "main",
+              "run": {
+                "kind": "current"
+              },
+              "item": {
+                "kind": "first"
+              },
+              "path": [
+                "content"
+              ]
+            },
+            "missingPolicy": {
+              "kind": "error"
+            }
+          }
+        },
+        "errorOutputs": {}
+      },
+      "contextWrites": [],
+      "resourceReferences": [],
+      "settings": {}
+    },
+    {
+      "id": "progress",
+      "key": "progress",
+      "name": "progress",
+      "type": "reply_message",
+      "typeVersion": 1,
+      "parameters": {
+        "content": {
+          "kind": "literal",
+          "value": "正在执行，请回复确认"
+        }
+      },
+      "contextWrites": [],
+      "resourceReferences": [],
+      "settings": {}
+    },
+    {
+      "id": "ask",
+      "key": "ask",
+      "name": "ask",
+      "type": "await_input",
+      "typeVersion": 1,
+      "parameters": {
+        "hookUrl": {
+          "kind": "literal",
+          "value": "https://customer.example/hook"
+        }
+      },
+      "contextWrites": [],
+      "resourceReferences": [],
+      "settings": {}
+    },
+    {
+      "id": "intent",
+      "key": "intent",
+      "name": "intent",
+      "type": "if",
+      "typeVersion": 1,
+      "parameters": {
+        "cases": [
+          {
+            "id": "confirmed",
+            "name": "Confirmed",
+            "logicalOp": "and",
+            "conditions": [
+              {
+                "condition": {
+                  "left": {
+                    "kind": "reference",
+                    "selector": {
+                      "namespace": "item",
+                      "run": {
+                        "kind": "current"
+                      },
+                      "item": {
+                        "kind": "current"
+                      },
+                      "path": [
+                        "content"
+                      ]
+                    },
+                    "missingPolicy": {
+                      "kind": "error"
+                    }
+                  },
+                  "operator": "eq",
+                  "right": {
+                    "kind": "literal",
+                    "value": "确认"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "contextWrites": [],
+      "resourceReferences": [],
+      "settings": {}
+    },
+    {
+      "id": "reprompt",
+      "key": "reprompt",
+      "name": "reprompt",
+      "type": "reply_message",
+      "typeVersion": 1,
+      "parameters": {
+        "content": {
+          "kind": "literal",
+          "value": "收到您的内容，请回复确认继续"
+        }
+      },
+      "contextWrites": [],
+      "resourceReferences": [],
+      "settings": {}
+    }
+  ],
+  "connections": [
+    {
+      "id": "interaction-0",
+      "sourceNodeId": "__start__",
+      "sourceHandle": "main",
+      "targetNodeId": "progress",
+      "targetHandle": "main",
+      "order": 0
+    },
+    {
+      "id": "interaction-1",
+      "sourceNodeId": "progress",
+      "sourceHandle": "main",
+      "targetNodeId": "ask",
+      "targetHandle": "main",
+      "order": 0
+    },
+    {
+      "id": "interaction-2",
+      "sourceNodeId": "ask",
+      "sourceHandle": "main",
+      "targetNodeId": "intent",
+      "targetHandle": "main",
+      "order": 0
+    },
+    {
+      "id": "interaction-3",
+      "sourceNodeId": "intent",
+      "sourceHandle": "case:confirmed",
+      "targetNodeId": "exit",
+      "targetHandle": "main",
+      "order": 0
+    },
+    {
+      "id": "interaction-4",
+      "sourceNodeId": "intent",
+      "sourceHandle": "else",
+      "targetNodeId": "reprompt",
+      "targetHandle": "main",
+      "order": 0
+    },
+    {
+      "id": "interaction-5",
+      "sourceNodeId": "reprompt",
+      "sourceHandle": "main",
+      "targetNodeId": "ask",
+      "targetHandle": "main",
+      "order": 0
+    }
+  ],
+  "end": {
+    "outputs": {
+      "answer": {
+        "schema": {},
+        "required": true,
+        "sensitive": false
+      }
+    },
+    "error": {
+      "outputs": {}
+    }
+  },
+  "settings": {
+    "activationBudget": 100,
+    "executionOrder": "deterministic"
+  }
+}

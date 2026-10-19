@@ -180,7 +180,7 @@ describe('resource page uniqueness field errors', () => {
 
   it('shows application dataset name conflicts', async () => {
     stubFetch(() => fieldConflict('DATASET_NAME_EXISTS', 'name'))
-    renderPage(<DatasetCreate applicationId="app-1" versions={[{ id: 'version-1', versionNumber: 1, archived: false, contract: { inputSchema: {}, outputSchema: {}, fingerprint: 'fixed' } }]} onClose={() => undefined} onCreated={async () => undefined} />)
+    renderPage(<DatasetCreate applicationId="app-1" versions={[{ id: 'version-1', versionNumber: 1, archived: false, contract: { waitInputNodes: [], inputSchema: {}, outputSchema: {}, fingerprint: 'fixed' } }]} onClose={() => undefined} onCreated={async () => undefined} />)
     const form = await screen.findByRole('dialog')
     fireEvent.change(within(form).getByLabelText('测试集名称'), { target: { value: 'Duplicate dataset' } })
     fireEvent.click(within(form).getByRole('button', { name: '新建' }))

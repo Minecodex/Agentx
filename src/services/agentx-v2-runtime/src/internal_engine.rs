@@ -435,7 +435,8 @@ pub async fn apply_runtime_command(
     Json(request): Json<RuntimeCommandApplyRequestV1>,
 ) -> RuntimeResult<Json<ApplyReceiptV1>> {
     match &request.command {
-        ExecutionCommandV1::Cancel { execution_id, .. }
+        ExecutionCommandV1::SubmitInput { execution_id, .. }
+        | ExecutionCommandV1::Cancel { execution_id, .. }
         | ExecutionCommandV1::SideEffectConfirmation { execution_id, .. } => {
             authorize_execution_command_or_publisher(&state, &headers, &request, *execution_id)
                 .await?;
@@ -457,6 +458,29 @@ pub async fn apply_runtime_command(
         }
     }
     let result = match &request.command {
+        ExecutionCommandV1::SubmitInput {
+            execution_id,
+            wait_id,
+            content,
+        } => {
+            let belongs: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM input_waits WHERE tenant_id=? AND id=? AND (execution_id=? OR root_execution_id=?))")
+                .bind(request.tenant_id).bind(wait_id).bind(execution_id).bind(execution_id).fetch_one(&state.pool).await?;
+            if !belongs {
+                return Err(RuntimeError::NotFound);
+            }
+            serde_json::to_value(
+                crate::input_waits::submit(
+                    &state.pool,
+                    request.tenant_id,
+                    *wait_id,
+                    &request.idempotency_key,
+                    content,
+                    "platform",
+                )
+                .await?,
+            )
+            .map_err(|error| RuntimeError::Internal(error.into()))?
+        }
         ExecutionCommandV1::WorkPackageCancel {
             package_id,
             expected_version,

@@ -15,6 +15,7 @@ describe('DebugRunDialog', () => {
     expect(onRun).toHaveBeenCalledWith(
       { kind: 'manual', value: { customerId: 42 } },
       { customerId: 42 },
+      {},
     )
   })
 })

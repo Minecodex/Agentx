@@ -60,6 +60,10 @@ pub fn routes() -> Router<ControlApiState> {
             get(get_execution_plugin_manifest),
         )
         .route("/api/v1/executions/{id}/cancel", post(cancel_execution))
+        .route(
+            "/api/v1/executions/{id}/waits/{wait_id}/input",
+            post(submit_wait_input),
+        )
         .route("/api/v1/executions/{id}/fork", post(fork_execution))
         .route(
             "/api/v1/executions/{id}/side-effect-confirmations",
@@ -809,7 +813,7 @@ async fn get_runtime_details(
     Ok(Json(json!({
         "executionId":id,"inputTokens":input_tokens,"outputTokens":output_tokens,
         "costMicros":cost_micros,"costCurrency":cost_currency,"agentRuns":details.agent_runs,"iterations":[],
-        "calls":details.calls,"sandboxes":details.sandboxes,"attempts":details.attempts
+        "calls":details.calls,"sandboxes":details.sandboxes,"attempts":details.attempts,"messages":details.messages,"inputWaits":details.input_waits
     })))
 }
 
@@ -875,6 +879,31 @@ struct ForkRequest {
     node_id: Option<String>,
     side_effect_decisions: Value,
     idempotency_key: Option<String>,
+}
+
+async fn submit_wait_input(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Path((id, wait_id)): Path<(Uuid, Uuid)>,
+    Json(input): Json<agentx_runtime_contracts::SubmitWaitInputV1>,
+) -> ApiResult<Json<Value>> {
+    actor.require("execution:run")?;
+    let detail = runtime_execution_detail(&state, &actor, id).await?;
+    let hash = content_hash(&input.content).map_err(ApiError::internal)?;
+    let request = RuntimeCommandApplyRequestV1 {
+        api_version: 1,
+        tenant_id: actor.tenant_id,
+        command_id: Uuid::now_v7(),
+        object_version: detail.state_version,
+        idempotency_key: format!("bff:input:{wait_id}:{}", hash.as_str()),
+        command: ExecutionCommandV1::SubmitInput {
+            execution_id: id,
+            wait_id,
+            content: input.content,
+        },
+    };
+    let result = apply_runtime_command(&state, &actor, id, &request).await?;
+    Ok(Json(json!(result)))
 }
 
 async fn cancel_execution(
@@ -1803,6 +1832,7 @@ fn side_effect_resolution(value: &Value) -> ApiResult<SideEffectResolutionV1> {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct DeliveryListQuery {
     application_id: Option<Uuid>,
     invocation_id: Option<Uuid>,
@@ -1822,11 +1852,11 @@ async fn search_deliveries(
     if let Some(status) = query.status.as_deref() {
         if !matches!(
             status,
-            "pending" | "delivering" | "delivered" | "failed" | "dead"
+            "pending" | "delivering" | "delivered" | "failed" | "dead" | "cancelled"
         ) {
             return Err(ApiError::bad_request(
                 "INVALID_DELIVERY_STATUS",
-                "status must be pending, delivering, delivered, failed, or dead",
+                "status must be pending, delivering, delivered, failed, dead, or cancelled",
             ));
         }
     }

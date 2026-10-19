@@ -89,6 +89,11 @@ fn main() -> Result<()> {
 
 fn contract_schemas() -> Result<Map<String, Value>> {
     let mut schemas = Map::new();
+    insert::<agentx_runtime_contracts::InputWaitV1>(&mut schemas, "InputWaitV1")?;
+    insert::<agentx_runtime_contracts::SubmitWaitInputV1>(&mut schemas, "SubmitWaitInputV1")?;
+    insert::<agentx_runtime_contracts::WaitInputReceiptV1>(&mut schemas, "WaitInputReceiptV1")?;
+    insert::<agentx_runtime_contracts::WaitInputNodeV1>(&mut schemas, "WaitInputNodeV1")?;
+    insert::<agentx_runtime_contracts::WorkflowMessageV1>(&mut schemas, "WorkflowMessageV1")?;
     insert::<agentx_runtime_contracts::TestArtifactCheckV1>(&mut schemas, "TestArtifactCheckV1")?;
     insert::<Vec<agentx_runtime_contracts::TestArtifactIssueV1>>(
         &mut schemas,

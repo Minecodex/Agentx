@@ -187,6 +187,9 @@ pub async fn send(
     http: &ProviderHttpClient,
     claim: &DeliveryClaim,
 ) -> Result<Option<String>, DeliverySendError> {
+    if claim.provider == "input_hook" {
+        return crate::input_wait_delivery::send(http, claim).await;
+    }
     let text = text_of(&claim.payload)?;
     match claim.provider.as_str() {
         "dingtalk" => send_dingtalk(vault, http, claim, &text).await,

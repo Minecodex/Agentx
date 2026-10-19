@@ -529,6 +529,7 @@ impl ExecutionMachine {
         // failure as an error item through that branch; everything else stops
         // the workflow.
         if policy {
+            self.status = RuntimeExecutionStatus::Running;
             let mut outputs = BTreeMap::new();
             outputs.insert(
                 "error".into(),

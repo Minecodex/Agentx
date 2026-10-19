@@ -38,7 +38,7 @@ const commonAllowedRoots = new Set([
   'ready', 'degraded', 'unknown', 'succeeded', 'cancelled', 'queued', 'suspended', 'skipped',
   'timed_out', 'disabled', 'enabled', 'approved', 'rejected', 'claimed', 'unknownValue',
   'created', 'passed', 'error', 'blocked', 'terminated', 'orphaned', 'creating', 'unavailable',
-  'reserved', 'schemaForm',
+  'reserved', 'schemaForm', 'retry',
 ])
 
 const dynamicRoots: Record<string, Set<string>> = {

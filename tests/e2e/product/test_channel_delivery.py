@@ -791,24 +791,6 @@ def test_l3_send_message_idempotency_and_pod_crash_resilience(
         draft.raise_for_status()
         definition = draft.json()["definition"]
         exit_node = next(node for node in definition["nodes"] if node["type"] == "exit")
-        initial = control.put(
-            f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}",
-            headers=headers,
-            json={
-                "expectedRevision": draft.json()["revision"],
-                "definition": definition,
-                "editorDocument": draft.json()["editorDocument"],
-            },
-        )
-        initial.raise_for_status()
-        initial_version = publish_fixture_version(
-            control, workflow_id, fixture_draft_id(control, workflow_id, headers), initial.json()["revision"], headers
-        )
-        initial_version.raise_for_status()
-        draft = control.get(
-            f"/api/v1/workflows/{workflow_id}/drafts/{fixture_draft_id(control, workflow_id, headers)}", headers=headers
-        )
-        draft.raise_for_status()
         application = control.post(
             "/api/v1/applications",
             headers=headers,
@@ -1149,13 +1131,12 @@ def test_l3_send_message_idempotency_and_pod_crash_resilience(
     )
 
 
-def test_reply_node_fails_without_im_trigger(
+def test_reply_node_emits_progress_without_im_trigger(
     installed_agentx: dict[str, str],
     service_urls: dict[str, str],
     run_id: str,
 ) -> None:
-    """plan7 P7-A A7 scenario 6: a reply_message node outside an IM trigger
-    fails deterministically with REPLY_TARGET_UNRESOLVED."""
+    """A reply without a channel persists a progress message and continues."""
     with httpx.Client(base_url=service_urls["web"], timeout=60) as control:
         token, _me = _access_token(control)
         headers = {"Authorization": f"Bearer {token}"}
@@ -1186,7 +1167,7 @@ def test_reply_node_fails_without_im_trigger(
                 "typeVersion": 1,
                 "name": "Reply",
                 "disabled": False,
-                "parameters": {"content": {"kind": "literal", "value": "should not deliver"}},
+                "parameters": {"content": {"kind": "literal", "value": "progress without channel"}},
                 "contextWrites": [],
                 "resourceReferences": [],
                 "settings": {},
@@ -1330,7 +1311,8 @@ def test_reply_node_fails_without_im_trigger(
             if status in {"completed", "succeeded", "failed", "cancelled"}:
                 break
             time.sleep(1)
-        assert status == "failed", f"non-IM invocation should fail: {status}"
+        assert status == "completed", f"non-IM invocation should complete: {status}"
+        assert probe.json()["messages"][0]["content"] == "progress without channel"
 
     node_error = _runtime_mysql(
         installed_agentx,
@@ -1338,4 +1320,4 @@ def test_reply_node_fails_without_im_trigger(
         "JOIN application_invocations i ON i.execution_id=a.execution_id AND i.tenant_id=a.tenant_id "
         f"WHERE i.id=UUID_TO_BIN('{invocation_id}') ORDER BY a.attempt_number DESC LIMIT 1;",
     )
-    assert node_error == "REPLY_TARGET_UNRESOLVED", node_error
+    assert node_error == "none", node_error

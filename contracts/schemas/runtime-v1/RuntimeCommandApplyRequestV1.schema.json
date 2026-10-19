@@ -5,6 +5,31 @@
         {
           "additionalProperties": false,
           "properties": {
+            "content": true,
+            "executionId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "kind": {
+              "const": "submit_input",
+              "type": "string"
+            },
+            "waitId": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "executionId",
+            "waitId",
+            "content"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
             "executionId": {
               "format": "uuid",
               "type": "string"

@@ -274,6 +274,7 @@ pub(super) async fn finish_execution(
     .bind(execution_id)
     .execute(&mut **tx)
     .await?;
+    crate::input_waits::cancel(tx, tenant_id, execution_id).await?;
     let approval_ids = sqlx::query_scalar::<_, Uuid>(
         "SELECT id FROM approval_tasks WHERE tenant_id=? AND execution_id=? AND status IN ('pending','claimed') FOR UPDATE",
     )
@@ -1150,7 +1151,7 @@ pub(super) async fn enqueue_terminal_reply(
             application_id,
             invocation_id: Some(invocation_id),
             execution_id,
-            channel_binding_id: binding_id,
+            channel_binding_id: Some(binding_id),
             provider,
             origin: "terminal".into(),
             target,
@@ -1191,9 +1192,8 @@ pub(super) async fn enqueue_node_delivery(
         .get("content")
         .and_then(Value::as_str)
         .unwrap_or_default()
-        .trim()
         .to_owned();
-    if content.is_empty() {
+    if content.trim().is_empty() {
         return Ok(Err((
             "DELIVERY_PAYLOAD_INVALID",
             "reply/send content resolved to empty text".into(),
@@ -1201,16 +1201,52 @@ pub(super) async fn enqueue_node_delivery(
     }
     let origin = format!("node:{node_execution_id}:0");
     let delivery_id = agentx_runtime_contracts::deterministic_uuid(execution_id, origin.as_bytes());
+    let reply_context = if node_type == "reply_message" {
+        Some(
+            crate::workflow_interaction::message(
+                tx,
+                tenant_id,
+                execution_id,
+                node_execution_id,
+                &content,
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+    if reply_context.as_ref().is_some_and(|context| {
+        context
+            .trigger_context
+            .as_ref()
+            .and_then(|value| value.get("webhookTriggerId"))
+            .and_then(Value::as_str)
+            .is_none()
+    }) {
+        return Ok(Ok(()));
+    }
+    let invocation_id = reply_context
+        .as_ref()
+        .and_then(|context| context.invocation_id)
+        .or(invocation_id);
     let payload = json!({"text": content});
     let (binding_id, application_id, provider, credential_ref, target) = if node_type
         == "reply_message"
     {
-        let Some(invocation_id) = invocation_id else {
-            return Ok(Err((
+        let node_id: String =
+            sqlx::query_scalar("SELECT node_id FROM node_executions WHERE tenant_id=? AND id=?")
+                .bind(tenant_id)
+                .bind(node_execution_id)
+                .fetch_one(&mut **tx)
+                .await?;
+        let root =
+            crate::workflow_interaction::context(tx, tenant_id, execution_id, &node_id).await?;
+        let invocation_id = root.invocation_id.ok_or_else(|| {
+            RuntimeError::InvalidRequest(
                 "REPLY_TARGET_UNRESOLVED",
-                "execution has no invocation to derive a reply target from".into(),
-            )));
-        };
+                "Channel invocation missing".into(),
+            )
+        })?;
         let invocation = sqlx::query(
             "SELECT trigger_context_json FROM application_invocations WHERE tenant_id=? AND id=?",
         )
@@ -1338,7 +1374,7 @@ pub(super) async fn enqueue_node_delivery(
             application_id,
             invocation_id,
             execution_id,
-            channel_binding_id: binding_id,
+            channel_binding_id: Some(binding_id),
             provider,
             origin,
             target,

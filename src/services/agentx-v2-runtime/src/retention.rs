@@ -406,6 +406,12 @@ async fn sweep_database_record(
             .bind(target_id)
             .execute(&mut *tx)
             .await?;
+        sqlx::query("DELETE FROM workflow_messages WHERE tenant_id=? AND execution_id=?")
+            .bind(claim.tenant_id)
+            .bind(target_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("UPDATE input_waits SET content_json=NULL WHERE tenant_id=? AND execution_id=? AND status!='waiting'").bind(claim.tenant_id).bind(target_id).execute(&mut *tx).await?;
         // plan7 P7-B: model.delta rows amplify invocation_events growth, so
         // the events of a retained invocation are dropped with the same
         // execution retention decision (live executions keep their events).

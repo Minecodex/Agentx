@@ -161,6 +161,8 @@ pub enum RuntimeTriggerConfigurationV1 {
         reply: Option<WebhookReplyConfigV1>,
     },
     Schedule {
+        #[serde(default)]
+        wait_inputs: crate::WaitInputsV1,
         cron_expression: String,
         timezone: String,
         misfire_policy: ScheduleMisfirePolicyV1,
@@ -327,6 +329,9 @@ pub struct SessionResponseV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct InvocationRequestV1 {
+    /// Available only to authenticated platform testing users. API keys cannot select preset mode.
+    #[serde(default)]
+    pub wait_inputs: crate::WaitInputsV1,
     pub input: Value,
     pub session_id: Option<Uuid>,
     pub response_mode: Option<String>,
@@ -335,6 +340,8 @@ pub struct InvocationRequestV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct InvocationResponseV1 {
+    pub messages: Vec<crate::WorkflowMessageV1>,
+    pub active_waits: Vec<crate::InputWaitV1>,
     pub user_identity_diagnostic: Option<String>,
     pub end_user: Option<crate::ApplicationUserIdentityV1>,
     pub id: Uuid,
@@ -401,6 +408,8 @@ pub struct MessagePartInputV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MessageRequestV1 {
+    #[serde(default)]
+    pub wait_inputs: crate::WaitInputsV1,
     pub parts: Vec<MessagePartInputV1>,
 }
 

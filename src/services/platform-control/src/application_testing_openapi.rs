@@ -274,6 +274,10 @@ pub(crate) struct RunReport {
 #[derive(schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CaseReport {
+    #[schemars(default)]
+    pub input_waits: Vec<agentx_runtime_contracts::InputWaitV1>,
+    #[schemars(default)]
+    pub messages: Vec<agentx_runtime_contracts::WorkflowMessageV1>,
     pub id: uuid::Uuid,
     pub name: String,
     pub lineage_id: uuid::Uuid,

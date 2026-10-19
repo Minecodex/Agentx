@@ -9,6 +9,7 @@
   "nodes": [
     "nodes/agent.json",
     "nodes/approval.json",
+    "nodes/await_input.json",
     "nodes/code.json",
     "nodes/if.json",
     "nodes/loop_over_items.json",

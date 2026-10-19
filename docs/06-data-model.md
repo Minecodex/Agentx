@@ -355,3 +355,7 @@ Workflow Draft/Revision/Version 的 definition_json、editor_json，以及 Build
 无本地知识文档表、上传 Artifact 引用或索引状态。`rag_retrieval_tests` 仅记录测试审计。初始化基线直接修改，不提供历史数据迁移。运行包快照包含查询版本、连接版本、范围与凭证版本，外部内容不冻结。连接删除与查询创建使用连接行锁，Workflow/Skill 引用查询时受统一删除保护。
 
 Runtime 的 `runtime_resource_states` 主键包含 `resource_version` 与 `content_hash`，保留不同运行包冻结配置的独立状态；资源级授权撤销通过 ResourceGrant 投影生效。
+
+## 工作流输入交互
+
+中间回复和输入等待统一归入 `agentx/core`，持久化与恢复由 Runtime 承担。`input_waits`、`workflow_messages` 和 `channel_input_receipts` 分别保存等待、消息和渠道幂等凭据；Hook 复用 delivery outbox。平台入口共享等待节点发现及回复序列编辑器，定时和测试用例版本冻结 `waitInputs`，评测投影保存实际等待和消息。详见 [工作流交互协议](14-workflow-interactions.md)。

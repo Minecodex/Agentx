@@ -26,6 +26,7 @@ Agentx 是一个采用 n8n 式画布交互、但使用 Agentx 原生 Workflow/No
 | [10-frontend-architecture.md](10-frontend-architecture.md) | Tailwind UI 体系、企业工作台和 React Flow 画布 |
 | [11-node-integration.md](11-node-integration.md) | Node Manifest、Action/Provider/Lifecycle HTTP 协议与接入验证 |
 | [12-workflow-5.md](12-workflow-5.md) | Workflow Definition 8.0、Binding、Selector、输出契约与故障终态 |
+| [14-workflow-interactions.md](14-workflow-interactions.md) | 中间回复、原始输入等待、Hook 回传、渠道路由与各入口预填 |
 | [13-architecture-service-data-map.md](13-architecture-service-data-map.md) | 当前架构、服务访问链路、全量表目录和跨域 ER 关系 |
 | [reference/mysql-schema-catalog.md](reference/mysql-schema-catalog.md) | V2-00 逐表处置使用的历史 V1 MySQL 字段、索引与外键快照 |
 | [planv2/contracts/table-disposition.json](planv2/contracts/table-disposition.json) | 历史 133 表迁往 Control/Runtime/Split/Delete 的机器可读处置输入 |

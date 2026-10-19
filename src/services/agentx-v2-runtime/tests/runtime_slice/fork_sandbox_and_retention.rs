@@ -1685,6 +1685,7 @@ async fn trigger_claim_takeover_is_fenced(pool: &MySqlPool) {
             .unwrap(),
         enabled: true,
         configuration: RuntimeTriggerConfigurationV1::Schedule {
+                wait_inputs: Default::default(),
             cron_expression: "*/5 * * * *".into(),
             timezone: "UTC".into(),
             misfire_policy: agentx_runtime_contracts::ScheduleMisfirePolicyV1::FireOnce,

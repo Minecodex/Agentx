@@ -15,6 +15,7 @@ use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use sha1::{Digest as Sha1Digest, Sha1};
 use sha2::Sha256;
+use sqlx::Row;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -608,33 +609,77 @@ pub(crate) async fn dispatch_event(
         &context.provider_connection_id,
         &context.sender.id,
     );
-    let accepted = crate::execution::create_runtime_invocation(
-        pool,
-        tenant_id,
-        application_id,
-        crate::execution::InvocationCaller {
-            end_user,
-            caller_type: "webhook",
-            caller_id: binding_id,
-            token_version: None,
-            origin: origin.clone(),
-        },
-        None,
-        &input,
-        &event_key,
-    )
-    .await?;
     let mut context_value = serde_json::to_value(&context)
         .map_err(|e| crate::error::RuntimeError::Internal(e.into()))?;
-    if let Some(object) = context_value.as_object_mut() {
-        object.insert(
-            "configurationRevision".into(),
-            json!(configuration_revision),
-        );
+    context_value["configurationRevision"] = json!(configuration_revision);
+    let mut tx = pool.begin().await?;
+    // Serialize ingress for this binding; receipt and routing commit together.
+    sqlx::query("SELECT id FROM webhook_bindings WHERE tenant_id=? AND id=? FOR UPDATE")
+        .bind(tenant_id)
+        .bind(binding_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    let event_hash = Sha256::digest(context.provider_event_id.as_bytes()).to_vec();
+    let previous: Option<Uuid> = sqlx::query_scalar("SELECT invocation_id FROM channel_input_receipts WHERE tenant_id=? AND binding_id=? AND event_hash=?")
+        .bind(tenant_id).bind(binding_id).bind(&event_hash).fetch_optional(&mut *tx).await?;
+    if let Some(invocation) = previous {
+        tx.commit().await?;
+        return Ok(invocation);
     }
-    sqlx::query("UPDATE application_invocations SET provider_event_id=?,conversation_id=?,trigger_context_json=? WHERE tenant_id=? AND id=?")
-        .bind(&context.provider_event_id).bind(&context.conversation.id).bind(context_value).bind(tenant_id).bind(accepted.invocation_id).execute(pool).await?;
-    Ok(accepted.invocation_id)
+    let active_scope = crate::input_waits::scope(tenant_id, application_id, &context_value);
+    let waiting = if let Some(scope) = active_scope {
+        sqlx::query("SELECT id,invocation_id FROM input_waits WHERE tenant_id=? AND active_scope=? AND status='waiting'")
+            .bind(tenant_id).bind(scope).fetch_optional(&mut *tx).await?
+    } else {
+        None
+    };
+    let (invocation_id, wait_id) = if let Some(waiting) = waiting {
+        let wait_id: Uuid = waiting.try_get("id")?;
+        // ASR/text content stays raw. No confirmation or intent classification here.
+        let content = if context.message.text.is_empty() {
+            serde_json::to_value(&context.message)
+                .map_err(|error| crate::error::RuntimeError::Internal(error.into()))?
+        } else {
+            json!(context.message.text)
+        };
+        match crate::input_waits::submit_tx(
+            &mut tx, tenant_id, wait_id, &event_key, &content, "channel",
+        )
+        .await
+        {
+            Ok(_)
+            | Err(crate::error::RuntimeError::StateConflict(
+                "WAIT_EXPIRED" | "WAIT_ALREADY_FINISHED",
+                _,
+            )) => {}
+            Err(error) => return Err(error),
+        }
+        (waiting.try_get("invocation_id")?, Some(wait_id))
+    } else {
+        let accepted = crate::execution::create_runtime_invocation_tx(
+            &mut tx,
+            tenant_id,
+            application_id,
+            crate::execution::InvocationCaller {
+                wait_inputs: None,
+                trigger_context: Some(context_value),
+                end_user,
+                caller_type: "webhook",
+                caller_id: binding_id,
+                token_version: None,
+                origin,
+            },
+            None,
+            &input,
+            &event_key,
+        )
+        .await?;
+        (accepted.invocation_id, None)
+    };
+    sqlx::query("INSERT INTO channel_input_receipts(tenant_id,binding_id,event_hash,invocation_id,wait_id) VALUES(?,?,?,?,?)")
+        .bind(tenant_id).bind(binding_id).bind(event_hash).bind(invocation_id).bind(wait_id).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(invocation_id)
 }
 
 fn decrypt_wecom(encoded: &str, credentials: &Map<String, Value>) -> Result<Vec<u8>, &'static str> {

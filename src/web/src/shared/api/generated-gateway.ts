@@ -37,9 +37,17 @@ export interface components {
             responseMode?: string | null;
             /** Format: uuid */
             sessionId?: string | null;
+            /**
+             * @description Available only to authenticated platform testing users. API keys cannot select preset mode.
+             * @default {}
+             */
+            waitInputs: {
+                [key: string]: unknown[];
+            };
         };
         /** InvocationResponseV1 */
         InvocationResponse: {
+            activeWaits: components["schemas"]["InvocationResponse"]["$defs"]["InputWaitV1"][];
             /** Format: uint64 */
             admissionEpoch: number;
             /** Format: uuid */
@@ -54,6 +62,7 @@ export interface components {
             executionId?: string | null;
             /** Format: uuid */
             id: string;
+            messages: components["schemas"]["InvocationResponse"]["$defs"]["WorkflowMessageV1"][];
             outputs?: unknown;
             provider?: components["schemas"]["InvocationResponse"]["$defs"]["WebhookProviderV1"] | null;
             providerEventId?: string | null;
@@ -71,8 +80,35 @@ export interface components {
                 };
                 /** @enum {string} */
                 ApplicationUserSourceV1: "platform" | "channel" | "api_parameter";
+                InputWaitV1: {
+                    content?: unknown;
+                    /** Format: uuid */
+                    executionId: string;
+                    expiresAt?: string | null;
+                    /** Format: uuid */
+                    nodeExecutionId: string;
+                    nodeId: string;
+                    nodePath: string;
+                    /** Format: uint32 */
+                    occurrence: number;
+                    resumeUrl?: string | null;
+                    source?: string | null;
+                    status: string;
+                    /** Format: uuid */
+                    waitId: string;
+                };
                 /** @enum {string} */
                 WebhookProviderV1: "agentx" | "dingtalk" | "wecom" | "feishu";
+                WorkflowMessageV1: {
+                    content: string;
+                    createdAt: string;
+                    /** Format: uuid */
+                    executionId: string;
+                    /** Format: uuid */
+                    id: string;
+                    /** Format: uuid */
+                    nodeExecutionId: string;
+                };
             };
         };
         /** MessagePartInputV1 */
@@ -85,6 +121,10 @@ export interface components {
         /** MessageRequestV1 */
         MessageRequest: {
             parts: components["schemas"]["MessageRequest"]["$defs"]["MessagePartInputV1"][];
+            /** @default {} */
+            waitInputs: {
+                [key: string]: unknown[];
+            };
             $defs: {
                 MessagePartInputV1: {
                     /** Format: uuid */
@@ -146,6 +186,20 @@ export interface components {
                 /** @enum {string} */
                 SessionVersionPolicyV1: "pinned" | "follow_deployment" | "manual_upgrade";
             };
+        };
+        /** SubmitWaitInputV1 */
+        SubmitWaitInput: {
+            content: unknown;
+        };
+        /** WaitInputReceiptV1 */
+        WaitInputReceipt: {
+            /** Format: uuid */
+            executionId: string;
+            /** Format: uuid */
+            receiptId: string;
+            status: string;
+            /** Format: uuid */
+            waitId: string;
         };
     };
     responses: never;

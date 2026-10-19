@@ -1458,6 +1458,7 @@ mod tests {
         } = &mut source.spec
         {
             cases.push(agentx_runtime_contracts::RuntimeEvaluationCaseV1 {
+                wait_inputs: Default::default(),
                 case_id: Uuid::now_v7(),
                 input: json!({}),
                 expected_output: Some(json!({})),
