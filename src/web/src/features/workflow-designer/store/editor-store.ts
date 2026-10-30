@@ -1,3 +1,4 @@
+import { loopGeometryForContent, studioNodeGeometry } from "../nodes/canvas-node-geometry";
 import { CanvasRenderProvider } from './canvas-render-store';
 import { serializeStudio } from "../model/serializer";
 import {
@@ -20,11 +21,7 @@ import type {
   StudioNode,
 } from "../model/types";
 import { isIterationChipId, loopIdOfIterationChip } from "../utils/connections";
-import {
-  LOOP_CONTAINER_MIN_HEIGHT,
-  LOOP_CONTAINER_MIN_WIDTH,
-  LOOP_CONTAINER_PADDING,
-} from "../utils/layout";
+
 import {
   applyHistoryPatch,
   createHistoryPatch,
@@ -69,17 +66,20 @@ export type EditorState = DocumentSlice &
     addAction: (
       data: ActionNodeData,
       position?: { x: number; y: number },
+      size?: { width: number; height: number },
     ) => string;
     addConnectedAction: (
       data: ActionNodeData,
       source: { nodeId: string; handleId: string; targetHandle: string },
       position: { x: number; y: number },
+      size?: { width: number; height: number },
     ) => string;
     insertActionOnEdge: (
       data: ActionNodeData,
       edgeId: string,
       handles: { input: string; output: string },
       position: { x: number; y: number },
+      size?: { width: number; height: number },
     ) => string | undefined;
     addExit: (position?: { x: number; y: number }) => string;
     addAnnotation: (position?: { x: number; y: number }, text?: string) => void;
@@ -97,7 +97,7 @@ export type EditorState = DocumentSlice &
       >,
     ) => void;
     removeAnnotation: (id: string) => void;
-    addGroup: (label?: string) => void;
+    addGroup: (label?: string) => boolean;
     toggleGroup: (id: string) => void;
     removeGroup: (id: string) => void;
     moveGroup: (id: string, delta: { x: number; y: number }) => void;
@@ -187,22 +187,20 @@ const historySlice = (): HistorySlice => ({ past: [], future: [] });
 const nodeParentId = (node: StudioNode) =>
   node.data.editorKind === "action" ? node.data.parentId : undefined;
 
-/** Size estimate for a freshly dropped child before React Flow measures it. */
-const CHILD_SIZE_ESTIMATE = { width: 240, height: 140 };
-
 /** Keeps the container frame large enough to hold its body children. */
-function growContainers(nodes: StudioNode[]): StudioNode[] {
+function growContainers(nodes: StudioNode[], targets?: ReadonlySet<string>): StudioNode[] {
   const loops = new Map<string, StudioNode>();
   for (const node of nodes)
-    if (node.data.editorKind === "action" && node.data.nodeType === "loop_over_items")
+    if (node.data.editorKind === "action" && node.data.nodeType === "loop_over_items" && (!targets || targets.has(node.id)))
       loops.set(node.id, node);
   if (!loops.size) return nodes;
   const required = new Map<string, { width: number; height: number }>();
   for (const node of nodes) {
     const parentId = nodeParentId(node);
     if (!parentId || !loops.get(parentId)) continue;
-    const width = node.width ?? node.measured?.width ?? CHILD_SIZE_ESTIMATE.width;
-    const height = node.height ?? node.measured?.height ?? CHILD_SIZE_ESTIMATE.height;
+    const geometry = studioNodeGeometry(node);
+    const width = node.measured?.width ?? node.width ?? geometry.width;
+    const height = node.measured?.height ?? node.height ?? geometry.height;
     const bounds = required.get(parentId) ?? { width: 0, height: 0 };
     bounds.width = Math.max(bounds.width, node.position.x + width);
     bounds.height = Math.max(bounds.height, node.position.y + height);
@@ -212,8 +210,7 @@ function growContainers(nodes: StudioNode[]): StudioNode[] {
   const grown = nodes.map((node) => {
     const bounds = required.get(node.id);
     if (!bounds || !loops.has(node.id)) return node;
-    const width = Math.max(node.width ?? LOOP_CONTAINER_MIN_WIDTH, bounds.width + LOOP_CONTAINER_PADDING.right, LOOP_CONTAINER_MIN_WIDTH);
-    const height = Math.max(node.height ?? LOOP_CONTAINER_MIN_HEIGHT, bounds.height + LOOP_CONTAINER_PADDING.bottom, LOOP_CONTAINER_MIN_HEIGHT);
+    const { width, height } = loopGeometryForContent(node, [{ x: 0, y: 0, ...bounds }]);
     if (width === node.width && height === node.height) return node;
     changed = true;
     return { ...node, width, height };
@@ -491,7 +488,7 @@ export function createEditorStore(readOnly = false) {
         }),
       };
     }),
-  addAction: (data, position) => {
+  addAction: (data, position, size) => {
     const id = crypto.randomUUID();
     set((state) => {
       const count = state.nodes.filter(
@@ -509,6 +506,7 @@ export function createEditorStore(readOnly = false) {
               id,
               type: "manifest",
               position: nextPosition,
+              ...(size ? { width: size.width, height: size.height } : {}),
               data,
               selected: true,
             },
@@ -520,7 +518,7 @@ export function createEditorStore(readOnly = false) {
     });
     return id;
   },
-  addConnectedAction: (data, source, position) => {
+  addConnectedAction: (data, source, position, size) => {
     const id = crypto.randomUUID();
     set((state) => {
       const order = state.edges.filter(
@@ -560,7 +558,7 @@ export function createEditorStore(readOnly = false) {
           selectedId: id,
           nodes: growContainers([
             ...sourceNodes.map((node) => ({ ...node, selected: false })),
-            { id, type: "manifest", position, data, selected: true },
+            { id, type: "manifest", position, ...(size ? { width: size.width, height: size.height } : {}), data, selected: true },
           ]),
           edges: [...state.edges, edge],
         }),
@@ -569,7 +567,7 @@ export function createEditorStore(readOnly = false) {
     });
     return id;
   },
-  insertActionOnEdge: (data, edgeId, handles, position) => {
+  insertActionOnEdge: (data, edgeId, handles, position, size) => {
     const id = crypto.randomUUID();
     let inserted = false;
     set((state) => {
@@ -606,7 +604,7 @@ export function createEditorStore(readOnly = false) {
           selectedId: id,
           nodes: [
             ...state.nodes.map((node) => ({ ...node, selected: false })),
-            { id, type: "manifest", position, data, selected: true },
+            { id, type: "manifest", position, ...(size ? { width: size.width, height: size.height } : {}), data, selected: true },
           ],
           edges: [
             ...state.edges.filter((edge) => edge.id !== edgeId),
@@ -681,32 +679,29 @@ export function createEditorStore(readOnly = false) {
         ),
       }),
     ),
-  addGroup: (label = "Group") =>
+  addGroup: (label = "Group") => {
+    let created = false;
     set((state) => {
-      const grouped = new Set(state.groups.flatMap((group) => group.nodeIds));
-      const nodeIds = state.nodes
-        .filter(
-          (node) =>
-            (node.selected || node.id === state.selectedId) &&
-            !grouped.has(node.id),
-        )
-        .map((node) => node.id);
-      if (nodeIds.length < 2) return state;
+      const grouped = new Set(state.groups.flatMap(group => group.nodeIds));
+      const selected = state.nodes.filter(node => (node.selected || node.id === state.selectedId) && !grouped.has(node.id));
+      const selectedIds = new Set(selected.map(node => node.id));
+      const members = selected.filter(node => { const parent = nodeParentId(node); return !parent || !selectedIds.has(parent); });
+      if (members.length < 2 || new Set(members.map(nodeParentId)).size > 1) return state;
+      created = true;
+      return commit(state, { groups: [...state.groups, { id: crypto.randomUUID(), label, nodeIds: members.map(node => node.id), collapsed: false }] });
+    });
+    return created;
+  },
+  toggleGroup: (id) =>
+    set((state) => {
+      const group = state.groups.find(group => group.id === id);
+      if (!group) return state;
+      const parents = new Set(state.nodes.filter(node => group.nodeIds.includes(node.id)).flatMap(node => { const parent = nodeParentId(node); return parent ? [parent] : []; }));
       return commit(state, {
-        groups: [
-          ...state.groups,
-          { id: crypto.randomUUID(), label, nodeIds, collapsed: false },
-        ],
+        nodes: group.collapsed ? growContainers(state.nodes, parents) : state.nodes,
+        groups: state.groups.map(group => group.id === id ? { ...group, collapsed: !group.collapsed } : group),
       });
     }),
-  toggleGroup: (id) =>
-    set((state) =>
-      commit(state, {
-        groups: state.groups.map((group) =>
-          group.id === id ? { ...group, collapsed: !group.collapsed } : group,
-        ),
-      }),
-    ),
   removeGroup: (id) =>
     set((state) =>
       commit(state, {
@@ -715,24 +710,11 @@ export function createEditorStore(readOnly = false) {
     ),
   moveGroup: (id, delta) =>
     set((state) => {
-      const memberIds = new Set(
-        state.groups.find((group) => group.id === id)?.nodeIds ?? [],
-      );
+      const memberIds = new Set(state.groups.find(group => group.id === id)?.nodeIds ?? []);
       if (!memberIds.size || (!delta.x && !delta.y)) return state;
-      return {
-        nodes: state.nodes.map((node) =>
-          memberIds.has(node.id)
-            ? {
-                ...node,
-                position: {
-                  x: node.position.x + delta.x,
-                  y: node.position.y + delta.y,
-                },
-              }
-            : node,
-        ),
-        dirty: true,
-      };
+      const parents = new Set(state.nodes.filter(node => memberIds.has(node.id)).flatMap(node => { const parent = nodeParentId(node); return parent ? [parent] : []; }));
+      const moved = state.nodes.map(node => memberIds.has(node.id) ? { ...node, position: { x: node.position.x + delta.x, y: node.position.y + delta.y } } : node);
+      return { nodes: growContainers(moved, parents), dirty: true };
     }),
   select: (selectedId) => set({ selectedId }),
   updateNode: (id, data) =>
@@ -913,6 +895,10 @@ export function createEditorStore(readOnly = false) {
         .filter((node) => node.selected || node.id === state.selectedId)
         .map((node) => node.id);
       const nodeIds = new Set(targets?.nodeIds ?? defaultNodeIds);
+      for (const node of state.nodes) {
+        const parent = nodeParentId(node);
+        if (nodeIds.has(node.id) && parent) nodeIds.add(parent);
+      }
       const annotationIds = new Set(targets?.annotationIds ?? []);
       return {
         gestureSnapshot: {

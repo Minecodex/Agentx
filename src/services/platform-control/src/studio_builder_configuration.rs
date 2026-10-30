@@ -201,7 +201,7 @@ fn review_node(
             node,
             "ERROR_ROUTE_REQUIRED",
             "connections.error",
-            "Prefer a compatible existing Exit.error (including the normal End), or preserve an existing error handling path",
+            "Preserve an intentional error handler; otherwise prefer this branch's own normal Exit.error, then a nearby compatible Exit.error in the same scope, or create a local error-only Exit. Do not collect unrelated branch errors on the protected or topmost End",
         ));
     }
 }

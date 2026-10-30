@@ -36,8 +36,6 @@ import { WorkflowFlow, type WorkflowFlowHandle } from "./canvas/workflow-flow";
 import { deserializeDraft, serializeStudio } from "./model/serializer";
 import type { ExitNodeData, NodeManifest, ResourceOption, ResourceRequestContext, ResourceType, StudioDocument } from "./model/types";
 import {
-  canvasNodeMetrics,
-  canvasNodeRole,
   findOpenCanvasPosition,
   type CanvasPlacementRect,
 } from "./nodes/node-appearance";
@@ -58,6 +56,8 @@ import {
 import { buildReferenceCatalog } from "./forms/reference-picker/reference-path";
 import { useEditorStore, useEditorStoreApi, EditorStoreProvider } from "./store/editor-store";
 import { layoutStudioDocument } from "./utils/layout";
+import { LOOP_FIRST_CHILD_POSITION } from "./utils/layout-constants";
+import { boundaryGeometry, studioNodeGeometry } from "./nodes/canvas-node-geometry";
 import { createDefinitionSelector } from "./store/definition-selector";
 import { useStudioShortcuts } from "./utils/use-studio-shortcuts";
 import { configurationIssues } from "./utils/configuration";
@@ -716,11 +716,10 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
     disabled: false,
   });
   const occupiedCanvasRects = (): CanvasPlacementRect[] => [
+    { ...(storeApi.getState().boundaryLayouts.find(item => item.boundary === 'start') ?? { x: 40, y: 220 }), width: boundaryGeometry('start').width, height: boundaryGeometry('start').height },
     ...storeApi.getState().nodes.map((node) => {
       const nodeManifest = manifestForNode(manifestMap, node);
-      const metrics = canvasNodeMetrics(canvasNodeRole(nodeManifest), {
-        richHeight: node.height ?? node.measured?.height,
-      });
+      const metrics = studioNodeGeometry(node, nodeManifest);
       // Container children carry parent-relative positions: resolve before occupancy checks.
       const parentId =
         node.data.editorKind === "action" ? node.data.parentId : undefined;
@@ -730,8 +729,8 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
       return {
         x: node.position.x + (parent?.position.x ?? 0),
         y: node.position.y + (parent?.position.y ?? 0),
-        width: node.width ?? node.measured?.width ?? metrics.width,
-        height: node.height ?? node.measured?.height ?? metrics.height,
+        width: metrics.width,
+        height: metrics.height,
       };
     }),
     ...storeApi
@@ -762,11 +761,16 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
     position?: { x: number; y: number },
     parentId?: string,
   ) => {
-    const metrics = canvasNodeMetrics(canvasNodeRole(manifest));
+    const metrics = studioNodeGeometry({ data: actionData(manifest) }, manifest);
     return editor.addAction(
       { ...actionData(manifest), parentId },
       position ?? defaultCanvasPosition(metrics),
+      metrics,
     );
+  };
+  const openNodePosition = (position: { x: number; y: number }, size: { width: number; height: number }, parentId?: string) => {
+    const occupied = parentId ? storeApi.getState().nodes.filter(node => node.data.editorKind === 'action' && node.data.parentId === parentId).map(node => ({ ...node.position, ...studioNodeGeometry(node, manifestForNode(manifestMap, node)) })) : occupiedCanvasRects();
+    return findOpenCanvasPosition({ x: position.x + size.width / 2, y: position.y + size.height / 2 }, size, occupied);
   };
   const addActionFromCreator = (
     manifest: NodeManifest,
@@ -777,7 +781,7 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
     const state = storeApi.getState();
     if (creatorSource?.nodeId.endsWith("::iteration-start")) {
       const loopId = creatorSource.nodeId.slice(0, -"::iteration-start".length);
-      return addAction(manifest, position ?? { x: 180, y: 116 }, loopId);
+      return addAction(manifest, position ?? LOOP_FIRST_CHILD_POSITION, loopId);
     }
     const insertion = state.edgeInsertRequest;
     if (insertion) {
@@ -807,16 +811,21 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
       const output = manifest.outputPorts.find(
         (port) => port.kind === targetKind,
       );
-      if (sourceNode && targetNode && input && output)
+      if (sourceNode && targetNode && input && output) {
+        const owner = sourceNode.data.editorKind === 'action' ? sourceNode.data.parentId : undefined;
+        const nextData = { ...actionData(manifest), parentId: owner };
+        const size = studioNodeGeometry({ data: nextData }, manifest);
         return editor.insertActionOnEdge(
-          actionData(manifest),
+          nextData,
           insertion.id,
           { input: input.name, output: output.name },
-          position ?? {
-            x: (sourceNode.position.x + targetNode.position.x) / 2,
+          position ?? openNodePosition({
+            x: (sourceNode.position.x + studioNodeGeometry(sourceNode, sourceManifest).width + targetNode.position.x - size.width) / 2,
             y: (sourceNode.position.y + targetNode.position.y) / 2,
-          },
+          }, size, owner),
+          size,
         );
+      }
       editor.clearEdgeInsertRequest();
     }
     if (!creatorSource || !creatorSourceManifest)
@@ -835,20 +844,23 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
         ) ?? manifest.inputPorts.find((port) => port.kind === sourcePort.kind))
       : undefined;
     if (!sourceNode || !targetPort) return addAction(manifest, position, nextParentId);
-    const sourceMetrics = canvasNodeMetrics(canvasNodeRole(creatorSourceManifest), {
-      richHeight: sourceNode.height ?? sourceNode.measured?.height,
-    });
+    const sourceMetrics = studioNodeGeometry(sourceNode, creatorSourceManifest);
+    const nextData = { ...actionData(manifest), parentId: nextParentId };
+    const size = studioNodeGeometry({ data: nextData }, manifest);
+    const sourceY = sourceMetrics.ports.find(port => port.direction === 'output' && port.id === creatorSource.handleId)?.y ?? 24;
+    const targetY = size.ports.find(port => port.direction === 'input' && port.id === targetPort.name)?.y ?? 24;
     return editor.addConnectedAction(
-      { ...actionData(manifest), parentId: nextParentId },
+      nextData,
       {
         nodeId: sourceNode.id,
         handleId: creatorSource.handleId,
         targetHandle: targetPort.name,
       },
-      position ?? {
-        x: sourceNode.position.x + (sourceNode.width ?? sourceNode.measured?.width ?? sourceMetrics.width) + 160,
-        y: sourceNode.position.y,
-      },
+      position ?? openNodePosition({
+        x: sourceNode.position.x + sourceMetrics.width + 96,
+        y: sourceNode.position.y + sourceY - targetY,
+      }, size, nextParentId),
+      size,
     );
   };
   const loadServer = async () => {
@@ -927,7 +939,7 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
           const expectedRevision = state.localDocumentRevision;
           void layoutStudioDocument(studioDocument(state), manifestMap).then(document => {
             storeApi.getState().applyEditorCommand(crypto.randomUUID(), expectedRevision, document);
-          });
+          }).catch((error: Error) => showToast(error.message));
         }}
         onMode={(value) => setMode(value as DebugMode)}
         onRedo={editor.redo}
@@ -981,7 +993,7 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
             setDetailsOpen(false);
           }}
           onAddGroup={() => {
-            editor.addGroup(t("studio.group.default"));
+            if (!editor.addGroup(t("studio.group.default"))) showToast(t("studio.group.selectionHelp"));
             setCreatorSource(undefined);
           }}
           onCollapsedChange={(collapsed) => {

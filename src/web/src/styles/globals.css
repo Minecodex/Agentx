@@ -34,6 +34,14 @@
   --ui-danger: #dc4c64;
   --ui-canvas: #f7f8fb;
   --ui-canvas-dot: #cfd5df;
+  --studio-group-start: #155eef;
+  --studio-group-ai: #6366f1;
+  --studio-group-logic: #0891b2;
+  --studio-group-transform: #3b82f6;
+  --studio-group-integrate: #8b5cf6;
+  --studio-group-output: #d97706;
+  --studio-card-shadow: 0 1px 3px rgb(16 24 40 / 7%);
+  --studio-card-hover-shadow: 0 4px 12px rgb(16 24 40 / 10%);
 }
 
 .dark {
@@ -53,6 +61,14 @@
   --ui-danger: #f27489;
   --ui-canvas: #0f141b;
   --ui-canvas-dot: #343d49;
+  --studio-group-start: #4679e8;
+  --studio-group-ai: #7779ee;
+  --studio-group-logic: #1686a1;
+  --studio-group-transform: #427fdb;
+  --studio-group-integrate: #8864dd;
+  --studio-group-output: #bd791e;
+  --studio-card-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+  --studio-card-hover-shadow: 0 4px 12px rgb(0 0 0 / 28%);
 }
 
 @layer base {
@@ -109,7 +125,7 @@ button:disabled {
   fill: currentColor !important;
 }
 
-/* Studio nodes: Dify-style 240px white cards with colored icon chips. */
+/* Workflow cards share pixel geometry and semantic colors in both themes. */
 .studio-inspector :is(input:not([type="checkbox"]), [role="combobox"]) {
   min-width: 0;
   height: 30px;
@@ -137,20 +153,21 @@ button:disabled {
   overflow: visible;
 }
 
-/* demo2-style dot grid for the workflow canvas pane */
+/* Canvas background follows the current theme. */
 .react-flow__pane {
-  background-image: radial-gradient(circle, rgba(115, 128, 150, 0.35) 1px, transparent 1px);
+  background-image: radial-gradient(circle, var(--ui-canvas-dot) 1px, transparent 1px);
   background-size: 20px 20px;
 }
 
 .studio-card {
   border: 1px solid var(--ui-border);
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+  border-radius: 10px;
+  box-shadow: var(--studio-card-shadow);
   transition: box-shadow 150ms ease, border-color 150ms ease;
 }
 
 .studio-card:hover {
-  box-shadow: 0 6px 16px rgba(16, 24, 40, 0.12);
+  box-shadow: var(--studio-card-hover-shadow);
 }
 
 .studio-card.studio-node-selected {
@@ -162,7 +179,15 @@ button:disabled {
 .studio-card.studio-node-succeeded { border-color: color-mix(in srgb, var(--ui-success) 55%, var(--ui-border)); }
 .studio-card.studio-node-failed { border-color: var(--ui-danger); }
 
-/* Branch rows (if cases / approval buttons / merge stacked inputs): demo2 .n-rows/.n-row. */
+.studio-card-head { height: 48px; }
+.studio-card-title { font-size: 14px; }
+.studio-card-row { height: 20px; font-size: 12px; line-height: 20px; }
+.studio-card-att { grid-auto-rows: 24px; }
+.studio-summary-badge { color: var(--studio-group-transform); font-size: 10px; font-weight: 600; }
+.studio-boundary-summary,
+.studio-loop-chip .studio-card > span { line-height: 14px; }
+
+/* Branch and multi-input rows have the same 32px pitch as their handles. */
 .studio-card-rows {
   border-top: 1px solid color-mix(in srgb, var(--ui-border) 55%, transparent);
   flex: 1;
@@ -172,9 +197,9 @@ button:disabled {
   position: relative;
   display: flex;
   align-items: center;
-  height: 34px;
+  height: 32px;
   padding: 0 12px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--ui-foreground);
 }
 
@@ -183,8 +208,8 @@ button:disabled {
 }
 
 .studio-branch-row-input {
-  height: 26px;
-  font-size: 10.5px;
+  height: 32px;
+  font-size: 12px;
   color: var(--ui-muted-foreground);
 }
 
@@ -197,8 +222,8 @@ button:disabled {
   line-height: 1;
 }
 
-.studio-branch-tag-logic { color: #06b6d4; background: #ecfdff; border-color: #a5f0fc; }
-.studio-branch-tag-blue { color: #3b82f6; background: #eff6ff; border-color: #bfdbfe; }
+.studio-branch-tag-logic { color: var(--studio-group-logic); background: color-mix(in srgb, var(--studio-group-logic) 8%, var(--ui-surface)); border-color: color-mix(in srgb, var(--studio-group-logic) 25%, var(--ui-border)); }
+.studio-branch-tag-blue { color: var(--studio-group-transform); background: color-mix(in srgb, var(--studio-group-transform) 8%, var(--ui-surface)); border-color: color-mix(in srgb, var(--studio-group-transform) 25%, var(--ui-border)); }
 .studio-branch-tag-muted { color: var(--ui-muted-foreground); background: var(--ui-muted); border-color: var(--ui-border); }
 
 .studio-branch-badge {
@@ -227,34 +252,31 @@ button:disabled {
 .studio-node-zoom-minimal .studio-port-label,
 .studio-node-zoom-minimal .studio-port-add,
 .studio-node-zoom-minimal .studio-branch-text {
-  display: none;
+  visibility: hidden;
 }
 
 .studio-handle::before {
   content: '';
   position: absolute;
-  inset: -4px;
+  inset: -6px;
 }
 
-/* Dify-style vertical bar handles: muted by default, primary on hover. */
+/* An 8px dot with a 20px hit target; pixel positions never depend on content. */
 .studio-handle-mark {
-  width: 3px;
-  height: 10px;
-  background: var(--ui-muted-foreground);
-  transition: transform 120ms ease, background-color 120ms ease;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  background: var(--ui-surface);
+  transition: box-shadow 120ms ease, background-color 120ms ease;
 }
-
 .studio-handle:hover .studio-handle-mark {
-  background: var(--ui-primary);
-  transform: scale(1.4);
+  background: color-mix(in srgb, currentColor 18%, var(--ui-surface));
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 15%, transparent);
 }
-
-.studio-port-output .studio-handle-mark { background: var(--ui-primary); }
-.studio-port-input .studio-handle-mark { background: var(--ui-muted-foreground); }
-.studio-port-error .studio-handle-mark { background: var(--ui-danger); }
-.studio-boundary-port-success .studio-handle-mark { background: var(--ui-success); }
-.studio-boundary-port-primary .studio-handle-mark { background: var(--ui-primary); }
-.studio-boundary-port-danger .studio-handle-mark { background: var(--ui-danger); }
+.studio-port-output { color: var(--ui-primary); }
+.studio-port-input { color: var(--ui-muted-foreground); }
+.studio-port-error { color: var(--ui-danger); }
 
 .studio-port-label {
   opacity: 0;
@@ -288,7 +310,7 @@ button:disabled {
 .studio-group-expanded,
 .studio-group-proxy,
 .studio-note {
-  border-radius: 6px;
+  border-radius: 10px;
 }
 
 .studio-note-yellow {
@@ -490,53 +512,19 @@ button:disabled {
   border-radius: 4px;
 }
 
-/* Loop container (demo2 .container): cyan translucent frame around the body sub-DAG. */
-.studio-loop-container {
-  border: 1.5px solid #a5f0fc;
-  background: rgba(6, 182, 212, 0.045);
-  border-radius: 16px;
+/* Loop frames use the shared shell; internal edges use the common router. */
+.studio-loop-shell {
+  border-color: color-mix(in srgb, var(--studio-group-logic) 35%, var(--ui-border));
+  background: color-mix(in srgb, var(--studio-group-logic) 3%, var(--ui-canvas));
+  box-shadow: none;
 }
-
-.studio-loop-container.is-selected {
-  border-color: color-mix(in srgb, #06b6d4 75%, #a5f0fc);
-  box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.12);
-}
-
-/* Iteration start chip (demo2 .chip-node): edit-only per-round fan-out anchor. */
-.studio-loop-chip {
-  width: 140px;
-  position: relative;
-  z-index: 4;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
+.studio-loop-parallel {
+  color: var(--studio-group-logic);
   background: var(--ui-surface);
-  border: 1px dashed #67e8f9;
-  border-radius: 10px;
-  padding: 0 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #0e7490;
+  border-color: color-mix(in srgb, var(--studio-group-logic) 28%, var(--ui-border));
 }
-
-.studio-loop-end-chip {
-  border-style: solid;
-  border-color: color-mix(in srgb, #06b6d4 55%, var(--ui-border));
-  height: 64px;
-  justify-content: flex-start;
-}
-
-.studio-loop-boundary-edge-main {
-  stroke: var(--ui-border-strong);
-  stroke-width: 2;
-}
-
-.studio-loop-boundary-edge-error {
-  stroke: var(--ui-danger);
-  stroke-dasharray: 7 5;
-  stroke-width: 2;
-}
+.studio-loop-empty { border-color: color-mix(in srgb, var(--studio-group-logic) 28%, var(--ui-border)); }
+.studio-loop-chip { z-index: 4; }
 
 .studio-loop-resize-handle {
   position: absolute;
@@ -562,12 +550,10 @@ button:disabled {
 .studio-loop-resize-handle.bottom.left { cursor: nesw-resize; }
 
 .react-flow__node-iteration-chip {
-  width: 140px !important;
   z-index: 4 !important;
 }
 
 .react-flow__node-iteration-end {
-  width: 140px !important;
   z-index: 4 !important;
 }
 

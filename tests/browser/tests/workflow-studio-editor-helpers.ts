@@ -33,7 +33,9 @@ export async function showEdgeToolbar(edge: Locator, toolbar: Locator) {
 export async function resizeLoop(page: Page, loopFrame: Locator, resizeHandle: Locator) {
   const viewport = page.viewportSize()
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.locator('.react-flow__controls-zoomout').click()
+    const zoomOut = page.locator('.react-flow__controls-zoomout')
+    if (await zoomOut.isDisabled()) break
+    await zoomOut.click()
   }
   await expect.poll(async () => {
     const handle = await resizeHandle.boundingBox()

@@ -8,7 +8,7 @@ const manifest = (overrides: Partial<NodeManifest>): NodeManifest => ({
 })
 
 describe('workflow node appearance', () => {
-  it('maps node types onto the six visual groups with the Dify palette', () => {
+  it('maps node types onto the six visual groups with semantic theme tokens', () => {
     expect(nodeGroup('start')).toBe('start')
     expect(nodeGroup('boundary')).toBe('start')
     expect(nodeGroup('agent')).toBe('ai')
@@ -24,12 +24,12 @@ describe('workflow node appearance', () => {
     expect(nodeGroup('sub_workflow')).toBe('integrate')
     expect(nodeGroup('exit')).toBe('output')
     expect(nodeGroup('brand_new_node')).toBe('integrate')
-    expect(groupColor('start')).toBe('#155EEF')
-    expect(groupColor('ai')).toBe('#6366F1')
-    expect(groupColor('logic')).toBe('#06B6D4')
-    expect(groupColor('transform')).toBe('#3B82F6')
-    expect(groupColor('integrate')).toBe('#8B5CF6')
-    expect(groupColor('output')).toBe('#F59E0B')
+    expect(groupColor('start')).toBe('var(--studio-group-start)')
+    expect(groupColor('ai')).toBe('var(--studio-group-ai)')
+    expect(groupColor('logic')).toBe('var(--studio-group-logic)')
+    expect(groupColor('transform')).toBe('var(--studio-group-transform)')
+    expect(groupColor('integrate')).toBe('var(--studio-group-integrate)')
+    expect(groupColor('output')).toBe('var(--studio-group-output)')
   })
 
   it('falls back to default when an old Manifest does not declare a role', () => {
@@ -39,33 +39,19 @@ describe('workflow node appearance', () => {
     expect(nodeShape(manifest({ capability: 'sandbox' }))).toBe('default')
   })
 
-  it('uses a declared role and shared 240px card metrics', () => {
-    expect(nodeShape(manifest({ category: 'actions', uiSchema: { canvas: { role: 'code' } } }))).toBe('code')
-    expect(canvasNodeMetrics('trigger')).toMatchObject({ width: 240, height: 62 })
-    expect(canvasNodeMetrics('branch', { bodyRows: 0 })).toMatchObject({ width: 240, height: 44 })
-    expect(canvasNodeMetrics('agent', { bodyRows: 2, attachments: true })).toMatchObject({ width: 240, height: 104 })
-    expect(canvasNodeMetrics('default', { bodyRows: 8 })).toMatchObject({ width: 240, height: 98 })
-    expect(canvasNodeMetrics('default', { kind: 'group' }, true)).toMatchObject({ width: 240, height: 64 })
-    expect(Object.fromEntries((['default', 'flow', 'trigger', 'branch', 'merge', 'loop', 'suspend', 'approval', 'sub_workflow', 'agent', 'code'] as const).map((role) => [role, canvasNodeMetrics(role)]))).toEqual({
-      default: { width: 240, height: 62, labelBelow: false },
-      flow: { width: 240, height: 62, labelBelow: false },
-      trigger: { width: 240, height: 62, labelBelow: false },
-      branch: { width: 240, height: 62, labelBelow: false },
-      merge: { width: 240, height: 62, labelBelow: false },
-      loop: { width: 240, height: 62, labelBelow: false },
-      suspend: { width: 240, height: 62, labelBelow: false },
-      approval: { width: 240, height: 62, labelBelow: false },
-      sub_workflow: { width: 240, height: 62, labelBelow: false },
-      agent: { width: 240, height: 62, labelBelow: false },
-      code: { width: 240, height: 62, labelBelow: false },
-    })
+  it('uses content-sized cards and the declared role', () => {
+    expect(nodeShape(manifest({ uiSchema: { canvas: { role: 'code' } } }))).toBe('code')
+    for (const role of ['default', 'flow', 'trigger', 'merge', 'suspend', 'sub_workflow', 'code'] as const) expect(canvasNodeMetrics(role)).toMatchObject({ width: 240, height: 104 })
+    for (const role of ['agent', 'branch', 'approval'] as const) expect(canvasNodeMetrics(role)).toMatchObject({ width: 280, height: 104 })
+    expect(canvasNodeMetrics('agent', { bodyRows: 2, attachmentRows: 2 })).toMatchObject({ width: 280, height: 168 })
+    expect(canvasNodeMetrics('default', { bodyRows: 8 })).toMatchObject({ width: 240, height: 144 })
   })
 
-  it('sizes branch-row and input-row cards at 34px/26px per row', () => {
-    expect(canvasNodeMetrics('branch', { bodyRows: 0, branchRows: 3 })).toMatchObject({ width: 240, height: 146 })
-    expect(canvasNodeMetrics('approval', { bodyRows: 0, branchRows: 2 })).toMatchObject({ width: 240, height: 112 })
-    expect(canvasNodeMetrics('merge', { bodyRows: 1, inputRows: 3 })).toMatchObject({ width: 240, height: 140 })
-    expect(canvasNodeMetrics('merge', { bodyRows: 1, inputRows: 3, attachments: true })).toMatchObject({ width: 240, height: 164 })
+  it('uses 32px rows and rounds card heights up to 8px', () => {
+    expect(canvasNodeMetrics('branch', { bodyRows: 0, branchRows: 3 })).toMatchObject({ width: 280, height: 176 })
+    expect(canvasNodeMetrics('approval', { bodyRows: 0, branchRows: 2 })).toMatchObject({ width: 280, height: 144 })
+    expect(canvasNodeMetrics('merge', { bodyRows: 1, inputRows: 3 })).toMatchObject({ width: 280, height: 200 })
+    expect(canvasNodeMetrics('merge', { bodyRows: 1, inputRows: 3, attachmentRows: 1 })).toMatchObject({ width: 280, height: 224 })
   })
 
   it('centers a clicked node and moves it to the nearest open position when occupied', () => {

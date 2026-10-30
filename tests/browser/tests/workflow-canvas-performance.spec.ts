@@ -52,7 +52,8 @@ function syntheticDraft(base: Draft, nodeCount: number, nodeType: string, typeVe
     updatedAt: new Date().toISOString(),
     definition: { schemaVersion: '8.0', nodes, connections, settings: { executionOrder: 'deterministic', activationBudget: 10_000 } },
     editorDocument: {
-      nodeLayouts: nodes.map((value, index) => ({ nodeId: value.id, x: 80 + (index % 50) * 150, y: 80 + Math.floor(index / 50) * 150 })),
+      nodeLayouts: nodes.map((value, index) => ({ nodeId: value.id, x: 80 + (index % 50) * 336, y: 80 + Math.floor(index / 50) * 200 })),
+      boundaryLayouts: [{ boundary: 'start', x: -300, y: 80 }],
       bindingLayouts: [], edges: connections.map((value) => ({ edgeId: value.id })), bindingEdges: [], annotations: [], groups: [],
       viewport: { x: 0, y: 0, zoom: 0.7 },
     },
