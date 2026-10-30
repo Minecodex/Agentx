@@ -13,7 +13,7 @@ describe('editor overlay nodes', () => {
     const onToggle = vi.fn()
     const note = { id: 'annotation:readonly', selected: true, data: { editorKind: 'annotation', annotationId: 'readonly', text: 'Saved note', onChange } } as unknown as NodeProps<CanvasNode>
     const group = { id: 'group:readonly', data: { editorKind: 'group', groupId: 'readonly', label: 'Saved group', collapsed: true, memberCount: 1, onToggle } } as unknown as NodeProps<CanvasNode>
-    const loop = { id: 'loop-readonly', selected: true, data: { editorKind: 'loop-container', loopId: 'loop-readonly', label: 'Saved loop', parallelism: 1, childCount: 0, boundaryLinks: [] } } as unknown as NodeProps<CanvasNode>
+    const loop = { id: 'loop-readonly', selected: true, data: { editorKind: 'loop-container', loopId: 'loop-readonly', label: 'Saved loop', parallelism: 1, childCount: 0 } } as unknown as NodeProps<CanvasNode>
     render(<EditorStoreProvider readOnly><ReactFlowProvider><AnnotationNode {...note} /><GroupNode {...group} /><LoopContainerNode {...loop} /></ReactFlowProvider></EditorStoreProvider>)
     fireEvent.doubleClick(screen.getByTestId('studio-note-readonly'))
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
@@ -45,7 +45,7 @@ describe('editor overlay nodes', () => {
 
     const group = screen.getByTestId('studio-group-main')
     expect(group.querySelector('[data-nodeid]')).not.toBeInTheDocument()
-    expect(group.querySelectorAll('.react-flow__handle')).toHaveLength(2)
+    expect(group.querySelectorAll('.react-flow__handle')).toHaveLength(4)
     fireEvent.click(screen.getByRole('button', { name: /Expand group|展开分组/ }))
     fireEvent.click(screen.getByRole('button', { name: /Ungroup|解除分组/ }))
     expect(onToggle).toHaveBeenCalledOnce()
@@ -55,7 +55,7 @@ describe('editor overlay nodes', () => {
 
 describe('loop container overlays', () => {
   it('renders the loop container frame with header, parallel chip, footer note and ports', () => {
-    const props = { id: 'loop-1', selected: false, data: { editorKind: 'loop-container', loopId: 'loop-1', label: '循环处理', parallelism: 6, childCount: 0, boundaryLinks: [] } } as unknown as NodeProps<CanvasNode>
+    const props = { id: 'loop-1', selected: false, data: { editorKind: 'loop-container', loopId: 'loop-1', label: '循环处理', parallelism: 6, childCount: 0 } } as unknown as NodeProps<CanvasNode>
     render(<EditorStoreProvider store={useEditorStore}><ReactFlowProvider><LoopContainerNode {...props} /></ReactFlowProvider></EditorStoreProvider>)
 
     const frame = screen.getByTestId('studio-loop-loop-1')
@@ -64,8 +64,7 @@ describe('loop container overlays', () => {
     expect(screen.getByText('循环处理')).toBeInTheDocument()
     expect(screen.getByTestId('studio-loop-parallel-loop-1').textContent).toMatch(/并行 ×6|Parallel ×6/)
     expect(frame.textContent).toMatch(/内置变量|Built-in variables/)
-    expect(frame.textContent).toMatch(/输入|Input/)
-    expect(frame.textContent).toMatch(/输出|Output/)
+    expect(frame.querySelector('.react-flow__handle.target')).toHaveAttribute('aria-label', expect.stringMatching(/输入|Input/))
     expect(frame.textContent).toMatch(/错误|Error/)
     const handles = frame.querySelectorAll('.react-flow__handle')
     expect(handles).toHaveLength(3)
@@ -74,7 +73,7 @@ describe('loop container overlays', () => {
 
   it('resizes the canonical loop from a corner pointer gesture', () => {
     useEditorStore.setState({ nodes: [{ id: 'loop-1', type: 'manifest', position: { x: 20, y: 30 }, width: 470, height: 300, data: { editorKind: 'action', nodeType: 'loop_over_items', typeVersion: 1, label: '循环处理', key: 'loop', parameters: {}, contextWrites: [], resourceReferences: [], settings: {}, disabled: false } }], past: [], future: [], dirty: false })
-    const props = { id: 'loop-1', selected: true, data: { editorKind: 'loop-container', loopId: 'loop-1', label: '循环处理', parallelism: 1, childCount: 0, boundaryLinks: [] } } as unknown as NodeProps<CanvasNode>
+    const props = { id: 'loop-1', selected: true, data: { editorKind: 'loop-container', loopId: 'loop-1', label: '循环处理', parallelism: 1, childCount: 0 } } as unknown as NodeProps<CanvasNode>
     render(<EditorStoreProvider store={useEditorStore}><ReactFlowProvider><LoopContainerNode {...props} /></ReactFlowProvider></EditorStoreProvider>)
 
     const corner = screen.getByRole('button', { name: /bottom-right/ })
@@ -82,7 +81,7 @@ describe('loop container overlays', () => {
     fireEvent.pointerMove(corner, { pointerId: 1, clientX: 220, clientY: 180 })
     fireEvent.pointerUp(corner, { pointerId: 1, clientX: 220, clientY: 180 })
 
-    expect(useEditorStore.getState().nodes[0]).toMatchObject({ position: { x: 20, y: 30 }, width: 590, height: 380 })
+    expect(useEditorStore.getState().nodes[0]).toMatchObject({ position: { x: 20, y: 30 }, width: 640, height: 380 })
     expect(useEditorStore.getState().past).toHaveLength(1)
   })
 

@@ -4,6 +4,21 @@ import { createEditorStore } from './editor-store'
 const useEditorStore = createEditorStore()
 
 describe('draft editing transactions', () => {
+  it('keeps group ownership within one canvas and handles a selected loop as one member', () => {
+    const store = createEditorStore()
+    const data = { editorKind: 'action' as const, nodeType: 'set', typeVersion: 1, label: 'Set', key: 'set', parameters: {}, contextWrites: [], resourceReferences: [], settings: {}, disabled: false }
+    const loop = store.getState().addAction({ ...data, nodeType: 'loop_over_items', key: 'loop' })
+    const child = store.getState().addAction({ ...data, parentId: loop, key: 'child' }, { x: 304, y: 84 })
+    const outside = store.getState().addAction({ ...data, key: 'outside' }, { x: 1200, y: 40 })
+    store.setState(state => ({ nodes: state.nodes.map(node => ({ ...node, selected: node.id === child || node.id === outside })), selectedId: undefined }))
+    const revision = store.getState().localDocumentRevision
+    expect(store.getState().addGroup()).toBe(false)
+    expect(store.getState().localDocumentRevision).toBe(revision)
+    store.setState(state => ({ nodes: state.nodes.map(node => ({ ...node, selected: true })) }))
+    expect(store.getState().addGroup()).toBe(true)
+    expect(store.getState().groups[0].nodeIds).toEqual([loop, outside])
+  })
+
   const document = (store: ReturnType<typeof createEditorStore>) => {
     const state = store.getState()
     return {start:state.start,nodes:state.nodes,edges:state.edges,end:state.end,settings:state.settings,viewport:state.viewport,boundaryLayouts:state.boundaryLayouts,annotations:state.annotations,groups:state.groups}

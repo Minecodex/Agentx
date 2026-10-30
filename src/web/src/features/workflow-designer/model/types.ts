@@ -371,7 +371,6 @@ export type LoopContainerNodeData = {
   label: string;
   parallelism: number;
   childCount: number;
-  boundaryLinks: Array<{ id: string; kind: "entry" | "main" | "error"; source: { x: number; y: number }; target: { x: number; y: number } }>;
 };
 /** Edit-only iteration entry chip: never serialized into the Definition. */
 export type IterationChipNodeData = {
@@ -415,8 +414,12 @@ export type StudioEdgeData = {
   edgeKind: "execution";
   order?: number;
   sourcePortKind?: PortKind;
+  /** Derived from the target contract; never serialized into a connection. */
+  targetPortKind?: PortKind;
   runtimeStatus?: string;
   labelPosition?: number;
+  /** Purely projected loop boundary links; never placed in the editor document. */
+  derived?: boolean;
 };
 export type StudioEdge = Edge<StudioEdgeData>;
 

@@ -1,4 +1,6 @@
-import { Background, BackgroundVariant, Controls, MarkerType, MiniMap, ReactFlow, type AriaLabelConfig, type Connection, type NodeChange, type ReactFlowInstance } from '@xyflow/react'
+import { canvasEdgePortKinds } from '../utils/edge-port-kinds'
+import { computeGroupView, type GroupView } from '../utils/group-geometry'
+import { Background, BackgroundVariant, Controls, ConnectionLineType, MarkerType, MiniMap, ReactFlow, type AriaLabelConfig, type Connection, type NodeChange, type ReactFlowInstance } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -6,8 +8,9 @@ import { useShallow } from 'zustand/react/shallow'
 
 import type { CanvasNode, ConnectionInteractionState, EditorDocument, NodeManifest, StudioEdge, StudioNode } from '../model/types'
 import { StudioEdgeComponent } from '../edges/studio-edge'
-import { canvasBranchPorts } from '../nodes/manifest-node'
-import { canvasNodeMetrics, canvasNodeRole } from '../nodes/node-appearance'
+import { CanvasRoutingProvider } from '../edges/canvas-routing-provider'
+import { loopGeometryForContent, studioNodeGeometry } from '../nodes/canvas-node-geometry'
+import { STUDIO_BOUNDARY_HEIGHT, STUDIO_BOUNDARY_WIDTH } from '../nodes/node-appearance'
 import { canvasZoomTier, useCanvasRenderStoreApi } from '../store/canvas-render-store'
 import { useEditorStore, useEditorStoreApi } from '../store/editor-store'
 import { localizedNodeLabel } from '../model/manifest-localization'
@@ -15,11 +18,13 @@ import { inspectConnection, isIterationEndId, isIterationChipId, iterationChipId
 import { createGraphIndex, IncrementalGraphIndex, occupiedHandlesByNodeId, portKey } from '../utils/graph-index'
 import { proxyEdges } from '../utils/group-edges'
 import { manifestForNode } from '../utils/manifest-lookup'
-import { LOOP_CHIP_POSITION, LOOP_CONTAINER_DEFAULT_HEIGHT, LOOP_CONTAINER_DEFAULT_WIDTH, LOOP_END_CHIP_HEIGHT, loopEndChipPosition } from '../utils/layout'
+import { LOOP_CHIP_POSITION, LOOP_END_CHIP_HEIGHT, loopEndChipPosition } from '../utils/layout'
 import { CANVAS_NODE_TYPES } from './canvas-node-packages'
 
 export const LARGE_GRAPH_RENDER_THRESHOLD = 150
 export const LARGE_GRAPH_MINIMAP_THRESHOLD = 300
+// Keep fitted cards above the MiniMap and controls, including their quick-add targets.
+const CANVAS_FIT_VIEW_OPTIONS = { minZoom: 0.1, maxZoom: 1, padding: { top: '48px', right: '48px', bottom: '180px', left: '48px' } } as const
 
 /** Slack a parented child can push past the container edge while dragging (extent, parent-relative). */
 const LOOP_CHILD_EXTENT_MARGIN = 80
@@ -49,6 +54,7 @@ export const WorkflowFlow = forwardRef<WorkflowFlowHandle, FlowProps>(function W
   const { t, i18n } = useTranslation()
   const instance = useRef<ReactFlowInstance<CanvasNode, StudioEdge>>()
   const [connectionState, setConnectionState] = useState<ConnectionInteractionState>({ status: 'idle' })
+  const [draggedViewIds, setDraggedViewIds] = useState<ReadonlySet<string>>(new Set())
   const editor = useEditorStore(useShallow((state) => ({
     nodes: state.nodes, edges: state.edges, annotations: state.annotations, groups: state.groups, viewport: state.viewport, boundaryLayouts: state.boundaryLayouts,
     graphRevision: state.graphRevision,
@@ -78,20 +84,27 @@ export const WorkflowFlow = forwardRef<WorkflowFlowHandle, FlowProps>(function W
   const collapsedByMember = useMemo(() => {
     const result = new Map<string, string>()
     for (const group of visibleGroups) if (group.collapsed) for (const nodeId of group.nodeIds) result.set(nodeId, `group:${group.id}`)
+    for (const node of storeApi.getState().nodes) if (node.data.editorKind === 'action' && node.data.parentId && result.has(node.data.parentId)) result.set(node.id, result.get(node.data.parentId)!)
     return result
-  }, [visibleGroups])
-  const containers = useMemo(() => indexContainers(nodes), [nodes])
+  }, [visibleGroups, editor.graphRevision, storeApi])
+  const containers = useMemo(() => readOnly ? readonlyContainerViews(indexContainers(nodes), collapsedByMember, groupViews, manifests) : indexContainers(nodes), [nodes, readOnly, collapsedByMember, groupViews, manifests])
+  const visibleContainers = useMemo(() => new Map([...containers].filter(([id]) => !collapsedByMember.has(id))), [containers, collapsedByMember])
   const renderedNodeCache = useRef(new Map<string, { source: StudioNode; manifest?: NodeManifest; frame: string; value: CanvasNode }>())
   const flowNodes = useMemo<CanvasNode[]>(() => [
     ...materializeNodes(nodes.filter((node) => !collapsedByMember.has(node.id)), edges, manifests, containers, renderedNodeCache.current, i18n.language),
     ...boundaryNodes(boundaryLayouts),
     ...annotations.map((annotation) => annotationNode(annotation, annotationActions)),
-    ...groupViews.map((view) => groupNode(view, groupActions)),
-    ...iterationChipNodes(containers),
-    ...iterationEndNodes(containers),
-  ].map(node => readOnly ? { ...node, draggable: false, connectable: false, deletable: false } : node), [annotationActions, annotations, boundaryLayouts, collapsedByMember, containers, edges, groupActions, groupViews, i18n.language, manifests, nodes, readOnly])
+    ...groupViews.filter(view => !view.parentId || !collapsedByMember.has(view.parentId)).map(view => groupNode(view, groupActions)),
+    ...iterationChipNodes(visibleContainers),
+    ...iterationEndNodes(visibleContainers),
+  ].map(node => readOnly ? { ...node, draggable: false, connectable: false, deletable: false } : draggedViewIds.has(node.id) ? { ...node, dragging: true } : node), [annotationActions, annotations, boundaryLayouts, collapsedByMember, containers, visibleContainers, edges, groupActions, groupViews, i18n.language, manifests, nodes, readOnly, draggedViewIds])
+  const semanticContainers = useMemo(() => indexContainers(storeApi.getState().nodes), [storeApi, editor.graphRevision])
+  const canvasEdges = useMemo(() => {
+    const visible = new Map([...semanticContainers].filter(([id]) => !collapsedByMember.has(id)))
+    return proxyEdges(canvasEdgePortKinds([...edges, ...loopBoundaryEdges(visible, edges, manifests)], storeApi.getState().nodes, manifests), collapsedByMember)
+  }, [collapsedByMember, edges, manifests, semanticContainers, storeApi])
   const renderedEdgeCache = useRef(new Map<string, { source: StudioEdge; sourceStatus?: string; targetStatus?: string; value: StudioEdge }>())
-  const flowEdges = useMemo(() => materializeRuntimeEdges(proxyEdges(edges, collapsedByMember), runtimeStatuses, renderedEdgeCache.current), [collapsedByMember, edges, runtimeStatuses])
+  const flowEdges = useMemo(() => materializeRuntimeEdges(canvasEdges, runtimeStatuses, renderedEdgeCache.current), [canvasEdges, runtimeStatuses])
   const groupViewMap = useMemo(() => new Map(groupViews.map((view) => [view.id, view])), [groupViews])
   const graphIndexController = useRef(new IncrementalGraphIndex())
   const graphIndex = useMemo(() => graphIndexController.current.sync(storeApi.getState().nodes, storeApi.getState().edges, manifests), [editor.graphRevision, manifests])
@@ -183,14 +196,20 @@ export const WorkflowFlow = forwardRef<WorkflowFlowHandle, FlowProps>(function W
     editor.reconnectEdge(edge.id, connection)
     editor.clearEdgeReconnectRequest()
   }, [edges, editor, manifests, nodes])
-  const onNodeDragStart = useCallback((_: unknown, node: CanvasNode) => {
+  const onNodeDragStart = useCallback((_: unknown, node: CanvasNode, dragged?: CanvasNode[]) => {
+    const ids = new Set((dragged ?? [node]).map(item => item.id))
+    const draggedGroup = groupViewMap.get(node.id)
+    for (const id of draggedGroup?.group.nodeIds ?? []) ids.add(id)
+    for (const candidate of nodes) if (candidate.data.editorKind === 'action' && candidate.data.parentId && ids.has(candidate.data.parentId)) ids.add(candidate.id)
+    for (const id of [...ids]) if (containers.has(id)) { ids.add(iterationChipId(id)); ids.add(iterationEndId(id)) }
+    setDraggedViewIds(ids)
     if (node.id === '__start__') return editor.beginEdit({ boundary: 'start' })
     if (node.id.startsWith('annotation:')) return editor.beginEdit({ annotationIds: [node.id.slice('annotation:'.length)] })
     const group = groupViewMap.get(node.id)
     if (group) return editor.beginEdit({ nodeIds: group.group.nodeIds })
     const nodeIds = nodes.filter((candidate) => candidate.selected || candidate.id === node.id).map((candidate) => candidate.id)
     editor.beginEdit({ nodeIds })
-  }, [editor, groupViewMap, nodes])
+  }, [editor, groupViewMap, nodes, containers])
   const onDrop = (event: DragEvent) => {
     event.preventDefault()
     if (readOnly) return
@@ -219,9 +238,10 @@ export const WorkflowFlow = forwardRef<WorkflowFlowHandle, FlowProps>(function W
       )
       if (overflow > LOOP_CHILD_DETACH_OVERFLOW) editor.detachFromContainer(node.id)
     }
-  }, [editor])
+  }, [editor, storeApi])
   const onNodeDragStop = useCallback((_: unknown, node: CanvasNode, dragged?: CanvasNode[]) => {
     releaseEscapedChildren(dragged ?? [node])
+    setDraggedViewIds(new Set())
     commitEdit()
   }, [commitEdit, releaseEscapedChildren])
   const ariaLabelConfig: Partial<AriaLabelConfig> = {
@@ -239,25 +259,25 @@ export const WorkflowFlow = forwardRef<WorkflowFlowHandle, FlowProps>(function W
   }
   return <div className="relative min-w-0 flex-1 bg-canvas" data-canonical-edge-count={edges.length} data-connection-state={connectionState.status} data-testid="workflow-canvas" onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy' }} onDrop={onDrop}>
     <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-3 rounded-md border border-border bg-surface/90 px-2.5 py-1.5 text-[9px] text-muted-foreground shadow-sm backdrop-blur"><LegendDot className="bg-primary" label={t('studio.ports.flow')} /><LegendDot className="bg-danger" label={t('studio.ports.error')} /><LegendDot className="bg-warning" label={t('studio.ports.resource')} /></div>
-    <ReactFlow<CanvasNode, StudioEdge> ariaLabelConfig={ariaLabelConfig} connectionRadius={60} defaultViewport={viewport} edges={flowEdges} edgeTypes={EDGE_TYPES} edgesReconnectable={!readOnly} deleteKeyCode={readOnly ? null : "Backspace"} fitViewOptions={{ maxZoom: 1, padding: 0.2 }} nodes={flowNodes} nodesConnectable={!readOnly} nodesDraggable={!readOnly} nodeTypes={CANVAS_NODE_TYPES} onConnect={onConnect} onConnectEnd={() => { setConnectionState({ status: 'cancelled' }); window.requestAnimationFrame(() => setConnectionState({ status: 'idle' })) }} onConnectStart={(_, params) => setConnectionState({ status: 'connecting', nodeId: params.nodeId ?? '', handleId: params.handleId ?? undefined })} onEdgesChange={readOnly ? undefined : onEdgesChange} onInit={(value) => { instance.current = value }} onMoveEnd={(_, next) => { if (readOnly) canvasRenderStore.setState({zoomTier:canvasZoomTier(next.zoom)}); else setViewport(next) }} onNodeClick={(_, node) => { if (node.data.editorKind === 'boundary') { select(undefined); onBoundaryOpen?.(node.data.boundary) } else { select(node.id); if (node.data.editorKind === 'action' || node.data.editorKind === 'exit' || node.data.editorKind === 'loop-container') onNodeOpen?.(node.id) } }} onNodeDragStart={readOnly ? undefined : onNodeDragStart} onNodeDragStop={readOnly ? undefined : onNodeDragStop} onNodesChange={readOnly ? undefined : onNodesChange} onPaneClick={() => { select(undefined); onPaneClear?.() }} onReconnect={readOnly ? undefined : onReconnect} onReconnectEnd={() => editor.clearEdgeReconnectRequest()} isValidConnection={valid} multiSelectionKeyCode="Shift" onlyRenderVisibleElements={nodes.length >= LARGE_GRAPH_RENDER_THRESHOLD} proOptions={{ hideAttribution: true }} selectionOnDrag={!readOnly}>
+    <CanvasRoutingProvider nodes={flowNodes} edges={canvasEdges}><ReactFlow<CanvasNode, StudioEdge> zIndexMode="manual" minZoom={0.1} ariaLabelConfig={ariaLabelConfig} connectionLineType={ConnectionLineType.SmoothStep} connectionRadius={60} defaultViewport={viewport} edges={flowEdges} edgeTypes={EDGE_TYPES} edgesReconnectable={!readOnly} deleteKeyCode={readOnly ? null : "Backspace"} fitViewOptions={CANVAS_FIT_VIEW_OPTIONS} nodes={flowNodes} nodesConnectable={!readOnly} nodesDraggable={!readOnly} nodeTypes={CANVAS_NODE_TYPES} onConnect={onConnect} onConnectEnd={() => { setConnectionState({ status: 'cancelled' }); window.requestAnimationFrame(() => setConnectionState({ status: 'idle' })) }} onConnectStart={(_, params) => setConnectionState({ status: 'connecting', nodeId: params.nodeId ?? '', handleId: params.handleId ?? undefined })} onEdgesChange={readOnly ? undefined : onEdgesChange} onInit={(value) => { instance.current = value }} onMoveEnd={(_, next) => { if (readOnly) canvasRenderStore.setState({zoomTier:canvasZoomTier(next.zoom)}); else setViewport(next) }} onNodeClick={(_, node) => { if (node.data.editorKind === 'boundary') { select(undefined); onBoundaryOpen?.(node.data.boundary) } else { select(node.id); if (node.data.editorKind === 'action' || node.data.editorKind === 'exit' || node.data.editorKind === 'loop-container') onNodeOpen?.(node.id) } }} onNodeDragStart={readOnly ? undefined : onNodeDragStart} onNodeDragStop={readOnly ? undefined : onNodeDragStop} onNodesChange={readOnly ? undefined : onNodesChange} onPaneClick={() => { select(undefined); onPaneClear?.() }} onReconnect={readOnly ? undefined : onReconnect} onReconnectEnd={() => editor.clearEdgeReconnectRequest()} isValidConnection={valid} multiSelectionKeyCode="Shift" onlyRenderVisibleElements={nodes.length >= LARGE_GRAPH_RENDER_THRESHOLD} proOptions={{ hideAttribution: true }} selectionOnDrag={!readOnly}>
       <Background color="var(--ui-canvas-dot)" gap={22} size={1} variant={BackgroundVariant.Dots} />
-      <Controls aria-label={t('studio.canvasA11y.controls')} className="!border-border !bg-surface !shadow-md" showInteractive={!readOnly} />
+      <Controls fitViewOptions={CANVAS_FIT_VIEW_OPTIONS} aria-label={t('studio.canvasA11y.controls')} className="!border-border !bg-surface !shadow-md" showInteractive={!readOnly} />
       {nodes.length < LARGE_GRAPH_MINIMAP_THRESHOLD && <MiniMap ariaLabel={t('studio.canvasA11y.minimap')} className="!border !border-border !bg-surface" maskColor="color-mix(in srgb, var(--ui-background) 70%, transparent)" pannable zoomable />}
-    </ReactFlow>
+    </ReactFlow></CanvasRoutingProvider>
   </div>
 })
 
 function boundaryNodes(layouts: EditorDocument['boundaryLayouts']): CanvasNode[] {
   const start = layouts.find((layout) => layout.boundary === 'start') ?? { x: 40, y: 220 }
   return [
-    { id: '__start__', type: 'boundary', position: { x: start.x, y: start.y }, draggable: true, deletable: false, data: { editorKind: 'boundary', boundary: 'start', label: '' } },
+    { id: '__start__', type: 'boundary', zIndex: 4, width: STUDIO_BOUNDARY_WIDTH, height: STUDIO_BOUNDARY_HEIGHT, measured: { width: STUDIO_BOUNDARY_WIDTH, height: STUDIO_BOUNDARY_HEIGHT }, position: { x: start.x, y: start.y }, draggable: true, deletable: false, data: { editorKind: 'boundary', boundary: 'start', label: '' } },
   ]
 }
 
 export type LoopContainerView = { loop: StudioNode; children: StudioNode[]; childIds: Set<string> }
 
-const loopContainerWidth = (loop: StudioNode) => loop.width ?? loop.measured?.width ?? LOOP_CONTAINER_DEFAULT_WIDTH
-const loopContainerHeight = (loop: StudioNode) => loop.height ?? loop.measured?.height ?? LOOP_CONTAINER_DEFAULT_HEIGHT
+const loopContainerWidth = (loop: StudioNode) => studioNodeGeometry(loop).width
+const loopContainerHeight = (loop: StudioNode) => studioNodeGeometry(loop).height
 
 /** A loop_over_items node becomes a container once it owns body children (parentId membership). */
 export function indexContainers(nodes: StudioNode[]): Map<string, LoopContainerView> {
@@ -274,6 +294,16 @@ export function indexContainers(nodes: StudioNode[]): Map<string, LoopContainerV
     }
   }
   return loops
+}
+
+/** View-only expansion may enlarge a saved compact loop without changing its document. */
+export function readonlyContainerViews(containers: Map<string, LoopContainerView>, collapsed: Map<string, string>, groups: GroupView[], manifests: Map<string, NodeManifest>) {
+  return new Map([...containers].map(([id, container]) => {
+    const content = container.children.filter(node => !collapsed.has(node.id)).map(node => { const geometry = nodeMetrics(node, manifests); return { ...node.position, width: geometry.width, height: geometry.height }; });
+    for (const group of groups) if (group.group.collapsed && group.parentId === id) content.push({ ...group.position, width: group.width, height: group.height });
+    const geometry = loopGeometryForContent(container.loop, content);
+    return [id, { ...container, loop: { ...container.loop, width: geometry.width, height: geometry.height } }] as const;
+  }));
 }
 
 /** Palette drops inside a container bounding box claim membership for the new node. */
@@ -308,10 +338,10 @@ function iterationChipNodes(containers: Map<string, LoopContainerView>): CanvasN
     draggable: false,
     selectable: false,
     deletable: false,
-    zIndex: 3,
-    initialWidth: 140,
-    initialHeight: 40,
-    style: { width: 140, height: 40, zIndex: 4 },
+    zIndex: 4,
+    initialWidth: STUDIO_BOUNDARY_WIDTH,
+    initialHeight: STUDIO_BOUNDARY_HEIGHT,
+    width: STUDIO_BOUNDARY_WIDTH, height: STUDIO_BOUNDARY_HEIGHT, style: { width: STUDIO_BOUNDARY_WIDTH, height: STUDIO_BOUNDARY_HEIGHT, zIndex: 4 },
     data: { editorKind: 'iteration-chip' as const, loopId: loop.id },
   }))
 }
@@ -330,15 +360,14 @@ function iterationEndNodes(containers: Map<string, LoopContainerView>): CanvasNo
     draggable: false,
     selectable: false,
     deletable: false,
-    zIndex: 3,
-    initialWidth: 140,
+    zIndex: 4,
+    initialWidth: STUDIO_BOUNDARY_WIDTH,
     initialHeight: LOOP_END_CHIP_HEIGHT,
-    style: { width: 140, height: LOOP_END_CHIP_HEIGHT, zIndex: 4 },
+    width: STUDIO_BOUNDARY_WIDTH, height: LOOP_END_CHIP_HEIGHT, style: { width: STUDIO_BOUNDARY_WIDTH, height: LOOP_END_CHIP_HEIGHT, zIndex: 4 },
     data: { editorKind: 'iteration-end' as const, loopId: loop.id },
   }))
 }
 
-type GroupView = { id: string; group: EditorDocument['groups'][number]; position: { x: number; y: number }; width: number; height: number }
 
 class GroupViewIndex {
   private readonly views = new Map<string, GroupView>()
@@ -361,7 +390,8 @@ class GroupViewIndex {
     for (const id of this.groupSignatures.keys()) if (!groupIds.has(id)) { this.groupSignatures.delete(id); this.views.delete(id) }
     const nodeIds = new Set(nodes.map((node) => node.id))
     for (const node of nodes) {
-      const signature = `${node.position.x}:${node.position.y}:${node.width}:${node.height}:${node.measured?.width}:${node.measured?.height}:${node.data.editorKind === 'action' ? `${node.data.nodeType}@${node.data.typeVersion}` : node.data.editorKind}`
+      const geometry = nodeMetrics(node, manifests)
+      const signature = `${node.position.x}:${node.position.y}:${geometry.width}:${geometry.height}:${node.data.editorKind === 'action' ? `${node.data.nodeType}@${node.data.typeVersion}` : node.data.editorKind}`
       if (this.nodeSignatures.get(node.id) !== signature) for (const groupId of new Set([...(this.memberships.get(node.id) ?? []), ...(memberships.get(node.id) ?? [])])) affected.add(groupId)
       this.nodeSignatures.set(node.id, signature)
     }
@@ -377,30 +407,9 @@ class GroupViewIndex {
   }
 }
 
-function computeGroupView(group: EditorDocument['groups'][number], nodeMap: Map<string, StudioNode>, manifests: Map<string, NodeManifest>): GroupView | undefined {
-  const members = group.nodeIds.flatMap((id) => { const node = nodeMap.get(id); return node ? [node] : [] })
-  if (!members.length) return undefined
-  // Parented children carry container-relative positions: resolve before measuring bounds.
-  const absolute = (node: StudioNode) => {
-    const parentId = node.data.editorKind === 'action' ? node.data.parentId : undefined
-    const parent = parentId ? nodeMap.get(parentId) : undefined
-    return parent ? { x: parent.position.x + node.position.x, y: parent.position.y + node.position.y } : node.position
-  }
-  const bounds = members.map((node) => ({ position: absolute(node), metrics: nodeMetrics(node, manifests) }))
-  const left = Math.min(...bounds.map(({ position }) => position.x))
-  const top = Math.min(...bounds.map(({ position }) => position.y))
-  const right = Math.max(...bounds.map(({ position, metrics }) => position.x + metrics.width))
-  const bottom = Math.max(...bounds.map(({ position, metrics }) => position.y + metrics.height))
-  const collapsedMetrics = canvasNodeMetrics('default', { kind: 'group' }, true)
-  return { id: `group:${group.id}`, group, position: { x: left - 32, y: top - 48 }, width: group.collapsed ? collapsedMetrics.width : right - left + 64, height: group.collapsed ? collapsedMetrics.height : bottom - top + 80 }
-}
 
 function nodeMetrics(node: StudioNode, manifests: Map<string, NodeManifest>) {
-  if (node.data.editorKind === 'exit') return { width: 240, height: 62 }
-  if (node.data.editorKind !== 'action') return { width: 96, height: 96 }
-  const manifest = manifestForNode(manifests, node)
-  const metrics = canvasNodeMetrics(canvasNodeRole(manifest), { richHeight: node.height ?? node.measured?.height })
-  return { width: node.width ?? node.measured?.width ?? metrics.width, height: (node.height ?? node.measured?.height ?? metrics.height) + (metrics.labelBelow ? 28 : 0) }
+  return studioNodeGeometry(node, manifestForNode(manifests, node))
 }
 
 function materializeNodes(nodes: StudioNode[], edges: StudioEdge[], manifests: Map<string, NodeManifest>, containers: Map<string, LoopContainerView>, cache: Map<string, { source: StudioNode; manifest?: NodeManifest; frame: string; value: CanvasNode }>, language: string) {
@@ -414,33 +423,34 @@ function materializeNodes(nodes: StudioNode[], edges: StudioEdge[], manifests: M
     // Membership or container size changes must refresh projected parent/extent wiring.
     const childFrame = container ? container.children.map((child) => `${child.id}:${child.position.x}:${child.position.y}:${child.width ?? child.measured?.width ?? ''}:${child.height ?? child.measured?.height ?? ''}`).join('|') : ''
     const bodyEdges = container ? edges.filter((edge) => container.childIds.has(edge.source) || container.childIds.has(edge.target)).map((edge) => `${edge.id}:${edge.source}:${edge.sourceHandle}:${edge.target}:${edge.targetHandle}`).join('|') : ''
-    const frame = `${language}|${container ? `c${Math.round(loopContainerWidth(node))}x${Math.round(loopContainerHeight(node))}:${childFrame}:${bodyEdges}` : ''}|${parent ? `p${Math.round(loopContainerWidth(parent.loop))}x${Math.round(loopContainerHeight(parent.loop))}` : ''}`
+    const frame = `${language}|${container ? `c${Math.round(loopContainerWidth(container.loop))}x${Math.round(loopContainerHeight(container.loop))}:${childFrame}:${bodyEdges}` : ''}|${parent ? `p${Math.round(loopContainerWidth(parent.loop))}x${Math.round(loopContainerHeight(parent.loop))}` : ''}`
     const cached = cache.get(node.id)
     if (cached?.source === node && cached.manifest === manifest && cached.frame === frame) return cached.value
-    const value = projectCanvasNode(node, edges, manifests, manifest, container, parent, language)
+    const value = projectCanvasNode(node, manifest, container, parent, language)
     cache.set(node.id, { source: node, manifest, frame, value })
     return value
   })
 }
 
-function projectCanvasNode(node: StudioNode, edges: StudioEdge[], manifests: Map<string, NodeManifest>, manifest: NodeManifest | undefined, container: LoopContainerView | undefined, parent: LoopContainerView | undefined, language: string): CanvasNode {
+function projectCanvasNode(node: StudioNode, manifest: NodeManifest | undefined, container: LoopContainerView | undefined, parent: LoopContainerView | undefined, language: string): CanvasNode {
   if (container) {
-    const width = loopContainerWidth(node)
-    const height = loopContainerHeight(node)
+    const width = loopContainerWidth(container.loop)
+    const height = loopContainerHeight(container.loop)
     return {
       id: node.id,
       type: 'loop-container' as const,
       position: node.position,
       selected: node.selected,
-      measured: node.measured,
+      measured: { width, height },
       dragging: node.dragging,
       width,
       height,
+      zIndex: 0,
       style: { width, height, zIndex: 0 },
       initialWidth: width,
       initialHeight: height,
       dragHandle: '.drag-handle',
-      data: { editorKind: 'loop-container' as const, loopId: node.id, label: manifest ? localizedNodeLabel(manifest, node.data.label, language) : node.data.label, parallelism: containerParallelism(node), childCount: container.children.length, boundaryLinks: loopBoundaryLinks(container, edges, manifests, width) },
+      data: { editorKind: 'loop-container' as const, loopId: node.id, label: manifest ? localizedNodeLabel(manifest, node.data.label, language) : node.data.label, parallelism: containerParallelism(node), childCount: container.children.length },
     }
   }
   const base = withInitialNodeMetrics(node, manifest)
@@ -454,32 +464,27 @@ function projectCanvasNode(node: StudioNode, edges: StudioEdge[], manifests: Map
   }
 }
 
-export function loopBoundaryLinks(container: LoopContainerView, edges: StudioEdge[], manifests: Map<string, NodeManifest>, width: number) {
-  const links: Array<{ id: string; kind: 'entry' | 'main' | 'error'; source: { x: number; y: number }; target: { x: number; y: number } }> = []
-  const entries = container.children.filter((child) => !edges.some((edge) => container.childIds.has(edge.source) && edge.target === child.id))
-  const sinks = container.children.filter((child) => !edges.some((edge) => edge.source === child.id && container.childIds.has(edge.target)))
-  const start = { x: LOOP_CHIP_POSITION.x + 140, y: LOOP_CHIP_POSITION.y + 20 }
-  const end = loopEndChipPosition(width)
-  for (const child of entries) {
-    const metrics = nodeMetrics(child, manifests)
-    links.push({ id: `entry:${child.id}`, kind: 'entry', source: start, target: { x: child.position.x, y: child.position.y + metrics.height / 2 } })
+export function loopBoundaryEdges(containers: Map<string, LoopContainerView>, edges: StudioEdge[], manifests: Map<string, NodeManifest>): StudioEdge[] {
+  const result: StudioEdge[] = []
+  const link = (id: string, source: string, sourceHandle: string, target: string, targetHandle: string, error = false) => result.push({ id, source, sourceHandle, target, targetHandle, type: 'studio', selectable: false, deletable: false, reconnectable: false, data: { edgeKind: 'execution', sourcePortKind: error ? 'error' : 'main', derived: true } })
+  for (const [loopId, container] of containers) {
+    for (const child of container.children) {
+      const geometry = nodeMetrics(child, manifests)
+      const incoming = edges.some(edge => edge.target === child.id && container.childIds.has(edge.source))
+      const outgoing = edges.some(edge => edge.source === child.id && container.childIds.has(edge.target))
+      if (!incoming) {
+        const port = geometry.ports.find(port => port.direction === 'input' && port.kind === 'main')
+        if (port) link(`loop-entry:${loopId}:${child.id}`, iterationChipId(loopId), 'main', child.id, port.id)
+      }
+      if (!outgoing) for (const port of geometry.ports.filter(port => port.direction === 'output')) link(`loop-exit:${loopId}:${child.id}:${port.id}`, child.id, port.id, iterationEndId(loopId), port.kind === 'error' ? 'error' : 'main', port.kind === 'error')
+    }
   }
-  for (const child of sinks) {
-    const metrics = nodeMetrics(child, manifests)
-    const manifest = manifestForNode(manifests, child)
-    links.push({ id: `main:${child.id}`, kind: 'main', source: { x: child.position.x + metrics.width, y: child.position.y + metrics.height / 3 }, target: { x: end.x, y: end.y + 20 } })
-    if (manifest?.outputPorts.some((port) => port.kind === 'error' || port.name === 'error')) links.push({ id: `error:${child.id}`, kind: 'error', source: { x: child.position.x + metrics.width, y: child.position.y + metrics.height * 2 / 3 }, target: { x: end.x, y: end.y + 44 } })
-  }
-  return links
+  return result
 }
 
 function withInitialNodeMetrics(node: StudioNode, manifest?: NodeManifest): StudioNode {
-  if (node.data.editorKind === 'exit') {
-    return { ...node, initialWidth: 240, initialHeight: 62, style: { ...node.style, zIndex: 3 } }
-  }
-  if (node.data.editorKind !== 'action') return node
-  const metrics = canvasNodeMetrics(canvasNodeRole(manifest), canvasBranchPorts(manifest, node.data.parameters))
-  return { ...node, initialWidth: metrics.width, initialHeight: metrics.height, style: { ...node.style, zIndex: 3 } }
+  const geometry = studioNodeGeometry(node, manifest)
+  return { ...node, zIndex: 3, width: geometry.width, height: geometry.height, measured: { width: geometry.width, height: geometry.height }, initialWidth: geometry.width, initialHeight: geometry.height, style: { ...node.style, width: geometry.width, height: geometry.height, zIndex: 3 } }
 }
 
 export function materializeRuntimeEdges(edges: StudioEdge[], runtimeStatuses: Map<string, string>, cache = new Map<string, { source: StudioEdge; sourceStatus?: string; targetStatus?: string; value: StudioEdge }>()) {
@@ -491,8 +496,8 @@ export function materializeRuntimeEdges(edges: StudioEdge[], runtimeStatuses: Ma
     const cached = cache.get(edge.id)
     if (cached?.source === edge && cached.sourceStatus === sourceStatus && cached.targetStatus === targetStatus) return cached.value
     const runtimeStatus = edgeRuntimeStatus(sourceStatus, targetStatus)
-    const color = edge.data?.sourcePortKind === 'error' || runtimeStatus === 'failed' ? 'var(--ui-danger)' : runtimeStatus === 'running' ? 'var(--ui-warning)' : runtimeStatus === 'succeeded' ? 'var(--ui-success)' : 'var(--ui-primary)'
-    const value: StudioEdge = { ...edge, zIndex: 0, data: edge.data ? { ...edge.data, runtimeStatus } : edge.data, markerEnd: { type: MarkerType.ArrowClosed, color } }
+    const color = edge.data?.sourcePortKind === 'error' || runtimeStatus === 'failed' ? 'var(--ui-danger)' : runtimeStatus === 'running' ? 'var(--ui-warning)' : runtimeStatus === 'succeeded' ? 'var(--ui-success)' : edge.selected ? 'var(--ui-primary)' : 'var(--ui-border-strong)'
+    const value: StudioEdge = { ...edge, zIndex: 1, data: edge.data ? { ...edge.data, runtimeStatus } : edge.data, markerEnd: { type: MarkerType.ArrowClosed, color } }
     cache.set(edge.id, { source: edge, sourceStatus, targetStatus, value })
     return value
   })
@@ -509,8 +514,9 @@ function annotationNode(annotation: EditorDocument['annotations'][number], edito
   return {
     id: `annotation:${annotation.id}`,
     type: 'annotation',
+    zIndex: 2,
     position: { x: annotation.x, y: annotation.y },
-    style: { width: annotation.width ?? 240, height: annotation.height ?? 160, zIndex: 1 },
+    style: { width: annotation.width ?? 240, height: annotation.height ?? 160, zIndex: 2 },
     dragHandle: '.drag-handle',
     data: {
       editorKind: 'annotation', annotationId: annotation.id, text: annotation.text, color: annotation.color,
@@ -527,8 +533,13 @@ function groupNode(view: GroupView, editor: Pick<import("../store/editor-store")
   return {
     id: view.id,
     type: 'group',
+    zIndex: view.group.collapsed ? 3 : 0,
     position: view.position,
-    style: { width: view.width, height: view.height, zIndex: 2, pointerEvents: view.group.collapsed ? 'auto' : 'none' },
+    parentId: view.parentId,
+    width: view.width,
+    height: view.height,
+    measured: { width: view.width, height: view.height },
+    style: { width: view.width, height: view.height, padding: 0, border: 0, borderRadius: 0, background: 'transparent', boxShadow: 'none', textAlign: 'left', zIndex: view.group.collapsed ? 3 : 0, pointerEvents: view.group.collapsed ? 'auto' : 'none' },
     dragHandle: '.drag-handle',
     selectable: false,
     connectable: false,

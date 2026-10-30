@@ -12,7 +12,7 @@ export function canvasNodeFamily(role: CanvasNodeRole): CanvasNodeFamily {
   return role === 'agent' ? 'agent' : 'compact'
 }
 
-/** Dify-style visual groups driving the node card icon color. */
+/** Semantic visual groups driving the node card icon color. */
 export type NodeVisualGroup = 'start' | 'ai' | 'logic' | 'transform' | 'integrate' | 'output'
 
 const VISUAL_GROUPS: Record<string, NodeVisualGroup> = {
@@ -25,12 +25,12 @@ const VISUAL_GROUPS: Record<string, NodeVisualGroup> = {
 }
 
 const GROUP_COLORS: Record<NodeVisualGroup, string> = {
-  start: '#155EEF',
-  ai: '#6366F1',
-  logic: '#06B6D4',
-  transform: '#3B82F6',
-  integrate: '#8B5CF6',
-  output: '#F59E0B',
+  start: 'var(--studio-group-start)',
+  ai: 'var(--studio-group-ai)',
+  logic: 'var(--studio-group-logic)',
+  transform: 'var(--studio-group-transform)',
+  integrate: 'var(--studio-group-integrate)',
+  output: 'var(--studio-group-output)',
 }
 
 export function nodeGroup(nodeType: string): NodeVisualGroup {
@@ -46,16 +46,14 @@ export function nodeGroupColor(nodeType: string): string {
 }
 
 export type CanvasNodePorts = {
-  richHeight?: number
   /** Number of summary rows rendered inside the card body (0-3). */
   bodyRows?: number
-  /** Branch rows rendered as 34px output rows (if cases / approval buttons). */
+  /** Branch rows rendered as 32px output rows (if cases / approval buttons). */
   branchRows?: number
-  /** Stacked 26px input rows rendered on the body left edge (multi-input merge). */
+  /** Stacked 32px input rows rendered on the body left edge (multi-input merge). */
   inputRows?: number
-  /** Whether the card renders an attachment chip row. */
-  attachments?: boolean
-  kind?: 'action' | 'group'
+  attachmentRows?: number
+  wide?: boolean
 }
 
 export type CanvasPlacementRect = { x: number; y: number; width: number; height: number }
@@ -124,27 +122,25 @@ function rectangleInsideBounds(rect: CanvasPlacementRect, bounds: CanvasPlacemen
     && rect.y + rect.height <= bounds.y + bounds.height - PLACEMENT_GAP
 }
 
-/** Card geometry: 240px wide white card, height = head 44 + rows x 18 + attachment row 24. */
 export const STUDIO_CARD_WIDTH = 240
-export const STUDIO_CARD_HEAD_HEIGHT = 44
-export const STUDIO_CARD_ROW_HEIGHT = 18
+export const STUDIO_BOUNDARY_WIDTH = 184
+export const STUDIO_BOUNDARY_HEIGHT = 80
+export const STUDIO_CARD_HEAD_HEIGHT = 48
+export const STUDIO_CARD_CONTENT_TOP = 68
+export const STUDIO_PORT_MAIN_Y = 24
+export const STUDIO_PORT_ERROR_Y = 52
+export const STUDIO_CARD_ROW_HEIGHT = 20
 export const STUDIO_CARD_ATTACHMENT_HEIGHT = 24
-/** Branch rows carry their own right-edge handles: 34px per row (demo2 .n-row). */
-export const STUDIO_BRANCH_ROW_HEIGHT = 34
-/** Stacked input rows carry left-edge handles: 26px per row (demo2 merge inputs). */
-export const STUDIO_INPUT_ROW_HEIGHT = 26
+export const STUDIO_BRANCH_ROW_HEIGHT = 32
 
-export function canvasNodeMetrics(_role: CanvasNodeRole, ports: CanvasNodePorts = {}, collapsed = false) {
-  if (ports.kind === 'group') return collapsed
-    ? { width: 240, height: 64, labelBelow: false }
-    : { width: 240, height: 160, labelBelow: false }
+export function canvasNodeMetrics(role: CanvasNodeRole, ports: CanvasNodePorts = {}) {
   const rows = Math.max(0, Math.min(3, ports.bodyRows ?? 1))
-  const height = Math.ceil(
-    STUDIO_CARD_HEAD_HEIGHT
+  const height = Math.ceil(Math.max(104,
+    STUDIO_CARD_CONTENT_TOP + 12
     + rows * STUDIO_CARD_ROW_HEIGHT
-    + (ports.branchRows ?? 0) * STUDIO_BRANCH_ROW_HEIGHT
-    + (ports.inputRows ?? 0) * STUDIO_INPUT_ROW_HEIGHT
-    + (ports.attachments ? STUDIO_CARD_ATTACHMENT_HEIGHT : 0),
-  )
-  return { width: STUDIO_CARD_WIDTH, height, labelBelow: false }
+    + Math.max(ports.branchRows ?? 0, ports.inputRows ?? 0) * STUDIO_BRANCH_ROW_HEIGHT
+    + (ports.attachmentRows ?? 0) * STUDIO_CARD_ATTACHMENT_HEIGHT,
+  ) / 8) * 8
+  const wide = ports.wide || ['agent', 'branch', 'approval'].includes(role) || (ports.inputRows ?? 0) > 1
+  return { width: wide ? 280 : STUDIO_CARD_WIDTH, height }
 }

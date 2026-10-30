@@ -1,14 +1,17 @@
-import { Handle, NodeResizer, Position, useUpdateNodeInternals, useViewport, type NodeProps } from '@xyflow/react'
+import { NodeResizer, Position, useUpdateNodeInternals, useViewport, type NodeProps } from '@xyflow/react'
 import { ChevronDown, ChevronRight, Flag, Play, Plus, Repeat2, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { cn } from '../../../shared/lib/cn'
 import type { CanvasNode } from '../model/types'
-import { PortHandle } from '../nodes/manifest-node'
+import { PortHandle } from '../nodes/port-handle'
+import { CardShell } from '../nodes/card-shell'
+import { boundaryGeometry, groupGeometry, loopGeometry, studioNodeGeometry } from '../nodes/canvas-node-geometry'
+import { nodeGroupColor } from '../nodes/node-appearance'
 import { useEditorStore, useEditorStoreApi } from '../store/editor-store'
 import { useCanvasRenderStore } from '../store/canvas-render-store'
-import { LOOP_CONTAINER_DEFAULT_HEIGHT, LOOP_CONTAINER_DEFAULT_WIDTH, LOOP_CONTAINER_MIN_HEIGHT, LOOP_CONTAINER_MIN_WIDTH } from '../utils/layout'
+import { LOOP_CONTAINER_MIN_HEIGHT, LOOP_CONTAINER_MIN_WIDTH } from '../utils/layout'
 
 const NOTE_COLORS = ['yellow', 'blue', 'green', 'rose'] as const
 
@@ -42,12 +45,12 @@ export function GroupNode({ data }: NodeProps<CanvasNode>) {
   const { t } = useTranslation()
   const group = data.editorKind === 'group' ? data : undefined
   if (!group) return null
-  if (group.collapsed) return <div className="studio-group-proxy relative flex h-16 w-60 items-center gap-3 border border-primary/50 bg-surface px-3 shadow-sm" data-testid={`studio-group-${group.groupId}`}>
-    <Handle className="!size-3 !border-2 !border-background !bg-muted-foreground" id="group-in" isConnectable={false} position={Position.Left} type="target" />
-    <button aria-label={t('studio.group.expand')} className="nodrag grid size-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary hover:bg-primary/15" onClick={group.onToggle} type="button"><ChevronRight className="size-4" /></button>
-    <div className="min-w-0 flex-1"><strong className="block truncate text-xs">{group.label}</strong><span className="text-[9px] text-muted-foreground">{t('studio.group.members', { count: group.memberCount })}</span></div>
-    {!readOnly && <button aria-label={t('studio.group.delete')} className="nodrag grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-danger" onClick={group.onRemove} type="button"><Trash2 className="size-3.5" /></button>}
-    <Handle className="!size-3 !border-2 !border-background !bg-primary" id="group-out" isConnectable={false} position={Position.Right} type="source" />
+  const geometry = groupGeometry()
+  if (group.collapsed) return <div className="studio-node studio-node-zoom-full studio-group-proxy relative" style={{ width: geometry.width, height: geometry.height }} data-testid={`studio-group-${group.groupId}`}>
+    <CardShell label={group.label} group={nodeGroupColor('if')} icon={<button aria-label={t('studio.group.expand')} className="nodrag grid size-6 place-items-center" onClick={group.onToggle} type="button"><ChevronRight className="size-4" /></button>} trailing={!readOnly && <button aria-label={t('studio.group.delete')} className="nodrag grid size-6 place-items-center text-muted-foreground hover:text-danger" onClick={group.onRemove} type="button"><Trash2 className="size-3.5" /></button>}>
+      <div className="absolute inset-x-3 top-[68px] text-xs text-muted-foreground">{t('studio.group.members', { count: group.memberCount })}</div>
+    </CardShell>
+    {geometry.ports.map(port => <PortHandle key={`${port.direction}:${port.id}`} id={port.id} kind={port.kind} label={t(port.kind === 'error' ? 'studio.boundary.error' : 'studio.ports.flow')} placement={{ position: port.side === 'left' ? Position.Left : Position.Right, axis: port.y }} row={port.kind !== 'error'} type={port.direction === 'input' ? 'target' : 'source'} connectable={false} />)}
   </div>
   return <section className="studio-group-expanded relative h-full w-full border border-dashed border-primary/45 bg-primary/[0.025]" data-testid={`studio-group-${group.groupId}`}>
     <header className="drag-handle pointer-events-auto absolute left-0 top-0 flex h-8 max-w-full items-center gap-2 rounded-br-md border-b border-r border-primary/25 bg-surface/95 px-2 shadow-sm">
@@ -63,25 +66,23 @@ export function LoopContainerNode({ data, selected }: NodeProps<CanvasNode>) {
   const { t } = useTranslation()
   const onQuickAdd = useCanvasRenderStore((state) => state.onQuickAdd)
   const onSourceHover = useCanvasRenderStore((state) => state.onSourceHover)
+  const runtimeStatus = useCanvasRenderStore(state => data.editorKind === 'loop-container' ? state.runtimeStatuses.get(data.loopId) : undefined)
   const occupiedSignature = useCanvasRenderStore((state) => data.editorKind === 'loop-container' ? state.occupiedHandlesByNodeId.get(data.loopId) ?? '' : '')
   const container = data.editorKind === 'loop-container' ? data : undefined
   if (!container) return null
   const occupied = new Set(occupiedSignature ? occupiedSignature.split('\u0001') : [])
+  const geometry = loopGeometry()
   return <section className={cn('studio-node studio-node-zoom-full studio-loop-container relative h-full w-full', selected && 'is-selected')} data-testid={`studio-loop-${container.loopId}`}>
-    <svg aria-hidden className="pointer-events-none absolute inset-0 z-[1] size-full overflow-visible" data-testid={`studio-loop-boundary-links-${container.loopId}`}>
-      {container.boundaryLinks.map((link) => <path className={link.kind === 'error' ? 'studio-loop-boundary-edge-error' : 'studio-loop-boundary-edge-main'} d={`M ${link.source.x} ${link.source.y} C ${link.source.x + 40} ${link.source.y}, ${link.target.x - 40} ${link.target.y}, ${link.target.x} ${link.target.y}`} data-loop-boundary-edge={link.kind} fill="none" key={link.id} vectorEffect="non-scaling-stroke" />)}
-    </svg>
+    <CardShell label={container.label} group={nodeGroupColor('loop_over_items')} icon={<Repeat2 className="size-3.5" data-testid={`studio-loop-icon-${container.loopId}`} />} selected={selected} runtimeStatus={runtimeStatus} className="studio-loop-shell" trailing={<span className="studio-loop-parallel shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold" data-testid={`studio-loop-parallel-${container.loopId}`}>{t('studio.container.parallelChip', { count: container.parallelism })}</span>}>
+      <span className="pointer-events-none absolute bottom-2 left-3 text-[10px] text-muted-foreground">{t('studio.container.builtinVars')}</span>
+      {container.childCount === 0 && <div className="studio-loop-empty pointer-events-none absolute inset-x-6 top-48 rounded-lg border border-dashed bg-surface/70 px-4 py-6 text-center text-xs text-muted-foreground">{t('studio.container.emptyHint')}</div>}
+    </CardShell>
     {selected && !readOnly && <LoopResizeHandles loopId={container.loopId} />}
-    <PortHandle id="main" kind="main" label={t('studio.boundary.input')} placement={{ position: Position.Left, axis: 18 }} type="target" />
-    <PortHandle addLabel={t('studio.ports.addAfter', { label: t('studio.boundary.output') })} id="main" kind="main" label={t('studio.boundary.output')} onHover={onSourceHover ? (active) => onSourceHover(container.loopId, 'main', active) : undefined} onQuickAdd={onQuickAdd && !occupied.has('main') ? () => onQuickAdd(container.loopId, 'main') : undefined} placement={{ position: Position.Right, axis: 18 }} type="source" />
-    <PortHandle addLabel={t('studio.ports.addAfter', { label: t('studio.boundary.error') })} id="error" kind="error" label={t('studio.boundary.error')} onHover={onSourceHover ? (active) => onSourceHover(container.loopId, 'error', active) : undefined} onQuickAdd={onQuickAdd && !occupied.has('error') ? () => onQuickAdd(container.loopId, 'error') : undefined} placement={{ position: Position.Right, axis: 32 }} type="source" />
-    <header className="drag-handle absolute left-0 top-0 flex h-10 w-full items-center gap-2 px-3">
-      <span className="grid size-6 shrink-0 place-items-center rounded-md bg-[#06b6d4] text-white" data-testid={`studio-loop-icon-${container.loopId}`}><Repeat2 className="size-3.5" /></span>
-      <strong className="min-w-0 flex-1 truncate text-[13px] font-semibold">{container.label}</strong>
-      <span className="shrink-0 rounded-full border border-cyan-300/70 bg-cyan-50/80 px-2 py-0.5 text-[10px] font-semibold leading-none text-cyan-700" data-testid={`studio-loop-parallel-${container.loopId}`}>{t('studio.container.parallelChip', { count: container.parallelism })}</span>
-    </header>
-    <span className="pointer-events-none absolute bottom-2 left-3 text-[10px] text-muted-foreground">{t('studio.container.builtinVars')}</span>
-    {container.childCount === 0 && <div className="pointer-events-none absolute inset-x-6 top-28 rounded-lg border border-dashed border-cyan-300 bg-surface/70 px-4 py-6 text-center text-[11px] text-muted-foreground">{t('studio.container.emptyHint')}</div>}
+    {geometry.ports.map(port => {
+      const output = port.direction === 'output'
+      const label = t(port.kind === 'error' ? 'studio.boundary.error' : output ? 'studio.boundary.output' : 'studio.boundary.input')
+      return <PortHandle key={`${port.direction}:${port.id}`} id={port.id} kind={port.kind} label={label} addLabel={t('studio.ports.addAfter', { label })} onHover={output && onSourceHover ? active => onSourceHover(container.loopId, port.id, active) : undefined} onQuickAdd={output && onQuickAdd && !occupied.has(port.id) ? () => onQuickAdd(container.loopId, port.id) : undefined} placement={{ position: port.side === 'left' ? Position.Left : Position.Right, axis: port.y }} row={port.kind !== 'error'} type={output ? 'source' : 'target'} />
+    })}
   </section>
 }
 
@@ -101,7 +102,8 @@ function LoopResizeHandles({ loopId }: { loopId: string }) {
     event.stopPropagation()
     event.currentTarget.setPointerCapture?.(event.pointerId)
     storeApi.getState().beginEdit({ nodeIds: [loopId] })
-    gesture.current = { pointerId: event.pointerId, corner, clientX: event.clientX, clientY: event.clientY, x: node.position.x, y: node.position.y, width: node.width ?? node.measured?.width ?? LOOP_CONTAINER_DEFAULT_WIDTH, height: node.height ?? node.measured?.height ?? LOOP_CONTAINER_DEFAULT_HEIGHT }
+    const geometry = studioNodeGeometry(node)
+    gesture.current = { pointerId: event.pointerId, corner, clientX: event.clientX, clientY: event.clientY, x: node.position.x, y: node.position.y, width: geometry.width, height: geometry.height }
   }
   const move = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const active = gesture.current
@@ -136,11 +138,12 @@ export function IterationChipNode({ id, data }: NodeProps<CanvasNode>) {
   const chip = data.editorKind === 'iteration-chip' ? data : undefined
   useEffect(() => { if (chip) updateNodeInternals(id) }, [chip, id, updateNodeInternals])
   if (!chip) return null
-  return <div className="studio-loop-chip" data-testid={`studio-chip-${chip.loopId}`}>
-    <Play className="size-3.5 fill-current" />
-    {t('studio.container.iterationStart')}
-    {onQuickAdd && <button aria-label={t('studio.container.addFirstNode')} className="nodrag ml-auto grid size-6 place-items-center rounded-full border border-cyan-300 bg-surface text-cyan-700" onClick={(event) => { event.stopPropagation(); onQuickAdd(`${chip.loopId}::iteration-start`, 'main') }} type="button"><Plus className="size-3.5" /></button>}
-    <Handle className="studio-handle studio-port-output !z-30 !grid !size-4 !place-items-center !border-0 !bg-transparent" id="main" position={Position.Right} style={{ top: 20 }} title={t('studio.container.iterationStart')} type="source"><span className="studio-handle-mark block" /></Handle>
+  const geometry = boundaryGeometry('start')
+  return <div className="studio-node studio-loop-chip relative" style={{ width: geometry.width, height: geometry.height }} data-testid={`studio-chip-${chip.loopId}`}>
+    <CardShell group={nodeGroupColor('loop_over_items')} icon={<Play className="size-3.5" />} label={t('studio.container.iterationStart')} trailing={onQuickAdd && <button aria-label={t('studio.container.addFirstNode')} className="nodrag grid size-6 place-items-center rounded-full border border-border text-primary" onClick={event => { event.stopPropagation(); onQuickAdd(`${chip.loopId}::iteration-start`, 'main') }} type="button"><Plus className="size-3.5" /></button>}>
+      <span className="absolute inset-x-3 top-16 truncate text-[11px] text-muted-foreground">{t('studio.container.iterationEntrySummary')}</span>
+    </CardShell>
+    <PortHandle id="main" kind="main" label={t('studio.container.iterationStart')} placement={{ position: Position.Right, axis: geometry.ports[0].y }} row type="source" />
   </div>
 }
 
@@ -150,10 +153,11 @@ export function IterationEndNode({ id, data }: NodeProps<CanvasNode>) {
   const chip = data.editorKind === 'iteration-end' ? data : undefined
   useEffect(() => { if (chip) updateNodeInternals(id) }, [chip, id, updateNodeInternals])
   if (!chip) return null
-  return <div className="studio-loop-chip studio-loop-end-chip" data-testid={`studio-end-chip-${chip.loopId}`}>
-    <Handle className="studio-handle studio-port-input !z-30 !grid !size-4 !place-items-center !border-0 !bg-transparent" id="main" position={Position.Left} style={{ top: 20 }} title={t('studio.boundary.output')} type="target"><span className="studio-handle-mark block" /></Handle>
-    <Handle className="studio-handle studio-port-error !z-30 !grid !size-4 !place-items-center !border-0 !bg-transparent" id="error" position={Position.Left} style={{ top: 44 }} title={t('studio.boundary.error')} type="target"><span className="studio-handle-mark block" /></Handle>
-    <Flag className="size-3.5" />
-    <span className="min-w-0"><strong className="block truncate">{t('studio.container.iterationEnd')}</strong><span className="mt-1 flex gap-2 text-[9px] font-medium text-muted-foreground"><span>{t('studio.boundary.output')}</span><span className="text-danger">{t('studio.boundary.error')}</span></span></span>
+  const geometry = boundaryGeometry('exit')
+  return <div className="studio-node studio-loop-chip studio-loop-end-chip relative" style={{ width: geometry.width, height: geometry.height }} data-testid={`studio-end-chip-${chip.loopId}`}>
+    <CardShell group={nodeGroupColor('loop_over_items')} icon={<Flag className="size-3.5" />} label={t('studio.container.iterationEnd')}>
+      <span className="absolute inset-x-3 top-16 truncate text-[11px] text-muted-foreground">{t('studio.container.iterationExitSummary')}</span>
+    </CardShell>
+    {geometry.ports.map(port => <PortHandle key={port.id} id={port.id} kind={port.kind} label={t(port.kind === 'error' ? 'studio.boundary.error' : 'studio.boundary.output')} placement={{ position: Position.Left, axis: port.y }} row={port.kind !== 'error'} type="target" />)}
   </div>
 }

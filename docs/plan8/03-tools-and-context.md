@@ -104,3 +104,5 @@ Core 保留完整历史，投影时仅注入当前画布事实。压缩的 pendi
 ## 资源补全与错误路径追加
 
 按 [追加设计](08-resource-completion-and-knowledge.md) 查询并匹配现有配置。resource_query.search 返回完整性标记、名称匹配及准确绑定数据；只有完整结果中的唯一可用精确匹配才提供 uniqueExactMatchId。workflow_validate 增加逐节点资源可用性、授权依赖和错误出口缺项；其检查不发起 Provider 调用。Agent 缺模型不再阻止草稿保存，完整编译通过 Manifest 必需槽检查阻断；Exit 必填映射只约束实际接入端口。AI 总结必须说明未配置、歧义、不可用或待授权资源。
+
+错误出口选择以分支局部性为优先：已有普通输出的本分支 Exit 可同时承接该节点 error；没有就近兼容出口时创建错误专用 Exit。受保护 End 没有全局汇流优先级。新增或拆分普通 Exit 时同步复核关联错误边；保留有意设计的错误处理、Loop 边界及节点编辑范围。

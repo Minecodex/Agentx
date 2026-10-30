@@ -150,13 +150,13 @@ Agentx 自己实现：
 
 以下Studio规格是[plan5](plan5/README.md)冻结并实现的桌面端边界；业务、视觉和性能验收结果以实施计划记录的命令与证据为准。
 
-Studio 采用 Dify 式节点配置流程与 n8n 式紧凑桌面画布：左侧为 264px 常驻且可收起的节点栏，中央为无限 Canvas，单击节点后打开 384px 全高 Node Details，底部为可折叠的全局 Execution Rail。可创建节点、端口、字段和能力来自 Node Manifest/有效契约；前端为 Registry 的 14 类公开 Action 维护专用业务布局（含独立知识检索），并以静态门禁和Registry对账，不能另写一份长期漂移的节点目录。Feature 内任何文件不得超过 2000 行。
+Studio 采用 Manifest 驱动的节点配置与从左到右的桌面画布：左侧为 264px 常驻且可收起的节点栏，中央为无限 Canvas，单击节点后打开 384px 全高 Node Details，底部为可折叠的全局 Execution Rail。可创建节点、端口、字段和能力来自 Node Manifest/有效契约；前端为 Registry 的 15 类公开 Action 维护专用业务布局（含独立知识检索），并以静态门禁和Registry对账，不能另写一份长期漂移的节点目录。Feature 内任何文件不得超过 2000 行。
 
-画布视觉为 Dify 式 240px 横向白卡（plan5 重设计）：头部为 24px 彩色图标方块（六组分类色：起始 `#155EEF`、AI `#6366F1`、逻辑 `#06B6D4`、转换 `#3B82F6`、集成 `#8B5CF6`、输出 `#F59E0B`）+ 标题 + 运行状态；节点体承载 0–3 行配置摘要，`if`/`approval` 按参数渲染分支行且每行右侧独立连接点（`case:{id}` / `decision:{id}`），`merge` 左侧堆叠多个输入行。连接点为左入右出的 3×10px 竖条，Error 端口红色常驻。角色枚举已随 `error_handler` 删除收敛。工具/技能/知识/记忆可作为 Agent 节点的内嵌槽位（节点体附件徽标行 + Inspector 槽位管理，`resourceReferences[].bindingRole`）；独立知识检索由 `knowledge_retrieval` Action 提供，查询内容、Top K 和单个 RAG 资源使用共享表单/资源选择器，输出文本、来源和已有附件引用，见 [plan8 增量设计](plan8/08-resource-completion-and-knowledge.md)。`loop_over_items` 使用 React Flow 父子容器（`parentId` + `extent` + NodeResizer + 迭代开始 chip）；chip与派生入口线仅属于视图，不进入Definition。便签和分组仍是仅编辑态派生节点；节点面板常驻左侧（可收起），保留端口兼容过滤、多输入选择和拖拽添加。缩放降级（full/compact/minimal）随新卡片结构重写。
+画布采用按内容分档的紧凑横向卡片：头部为 24px 彩色图标方块（六组分类色：起始 `#155EEF`、AI `#6366F1`、逻辑 `#06B6D4`、转换 `#3B82F6`、集成 `#8B5CF6`、输出 `#F59E0B`）+ 标题 + 运行状态；节点体承载 0–3 行配置摘要，`if`/`approval` 按参数渲染分支行且每行右侧独立连接点（`case:{id}` / `decision:{id}`），`merge` 左侧堆叠多个输入行。连接点为 8px 圆点，主口与异常口分别固定在顶部下方 24px 与 52px；具体几何规格见第 9 节。角色枚举已随 `error_handler` 删除收敛。工具/技能/知识/记忆可作为 Agent 节点的内嵌槽位（节点体附件徽标行 + Inspector 槽位管理，`resourceReferences[].bindingRole`）；独立知识检索由 `knowledge_retrieval` Action 提供，查询内容、Top K 和单个 RAG 资源使用共享表单/资源选择器，输出文本、来源和已有附件引用，见 [plan8 增量设计](plan8/08-resource-completion-and-knowledge.md)。`loop_over_items` 使用 React Flow 父子容器（`parentId` + `extent` + NodeResizer + 迭代开始 chip）；chip与派生入口线仅属于视图，不进入Definition。便签和分组仍是仅编辑态派生节点；节点面板常驻左侧（可收起），保留端口兼容过滤、多输入选择和拖拽添加。缩放降级（full/compact/minimal）随新卡片结构重写。
 
-连接交互使用独立状态机维护source hover、connecting、compatible、incompatible、occupied、committed和cancelled；合法性通过增量GraphIndex校验方向、类型、基数、自连接、重复边和动态Handle。非variadic输入已占用时以一个历史事务替换旧边；存在多个兼容输入时必须显式选择端口。普通执行边使用实线箭头，Error边使用危险色虚线箭头；AI资源直接写入`resourceReferences`，不再绘制Binding边。反向主连接使用固定底部间距、水平偏移和圆角路由。Edge Hover/选中工具栏只提供插入和删除，重新连接通过React Flow边端点拖拽完成。
+连接交互使用独立状态机维护source hover、connecting、compatible、incompatible、occupied、committed和cancelled；合法性通过增量GraphIndex校验方向、类型、基数、自连接、重复边和动态Handle。非variadic输入已占用时以一个历史事务替换旧边；存在多个兼容输入时必须显式选择端口。普通执行边使用实线箭头，Error边使用危险色虚线箭头；AI资源直接写入`resourceReferences`，不再绘制Binding边。反向主连接通过所在画布外侧的下方通道返回。Edge Hover/选中工具栏只提供插入和删除，重新连接通过React Flow边端点拖拽完成。
 
-节点栏、圆形 `+`、空画布入口、端口快速添加和边上插入共用同一搜索、分类与合法端口过滤；节点栏收起时快捷入口可临时展开同一创建面板。正常缩放下，未占用的执行输出默认展示 `+`；已占用的非 `variadic` 端口不再展示，低于0.65缩放时统一隐藏。便签和视觉分组命令与运行节点分区显示。单击执行节点立即打开384px Details，单击空画布清除选择并关闭；关闭按钮和Esc只关闭Details并保留选择。Details头部保留运行当前节点，参数/Input/Output/Trace与Pin/Mock形成同一调试闭环。
+节点栏、圆形 `+`、空画布入口、端口快速添加和边上插入共用同一搜索、分类与合法端口过滤；节点栏收起时快捷入口可临时展开同一创建面板。正常缩放下，未占用的执行输出默认展示 `+`；已占用的非 `variadic` 端口不再展示，进入 compact/minimal 缩放档位时隐藏，选中或悬停恢复完整内容。便签和视觉分组命令与运行节点分区显示。单击执行节点立即打开384px Details，单击空画布清除选择并关闭；关闭按钮和Esc只关闭Details并保留选择。Details头部保留运行当前节点，参数/Input/Output/Trace与Pin/Mock形成同一调试闭环。
 
 Manifest `localizations` 是节点名称、说明、搜索关键词、端口和 Binding Slot 展示名的唯一业务本地化来源。显示按当前语言、`en-US`、基础字段依次回退，协议 ID 不翻译。Start 是不可删除的固定输入边界，配置Inputs/Contexts；Exit是真实终止节点，配置共享输出契约与本出口取值。二者使用专用组件和保护规则，不作为普通Catalog节点处理。
 
@@ -189,11 +189,15 @@ React Flow 的 Node 和 Edge 结构只属于前端编辑状态，不能直接成
 
 ## 9. 画布扩展
 
-- ELK.js 用于自动布局。
+- `CanvasNodeGeometry` 是卡片尺寸、端口 ID/方向/类型、像素坐标和端口行的共同来源；`card-content.ts` 同时为绘制和几何提供摘要、分支与附件行。开始、结束和循环内部边界为 184×80；普通节点为 240px、至少 104px；Agent、条件、审批和多端口节点为 280px。循环最小 520×280、默认 640×360，整理时按子图撑开。折叠分组为 240px 代理卡片，正常与异常代理端口分开。分组成员保持同一画布层级，选择容器时子节点随容器一起处理；循环内容区内的代理卡片不会侵入循环标题区，折叠整个循环所属分组时隐藏其内部的分组视图。
+- 所有节点复用 `CardShell` 与 `PortHandle`，圆角 10、内边距 12、标题 14、摘要 12、图标 24；颜色、边框和阴影使用浅深主题语义令牌。标题区 48px，普通主输入/输出中心固定 y=24，异常口固定 y=52，正文起点 y=68；分支和多输入行距 32px，摘要行高 20px、附件行高 24px，高度向上对齐到 8px。8px 圆点拥有至少 20px 的命中范围，缩放只隐藏内容，不改变尺寸和端口。
+- “自动布局”是明确的整体排列命令，专用 Worker 通过 ELK API 加载官方布局 Worker，调用 RIGHT 分层、FIXED_POS 端口约束和 NETWORK_SIMPLEX；层间距 96px、同层节点间距 64px，所有规模使用同一规则。条件/审批按端口行和 Connection Order 展开，多节点或共享的异常专属后继放在正常画布下方；单个来源直接连接的错误专用结束节点保留 ELK 按真实端口计算的就近位置，共享正常/异常后继保留主图归属。布局按真实尺寸处理循环内外子图，折叠分组按代理几何排列并整体平移隐藏成员；循环中的分组展开或移动时撑开所属容器，容器尺寸和成员位置一起参与手势撤销；只读展开只派生显示尺寸，不写回文档；整次结果通过一个 History Patch 提交，撤销一次恢复全部位置。添加、连接和配置节点不调用全图排列。
+- 自由编辑的路径由 `@tisoap/react-flow-smart-edge@5.0.0` 的共享 Worker、缓存及障碍失效机制计算。统一绘制圆角 12px 的正交路径，障碍留白 16px，跨分支异常汇流和反向连接通过相隔至少 12px 的下方通道；同分支普通/异常共同连接本分支结束节点，或单个节点连接独立错误结束节点时，前向错误线直接交由避障库就近路由，不绕到全图底部；分支与多输入端口按顺序分配独立通道引导点，寻路和障碍搜索仍由库完成；普通边为中性实线，异常边为危险色虚线。拖动时使用端点跟随的临时折线，松手后按最终位置重算，未连接的第三方障碍移动也会使被挡住的路径失效。库的网格接缝只作局部直角化，寻路继续由库执行；有效性检查拒绝斜线、穿卡和越出循环的结果，失败显示布局提示并保留连接。
+- `CanvasRoute`（路径点、标签/工具栏位置、边界和计算状态）只属于前端派生视图，不写入 Definition、EditorDocument、History 或 AI 编辑回执。打开已有画布沿用保存位置，重算不产生事务。循环入口/出口也投影为同一 Edge 类型，循环相对坐标集中转成绝对坐标，外侧墙限定内部路由；展开分组边框不进入障碍集合，折叠代理保留端口语义。箭头、运行色、选中态及插入/删除工具栏使用最终路径。React Flow 使用手动层级：循环/展开分组边框在底层，连线在其上，卡片和边界端口高于连线，避免宽命中区拦截卡片操作。
 - Zustand 保存编辑器状态。
 - History slice 以手势事务管理 Undo 和 Redo；拖动开始记录参与实体旧位置、结束只提交这些实体的一个 Patch 命令。
 - Monaco Editor 只用于 Code；Prompt/Template 使用 Lexical Token Editor，Expression 使用 Visual Builder，JSON/Mapper 使用结构化叶子绑定控件。
-- 大型Workflow在150节点启用可见元素渲染、300节点隐藏MiniMap；缩放低于0.65隐藏标签，低于0.35使用简化内容。`IncrementalGraphIndex`稳定复用`nodeById`、`portByHandle`、源/目标端口边索引和资源引用摘要Map，只更新结构、端口、资源引用或边的变化项；位置帧不重建连接索引。Group、Node和Edge视图索引保持无关对象引用稳定，节点运行态只替换自身与关联边。
+- 适应画布使用按像素预留的边距，底部为小地图和控件保留180px；自定义分组清除React Flow默认边框与内边距，避免端口坐标偏移。桌面画布最低缩放为0.1；大型Workflow在150节点启用可见元素渲染、300节点隐藏MiniMap；缩放低于0.5隐藏摘要，低于0.25使用简化内容。`IncrementalGraphIndex`稳定复用`nodeById`、`portByHandle`、源/目标端口边索引和资源引用摘要Map，只更新结构、端口、资源引用或边的变化项；位置帧不重建连接索引。Group、Node和Edge视图索引保持无关对象引用稳定，节点运行态只替换自身与关联边。
 - 自动保存使用 Server Revision；Undo/Redo 只改变本地 Editor State，不能回退服务端 Revision。
 - Execution Event 使用 Cursor 重连，断线后通过 Execution Query 校准；非终态运行更新最多每 100ms 合并一次，终态立即提交；完整 Trace 和大型输出不进入 Zustand。
 
@@ -272,7 +276,7 @@ Kubernetes 桌面浏览器验收覆盖创建工作流后进入详情和画布、
 
 ## 13. 界面 E2E 门禁
 
-业务 E2E 位于 apps/e2e，使用 1440×900 Chromium 和临时 Kubernetes Namespace。业务数据必须通过可见按钮和表单创建；API 与数据库只能准备环境、清理现场和校验证据。新增或修改业务按钮时必须补充真实点击测试，危险操作同时覆盖取消和确认，中英文与浅深主题纳入阶段验收。
+系统 E2E 统一通过 `pytest tests/e2e` 编排临时 Kubernetes Namespace，浏览器业务操作位于 `tests/browser`，使用 1440×900 Chromium；功能回归与性能基准分别运行。业务数据必须通过可见按钮和表单创建；API 与数据库只能准备环境、清理现场和校验证据。新增或修改业务按钮时必须补充真实点击测试，危险操作同时覆盖取消和确认，中英文与浅深主题纳入阶段验收。
 
 ## 14. 业务域国际化
 
@@ -318,3 +322,5 @@ Builder Panel 展示租户模型状态、流式消息、问题、批次、静态
 ## 工作流输入交互
 
 中间回复和输入等待统一归入 `agentx/core`，持久化与恢复由 Runtime 承担。`input_waits`、`workflow_messages` 和 `channel_input_receipts` 分别保存等待、消息和渠道幂等凭据；Hook 复用 delivery outbox。平台入口共享等待节点发现及回复序列编辑器，定时和测试用例版本冻结 `waitInputs`，评测投影保存实际等待和消息。详见 [工作流交互协议](14-workflow-interactions.md)。
+
+画布验收包含 Registry/插件几何、真实避障引擎、第三方障碍、分支、异常、反向边、循环及分组的自动化检查。浏览器覆盖鼠标添加/连接/移动、循环缩放、整理与撤销重做、保存刷新、只读版本和真实调试；四种中英文/浅深主题基线使用固定桌面视口。100/300/500/1000 节点性能门禁沿用首次可交互≤3s、500 节点以内中位 FPS≥50/P95 输入≤50ms、1000 节点 FPS≥30/P95≤100ms，并保留 600 节点 ELK≤1.5s。证据统一进入 `.local/artifacts`。

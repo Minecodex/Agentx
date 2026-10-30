@@ -1,4 +1,5 @@
 const translations = {
+  "routing": { "blocked": "This connection cannot avoid the cards. Move the nodes or arrange the canvas." },
   "restoreCanvas": {
     "button": "Restore",
     "targetVersion": "Restore target: published v{{version}}",
@@ -342,6 +343,7 @@ const translations = {
     "delete": "Delete note"
   },
   "group": {
+    "selectionHelp": "Select at least two ungrouped nodes on the same canvas level. Group nodes in different loops separately.",
     "default": "Group",
     "expand": "Expand group",
     "collapse": "Collapse group",
@@ -349,6 +351,8 @@ const translations = {
     "members": "{{count}} nodes"
   },
   "container": {
+    "iterationEntrySummary": "Run the body for each item",
+    "iterationExitSummary": "Collect this iteration’s outputs",
     "parallelChip": "Parallel ×{{count}}",
     "errorMode": {
       "terminate": "Terminate on failure",

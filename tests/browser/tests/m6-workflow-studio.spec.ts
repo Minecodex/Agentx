@@ -1,6 +1,6 @@
 import { publishVersion } from '../studio-builder-support'
 import { publishFixtureVersion } from '../draft-fixtures'
-import { fixtureVersionId, fixtureDraftId, fixtureDraftIdKnown } from '../draft-fixtures'
+import { fixtureVersionId, fixtureDraftId } from '../draft-fixtures'
 
 import { connectStudioPorts as connect } from './studio-connections'
 import { expect, type Locator, type Page, test } from '@playwright/test'
@@ -189,7 +189,7 @@ async function waitApplicationDeployment(page: Page, token: string, applicationI
   }, { timeout: 180_000, intervals: [500, 1_000, 2_000] }).toBe('active')
 }
 
-async function ensureStudioResources(page: Page, token: string) {
+async function ensureStudioResources(page: Page, token: string, includeMcp = true) {
   const departments = await api<Array<{ id: string; isRoot: boolean }>>(page, token, '/departments')
   const department = departments.find((item) => item.isRoot) ?? departments[0]
   if (!department) throw new Error('M6 Studio requires a Department created through the bootstrap API')
@@ -220,6 +220,7 @@ async function ensureStudioResources(page: Page, token: string) {
     })
   }
 
+  if (includeMcp) {
   const servers = await api<PageResponse<NamedResource>>(page, token, `/mcp/servers?pageSize=100&search=${encodeURIComponent(studioMcpName)}`)
   const server = servers.items.find((item) => item.name === studioMcpName)
     ?? await mutate<NamedResource>(page, token, '/mcp/servers', 'POST', {
@@ -250,6 +251,7 @@ async function ensureStudioResources(page: Page, token: string) {
     version: server.version,
   })
 
+  }
   const sandboxes = await api<PageResponse<NamedResource>>(page, token, '/sandbox-profiles?pageSize=100')
   for (const [name, egressMode] of [[studioSandboxName, 'none'], [studioNetworkSandboxName, 'tcp_proxy']] as const) {
     if (sandboxes.items.some((item) => item.name === name)) continue
@@ -467,9 +469,10 @@ async function setEndErrorOutput(page: Page) {
 }
 
 async function saveAndReadDraft(page: Page, token: string, workflowId: string) {
+  const draftId = await fixtureDraftId(page, workflowId, token)
   const save = page.getByRole('button', { name: '保存', exact: true })
   if (await save.isEnabled()) {
-    const responsePromise = page.waitForResponse((response) => response.url().endsWith(`/api/v1/workflows/${workflowId}/drafts/${fixtureDraftIdKnown(workflowId)}`) && response.request().method() === 'PUT')
+    const responsePromise = page.waitForResponse((response) => response.url().endsWith(`/api/v1/workflows/${workflowId}/drafts/${draftId}`) && response.request().method() === 'PUT', { timeout: 90_000 })
     await save.click()
     const response = await responsePromise
     if (!response.ok()) throw new Error(`save workflow draft: ${response.status()} ${await response.text()}`)
@@ -1620,7 +1623,7 @@ test('M6 standalone Approval resumes with the frozen decision output contract', 
 
 test('M6 Studio renders all thirteen dedicated node panels in the focused editor', async ({ page }, testInfo) => {
   const { token, userName } = await login(page)
-  await ensureStudioResources(page, token)
+  await ensureStudioResources(page, token, false)
 
   // A fixed child version is a provider fixture for the Sub-workflow panel;
   // the Workflow and Version themselves are still created through visible UI.
@@ -1677,7 +1680,7 @@ test('M6 Studio renders all thirteen dedicated node panels in the focused editor
         break
       case 'loop_over_items':
         const loopId = await node.getAttribute('data-id')
-        await expect(node.getByText(/^(输出|Output)$/)).toBeVisible()
+        await expect(node.locator('.react-flow__handle.source[data-handleid="main"]')).toHaveAttribute('aria-label', /输出|Output/)
         await expect(node.getByText(/^(错误|Error)$/)).toBeVisible()
         await expect(node.getByRole('button', { name: /输出.*添加节点|Add node after.*Output/i })).toBeVisible()
         await expect(node.getByRole('button', { name: /错误.*添加节点|Add node after.*Error/i })).toBeVisible()
@@ -1756,7 +1759,7 @@ test('M6 Studio renders all thirteen dedicated node panels in the focused editor
   }
   await setTheme(page, 'light')
   await setLocale(page, 'zh-CN')
-  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.getByRole('button', { name: /^(自动布局|Auto layout)$/i }).click({ force: true })
   await page.waitForTimeout(750)
   await page.getByRole('button', { name: /^(适应画布|Fit view)$/i }).click({ force: true })

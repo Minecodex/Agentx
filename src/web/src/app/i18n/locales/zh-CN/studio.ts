@@ -1,4 +1,5 @@
 const translations = {
+  "routing": { "blocked": "连线暂时无法绕开卡片，请调整节点位置或整理画布。" },
   "restoreCanvas": {
     "button": "还原",
     "targetVersion": "还原目标：v{{version}} 已发布内容",
@@ -342,6 +343,7 @@ const translations = {
     "delete": "删除便签"
   },
   "group": {
+    "selectionHelp": "请选择两个或更多同一画布层级的未分组节点；不同循环内的节点请分别分组。",
     "default": "分组",
     "expand": "展开分组",
     "collapse": "折叠分组",
@@ -349,6 +351,8 @@ const translations = {
     "members": "{{count}} 个节点"
   },
   "container": {
+    "iterationEntrySummary": "逐项执行容器内节点",
+    "iterationExitSummary": "汇总本轮输出与异常",
     "parallelChip": "并行 ×{{count}}",
     "errorMode": {
       "terminate": "失败即终止",

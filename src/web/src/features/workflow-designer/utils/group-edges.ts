@@ -5,6 +5,7 @@ export function proxyEdges(edges: StudioEdge[], collapsedByMember: Map<string, s
     const source = collapsedByMember.get(edge.source)
     const target = collapsedByMember.get(edge.target)
     if (source && source === target) return []
-    return [{ ...edge, source: source ?? edge.source, target: target ?? edge.target, sourceHandle: source ? 'group-out' : edge.sourceHandle, targetHandle: target ? 'group-in' : edge.targetHandle }]
+    const error = edge.data?.sourcePortKind === 'error' || edge.sourceHandle === 'error'
+    return [{ ...edge, data: error ? { edgeKind: 'execution', ...edge.data, sourcePortKind: 'error' } : edge.data, source: source ?? edge.source, target: target ?? edge.target, sourceHandle: source ? error ? 'group-error-out' : 'group-out' : edge.sourceHandle, targetHandle: target ? (edge.targetHandle === 'error' || edge.data?.targetPortKind === 'error') ? 'group-error-in' : 'group-in' : edge.targetHandle }]
   })
 }
