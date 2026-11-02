@@ -25,6 +25,7 @@ impl TestContract {
                     path: agentx_runtime_contracts::node_path("", &node.id),
                     node_id: node.id.clone(),
                     name: node.name.clone(),
+                    response_schema: node.parameters.get("responseSchema").cloned(),
                 })
                 .collect(),
             input_schema,
@@ -37,11 +38,11 @@ impl TestContract {
         mut self,
         nodes: Vec<agentx_runtime_contracts::WaitInputNodeV1>,
     ) -> Self {
-        let paths = nodes.iter().map(|node| &node.path).collect::<Vec<_>>();
+        let contracts = nodes.iter().map(|node| json!({"path":node.path,"responseSchema":node.response_schema.as_ref().map(normalize_schema)})).collect::<Vec<_>>();
         self.fingerprint = format!(
             "{:x}",
             Sha256::digest(
-                json!({"io":fingerprint(&self.input_schema,&self.output_schema),"waitNodes":paths})
+                json!({"io":fingerprint(&self.input_schema,&self.output_schema),"waitNodes":contracts})
                     .to_string()
                     .as_bytes()
             )
@@ -165,11 +166,11 @@ pub(crate) fn validate(schema: &Value, value: &Value, prefix: &str) -> Vec<CaseF
             .iter_errors(value)
             .map(|error| {
                 let mut pointer = error.instance_path.to_string();
-                if let jsonschema::error::ValidationErrorKind::Required { property } = &error.kind {
-                    if let Some(name) = property.as_str() {
-                        pointer.push('/');
-                        pointer.push_str(&name.replace('~', "~0").replace('/', "~1"));
-                    }
+                if let jsonschema::error::ValidationErrorKind::Required { property } = &error.kind
+                    && let Some(name) = property.as_str()
+                {
+                    pointer.push('/');
+                    pointer.push_str(&name.replace('~', "~0").replace('/', "~1"));
                 }
                 CaseFieldError {
                     field: format!("{prefix}{pointer}"),

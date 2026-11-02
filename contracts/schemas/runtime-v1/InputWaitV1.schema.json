@@ -28,6 +28,7 @@
       "minimum": 0,
       "type": "integer"
     },
+    "responseSchema": true,
     "resumeUrl": {
       "type": [
         "string",

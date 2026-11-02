@@ -25,7 +25,7 @@ CREATE TABLE agent_runs (
     execution_id BINARY(16) NOT NULL,
     node_execution_id BINARY(16) NOT NULL,
     attempt_id BINARY(16) NOT NULL,
-    status ENUM('running', 'succeeded', 'failed', 'cancelled') NOT NULL DEFAULT 'running',
+    status ENUM('running', 'waiting_approval', 'succeeded', 'failed', 'cancelled') NOT NULL DEFAULT 'running',
     budget_json JSON NOT NULL,
     iteration_count INT UNSIGNED NOT NULL DEFAULT 0,
     model_call_count INT UNSIGNED NOT NULL DEFAULT 0,
@@ -248,6 +248,7 @@ CREATE TABLE deployment_bundles (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE application_invocations (
+    access_binding_json JSON NULL,
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
     application_id BINARY(16) NOT NULL,
@@ -264,6 +265,7 @@ CREATE TABLE application_invocations (
     completed_at TIMESTAMP(6) NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uq_invocation_idempotency (tenant_id, application_id, caller_type, caller_id, idempotency_key),
+    KEY idx_invocations_caller (tenant_id, application_id, caller_type, caller_id, created_at, id),
     KEY idx_invocations_session (tenant_id, session_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -343,6 +345,8 @@ CREATE TABLE application_sessions (
     status ENUM('active', 'closed') NOT NULL DEFAULT 'active',
     version BIGINT UNSIGNED NOT NULL DEFAULT 1,
     created_by_user_id BINARY(16) NULL,
+    owner_caller_type ENUM('user','api_key') NOT NULL,
+    owner_caller_id BINARY(16) NOT NULL,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
@@ -399,11 +403,13 @@ CREATE TABLE approval_candidates (
 
 CREATE TABLE approval_tasks (
     id BINARY(16) NOT NULL,
+    subject_json JSON NOT NULL DEFAULT (JSON_OBJECT('kind','workflow_node')),
+    tool_effect_id BINARY(16) NULL,
     tenant_id BINARY(16) NOT NULL,
     execution_id BINARY(16) NOT NULL,
     node_execution_id BINARY(16) NOT NULL,
     bundle_id BINARY(16) NOT NULL,
-    checkpoint_id BINARY(16) NOT NULL,
+    checkpoint_id BINARY(16) NULL,
     workflow_id BINARY(16) NOT NULL,
     node_id VARCHAR(128) NOT NULL,
     title VARCHAR(255) NOT NULL,
@@ -430,6 +436,7 @@ CREATE TABLE approval_tasks (
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
+    UNIQUE KEY uq_approval_tool_effect (tenant_id,tool_effect_id),
     UNIQUE KEY uq_runtime_approval_decision (tenant_id, id, decision_idempotency_key),
     KEY idx_approval_tasks_inbox (tenant_id, status, deadline_at, created_at),
     KEY idx_runtime_approval_claim (status, deadline_at, locked_until),
@@ -494,7 +501,7 @@ CREATE TABLE checkpoints (
     execution_id BINARY(16) NOT NULL,
     node_execution_id BINARY(16) NULL,
     sequence_number BIGINT UNSIGNED NOT NULL,
-    checkpoint_type ENUM('execution_start', 'node_completed', 'node_suspended', 'manual') NOT NULL,
+    checkpoint_type ENUM('execution_start', 'node_completed', 'node_suspended', 'agent_effect_resumed', 'manual') NOT NULL,
     state_hash VARCHAR(96) NOT NULL,
     payload_json JSON NULL,
     payload_artifact_id BINARY(16) NULL,
@@ -723,6 +730,7 @@ CREATE TABLE item_lineage (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE node_attempts (
+    dispatch_task_id BINARY(16) NULL,
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
     execution_id BINARY(16) NOT NULL,
@@ -977,9 +985,9 @@ CREATE TABLE retention_runs (
 CREATE TABLE runtime_calls (
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
-    source_kind ENUM('workflow','studio_builder') NOT NULL DEFAULT 'workflow',
-    studio_target_json JSON NULL,
-    studio_model_binding_json JSON NULL,
+    source_kind ENUM('workflow','studio_builder','application_ui_builder') NOT NULL DEFAULT 'workflow',
+    design_target_json JSON NULL,
+    design_model_binding_json JSON NULL,
     execution_id BINARY(16) NULL,
     node_execution_id BINARY(16) NULL,
     attempt_id BINARY(16) NULL,
@@ -994,7 +1002,7 @@ CREATE TABLE runtime_calls (
     resource_version_id BINARY(16) NULL,
     tool_name_snapshot VARCHAR(255) NULL,
     side_effect VARCHAR(32) NOT NULL DEFAULT 'none',
-    status ENUM('reserved', 'sent', 'succeeded', 'failed', 'cancelled', 'unknown') NOT NULL,
+    status ENUM('reserved', 'sent', 'succeeded', 'failed', 'cancelled', 'outcome_unknown') NOT NULL,
     reserved_input_tokens BIGINT UNSIGNED NOT NULL DEFAULT 0,
     reserved_output_tokens BIGINT UNSIGNED NOT NULL DEFAULT 0,
     reserved_cost_micros BIGINT UNSIGNED NOT NULL DEFAULT 0,
@@ -1010,8 +1018,9 @@ CREATE TABLE runtime_calls (
     ended_at TIMESTAMP(6) NULL,
     PRIMARY KEY (id),
     CONSTRAINT ck_runtime_call_source CHECK (
-        (source_kind='workflow' AND execution_id IS NOT NULL AND node_execution_id IS NOT NULL AND attempt_id IS NOT NULL AND studio_target_json IS NULL)
-        OR (source_kind='studio_builder' AND execution_id IS NULL AND node_execution_id IS NULL AND attempt_id IS NULL AND agent_run_id IS NULL AND studio_target_json IS NOT NULL)
+        (source_kind='workflow' AND execution_id IS NOT NULL AND node_execution_id IS NOT NULL AND attempt_id IS NOT NULL AND design_target_json IS NULL)
+        OR (source_kind='studio_builder' AND execution_id IS NULL AND node_execution_id IS NULL AND attempt_id IS NULL AND agent_run_id IS NULL AND design_target_json IS NOT NULL AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(design_target_json,'$.kind'))='workflow_builder',FALSE))
+        OR (source_kind='application_ui_builder' AND execution_id IS NULL AND node_execution_id IS NULL AND attempt_id IS NULL AND agent_run_id IS NULL AND design_target_json IS NOT NULL AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(design_target_json,'$.kind'))='application_ui_builder',FALSE))
     ),
     UNIQUE KEY uq_runtime_call_idempotency (tenant_id, idempotency_key),
     KEY idx_runtime_call_node (tenant_id, node_execution_id, iteration_index, call_index),
@@ -1347,7 +1356,7 @@ CREATE TABLE service_identity_projection (
     KEY idx_service_identity_workflow (tenant_id, workflow_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE studio_model_deltas (
+CREATE TABLE design_model_deltas (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     tenant_id BINARY(16) NOT NULL,
     call_id BINARY(16) NOT NULL,
@@ -1390,6 +1399,7 @@ CREATE TABLE input_waits (
     active_scope BINARY(32) NULL,
     status ENUM('waiting','received','timed_out','cancelled','failed') NOT NULL,
     resume_status ENUM('not_requested','pending','succeeded','cancelled') NOT NULL DEFAULT 'not_requested',
+    response_schema_json JSON NULL,
     content_json JSON NULL,
     input_source VARCHAR(32) NULL,
     receipt_id BINARY(16) NULL,
@@ -1428,4 +1438,95 @@ CREATE TABLE channel_input_receipts (
     wait_id BINARY(16) NULL,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY (tenant_id, binding_id, event_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- The head identifies one immutable HTML + contract + business Bundle pair.
+CREATE TABLE application_page_publications (
+    id BINARY(16) NOT NULL,
+    tenant_id BINARY(16) NOT NULL,
+    application_id BINARY(16) NOT NULL,
+    ui_version_id BINARY(16) NOT NULL,
+    bundle_id BINARY(16) NOT NULL,
+    revision BIGINT UNSIGNED NOT NULL,
+    content_hash VARCHAR(80) NOT NULL,
+    manifest_json JSON NOT NULL,
+    html_object_id BINARY(16) NOT NULL,
+    sdk_object_id BINARY(16) NOT NULL,
+    style_object_id BINARY(16) NOT NULL,
+    status ENUM('prepared','active','superseded') NOT NULL,
+    prepared_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    activated_at TIMESTAMP(6) NULL,
+    PRIMARY KEY(id),
+    UNIQUE KEY uq_page_revision (tenant_id,application_id,revision),
+    KEY idx_page_bundle (tenant_id,bundle_id),
+    KEY idx_page_object (tenant_id,html_object_id),
+    KEY idx_page_sdk (tenant_id,sdk_object_id),
+    KEY idx_page_style (tenant_id,style_object_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE application_web_heads (
+    tenant_id BINARY(16) NOT NULL,
+    application_id BINARY(16) NOT NULL,
+    publication_id BINARY(16) NOT NULL,
+    slug VARCHAR(80) NOT NULL,
+    revision BIGINT UNSIGNED NOT NULL,
+    enabled BOOLEAN NOT NULL,
+    PRIMARY KEY(tenant_id,application_id),
+    UNIQUE KEY uq_application_web_slug (tenant_id,slug)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE mcp_tool_policy_projection (
+    tenant_id BINARY(16) NOT NULL,
+    tool_id BINARY(16) NOT NULL,
+    revision BIGINT UNSIGNED NOT NULL,
+    content_hash VARCHAR(80) NOT NULL,
+    enabled BOOLEAN NOT NULL,
+    PRIMARY KEY(tenant_id,tool_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Identity and a result receipt for the original Core Tool Effect; approval state remains in approval_tasks.
+CREATE TABLE agent_tool_effects (
+    id BINARY(16) NOT NULL,
+    tenant_id BINARY(16) NOT NULL,
+    execution_id BINARY(16) NOT NULL,
+    node_execution_id BINARY(16) NOT NULL,
+    attempt_id BINARY(16) NOT NULL,
+    agent_run_id BINARY(16) NOT NULL,
+    operation_id VARCHAR(191) NOT NULL,
+    effect_id VARCHAR(191) NOT NULL,
+    tool_call_id VARCHAR(191) NOT NULL,
+    tool_id BINARY(16) NOT NULL,
+    tool_version VARCHAR(160) NOT NULL,
+    tool_name VARCHAR(255) NOT NULL,
+    arguments_json JSON NOT NULL,
+    arguments_hash VARCHAR(80) NOT NULL,
+    policy_json JSON NOT NULL,
+    runtime_call_index INT UNSIGNED NOT NULL,
+    active_remaining_ms BIGINT UNSIGNED NOT NULL,
+    approval_task_id BINARY(16) NOT NULL,
+    resume_command_id BINARY(16) NULL,
+    result_json JSON NULL,
+    outcome_unknown BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY(id),
+    UNIQUE KEY uq_agent_tool_effect (tenant_id,effect_id),
+    UNIQUE KEY uq_agent_tool_operation (tenant_id,agent_run_id,operation_id),
+    KEY idx_agent_tool_approval (tenant_id,approval_task_id),
+    KEY idx_agent_tool_attempt (tenant_id,attempt_id,runtime_call_index)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE application_mcp_publications (
+ id BINARY(16) NOT NULL, tenant_id BINARY(16) NOT NULL, application_id BINARY(16) NOT NULL,
+ bundle_id BINARY(16) NOT NULL, revision BIGINT UNSIGNED NOT NULL, manifest_json JSON NOT NULL,
+ content_hash VARCHAR(96) NOT NULL, slug VARCHAR(80) NOT NULL, status ENUM('active','deleted') NOT NULL,
+ created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), PRIMARY KEY(id),
+ UNIQUE KEY uq_mcp_publication_revision(tenant_id,application_id,revision)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE application_mcp_heads (
+ tenant_id BINARY(16) NOT NULL, application_id BINARY(16) NOT NULL, revision BIGINT UNSIGNED NOT NULL,
+ PRIMARY KEY(tenant_id,application_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE application_mcp_routes (
+ slug VARCHAR(80) NOT NULL, tenant_id BINARY(16) NOT NULL, application_id BINARY(16) NOT NULL,
+ PRIMARY KEY(slug), KEY idx_mcp_route_application(tenant_id,application_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

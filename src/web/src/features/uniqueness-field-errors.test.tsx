@@ -30,6 +30,7 @@ const emptyPage = { items: [], page: 1, pageSize: 100, total: 0 }
 beforeEach(async () => {
   await i18n.changeLanguage('zh-CN')
   vi.mocked(useAuth).mockReturnValue({
+    sessionId: 1,
     status: 'authenticated', user: {
       id: 'user-1', username: 'admin', displayName: 'Admin', companyId: 'company-1', companyName: 'Company',
       departmentId: rootDepartment.id, departmentName: rootDepartment.name, roles: [], permissions: [], locale: 'zh-CN', timezone: 'Asia/Shanghai',

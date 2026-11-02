@@ -418,7 +418,7 @@ async fn approval_snapshot(
     after: Option<Uuid>,
     limit: usize,
 ) -> RuntimeResult<Vec<RuntimeGovernanceSnapshotItemV1>> {
-    let rows = sqlx::query("SELECT id,version,last_event_cursor,projection_deleted,execution_id,workflow_id,node_id,title,description,request_payload_json,buttons_json,status,resume_status,claimed_by,deadline_at,decision_receipt_json FROM approval_tasks WHERE tenant_id=? AND last_event_cursor<=? AND (? IS NULL OR id>?) ORDER BY id LIMIT ?")
+    let rows = sqlx::query("SELECT id,version,last_event_cursor,projection_deleted,execution_id,workflow_id,node_id,title,description,request_payload_json,buttons_json,subject_json,status,resume_status,claimed_by,deadline_at,decision_receipt_json FROM approval_tasks WHERE tenant_id=? AND last_event_cursor<=? AND (? IS NULL OR id>?) ORDER BY id LIMIT ?")
         .bind(tenant).bind(upper).bind(after).bind(after).bind(limit as u32).fetch_all(&state.pool).await?;
     let mut items = Vec::with_capacity(rows.len());
     for row in rows {
@@ -433,6 +433,8 @@ async fn approval_snapshot(
                 execution_id: row.try_get("execution_id")?,
                 workflow_id: row.try_get("workflow_id")?,
                 node_id: row.try_get("node_id")?,
+                subject: serde_json::from_value(row.try_get("subject_json")?)
+                    .map_err(|e| RuntimeError::Internal(e.into()))?,
                 title: row.try_get("title")?,
                 description: row.try_get("description")?,
                 request: row.try_get("request_payload_json")?,
@@ -757,7 +759,7 @@ pub(crate) async fn enqueue_approval_event_from_task(
     tenant_id: Uuid,
     task_id: Uuid,
 ) -> RuntimeResult<Uuid> {
-    let row = sqlx::query("SELECT execution_id,workflow_id,node_id,title,description,request_payload_json,buttons_json,status,resume_status,claimed_by,deadline_at,version,decision_receipt_json FROM approval_tasks WHERE tenant_id=? AND id=?")
+    let row = sqlx::query("SELECT execution_id,workflow_id,node_id,title,description,request_payload_json,buttons_json,subject_json,status,resume_status,claimed_by,deadline_at,version,decision_receipt_json FROM approval_tasks WHERE tenant_id=? AND id=?")
         .bind(tenant_id)
         .bind(task_id)
         .fetch_one(&mut **tx)
@@ -781,6 +783,8 @@ pub(crate) async fn enqueue_approval_event_from_task(
             execution_id,
             workflow_id: row.try_get("workflow_id")?,
             node_id: row.try_get("node_id")?,
+            subject: serde_json::from_value(row.try_get("subject_json")?)
+                .map_err(|e| RuntimeError::Internal(e.into()))?,
             title: row.try_get("title")?,
             description: row.try_get("description")?,
             request: row.try_get("request_payload_json")?,
@@ -920,6 +924,14 @@ fn decode_snapshot_cursor(value: &str) -> RuntimeResult<SnapshotCursor> {
         .ok_or(RuntimeError::QueryCursorExpired)
 }
 
+async fn evaluation_cost_by_currency(
+    state: &RuntimeState,
+    tenant: Uuid,
+    execution: Option<Uuid>,
+) -> RuntimeResult<std::collections::BTreeMap<String, u64>> {
+    Ok(sqlx::query_as::<_,(String,u64)>("SELECT cost_currency,CAST(SUM(cost_micros) AS UNSIGNED) FROM runtime_calls WHERE tenant_id=? AND execution_id=? AND cost_currency IS NOT NULL GROUP BY cost_currency").bind(tenant).bind(execution).fetch_all(&state.pool).await?.into_iter().collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -947,12 +959,4 @@ mod tests {
             None
         );
     }
-}
-
-async fn evaluation_cost_by_currency(
-    state: &RuntimeState,
-    tenant: Uuid,
-    execution: Option<Uuid>,
-) -> RuntimeResult<std::collections::BTreeMap<String, u64>> {
-    Ok(sqlx::query_as::<_,(String,u64)>("SELECT cost_currency,CAST(SUM(cost_micros) AS UNSIGNED) FROM runtime_calls WHERE tenant_id=? AND execution_id=? AND cost_currency IS NOT NULL GROUP BY cost_currency").bind(tenant).bind(execution).fetch_all(&state.pool).await?.into_iter().collect())
 }

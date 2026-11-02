@@ -2,6 +2,8 @@
 //! The Core remains infrastructure-free; this adapter bridges its ports to the
 //! async Worker, Provider Runtime and durable Runtime schema.
 
+#[path = "worker_runtime_agent_approval.rs"]
+mod approval;
 #[path = "worker_runtime_agent_memory.rs"]
 mod memory;
 
@@ -256,7 +258,7 @@ pub(super) async fn execute(
     let model_reference = format!("{}@{}", model_id, model_version);
     let prompt = initial_prompt(claim);
     if let Err(error) = sqlx::query(
-        "INSERT INTO agent_runs(id,tenant_id,execution_id,node_execution_id,attempt_id,status,budget_json,state_hash) VALUES(?,?,?,?,?,'running',?,?) ON DUPLICATE KEY UPDATE status=IF(status='running','running',status),budget_json=VALUES(budget_json),state_hash=VALUES(state_hash)",
+        "INSERT INTO agent_runs(id,tenant_id,execution_id,node_execution_id,attempt_id,status,budget_json,state_hash) VALUES(?,?,?,?,?,'running',?,?) ON DUPLICATE KEY UPDATE status=IF(status='waiting_approval','running',status),budget_json=VALUES(budget_json),state_hash=VALUES(state_hash)",
     )
     .bind(run_id).bind(claim.task.tenant_id).bind(claim.task.execution_id).bind(claim.task.node_execution_id)
     .bind(claim.task.attempt_id).bind(effective_agent_budget(&claim.node_parameters))
@@ -325,7 +327,16 @@ pub(super) async fn execute(
             return WorkerExecution::failed("AGENT_STATE_UNAVAILABLE", error.to_string(), false);
         }
     }
+    let usage = match approval::previous_usage(worker, claim, run_id).await {
+        Ok(usage) => usage,
+        Err(error) => {
+            return WorkerExecution::failed("AGENT_USAGE_UNAVAILABLE", error.to_string(), false);
+        }
+    };
     let counters = Arc::new(BudgetCounters::default());
+    counters.input_tokens.store(usage.0, Ordering::Relaxed);
+    counters.output_tokens.store(usage.1, Ordering::Relaxed);
+    counters.cost_micros.store(usage.2, Ordering::Relaxed);
     let active_turn = Arc::new(AtomicU32::new(0));
     let mut trace_claim = claim.clone();
     trace_claim.agent_trace_turn = Some(active_turn.clone());
@@ -340,12 +351,37 @@ pub(super) async fn execute(
         attachment_registry.tools.clone(),
         attachment_registry.authorization_evidence.clone(),
     );
-    let attachment_tools = match core_attachment_tools(&attachment_registry) {
+    let mut attachment_tools = match core_attachment_tools(&attachment_registry) {
         Ok(value) => value,
         Err(error) => {
             return WorkerExecution::failed("AGENT_ATTACHMENT_REGISTRY_INVALID", error, false);
         }
     };
+    // The Runtime ledger proves dispatch/receipt identity for protected MCP Effects.
+    for tool in &mut attachment_tools {
+        if claim.resources.iter().any(|binding| {
+            matches!(&binding.configuration,
+            RuntimeResourceConfigurationV1::Mcp { tool_policy: Some(policy), .. }
+            if policy.approval.is_some())
+                && attachment_registry.tools.iter().any(|descriptor| {
+                    descriptor.name == tool.name && descriptor.resource_id == binding.resource_id
+                })
+        }) {
+            tool.replay_policy = agentx_agent_core::ReplayPolicyV1::LedgerDependent;
+        }
+    }
+    if workspace_binding.is_some()
+        && attachment_tools.iter().any(|tool| {
+            tool.replay_policy == agentx_agent_core::ReplayPolicyV1::LedgerDependent
+                && tool.origin == agentx_agent_core::ToolOriginV1::Mcp
+        })
+    {
+        return WorkerExecution::failed(
+            "TOOL_APPROVAL_WORKSPACE_CONFLICT",
+            "Protected business tools require an Agent without an unrestricted workspace",
+            false,
+        );
+    }
     let mut tools = AgentToolRouter::new(
         worker,
         claim,
@@ -363,6 +399,9 @@ pub(super) async fn execute(
     let next_attachment_call_index =
         next_runtime_call_index(worker, claim, run_id, "attachment").await;
     model_port.call_index = next_model_call_index;
+    model_port.input_tokens = usage.0;
+    model_port.output_tokens = usage.1;
+    model_port.cost_micros = usage.2;
     tools.call_index = next_attachment_call_index;
     if let Err(error) = tools.authorize_registry() {
         return WorkerExecution::failed(
@@ -438,6 +477,7 @@ pub(super) async fn execute(
         external_contexts,
         prompt_message_id: format!("user:{}", claim.task.attempt_id),
         prompt,
+        continue_completed: false,
         steering_inputs: agent_messages(agent, "steeringInputs"),
         follow_up_inputs: agent_messages(agent, "followUpInputs"),
         model_context_window,
@@ -515,17 +555,19 @@ async fn finish(
         agentx_agent_core::TerminalReasonV1::Completed
     ) {
         "succeeded"
+    } else if result.terminal_reason == agentx_agent_core::TerminalReasonV1::Suspended {
+        "waiting_approval"
     } else {
         "failed"
     };
     let state_hash = crate::worker_support::raw_hash(
         &serde_json::to_value(&result.state).unwrap_or(Value::Null),
     );
-    let update = sqlx::query("UPDATE agent_runs SET status=?,iteration_count=?,model_call_count=?,tool_call_count=?,input_tokens=?,output_tokens=?,cost_micros=?,state_hash=?,stop_reason=?,ended_at=UTC_TIMESTAMP(6) WHERE id=?")
+    let update = sqlx::query("UPDATE agent_runs SET status=?,iteration_count=?,model_call_count=?,tool_call_count=?,input_tokens=?,output_tokens=?,cost_micros=?,state_hash=?,stop_reason=?,ended_at=IF(?='waiting_approval',NULL,UTC_TIMESTAMP(6)) WHERE id=?")
         .bind(status).bind(model_port.call_index).bind(model_port.call_index).bind(tool_call_count)
         .bind(model_port.input_tokens)
         .bind(model_port.output_tokens).bind(model_port.cost_micros).bind(&state_hash)
-        .bind(&reason).bind(run_id).execute(&worker.pool).await;
+        .bind(&reason).bind(status).bind(run_id).execute(&worker.pool).await;
     if let Err(error) = update {
         tracing::error!(%error, %run_id, "Agent Core run settlement failed");
     }
@@ -539,6 +581,11 @@ async fn finish(
             None,
         )
         .await;
+    if status == "waiting_approval" {
+        return WorkerExecution::suspended(
+            json!({"kind":"agent_tool_effect","agentRunId":run_id,"operationId":result.state.operation.as_ref().map(|operation| &operation.operation_id)}),
+        );
+    }
     if status != "succeeded" {
         if result.terminal_reason == agentx_agent_core::TerminalReasonV1::ToolError
             && let Some(failure) = result
@@ -891,7 +938,10 @@ impl<'a> AgentToolRouter<'a> {
                         "AGENT_CAPABILITY_TRANSITIVE_BINDING_MISSING".into(),
                     )
                 })?;
-            self.authorize_attachment(binding, &evidence.operation)?;
+            match self.authorize_attachment(binding, &evidence.operation) {
+                Ok(()) | Err(ToolPortError::Unauthorized(_)) => {}
+                Err(error) => return Err(error),
+            }
         }
         Ok(())
     }
@@ -952,13 +1002,22 @@ impl<'a> AgentToolRouter<'a> {
 
     fn stdio_mcp_call(
         &mut self,
-        server_version_id: Uuid,
-        transport: &RuntimeMcpTransportV2,
-        tool_name: &str,
+        binding: &RuntimeResourceBindingV1,
         replay_policy: &str,
+        approval_index: Option<u32>,
         call: &ToolCallV1,
         context: &EffectContextV1,
     ) -> Result<agentx_agent_core::ToolResultV1, ToolPortError> {
+        let RuntimeResourceConfigurationV1::Mcp {
+            server_version_id,
+            transport,
+            tool_name,
+            ..
+        } = &binding.configuration
+        else {
+            return Err(ToolPortError::Effect("MCP binding is required".into()));
+        };
+        let server_version_id = *server_version_id;
         let RuntimeMcpTransportV2::Stdio {
             command,
             args,
@@ -1092,6 +1151,19 @@ impl<'a> AgentToolRouter<'a> {
                 &notification_context,
                 ProcessSessionReplayPolicyV1::Safe,
             )?;
+        }
+        if let Some(index) = approval_index {
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(
+                    crate::agent_tool_approvals::recheck_dispatch(
+                        &self.worker.pool,
+                        self.claim,
+                        binding,
+                        index,
+                    ),
+                )
+            })
+            .map_err(|error| ToolPortError::Effect(error.to_string()))?;
         }
         let envelope = self
             .send_stdio_frame(
@@ -1566,12 +1638,24 @@ impl<'a> AgentToolRouter<'a> {
             .ok_or_else(|| {
                 ToolPortError::Unauthorized("AGENT_ATTACHMENT_BINDING_MISSING".into())
             })?;
+        if matches!(&binding.configuration, RuntimeResourceConfigurationV1::Mcp {tool_policy:Some(policy),..} if policy.approval.is_some())
+            && let Some(observation) = self.stored_approval_observation(&binding, call, context)
+        {
+            return match observation {
+                agentx_agent_core::EffectObservationV1::Confirmed(result) => {
+                    serde_json::from_value(result)
+                        .map_err(|error| ToolPortError::OutcomeUnknown(error.to_string()))
+                }
+                _ => Err(ToolPortError::OutcomeUnknown(
+                    "The original dispatched tool result needs verification".into(),
+                )),
+            };
+        }
         self.authorize_attachment(&binding, &descriptor.operation)?;
         match &binding.configuration {
             RuntimeResourceConfigurationV1::Mcp {
                 server_id,
                 transport,
-                tool_name,
                 server_version_id,
                 credential,
                 ..
@@ -1582,56 +1666,9 @@ impl<'a> AgentToolRouter<'a> {
                     transport,
                     credential.as_ref(),
                 )?;
-                let endpoint = match transport {
-                    agentx_runtime_contracts::RuntimeMcpTransportV2::StreamableHttp {
-                        endpoint,
-                    }
-                    | agentx_runtime_contracts::RuntimeMcpTransportV2::Sse { endpoint } => endpoint,
-                    agentx_runtime_contracts::RuntimeMcpTransportV2::Stdio { .. } => {
-                        return self.stdio_mcp_call(
-                            *server_version_id,
-                            transport,
-                            tool_name,
-                            &descriptor.replay_policy,
-                            call,
-                            context,
-                        );
-                    }
-                };
-                let index = self.call_index;
-                self.call_index = self.call_index.saturating_add(1);
-                let existing_session = self.mcp_sessions.get(server_version_id).cloned();
-                let legacy_sse = matches!(transport, RuntimeMcpTransportV2::Sse { .. });
-                let legacy_sse_session_key = legacy_sse.then(|| {
-                    self.legacy_sse_session_keys
-                        .entry(*server_version_id)
-                        .or_insert_with(|| {
-                            format!(
-                                "agent-run:{}:mcp-server:{}",
-                                self.agent_run_id, server_version_id
-                            )
-                        })
-                        .clone()
-                });
-                let (execution, next_session) = tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(self.worker.call_agent_mcp_tool(
-                        self.claim,
-                        endpoint,
-                        tool_name,
-                        call.arguments.clone(),
-                        index,
-                        credential.as_ref(),
-                        &binding,
-                        existing_session.as_deref(),
-                        legacy_sse,
-                        legacy_sse_session_key.as_deref(),
-                    ))
-                });
-                if let Some(session) = next_session {
-                    self.mcp_sessions.insert(*server_version_id, session);
-                }
-                tool_result_from_execution(execution)
+                self.execute_mcp_attachment(&binding, &descriptor, call, context)
             }
+
             RuntimeResourceConfigurationV1::Rag {
                 credential, scope, ..
             } => {
@@ -1681,6 +1718,10 @@ impl<'a> AgentToolRouter<'a> {
 }
 
 impl ToolPort for AgentToolRouter<'_> {
+    fn observe(&mut self, context: &EffectContextV1) -> agentx_agent_core::EffectObservationV1 {
+        self.observe_approved_tool(context)
+    }
+
     fn execute(
         &mut self,
         call: &ToolCallV1,

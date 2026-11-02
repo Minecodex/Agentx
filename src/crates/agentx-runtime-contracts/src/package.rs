@@ -830,10 +830,10 @@ fn attachment_dependency_bindings<'a>(
             }) {
                 dependencies.push(server);
             }
-            if let Some(secret) = credential {
-                if let Some(resource) = credential_binding(resources, secret) {
-                    dependencies.push(resource);
-                }
+            if let Some(secret) = credential
+                && let Some(resource) = credential_binding(resources, secret)
+            {
+                dependencies.push(resource);
             }
             if let RuntimeMcpTransportV2::Stdio {
                 environment_credential_refs,
@@ -861,10 +861,10 @@ fn attachment_dependency_bindings<'a>(
         }
         RuntimeResourceConfigurationV1::Rag { credential, .. }
         | RuntimeResourceConfigurationV1::Memory { credential, .. } => {
-            if let Some(secret) = credential {
-                if let Some(resource) = credential_binding(resources, secret) {
-                    dependencies.push(resource);
-                }
+            if let Some(secret) = credential
+                && let Some(resource) = credential_binding(resources, secret)
+            {
+                dependencies.push(resource);
             }
         }
         _ => {}
@@ -1047,13 +1047,13 @@ fn validate_work_package_payload(
                 .collect::<std::collections::BTreeSet<_>>();
             let model_evaluators = evaluators
                 .iter()
-                .filter_map(|evaluator| match evaluator {
+                .map(|evaluator| match evaluator {
                     crate::RuntimeEvaluatorV1::Model {
                         evaluator_id,
                         resource_id,
                         prompt_object_id,
                         ..
-                    } => Some((*evaluator_id, *resource_id, *prompt_object_id)),
+                    } => (*evaluator_id, *resource_id, *prompt_object_id),
                 })
                 .collect::<std::collections::BTreeSet<_>>();
             let evaluator_executions = payload
@@ -1443,6 +1443,7 @@ mod attachment_registry_tests {
             state_epoch: 1,
             content_hash: hash(),
             configuration: RuntimeResourceConfigurationV1::Mcp {
+                tool_policy: None,
                 server_id: Uuid::from_u128(1000 + resource_id.as_u128()),
                 server_version_id: Uuid::from_u128(2000 + resource_id.as_u128()),
                 transport: RuntimeMcpTransportV2::StreamableHttp {

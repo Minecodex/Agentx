@@ -841,14 +841,14 @@ fn build_model_evaluators(
     };
     evaluators
         .iter()
-        .filter_map(|evaluator| match evaluator {
+        .map(|evaluator| match evaluator {
             agentx_runtime_contracts::RuntimeEvaluatorV1::Model {
                 evaluator_id,
                 resource_id,
                 prompt_object_id,
                 model,
                 pass_threshold,
-            } => Some((*evaluator_id, *resource_id, *prompt_object_id, model.clone(), *pass_threshold)),
+            } => (*evaluator_id, *resource_id, *prompt_object_id, model.clone(), *pass_threshold),
         })
         .map(|(evaluator_id, resource_id, prompt_object_id, model, pass_threshold)| {
             let evaluation_schema = serde_json::json!({
@@ -1186,6 +1186,8 @@ mod tests {
                 endpoint: "https://models.example/v1".into(),
                 model: "test-model".into(),
                 context_window: 128_000,
+                max_output_tokens: 4096,
+                parameters: serde_json::json!({}),
                 price: agentx_runtime_contracts::RuntimeModelPriceV1 {
                     version_id: "price-1".into(),
                     currency: "USD".into(),

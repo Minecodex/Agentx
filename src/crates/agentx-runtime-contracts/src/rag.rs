@@ -46,8 +46,8 @@ impl RagScope {
                 "Scope does not match the connection provider",
             ));
         }
-        if let Self::Ragflow { dataset_ids } = self {
-            if dataset_ids.is_empty()
+        if let Self::Ragflow { dataset_ids } = self
+            && (dataset_ids.is_empty()
                 || dataset_ids
                     .iter()
                     .any(|id| id.trim().is_empty() || id.len() > 512)
@@ -55,13 +55,12 @@ impl RagScope {
                     .iter()
                     .collect::<std::collections::BTreeSet<_>>()
                     .len()
-                    != dataset_ids.len()
-            {
-                return Err(RagProtocolError::new(
-                    "RAG_SCOPE_INVALID",
-                    "Select distinct, nonempty dataset IDs",
-                ));
-            }
+                    != dataset_ids.len())
+        {
+            return Err(RagProtocolError::new(
+                "RAG_SCOPE_INVALID",
+                "Select distinct, nonempty dataset IDs",
+            ));
         }
         // Empty is the real default workspace. Discovery, not a fabricated
         // naming rule or request header, establishes which instance owns it.
@@ -120,17 +119,16 @@ pub fn validate_retrieval_input(query: &str, top_k: u64) -> Result<(), RagProtoc
 
 /// Verify the instance identity before using its fixed-workspace endpoints.
 pub fn validate_instance_scope(scope: &RagScope, health: &Value) -> Result<(), RagProtocolError> {
-    if let RagScope::Lightrag { workspace } = scope {
-        if health
+    if let RagScope::Lightrag { workspace } = scope
+        && health
             .pointer("/configuration/workspace")
             .and_then(Value::as_str)
             != Some(workspace)
-        {
-            return Err(RagProtocolError::new(
-                "RAG_WORKSPACE_CHANGED",
-                "The instance no longer exposes the bound workspace",
-            ));
-        }
+    {
+        return Err(RagProtocolError::new(
+            "RAG_WORKSPACE_CHANGED",
+            "The instance no longer exposes the bound workspace",
+        ));
     }
     Ok(())
 }

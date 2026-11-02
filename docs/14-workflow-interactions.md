@@ -6,9 +6,9 @@
 
 `reply_message` 接收支持变量和模板的 `content`，在节点结算事务内保存 `workflow_messages` 并发布 `workflow.message`，随后继续下游。渠道来源另行写入现有 `delivery_outbox`，实际投递状态由 delivery 事件表达。非渠道来源同样成功产生消息。节点输出的 `deliveryId` 是稳定消息标识，`status=emitted`；最终返回仍由 Exit 节点产生。`send_message` 的显式渠道发送语义不变。
 
-`await_input` 接收任意原始 JSON 内容，包含文本、对象、布尔值和 null；不识别意图或确认。业务逻辑由后接的 If、Code、Model 等节点实现。非确认内容也恢复节点；下游分支可重新进入等待，产生新的等待实例。
+`await_input` 接收原始 JSON 内容，包含文本、对象、布尔值和 null；不识别意图或确认。可选 `responseSchema` 为字面 JSON Schema，编译时检查合法性，并随业务版本、Bundle 和每次等待固化。所有入口（含预填、Hook 回传和渠道）在接收事务内校验内容与格式；失败保留等待并返回字段 JSON Pointer，不转换类型、补默认值或消耗恢复凭据。未声明时接受任意 JSON。业务逻辑由后接的 If、Code、Model 等节点实现；下游分支可重新进入等待，产生新的等待实例。
 
-配置面板依次展示等待超时、输出说明、执行出口，最下方是单个可选 Hook URL 与文档。Hook URL 支持现有变量引用。`timeoutMs` 不填则持续等待，直到输入或取消；执行出口为 `main`、`timed_out`、`error`。正常和超时输出均包含 `waitId/content/receivedAt/source`，超时内容和接收时间为 null。
+配置面板依次展示等待超时、回复结构、输出说明、执行出口，最下方是单个可选 Hook URL 与文档。Hook URL 支持现有变量引用。`timeoutMs` 不填则持续等待，直到输入或取消；执行出口为 `main`、`timed_out`、`error`。正常和超时输出均包含 `waitId/content/receivedAt/source`，超时内容和接收时间为 null。
 
 ## 持久化与恢复
 

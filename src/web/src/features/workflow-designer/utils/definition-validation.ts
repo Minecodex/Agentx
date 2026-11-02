@@ -18,6 +18,16 @@ export function isInputBindingEmpty(value: InputBinding) {
   return false;
 }
 
+export function definitionIssueMessages(document: StudioDocument): string[] {
+  const issues = definitionIssues(document);
+  const messages = issues.slice(0, 10).map(issue => {
+    const location = [issue.nodeId, issue.fieldPath].filter(Boolean).join(":");
+    return `${issue.code}${location ? ` at ${location}` : ""}: ${issue.message}`.slice(0, 800);
+  });
+  if (issues.length > 10) messages.push(`${issues.length - 10} additional validation issues; inspect the current document and correct the reported fields first.`);
+  return messages;
+}
+
 export function definitionIssues(document: StudioDocument): StudioIssue[] {
   const issues: StudioIssue[] = [];
   const { definition } = serializeStudio(document);

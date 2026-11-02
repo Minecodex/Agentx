@@ -469,7 +469,7 @@ async fn delete_model(
     let mut tx =
         crate::workflow_revision_resources::begin_delete(&state.pool, actor.tenant_id, "model", id)
             .await?;
-    let builder_reference: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenant_settings WHERE tenant_id=? AND platform_ai_model_alias_id=?) OR EXISTS(SELECT 1 FROM studio_builder_runs WHERE tenant_id=? AND model_alias_id=? AND status IN ('queued','running','waiting','outcome_unknown'))").bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
+    let builder_reference: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenant_settings WHERE tenant_id=? AND platform_ai_model_alias_id=?) OR EXISTS(SELECT 1 FROM design_agent_runs r WHERE r.tenant_id=? AND r.model_alias_id=? AND (r.status IN ('queued','running','waiting','outcome_unknown') OR EXISTS(SELECT 1 FROM design_agent_entries mi WHERE mi.tenant_id=r.tenant_id AND mi.run_id=r.id AND mi.event_key LIKE 'model-dispatch:%' AND NOT EXISTS(SELECT 1 FROM design_agent_entries mr WHERE mr.tenant_id=mi.tenant_id AND mr.session_id=mi.session_id AND mr.event_key=REPLACE(mi.event_key,'model-dispatch:','model-resolved:')))))").bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
     let evaluation_reference: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM evaluation_batches WHERE tenant_id=? AND JSON_UNQUOTE(JSON_EXTRACT(model_snapshot_json,'$.binding.resourceId'))=?)")
         .bind(actor.tenant_id).bind(id.to_string()).fetch_one(&mut *tx).await?;
     if builder_reference || evaluation_reference {

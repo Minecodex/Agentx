@@ -1,0 +1,395 @@
+{
+  "$defs": {
+    "ApplicationAccessBindingV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "web",
+              "type": "string"
+            },
+            "publicationId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "revision": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "publicationId",
+            "revision"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "mcp",
+              "type": "string"
+            },
+            "publicationId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "revision": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "publicationId",
+            "revision"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ArtifactUploadResponseV1": {
+      "additionalProperties": false,
+      "properties": {
+        "artifactId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "contentType": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifactId",
+        "contentType",
+        "sizeBytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "InputWaitV1": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {},
+        "executionId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nodeExecutionId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "nodePath": {
+          "type": "string"
+        },
+        "occurrence": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "responseSchema": {},
+        "resumeUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "waitId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "waitId",
+        "executionId",
+        "nodeExecutionId",
+        "nodeId",
+        "nodePath",
+        "occurrence",
+        "status"
+      ],
+      "type": "object"
+    },
+    "TaskActionsV1": {
+      "additionalProperties": false,
+      "properties": {
+        "canCancel": {
+          "type": "boolean"
+        },
+        "downloadableArtifactIds": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "inputWaitIds": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "canCancel",
+        "inputWaitIds",
+        "downloadableArtifactIds"
+      ],
+      "type": "object"
+    },
+    "TaskApprovalV1": {
+      "additionalProperties": false,
+      "properties": {
+        "approvalId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "version": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "approvalId",
+        "title",
+        "status",
+        "version"
+      ],
+      "type": "object"
+    },
+    "TaskStageV1": {
+      "additionalProperties": false,
+      "properties": {
+        "nodeExecutionId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nodeExecutionId",
+        "title",
+        "status"
+      ],
+      "type": "object"
+    },
+    "TaskStateV1": {
+      "enum": [
+        "accepted",
+        "running",
+        "waiting_input",
+        "waiting_approval",
+        "completed",
+        "failed",
+        "cancelled",
+        "outcome_unknown"
+      ],
+      "type": "string"
+    },
+    "WorkflowMessageV1": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "executionId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "nodeExecutionId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "executionId",
+        "nodeExecutionId",
+        "content",
+        "createdAt"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "accessBinding": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ApplicationAccessBindingV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "allowedActions": {
+      "$ref": "#/$defs/TaskActionsV1"
+    },
+    "applicationId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "bundleId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "callerType": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "deploymentId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "error": {},
+    "eventCursor": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "files": {
+      "items": {
+        "$ref": "#/$defs/ArtifactUploadResponseV1"
+      },
+      "type": "array"
+    },
+    "invocationStatus": {
+      "type": "string"
+    },
+    "messages": {
+      "items": {
+        "$ref": "#/$defs/WorkflowMessageV1"
+      },
+      "type": "array"
+    },
+    "outputs": {},
+    "pendingApprovals": {
+      "items": {
+        "$ref": "#/$defs/TaskApprovalV1"
+      },
+      "type": "array"
+    },
+    "pendingInputs": {
+      "items": {
+        "$ref": "#/$defs/InputWaitV1"
+      },
+      "type": "array"
+    },
+    "revision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "sessionId": {
+      "format": "uuid",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "stages": {
+      "items": {
+        "$ref": "#/$defs/TaskStageV1"
+      },
+      "type": "array"
+    },
+    "state": {
+      "$ref": "#/$defs/TaskStateV1"
+    },
+    "taskId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "taskUrl": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workflowVersionId": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "taskId",
+    "applicationId",
+    "deploymentId",
+    "workflowVersionId",
+    "bundleId",
+    "callerType",
+    "state",
+    "invocationStatus",
+    "stages",
+    "pendingInputs",
+    "pendingApprovals",
+    "messages",
+    "files",
+    "allowedActions",
+    "revision",
+    "eventCursor",
+    "createdAt"
+  ],
+  "title": "TaskViewV1",
+  "type": "object"
+}

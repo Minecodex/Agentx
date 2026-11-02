@@ -1021,8 +1021,7 @@ impl RuntimeWorker {
                         .pointer("/choices/0/message/content")
                         .and_then(Value::as_str)
                     && !text.is_empty()
-                {
-                    if let Err(message) = delta_sink
+                    && let Err(message) = delta_sink
                         .emit(
                             claim.task.tenant_id,
                             claim.task.execution_id,
@@ -1033,13 +1032,12 @@ impl RuntimeWorker {
                             None,
                         )
                         .await
-                    {
-                        return WorkerExecution::failed(
-                            "MODEL_DELTA_PERSISTENCE_FAILED",
-                            message,
-                            true,
-                        );
-                    }
+                {
+                    return WorkerExecution::failed(
+                        "MODEL_DELTA_PERSISTENCE_FAILED",
+                        message,
+                        true,
+                    );
                 }
                 return WorkerExecution::succeeded(value);
             }
@@ -1086,41 +1084,41 @@ impl RuntimeWorker {
             reqwest::header::HeaderValue::from_str(&idempotency_key)
                 .expect("UUID-based idempotency key is a valid header"),
         );
-        if kind == "http" {
-            if let Some(values) = request.get("headers").and_then(Value::as_object) {
-                for (name, value) in values {
-                    let Ok(name) = reqwest::header::HeaderName::from_bytes(name.as_bytes()) else {
-                        return self
-                            .fail_call(
-                                call_id,
-                                "HTTP_HEADER_INVALID",
-                                format!("Invalid HTTP header name: {name}"),
-                                false,
-                            )
-                            .await;
-                    };
-                    let Some(value) = value.as_str() else {
-                        return self
-                            .fail_call(
-                                call_id,
-                                "HTTP_HEADER_INVALID",
-                                format!("HTTP header {name} must be a string"),
-                                false,
-                            )
-                            .await;
-                    };
-                    let Ok(value) = reqwest::header::HeaderValue::from_str(value) else {
-                        return self
-                            .fail_call(
-                                call_id,
-                                "HTTP_HEADER_INVALID",
-                                format!("Invalid value for HTTP header {name}"),
-                                false,
-                            )
-                            .await;
-                    };
-                    headers.insert(name, value);
-                }
+        if kind == "http"
+            && let Some(values) = request.get("headers").and_then(Value::as_object)
+        {
+            for (name, value) in values {
+                let Ok(name) = reqwest::header::HeaderName::from_bytes(name.as_bytes()) else {
+                    return self
+                        .fail_call(
+                            call_id,
+                            "HTTP_HEADER_INVALID",
+                            format!("Invalid HTTP header name: {name}"),
+                            false,
+                        )
+                        .await;
+                };
+                let Some(value) = value.as_str() else {
+                    return self
+                        .fail_call(
+                            call_id,
+                            "HTTP_HEADER_INVALID",
+                            format!("HTTP header {name} must be a string"),
+                            false,
+                        )
+                        .await;
+                };
+                let Ok(value) = reqwest::header::HeaderValue::from_str(value) else {
+                    return self
+                        .fail_call(
+                            call_id,
+                            "HTTP_HEADER_INVALID",
+                            format!("Invalid value for HTTP header {name}"),
+                            false,
+                        )
+                        .await;
+                };
+                headers.insert(name, value);
             }
         }
         if let Some(reference) = secret {
@@ -1302,7 +1300,7 @@ impl RuntimeWorker {
                                 serde_json::to_vec(&value).unwrap_or_else(|_| b"{}".to_vec()),
                             ),
                         }),
-                        Err(message) => Err(WorkerProviderError::Protocol(message)),
+                        Err(error) => Err(WorkerProviderError::Protocol(error.to_string())),
                     }
                 })
             }

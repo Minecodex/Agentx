@@ -93,7 +93,8 @@ CREATE TABLE runtime_user_workflow_grants (
 
 ALTER TABLE runtime_user_admission
     ADD COLUMN tenant_query_enabled BOOLEAN NOT NULL DEFAULT FALSE AFTER status,
-    ADD COLUMN role_assignments_json JSON NOT NULL AFTER tenant_query_enabled;
+    ADD COLUMN can_approve BOOLEAN NOT NULL DEFAULT FALSE AFTER tenant_query_enabled,
+    ADD COLUMN role_assignments_json JSON NOT NULL AFTER can_approve;
 
 ALTER TABLE runtime_user_application_grants
     ADD COLUMN can_invoke BOOLEAN NOT NULL DEFAULT FALSE AFTER status,

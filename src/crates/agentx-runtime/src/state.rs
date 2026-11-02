@@ -594,6 +594,35 @@ impl ExecutionMachine {
         Ok(())
     }
 
+    /// Continue the same durable operation after an external decision. Attempt identity is preserved.
+    pub fn continue_waiting_operation(&mut self, id: NodeExecutionId) -> Result<(), MachineError> {
+        self.ensure_active()?;
+        let activation = self
+            .activations
+            .get_mut(&id)
+            .ok_or(MachineError::ActivationNotFound(id))?;
+        if activation.status != ActivationStatus::Waiting
+            || activation
+                .attempts
+                .last()
+                .is_none_or(|attempt| attempt.status != AttemptStatus::Suspended)
+        {
+            return Err(MachineError::InvalidTransition {
+                id,
+                from: activation.status,
+                to: ActivationStatus::Running,
+            });
+        }
+        activation
+            .attempts
+            .last_mut()
+            .expect("checked suspended attempt")
+            .status = AttemptStatus::Running;
+        activation.status = ActivationStatus::Running;
+        self.status = RuntimeExecutionStatus::Running;
+        Ok(())
+    }
+
     pub fn resume(
         &mut self,
         id: NodeExecutionId,

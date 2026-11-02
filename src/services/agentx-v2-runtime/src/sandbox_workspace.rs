@@ -331,18 +331,18 @@ pub(super) async fn release_workspace(
         return Err(conflict("Workspace Lease was lost"));
     };
     let sandbox_id: Option<String> = row.try_get("sandbox_id")?;
-    if request.destroy {
-        if let Some(id) = sandbox_id.as_deref() {
-            terminate_provider(&state, id, &format!("workspace:{}", request.workspace_id))
-                .await
-                .map_err(|error| {
-                    if error.outcome_unknown {
-                        RuntimeError::Unavailable
-                    } else {
-                        RuntimeError::ProviderRejected
-                    }
-                })?;
-        }
+    if request.destroy
+        && let Some(id) = sandbox_id.as_deref()
+    {
+        terminate_provider(&state, id, &format!("workspace:{}", request.workspace_id))
+            .await
+            .map_err(|error| {
+                if error.outcome_unknown {
+                    RuntimeError::Unavailable
+                } else {
+                    RuntimeError::ProviderRejected
+                }
+            })?;
     }
     let changed = sqlx::query("UPDATE sandbox_workspaces SET lease_id=NULL,attempt_id=NULL,worker_id=NULL,lease_expires_at=NULL,status=IF(?, 'releasing','active') WHERE workspace_id=? AND tenant_id=? AND lease_id=? AND attempt_id=? AND worker_id=? AND fencing_token=?")
         .bind(request.destroy).bind(request.workspace_id).bind(request.identity.tenant_id).bind(request.lease_id).bind(request.attempt_id).bind(request.worker_id).bind(request.fencing_token).execute(&state.pool).await?;

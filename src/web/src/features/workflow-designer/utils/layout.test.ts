@@ -1,7 +1,7 @@
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { describe, expect, it } from 'vitest'
 
-import type { NodeManifest, StudioDocument, StudioEdge, StudioNode } from '../model/types'
+import type { ActionNodeData, NodeManifest, StudioDocument, StudioEdge, StudioNode } from '../model/types'
 import { createEditorStore } from '../store/editor-store'
 import { serializeStudio } from '../model/serializer'
 import { autoLayout as autoLayoutCore, layoutStudioDocumentCore } from './layout-core'
@@ -14,6 +14,28 @@ const layoutStudioDocument = (document: StudioDocument, manifests?: Map<string, 
 const manifests = new Map(studioManifestTypes.map(type => [`${type}@${studioManifest(type).version}`, studioManifest(type)]))
 
 describe('worker layout core baseline', () => {
+  it('lays out 300 branching nodes with a shared Exit without a long-edge ordering stall', async () => {
+    const branches = Array.from({length:299}, (_,index):StudioNode => ({
+      ...actionNode(`branch-${index}`),
+      data:{...actionNode(`branch-${index}`).data,nodeType:'if',parameters:{cases:[{id:'yes'}]}},
+    }))
+    const end:StudioNode={id:'shared-exit',type:'exit',position:{x:0,y:0},data:{editorKind:'exit',key:'shared_exit',label:'End',protected:true,parameters:{outputs:{},errorOutputs:{}}}}
+    const edges:StudioEdge[]=[edgeOf('start','__start__',branches[0]!.id)]
+    branches.forEach((node,index)=>edges.push(
+      {...edgeOf(`yes-${index}`,node.id,end.id),sourceHandle:'case:yes'},
+      {...edgeOf(`else-${index}`,node.id,branches[index+1]?.id??end.id),sourceHandle:'else'},
+    ))
+    const document={...createEditorStore().getState(),nodes:[...branches,end],edges}
+    const business=serializeStudio(document).definition
+    const started=performance.now()
+    const first=await layoutStudioDocument(document,manifests)
+    expect(performance.now()-started).toBeLessThan(8_000)
+    expect(serializeStudio(first).definition).toEqual(business)
+    expect(first.nodes.every(node=>Number.isFinite(node.position.x)&&Number.isFinite(node.position.y))).toBe(true)
+    expect(new Set(first.nodes.map(node=>`${node.position.x}:${node.position.y}`)).size).toBe(300)
+    expect((await layoutStudioDocument(document,manifests)).nodes.map(node=>node.position)).toEqual(first.nodes.map(node=>node.position))
+  },15_000)
+
   it('lays out 600 nodes deterministically within the layout budget', async () => {
     const nodes = Array.from({ length: 600 }, (_, index) => actionNode(`node-${index}`))
     const edges = Array.from({ length: 599 }, (_, index): StudioEdge => ({ id: `edge-${index}`, source: `node-${index}`, target: `node-${index + 1}`, type: 'studio', data: { edgeKind: 'execution', order: 0 } }))
@@ -30,7 +52,7 @@ describe('worker layout core baseline', () => {
   })
 })
 
-function actionNode(id: string): StudioNode { return { id, type: 'manifest', position: { x: 0, y: 0 }, data: { editorKind: 'action', nodeType: 'set', typeVersion: 1, label: id, key: id, parameters: {}, contextWrites: [], resourceReferences: [], settings: {}, disabled: false } } }
+function actionNode(id: string): StudioNode & {data:ActionNodeData} { return { id, type: 'manifest', position: { x: 0, y: 0 }, data: { editorKind: 'action', nodeType: 'set', typeVersion: 1, label: id, key: id, parameters: {}, contextWrites: [], resourceReferences: [], settings: {}, disabled: false } } }
 
 describe('container-aware auto layout', () => {
   it('arranges collapsed proxies using their ports while translating hidden members together', async () => {

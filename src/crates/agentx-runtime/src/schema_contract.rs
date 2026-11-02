@@ -25,15 +25,15 @@ fn validate_schema(path: &str, schema: &Value, issues: &mut Vec<CompileIssue>) {
             return;
         }
     };
-    if let Some(default) = schema.get("default") {
-        if let Err(error) = validator.validate(default) {
-            issue(
-                issues,
-                &format!("{path}.default"),
-                "INVALID_SCHEMA_DEFAULT",
-                error.to_string(),
-            );
-        }
+    if let Some(default) = schema.get("default")
+        && let Err(error) = validator.validate(default)
+    {
+        issue(
+            issues,
+            &format!("{path}.default"),
+            "INVALID_SCHEMA_DEFAULT",
+            error.to_string(),
+        );
     }
     validate_range(path, schema, "minimum", "maximum", issues);
     validate_range(path, schema, "minLength", "maxLength", issues);

@@ -38,6 +38,7 @@ Agentx 是一个采用 n8n 式画布交互、但使用 Agentx 原生 Workflow/No
 | [plan6/README.md](plan6/README.md) | 画布插件：动态 React UI、TypeScript/Node.js、权威动态契约、调用隔离、文件流和 Trace；SDK/RPC 2 的最新修复与验证范围见 [P6-11](plan6/evidence/p6-11-runtime-boundaries.md) |
 | [plan7/README.md](plan7/README.md) | 产品最后一公里与生产收口（对比 n8n/Dify 后立项）：IM 渠道出站回复闭环、LLM 流式与多模态透传、评测与 Insights 补全、P0 生产认证收口、知识库管理面 |
 | [plan8/README.md](plan8/README.md) | 画布 AI 编辑与历史验收；当前版本生命周期、版本列表和还原规则见 [版本与画布管理](plan8/09-version-canvases.md) |
+| [plan9/README.md](plan9/README.md) | AI 生成应用 HTML、应用 MCP 与工具审批已验收；64 份原始页面、128 次网页执行及 38 项门禁通过；随后完成[本地常驻升级与可用示例](plan9/evidence/2026-11-02-local-demo.md) |
 | [plan8/12-application-evaluations.md](plan8/12-application-evaluations.md) | 应用内测试集、固定参数契约、平台 AI 评分与批次报告 |
 | [plan8/evidence/2026-10-18-application-evaluations.md](plan8/evidence/2026-10-18-application-evaluations.md) | 应用测试集重构、平台模型授权、桌面流程和真实模型分轮验收 |
 | [plan8/11-knowledge-connections.md](plan8/11-knowledge-connections.md) | 外部知识连接、查询配置、统一授权与多来源检索 |

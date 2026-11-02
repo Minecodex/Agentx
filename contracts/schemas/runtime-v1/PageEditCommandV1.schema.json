@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "baseHtmlHash": {
+      "type": "string"
+    },
+    "baseLocalRevision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "baseServerRevision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "commandId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "editorInstanceId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "html": {
+      "type": "string"
+    },
+    "htmlHash": {
+      "type": "string"
+    },
+    "runId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "uiDraftId": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "commandId",
+    "runId",
+    "uiDraftId",
+    "editorInstanceId",
+    "baseLocalRevision",
+    "baseServerRevision",
+    "baseHtmlHash",
+    "html",
+    "htmlHash",
+    "summary"
+  ],
+  "title": "PageEditCommandV1",
+  "type": "object"
+}

@@ -138,6 +138,8 @@ Agentx 继续维护 Readiness/Liveness、Drain、PDB、Claim/Lease/Fencing 和�
 
 [plan8 多草稿与 AI 编辑](plan8/README.md) 增加 Control Studio Builder Host：复用同一个 Agent Core 承载设计态会话，通过 Runtime 专用设计态 API 调用模型；这是“Control 不执行业务 Agent loop”的明确设计态扩展，已实现。Builder 只编辑当前画布并静态校验，保存沿用编辑器链路，实际运行/测试、创建版本和部署由用户 UI 触发。业务 Worker 不修改 Draft、Runtime 不回读 Control 的边界保持；来源、账本、ACK 与恢复目标见 [plan8 架构](plan8/02-architecture-and-contracts.md)。以下条目仍描述当前已实现边界。
 
+[plan9 共用设计态 Agent](plan9/06-shared-design-agent.md) 是待实施扩展：同一 Host/Core 和平台模型增加应用 HTML 创作 Profile，以提示词、工具、上下文和严格目标联合区分画布与网页。页面按 [应用界面发布方案](plan9/03-application-web-ui.md) 进入现有签名包/Runtime 副本，在独立登录外壳中隔离运行；Control 不执行不可信脚本，Runtime 不回读 Control，生成 Agent 不获得生产执行或发布权限。此说明记录已确定的目标边界，不代表功能已实现。
+
 - Studio 只能通过 Platform Control BFF 和 Runtime Gateway 调用后端。
 - Model、MCP、Memory、RAG、HTTP Request 和插件 `ctx.http/model` 的公网 HTTPS 必须使用 `ProviderHttpClient -> agentx-egress-gateway`；基础设施 Client 继续只访问固定内部依赖。
 - Platform Control 不直接执行节点，也不直连 Runtime MySQL/Redis/OSS 或 ClickHouse。

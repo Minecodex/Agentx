@@ -130,6 +130,63 @@ struct FakeModel {
 }
 
 #[test]
+fn confirmed_model_failure_after_host_loss_is_settled_without_another_provider_call() {
+    struct FailedReceipt;
+    impl ModelPort for FailedReceipt {
+        fn observe(&mut self, _: &EffectContextV1) -> EffectObservationV1 {
+            EffectObservationV1::Failed("MODEL_OUTPUT_LIMIT_REACHED".into())
+        }
+        fn invoke(
+            &mut self,
+            _: &ModelRequestV1,
+            _: &EffectContextV1,
+        ) -> Result<ModelResponseV1, ModelPortError> {
+            panic!("A confirmed failure must never cause a second provider call")
+        }
+    }
+    let mut model = FakeModel {
+        responses: VecDeque::from([Err(ModelPortError::Pending("receipt".into()))]),
+        requests: vec![],
+    };
+    let mut state = MemoryState::default();
+    let mut tools = FakeTools::default();
+    let mut events = Events::default();
+    AgentCore::run(
+        &input(false),
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut events,
+        &FixedClock,
+        &mut budget(BudgetDecision::Continue),
+    )
+    .unwrap();
+    state
+        .state
+        .as_mut()
+        .unwrap()
+        .operation
+        .as_mut()
+        .unwrap()
+        .phase = OperationPhaseV1::EffectStarted;
+    let result = AgentCore::run(
+        &input(false),
+        &mut FailedReceipt,
+        &mut tools,
+        &mut state,
+        &mut events,
+        &FixedClock,
+        &mut budget(BudgetDecision::Continue),
+    )
+    .unwrap();
+    assert_eq!(result.terminal_reason, TerminalReasonV1::ModelError);
+    assert!(
+        matches!(result.state.operation.unwrap().phase,OperationPhaseV1::SettledFailure{error} if error=="MODEL_OUTPUT_LIMIT_REACHED")
+    );
+    assert_eq!(model.requests.len(), 1);
+}
+
+#[test]
 fn terminating_tool_failure_stops_model_turns_and_survives_settlement_crashes() {
     for message_saved in [false, true] {
         let mut input = input(false);
@@ -343,6 +400,7 @@ fn input(sandbox: bool) -> AgentRunInputV1 {
         external_contexts: vec![],
         prompt_message_id: "user-1".into(),
         prompt: "hello".into(),
+        continue_completed: false,
         steering_inputs: vec![],
         follow_up_inputs: vec![],
         model_context_window: 200_000,
@@ -470,6 +528,134 @@ fn retry_of_settled_prompt_reconciles_without_replaying_model() {
     .expect("retry reconciles settled state");
     assert_eq!(retry.terminal_reason, TerminalReasonV1::Completed);
     assert_eq!(model.requests.len(), 1);
+}
+
+#[test]
+fn accepted_late_guidance_continues_completed_prompt_without_replaying_effect() {
+    let mut run_input = input(false);
+    run_input.continue_completed = true;
+    let mut model = FakeModel {
+        responses: VecDeque::from([
+            response("assistant-1", "done", vec![]),
+            response("assistant-2", "adjusted", vec![]),
+        ]),
+        requests: vec![],
+    };
+    let mut tools = FakeTools::default();
+    let mut state = MemoryState::default();
+    let mut events = Events::default();
+    AgentCore::run(
+        &run_input,
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut events,
+        &FixedClock,
+        &mut budget(BudgetDecision::Continue),
+    )
+    .unwrap();
+    let original_operation = state.state.as_ref().unwrap().operation.clone();
+    state
+        .state
+        .as_mut()
+        .unwrap()
+        .steering_queue
+        .push(AgentMessageV1::user("late-steer", "adjust the heading"));
+    let resumed = AgentCore::run(
+        &run_input,
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut events,
+        &FixedClock,
+        &mut budget(BudgetDecision::Continue),
+    )
+    .unwrap();
+    assert_eq!(resumed.terminal_reason, TerminalReasonV1::Completed);
+    assert_eq!(
+        model.requests.len(),
+        2,
+        "accepted guidance must produce a new model effect in the same Run"
+    );
+    assert!(
+        model.requests[1]
+            .messages
+            .iter()
+            .any(|message| message.message_id == "late-steer")
+    );
+    assert_ne!(resumed.state.operation, original_operation);
+    assert_eq!(
+        resumed
+            .state
+            .messages
+            .iter()
+            .filter(|message| message.message_id == "late-steer")
+            .count(),
+        1
+    );
+    AgentCore::run(
+        &run_input,
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut events,
+        &FixedClock,
+        &mut budget(BudgetDecision::Continue),
+    )
+    .unwrap();
+    assert_eq!(
+        model.requests.len(),
+        2,
+        "a completed retry must not replay either effect"
+    );
+}
+
+#[test]
+fn queued_guidance_does_not_revive_stopped_or_unknown_prompt() {
+    for reason in [
+        TerminalReasonV1::Cancelled,
+        TerminalReasonV1::OutcomeUnknown,
+        TerminalReasonV1::BudgetExhausted,
+        TerminalReasonV1::ModelError,
+    ] {
+        let mut run_input = input(false);
+        run_input.continue_completed = true;
+        let mut model = FakeModel {
+            responses: VecDeque::from([response("assistant-1", "done", vec![])]),
+            requests: vec![],
+        };
+        let mut tools = FakeTools::default();
+        let mut state = MemoryState::default();
+        let mut events = Events::default();
+        AgentCore::run(
+            &run_input,
+            &mut model,
+            &mut tools,
+            &mut state,
+            &mut events,
+            &FixedClock,
+            &mut budget(BudgetDecision::Continue),
+        )
+        .unwrap();
+        let saved = state.state.as_mut().unwrap();
+        saved.terminal = Some(reason.clone());
+        saved
+            .steering_queue
+            .push(AgentMessageV1::user("late-steer", "continue"));
+        let recovered = AgentCore::run(
+            &run_input,
+            &mut model,
+            &mut tools,
+            &mut state,
+            &mut events,
+            &FixedClock,
+            &mut budget(BudgetDecision::Continue),
+        )
+        .unwrap();
+        assert_eq!(recovered.terminal_reason, reason);
+        assert_eq!(model.requests.len(), 1);
+        assert_eq!(recovered.state.steering_queue.len(), 1);
+    }
 }
 
 #[test]
@@ -1122,5 +1308,60 @@ fn model_failure_closes_open_turn_and_model_operation_spans() {
     assert!(
         detail.is_some_and(|detail| detail.contains("429")),
         "terminal operation retains the provider error for settlement"
+    );
+}
+
+#[test]
+fn completed_business_retry_preserves_a_different_queued_execution() {
+    let run_input = input(false);
+    let mut model = FakeModel {
+        responses: VecDeque::from([
+            response("assistant-1", "done", vec![]),
+            response("assistant-2", "wrong task", vec![]),
+        ]),
+        requests: vec![],
+    };
+    let mut tools = FakeTools::default();
+    let mut state = MemoryState::default();
+    let mut events = Events::default();
+    AgentCore::run(
+        &run_input,
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut events,
+        &FixedClock,
+        &mut budget(BudgetDecision::Continue),
+    )
+    .unwrap();
+    state
+        .state
+        .as_mut()
+        .unwrap()
+        .follow_up_queue
+        .push(AgentMessageV1::user(
+            "queued-other-execution",
+            "different business request",
+        ));
+    let recovered = AgentCore::run(
+        &run_input,
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut events,
+        &FixedClock,
+        &mut budget(BudgetDecision::Continue),
+    )
+    .unwrap();
+    assert_eq!(recovered.terminal_reason, TerminalReasonV1::Completed);
+    assert_eq!(
+        model.requests.len(),
+        1,
+        "completed original business task must not run the different queued execution"
+    );
+    assert_eq!(
+        recovered.state.follow_up_queue.len(),
+        1,
+        "the next execution retains ownership of its queued prompt"
     );
 }

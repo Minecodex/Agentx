@@ -241,6 +241,7 @@ impl CompactionStrategy {
 pub enum ExternalContextOriginV1 {
     Skill,
     StudioDocument,
+    ApplicationDocument,
 }
 
 /// An immutable, provenance-carrying context fragment resolved by the Worker
@@ -282,6 +283,10 @@ pub struct AgentRunInputV1 {
     pub external_contexts: Vec<ExternalContextV1>,
     pub prompt_message_id: String,
     pub prompt: String,
+    /// Host admission permits already accepted inputs to continue this same
+    /// successfully completed Run. Business Hosts keep this false: queued
+    /// Workflow Executions retain their own prompt and result ownership.
+    pub continue_completed: bool,
     #[serde(default)]
     pub steering_inputs: Vec<crate::AgentMessageV1>,
     #[serde(default)]

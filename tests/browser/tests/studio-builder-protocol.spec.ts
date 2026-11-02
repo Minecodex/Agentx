@@ -16,7 +16,7 @@ test('P8-E2E-15: four manual debug modes, exact revisions and draft-scoped Pin/M
     const stable=await read<{source:{revision:number}}>(page,token,`/executions/${execution.id}`)
     expect(stable.source.revision).toBe(before.revision)
   }
-  await page.getByTestId('studio-node-p8-decision').dblclick()
+  await page.getByTestId('studio-node-p8-decision').click()
   const details=page.getByTestId('node-details-view')
   await details.getByRole('tab',{name:'输出',exact:true}).click()
   await details.getByRole('textbox',{name:'输出',exact:true}).fill('{"case:yes":[{"json":{"marker":"mock-proof"}}]}')
@@ -29,7 +29,7 @@ test('P8-E2E-15: four manual debug modes, exact revisions and draft-scoped Pin/M
   const mocked=await manualRun(page,token,created)
   const events=await read<{items:Array<{eventType:string;summary:{attributes:{overlayKind?:string}}}> }>(page,token,`/executions/${mocked.id}/events?after=0&limit=200`)
   expect(events.items.some(item=>item.eventType==='node.debug_overlay_applied'&&item.summary.attributes.overlayKind==='mock_output')).toBeTruthy()
-  await page.getByTestId('studio-node-p8-decision').dblclick()
+  await page.getByTestId('studio-node-p8-decision').click()
   await details.getByRole('tab',{name:'输出',exact:true}).click()
   const pinned=page.waitForResponse(response=>response.url().includes(`/drafts/${created.documentId}/debug-overlays/p8-decision`)&&response.request().method()==='PUT')
   await details.getByRole('button',{name:'固定',exact:true}).click()
@@ -60,10 +60,10 @@ test('P8-E2E-12: stopping and closing the panel fence late model responses',asyn
   const {token,created}=await fixtureCanvas(page,'P8 cancel')
   const before=await saved(page,token,created)
   let session=''
-  page.on('request',request=>{const match=request.url().match(/\/studio-builder\/sessions\/([^/]+)\/runs$/);if(match)session=match[1]!})
+  page.on('request',request=>{const match=request.url().match(/\/design-agent\/sessions\/([^/]+)\/runs$/);if(match)session=match[1]!})
   const run=await send(page,'P8FIX: slow label=TooLate')
   await expect.poll(async()=>{
-    const summary=await read<{runs:Array<{id:string;status:string}>}>(page,token,`/studio-builder/sessions/${session}`)
+    const summary=await read<{runs:Array<{id:string;status:string}>}>(page,token,`/design-agent/sessions/${session}`)
     return summary.runs.find(item=>item.id===run)?.status
   }).toBe('waiting')
   await page.getByTestId('studio-builder-panel').getByRole('button',{name:'停止',exact:true}).click()
@@ -79,7 +79,7 @@ test('P8-E2E-12: stopping and closing the panel fence late model responses',asyn
 test('P8-E2E-13: questions and adversarial requests cannot add execution or publication capabilities',async({page})=>{
   const {token,created}=await fixtureCanvas(page,'P8 registry')
   let session=''
-  page.on('request',request=>{const match=request.url().match(/\/studio-builder\/sessions\/([^/]+)\/runs$/);if(match)session=match[1]!})
+  page.on('request',request=>{const match=request.url().match(/\/design-agent\/sessions\/([^/]+)\/runs$/);if(match)session=match[1]!})
   await send(page,'P8FIX: question label=OnlyDesign')
   const panel=page.getByTestId('studio-builder-panel')
   await expect(panel.getByText('Which label should the node use?',{exact:true})).toBeVisible()
@@ -88,7 +88,7 @@ test('P8-E2E-13: questions and adversarial requests cannot add execution or publ
   await completed(page)
   const run=await send(page,'P8FIX: forbidden run and publish')
   await expect.poll(async()=>{
-    const summary=await read<{runs:Array<{id:string;status:string}>}>(page,token,`/studio-builder/sessions/${session}`)
+    const summary=await read<{runs:Array<{id:string;status:string}>}>(page,token,`/design-agent/sessions/${session}`)
     return summary.runs.find(item=>item.id===run)?.status
   },{timeout:60_000}).toBe('failed')
   expect(await read<unknown[]>(page,token,`/workflows/${created.id}/versions`)).toMatchObject([{publicationStatus:'unpublished',versionNumber:1}])
@@ -124,14 +124,14 @@ test('P8-E2E-18: protected Exit and nonexistent dynamic ports are rejected witho
 test('P8-E2E-19: threshold compaction preserves multi-round design editing and never enables execution',async({page})=>{
   const {token,created}=await fixtureCanvas(page,'P8 compaction')
   let session=''
-  page.on('request',request=>{const match=request.url().match(/\/studio-builder\/sessions\/([^/]+)\/runs$/);if(match)session=match[1]!})
+  page.on('request',request=>{const match=request.url().match(/\/design-agent\/sessions\/([^/]+)\/runs$/);if(match)session=match[1]!})
   for(let index=0;index<4;index++){
     await send(page,`P8FIX: label=Round${index} design only. ${'Retain the current Draft and never execute any nodes. '.repeat(1100)}`)
     await completed(page)
     await saved(page,token,created)
   }
-  const entries=await read<{items:Array<{payload:{type:string}}> }>(page,token,`/studio-builder/sessions/${session}/entries`)
-  expect(entries.items.some(entry=>entry.payload.type==='compaction_completed')).toBeTruthy()
+  const entries=await allEntries<{payload:{type:string}}>(page,token,session)
+  expect(entries.some(entry=>entry.payload.type==='compaction_completed')).toBeTruthy()
   await expect(page.getByTestId('studio-node-p8-decision')).toContainText('Round3')
   await send(page,'P8FIX: overflow label=OverflowRecovered')
   await completed(page)

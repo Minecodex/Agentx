@@ -112,6 +112,7 @@ struct AgentAuthorizationProbe {
     tool_to_call: String,
     model_calls: std::sync::atomic::AtomicUsize,
     visible_tools: Mutex<Vec<Vec<String>>>,
+    mcp_writes: std::sync::atomic::AtomicUsize,
 }
 
 struct StubWorkerProvider {
@@ -284,7 +285,10 @@ impl WorkerProvider for StubWorkerProvider {
                     })
                 }
             }
-            StubWorkerMode::AgentAuthorization(_) if endpoint.ends_with("/mcp") => {
+            StubWorkerMode::AgentAuthorization(probe) if endpoint.ends_with("/mcp") => {
+                if body.get("method").and_then(Value::as_str) == Some("tools/call") {
+                    probe.mcp_writes.fetch_add(1, Ordering::SeqCst);
+                }
                 if body.get("id").is_none() {
                     Value::Null
                 } else if body.get("method").and_then(Value::as_str) == Some("initialize") {
@@ -330,3 +334,9 @@ include!("runtime_slice/trace_batches.rs");
 include!("runtime_slice/resolve_sessions.rs");
 
 include!("runtime_slice/input_interactions.rs");
+include!("runtime_slice/application_pages.rs");
+
+include!("runtime_slice/agent_tool_approval_acceptance.rs");
+
+include!("runtime_slice/application_mcp.rs");
+include!("runtime_slice/design_model_receipts.rs");

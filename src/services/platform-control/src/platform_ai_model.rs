@@ -53,7 +53,11 @@ async fn get_setting(
     if !actor.permissions.iter().any(|p| {
         matches!(
             p.as_str(),
-            "workflow:edit" | "model:view" | "evaluation:view" | "evaluation:manage"
+            "workflow:edit"
+                | "application:manage"
+                | "model:view"
+                | "evaluation:view"
+                | "evaluation:manage"
         )
     }) {
         return Err(ApiError::forbidden(
@@ -202,29 +206,6 @@ fn nullable_model<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<Uuid>, D::Error> {
     Option::<Uuid>::deserialize(deserializer)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::SetPlatformAiModel;
-    use serde_json::json;
-
-    #[test]
-    fn clearing_a_model_requires_an_explicit_null() {
-        assert!(
-            serde_json::from_value::<SetPlatformAiModel>(json!({"expectedVersion":1})).is_err()
-        );
-        let cleared: SetPlatformAiModel =
-            serde_json::from_value(json!({"expectedVersion":1,"modelAliasId":null})).unwrap();
-        assert!(cleared.model_alias_id.is_none());
-        let schema = serde_json::to_value(schemars::schema_for!(SetPlatformAiModel)).unwrap();
-        assert!(
-            schema["required"]
-                .as_array()
-                .unwrap()
-                .contains(&json!("modelAliasId"))
-        );
-    }
 }
 
 pub(crate) async fn freeze_model(
@@ -402,4 +383,27 @@ pub(crate) async fn publish_evaluation_revocations(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SetPlatformAiModel;
+    use serde_json::json;
+
+    #[test]
+    fn clearing_a_model_requires_an_explicit_null() {
+        assert!(
+            serde_json::from_value::<SetPlatformAiModel>(json!({"expectedVersion":1})).is_err()
+        );
+        let cleared: SetPlatformAiModel =
+            serde_json::from_value(json!({"expectedVersion":1,"modelAliasId":null})).unwrap();
+        assert!(cleared.model_alias_id.is_none());
+        let schema = serde_json::to_value(schemars::schema_for!(SetPlatformAiModel)).unwrap();
+        assert!(
+            schema["required"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("modelAliasId"))
+        );
+    }
 }

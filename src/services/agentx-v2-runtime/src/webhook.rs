@@ -99,22 +99,22 @@ fn decode_payload(
             .map(|value| (value, false));
     }
     let mut payload: Value = serde_json::from_slice(body).map_err(|_| "INVALID_JSON")?;
-    if provider == WebhookProviderV1::Wecom {
-        if let Some(encrypted) = payload.get("encrypt").and_then(Value::as_str) {
-            payload = parse_wecom_payload(&decrypt_wecom(encrypted, credentials)?)?;
-        }
+    if provider == WebhookProviderV1::Wecom
+        && let Some(encrypted) = payload.get("encrypt").and_then(Value::as_str)
+    {
+        payload = parse_wecom_payload(&decrypt_wecom(encrypted, credentials)?)?;
     }
-    if provider == WebhookProviderV1::Dingtalk {
-        if let Some(encrypted) = payload.get("encrypt").and_then(Value::as_str) {
-            payload = serde_json::from_slice(&decrypt_dingtalk(encrypted, credentials)?)
-                .map_err(|_| "INVALID_JSON")?;
-        }
+    if provider == WebhookProviderV1::Dingtalk
+        && let Some(encrypted) = payload.get("encrypt").and_then(Value::as_str)
+    {
+        payload = serde_json::from_slice(&decrypt_dingtalk(encrypted, credentials)?)
+            .map_err(|_| "INVALID_JSON")?;
     }
-    if provider == WebhookProviderV1::Feishu {
-        if let Some(encrypted) = payload.get("encrypt").and_then(Value::as_str) {
-            payload = serde_json::from_slice(&decrypt_feishu(encrypted, credentials)?)
-                .map_err(|_| "INVALID_JSON")?;
-        }
+    if provider == WebhookProviderV1::Feishu
+        && let Some(encrypted) = payload.get("encrypt").and_then(Value::as_str)
+    {
+        payload = serde_json::from_slice(&decrypt_feishu(encrypted, credentials)?)
+            .map_err(|_| "INVALID_JSON")?;
     }
     let challenge = payload.get("challenge").is_some()
         || matches!(
@@ -661,6 +661,7 @@ pub(crate) async fn dispatch_event(
             tenant_id,
             application_id,
             crate::execution::InvocationCaller {
+                access: None,
                 wait_inputs: None,
                 trigger_context: Some(context_value),
                 end_user,

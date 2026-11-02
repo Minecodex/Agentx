@@ -144,6 +144,7 @@ function AgentCoreConfiguration({ panel }: { panel: ActionPanelProps }) {
                 {references.map((selected) => (
                   <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1 text-[10px]" key={`${slot.name}:${selected.resourceId}`}>
                     {options.find((option) => option.value === selected.resourceId)?.label ?? selected.resourceId}
+                    {options.find(option=>option.value===selected.resourceId)?.metadata?.toolApproval?.required && <span className="rounded bg-warning/10 px-1 text-warning">{t('applicationMcp.approvalOn')} · #{options.find(option=>option.value===selected.resourceId)?.metadata?.toolApproval?.revision}</span>}
                     <button aria-label={t("studio.inspector.clearResource")} onClick={() => panel.onChange({ resourceReferences: panel.data.resourceReferences.filter((candidate) => !(candidate.bindingRole === slot.name && candidate.resourceId === selected.resourceId)) })} type="button"><X className="size-3" /></button>
                   </span>
                 ))}

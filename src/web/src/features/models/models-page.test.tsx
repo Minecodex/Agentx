@@ -17,6 +17,7 @@ describe('model connection form', () => {
     requests = []
     await i18n.changeLanguage('zh-CN')
     vi.mocked(useAuth).mockReturnValue({
+      sessionId: 1,
       status: 'authenticated', user: undefined, changeToken: undefined,
       setup: vi.fn(), login: vi.fn(), changePassword: vi.fn(), logout: vi.fn(),
       hasPermission: () => true,

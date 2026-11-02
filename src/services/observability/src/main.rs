@@ -460,10 +460,10 @@ async fn ensure_group(state: &AppState) -> Result<()> {
         .arg("MKSTREAM")
         .query_async(&mut redis)
         .await;
-    if let Err(error) = result {
-        if !error.to_string().contains("BUSYGROUP") {
-            return Err(error.into());
-        }
+    if let Err(error) = result
+        && !error.to_string().contains("BUSYGROUP")
+    {
+        return Err(error.into());
     }
     Ok(())
 }

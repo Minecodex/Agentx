@@ -169,7 +169,7 @@ def resolver_counterexamples(context, urls):
 
 def ledger_and_retention(context, urls):
     # Epoch aging is fault injection in the isolated databases, not a production-data migration.
-    query = "SELECT COUNT(*) FROM runtime_calls c WHERE c.source_kind='studio_builder' AND (c.execution_id IS NOT NULL OR c.attempt_id IS NOT NULL OR c.node_execution_id IS NOT NULL OR c.studio_model_binding_json IS NULL AND c.status<>'cancelled')"
+    query = "SELECT COUNT(*) FROM runtime_calls c WHERE c.source_kind='studio_builder' AND (c.execution_id IS NOT NULL OR c.attempt_id IS NOT NULL OR c.node_execution_id IS NOT NULL OR c.design_model_binding_json IS NULL AND c.status<>'cancelled')"
     assert _runtime_mysql(context, query) == "0"
     query = "SELECT COUNT(*) FROM runtime_calls c WHERE c.source_kind='studio_builder' AND c.status='succeeded' AND (c.input_tokens=0 OR c.output_tokens=0 OR c.cost_micros=0 OR (SELECT COUNT(*) FROM quota_usage_ledger q WHERE q.tenant_id=c.tenant_id AND q.scope_type='studio_builder_model' AND q.scope_id=BIN_TO_UUID(c.id))<>2)"
     assert _runtime_mysql(context, query) == "0"
@@ -183,11 +183,11 @@ def ledger_and_retention(context, urls):
         > 0
     )
     before = _runtime_mysql(context, "SELECT SUM(cost_micros) FROM runtime_calls WHERE source_kind='studio_builder'")
-    unknown = _control_mysql(context, "SELECT COUNT(*) FROM studio_builder_runs WHERE status='outcome_unknown'")
-    _control_mysql(context, "UPDATE studio_builder_sessions SET updated_at=UTC_TIMESTAMP()-INTERVAL 200 DAY")
+    unknown = _control_mysql(context, "SELECT COUNT(*) FROM design_agent_runs WHERE status='outcome_unknown'")
+    _control_mysql(context, "UPDATE design_agent_sessions SET updated_at=UTC_TIMESTAMP()-INTERVAL 200 DAY")
     _control_mysql(
         context,
-        "UPDATE studio_builder_runs SET completed_at=UTC_TIMESTAMP()-INTERVAL 200 DAY WHERE status IN ('completed','failed','cancelled')",
+        "UPDATE design_agent_runs SET completed_at=UTC_TIMESTAMP()-INTERVAL 200 DAY WHERE status IN ('completed','failed','cancelled')",
     )
     _runtime_mysql(
         context,
@@ -217,7 +217,7 @@ def ledger_and_retention(context, urls):
                 break
             time.sleep(1)
         assert count == "0", "Settled design payload retention did not run"
-    assert _control_mysql(context, "SELECT COUNT(*) FROM studio_builder_runs WHERE status='outcome_unknown'") == unknown
+    assert _control_mysql(context, "SELECT COUNT(*) FROM design_agent_runs WHERE status='outcome_unknown'") == unknown
     assert (
         _runtime_mysql(context, "SELECT SUM(cost_micros) FROM runtime_calls WHERE source_kind='studio_builder'")
         == before
@@ -225,7 +225,7 @@ def ledger_and_retention(context, urls):
     assert (
         _runtime_mysql(
             context,
-            "SELECT COUNT(*) FROM runtime_calls WHERE source_kind='studio_builder' AND status='succeeded' AND studio_model_binding_json IS NULL",
+            "SELECT COUNT(*) FROM runtime_calls WHERE source_kind='studio_builder' AND status='succeeded' AND design_model_binding_json IS NULL",
         )
         == "0"
     )

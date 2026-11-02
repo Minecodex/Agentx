@@ -14,7 +14,7 @@ Agentx/
 │       ├── packages/{plugin-sdk,plugin-ui,plugin-runner}/
 │       ├── builtin/{core,data,http}/
 │       └── templates/canvas-plugin/
-├── contracts/{openapi,schemas,vendor}/
+├── contracts/{openapi,schemas,sdk,vendor}/
 ├── deploy/
 │   ├── docker/
 │   ├── helm/
@@ -42,13 +42,13 @@ V1 `platform-api`、`trigger-gateway`、`workflow-coordinator`、`trace-writer`�
 
 ### platform-control
 
-唯一承载 `/api/v1`，以 `api,publisher,projector,retention` Role 处理 IAM、Workflow、资源、应用发布、治理投影和 Runtime/Observability BFF。它只访问 Control MySQL/OSS、只读 Vault 和冻结 Internal API。
+唯一承载 `/api/v1`，以 `api,publisher,projector,retention` Role 处理 IAM、Workflow、资源、应用发布、治理投影和 Runtime/Observability BFF。它访问 Control MySQL/OSS、只读 Vault、冻结 Internal API，以及 Dependencies 中 Hydra 的受限管理端点；不访问 Hydra 数据库。
 
 ### agentx-v2-runtime
 
 一个 Package 提供四个 Runtime 二进制：
 
-- `runtime-gateway`：`/gateway/v1`、Session/Message/Invocation、Webhook、SSE、Cancel/Resume 和 Runtime Query。
+- `runtime-gateway`：`/gateway/v1`、Session/Message/Invocation、Webhook、SSE、Cancel/Resume、Runtime Query、已发布业务页/任务、应用 MCP 与 Hydra 公共协议代理/令牌复核。
 - `workflow-runtime`：Coordinator、Trigger、Command、Outbox、Recovery、Artifact、Quota 和 Trace Relay Role。
 - `workflow-worker`：按 Capability 消费任务，使用 Attempt Lease/Fencing 执行 Node、Resource 和 Provider 调用。
 - `sandbox-manager`：OpenSandbox 生命周期、短凭据、Reaper、TTL 和 Provider 对账。
@@ -125,5 +125,9 @@ GET  :9092/metrics
 ## 6. 文件组织与门禁
 
 服务按 Auth/IAM、Workflow、Resource、Application、Evaluation、Governance、Runtime Engine、Query 和 Provider 等领域拆分模块。Workflow Compiler引用校验、Control Webhook以及Agent Runtime的Budget/State/Model/Trace均按该职责拆分。任何前端或后端生产源文件不得超过 2000 行；生成文件和 Migration 必须进入明确允许列表。
+
+工作流与网页创作的通用持久驱动位于 Control `design_agent_*`，领域工具分别位于 `studio_builder_*` 与 `application_ui_*`，共用 `agentx-agent-core`，没有第二套 Agent loop。页面发布、应用 MCP、OAuth 和工具审批按领域模块拆分；`contracts/sdk` 保存固定发布的受限 DOM SDK/样式。Hydra 是 Dependencies 的外部基础设施，不新增自研 OAuth 服务或设计态运行服务。
+
+Runtime 的 Hydra 公共代理与 introspection 适配器是固定内网基础服务调用，与现有 Vault/OpenSandbox 适配器一同登记到 HTTP 边界检查白名单；端点来自部署设置，公共路径有明确允许列表，禁止重定向和环境代理。业务 Provider HTTP 继续统一经过 `ProviderHttpClient`。
 
 当前完成事实和数据访问图见 [当前架构、服务与数据访问图](13-architecture-service-data-map.md)，本地收口证据见 [V2-08A 验收](planv2/evidence/v2-08.md)。生产容量、安全与恢复认证仍属于 V2-08B。

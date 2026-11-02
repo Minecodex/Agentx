@@ -123,7 +123,7 @@ async fn list_approvals(
     let page_size = query.page_size.unwrap_or(20).clamp(1, 100);
     let status = query.status.unwrap_or_default();
     let search = format!("%{}%", query.search.unwrap_or_default().trim());
-    let rows = sqlx::query("SELECT a.id,a.execution_id,a.workflow_id,CONVERT(COALESCE(w.name,BIN_TO_UUID(a.workflow_id)) USING utf8mb4) workflow_name,a.node_id,a.title,a.description,a.request_payload_json,a.buttons_json,a.decision_json,a.status,a.resume_status,a.claimed_by,u.display_name claimed_by_name,a.deadline_at,a.version,a.created_at FROM approval_task_projection a LEFT JOIN workflows w ON w.tenant_id=a.tenant_id AND w.id=a.workflow_id LEFT JOIN users u ON u.tenant_id=a.tenant_id AND u.id=a.claimed_by WHERE a.tenant_id=? AND a.projection_generation=? AND a.projection_deleted=FALSE AND (?='' OR a.status=?) AND (?='%%' OR a.title LIKE ? OR w.name LIKE ?) ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?")
+    let rows = sqlx::query("SELECT a.id,a.execution_id,a.workflow_id,CONVERT(COALESCE(w.name,BIN_TO_UUID(a.workflow_id)) USING utf8mb4) workflow_name,a.node_id,a.title,a.subject_json,a.description,a.request_payload_json,a.buttons_json,a.decision_json,a.status,a.resume_status,a.claimed_by,u.display_name claimed_by_name,a.deadline_at,a.version,a.created_at FROM approval_task_projection a LEFT JOIN workflows w ON w.tenant_id=a.tenant_id AND w.id=a.workflow_id LEFT JOIN users u ON u.tenant_id=a.tenant_id AND u.id=a.claimed_by WHERE a.tenant_id=? AND a.projection_generation=? AND a.projection_deleted=FALSE AND (?='' OR a.status=?) AND (?='%%' OR a.title LIKE ? OR w.name LIKE ?) ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?")
         .bind(actor.tenant_id).bind(view.generation).bind(&status).bind(&status).bind(&search).bind(&search).bind(&search)
         .bind(page_size).bind(u64::from((page - 1) * page_size)).fetch_all(&state.pool).await?;
     let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM approval_task_projection a LEFT JOIN workflows w ON w.tenant_id=a.tenant_id AND w.id=a.workflow_id WHERE a.tenant_id=? AND a.projection_generation=? AND a.projection_deleted=FALSE AND (?='' OR a.status=?) AND (?='%%' OR a.title LIKE ? OR w.name LIKE ?)")
@@ -155,7 +155,7 @@ async fn approval_row(
     id: Uuid,
     generation: u64,
 ) -> ApiResult<sqlx::mysql::MySqlRow> {
-    sqlx::query("SELECT a.id,a.execution_id,a.workflow_id,CONVERT(COALESCE(w.name,BIN_TO_UUID(a.workflow_id)) USING utf8mb4) workflow_name,a.node_id,a.title,a.description,a.request_payload_json,a.buttons_json,a.decision_json,a.status,a.resume_status,a.claimed_by,u.display_name claimed_by_name,a.deadline_at,a.version,a.created_at FROM approval_task_projection a LEFT JOIN workflows w ON w.tenant_id=a.tenant_id AND w.id=a.workflow_id LEFT JOIN users u ON u.tenant_id=a.tenant_id AND u.id=a.claimed_by WHERE a.tenant_id=? AND a.id=? AND a.projection_generation=? AND a.projection_deleted=FALSE")
+    sqlx::query("SELECT a.id,a.execution_id,a.workflow_id,CONVERT(COALESCE(w.name,BIN_TO_UUID(a.workflow_id)) USING utf8mb4) workflow_name,a.node_id,a.title,a.subject_json,a.description,a.request_payload_json,a.buttons_json,a.decision_json,a.status,a.resume_status,a.claimed_by,u.display_name claimed_by_name,a.deadline_at,a.version,a.created_at FROM approval_task_projection a LEFT JOIN workflows w ON w.tenant_id=a.tenant_id AND w.id=a.workflow_id LEFT JOIN users u ON u.tenant_id=a.tenant_id AND u.id=a.claimed_by WHERE a.tenant_id=? AND a.id=? AND a.projection_generation=? AND a.projection_deleted=FALSE")
         .bind(tenant_id).bind(id).bind(generation).fetch_optional(pool).await?.ok_or_else(||ApiError::not_found("Approval"))
 }
 
@@ -164,7 +164,7 @@ fn approval_json(row: sqlx::mysql::MySqlRow) -> ApiResult<Value> {
         "id":row.try_get::<Uuid,_>("id")?,"executionId":row.try_get::<Uuid,_>("execution_id")?,
         "workflowId":row.try_get::<Uuid,_>("workflow_id")?,"workflowName":row.try_get::<String,_>("workflow_name")?,
         "nodeId":row.try_get::<String,_>("node_id")?,"title":row.try_get::<String,_>("title")?,
-        "description":row.try_get::<Option<String>,_>("description")?,"requestPayload":row.try_get::<Option<Value>,_>("request_payload_json")?,
+        "subject":row.try_get::<Value,_>("subject_json")?,"description":row.try_get::<Option<String>,_>("description")?,"requestPayload":row.try_get::<Option<Value>,_>("request_payload_json")?,
         "buttons":row.try_get::<Value,_>("buttons_json")?,"decision":row.try_get::<Option<Value>,_>("decision_json")?,
         "status":row.try_get::<String,_>("status")?,"resumeStatus":row.try_get::<String,_>("resume_status")?,
         "claimedBy":row.try_get::<Option<Uuid>,_>("claimed_by")?,"claimedByName":row.try_get::<Option<String>,_>("claimed_by_name")?,
@@ -601,7 +601,14 @@ pub(crate) async fn post_runtime_admission(
                 "Runtime rejected the governance command",
             ));
         }
-        return response.json().await.map_err(ApiError::internal);
+        let receipt: ApplyReceiptV1 = response.json().await.map_err(ApiError::internal)?;
+        if !receipt.applied {
+            return Err(ApiError::conflict(
+                "RUNTIME_COMMAND_REJECTED",
+                "Runtime rejected the governance command; refresh the current state",
+            ));
+        }
+        return Ok(receipt);
     }
     unreachable!("each admission attempt returns or advances to a bounded retry")
 }

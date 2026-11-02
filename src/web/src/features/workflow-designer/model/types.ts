@@ -446,6 +446,7 @@ export type ResourceOption = {
   pendingRequestId?: string | null;
   manifest?: NodeManifest;
   metadata?: {
+    toolApproval?: { required: boolean; revision: number; timeoutSeconds: number | null };
     connectionId?: string;
     connectionName?: string;
     description?: string;

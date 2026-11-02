@@ -2112,6 +2112,34 @@
       ],
       "type": "object"
     },
+    "RuntimeMcpToolPolicyV1": {
+      "additionalProperties": false,
+      "properties": {
+        "approval": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolApprovalRuleV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contentHash": {
+          "type": "string"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "revision",
+        "contentHash"
+      ],
+      "type": "object"
+    },
     "RuntimeMcpTransportV2": {
       "oneOf": [
         {
@@ -2505,9 +2533,15 @@
               "const": "model",
               "type": "string"
             },
+            "maxOutputTokens": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
             "model": {
               "type": "string"
             },
+            "parameters": true,
             "price": {
               "$ref": "#/$defs/RuntimeModelPriceV1"
             },
@@ -2521,6 +2555,8 @@
             "endpoint",
             "model",
             "contextWindow",
+            "maxOutputTokens",
+            "parameters",
             "price"
           ],
           "type": "object"
@@ -2565,6 +2601,16 @@
             },
             "toolName": {
               "type": "string"
+            },
+            "toolPolicy": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/RuntimeMcpToolPolicyV1"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "toolVersion": {
               "type": "string"
@@ -3156,6 +3202,36 @@
         "observability"
       ],
       "type": "string"
+    },
+    "ToolApprovalRuleV1": {
+      "additionalProperties": false,
+      "properties": {
+        "roleIds": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "timeoutSeconds": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "userIds": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "userIds",
+        "roleIds",
+        "timeoutSeconds"
+      ],
+      "type": "object"
     },
     "ValueNamespace": {
       "enum": [

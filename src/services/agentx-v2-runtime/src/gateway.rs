@@ -36,6 +36,11 @@ use crate::{
     execution::{InvocationCaller, create_chat_runtime_invocation_tx, create_runtime_invocation},
 };
 
+mod application_mcp;
+mod oauth;
+mod pages;
+mod tasks;
+
 const JSON_LIMIT: usize = 1024 * 1024;
 const MULTIPART_LIMIT: usize = 50 * 1024 * 1024;
 const IDEMPOTENCY_RETENTION_DAYS: u64 = 14;
@@ -54,6 +59,16 @@ pub fn router() -> Router<RuntimeState> {
     let rate_limiter = crate::rate_limit::LocalCallerRateLimiter::from_env()
         .expect("Runtime Gateway rate limit configuration must be valid");
     Router::new()
+        .route(
+            "/mcp/applications/{slug}",
+            axum::routing::any(application_mcp::serve),
+        )
+        .route(
+            "/.well-known/oauth-protected-resource/mcp/applications/{slug}",
+            get(application_mcp::metadata),
+        )
+        .route("/pages/{slug}", get(pages::get))
+        .route("/pages/{slug}/invocations", post(pages::invoke))
         .route("/applications/{slug}/sessions", post(create_session))
         .route("/applications/{slug}/invocations", post(create_invocation))
         .route("/workflows/{slug}/invoke", post(invoke_workflow))
@@ -67,6 +82,8 @@ pub fn router() -> Router<RuntimeState> {
             get(list_messages).post(send_message),
         )
         .route("/invocations/{id}", get(get_invocation))
+        .route("/tasks/{id}", get(tasks::get))
+        .route("/applications/{slug}/my-tasks", get(tasks::list))
         .route(
             "/invocations/{id}/waits/{wait_id}/input",
             post(submit_wait_input),
@@ -93,7 +110,8 @@ async fn create_session(
 ) -> RuntimeResult<(StatusCode, Json<SessionResponseV1>)> {
     let caller = authenticate(&state, &headers, Some(&slug)).await?;
     let idempotency_key = idempotency_key(&headers)?;
-    let request_hash = request_hash(&request)?;
+    let access = pages::binding(&headers)?;
+    let request_hash = request_hash(&json!({"request":request,"accessBinding":access}))?;
     let scope = format!(
         "session:create:{}:{}",
         caller.caller_type, caller.subject_id
@@ -131,18 +149,35 @@ async fn create_session(
         .transpose()
         .map_err(|error| RuntimeError::Internal(error.into()))?;
 
-    let route = sqlx::query("SELECT r.active_bundle_id,b.deployment_id,b.workflow_version_id,CAST(JSON_UNQUOTE(JSON_EXTRACT(r.runtime_policy_json,'$.sessionVersionPolicy')) AS CHAR) session_policy FROM application_routes r JOIN deployment_bundles b ON b.id=r.active_bundle_id AND b.tenant_id=r.tenant_id WHERE r.tenant_id=? AND r.application_id=? AND r.status='active' FOR SHARE")
-        .bind(caller.tenant_id).bind(caller.application_id).fetch_optional(&mut *tx).await?.ok_or(RuntimeError::NotFound)?;
-    let policy = route
-        .try_get::<Option<String>, _>("session_policy")?
-        .unwrap_or_else(|| "pinned".into());
+    let selected = if let Some(access) = &access {
+        Some(
+            crate::application_pages::resolve_binding(
+                &mut tx,
+                caller.tenant_id,
+                caller.application_id,
+                access,
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+    let route = sqlx::query("SELECT b.id active_bundle_id,b.deployment_id,b.workflow_version_id,CAST(JSON_UNQUOTE(JSON_EXTRACT(r.runtime_policy_json,'$.sessionVersionPolicy')) AS CHAR) session_policy FROM application_routes r JOIN deployment_bundles b ON b.id=COALESCE(?,r.active_bundle_id) AND b.tenant_id=r.tenant_id WHERE r.tenant_id=? AND r.application_id=? AND r.status='active' FOR SHARE")
+        .bind(selected).bind(caller.tenant_id).bind(caller.application_id).fetch_optional(&mut *tx).await?.ok_or(RuntimeError::NotFound)?;
+    let policy = if access.is_some() {
+        "pinned".into()
+    } else {
+        route
+            .try_get::<Option<String>, _>("session_policy")?
+            .unwrap_or_else(|| "pinned".into())
+    };
     let policy_contract = parse_policy(&policy)?;
     let bundle_id: Uuid = route.try_get("active_bundle_id")?;
     let pinned_bundle = (policy != "follow_deployment").then_some(bundle_id);
     let workflow_version_id: Uuid = route.try_get("workflow_version_id")?;
     let id = Uuid::now_v7();
-    sqlx::query("INSERT INTO application_sessions(id,tenant_id,application_id,application_deployment_id,workflow_version_id,bundle_id,head_bundle_id,version_policy,external_user_id,title,created_by_user_id,user_identity_json,initial_input_json,environment_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .bind(id).bind(caller.tenant_id).bind(caller.application_id).bind(route.try_get::<Uuid,_>("deployment_id")?).bind((policy != "follow_deployment").then_some(workflow_version_id)).bind(pinned_bundle).bind(bundle_id).bind(&policy).bind(&external_user_id).bind(&request.title).bind((caller.caller_type == "user").then_some(caller.subject_id)).bind(&user_identity_json).bind(&request.input).bind(identity_policy.get("environmentId").and_then(Value::as_str).and_then(|value| Uuid::parse_str(value).ok())).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO application_sessions(id,tenant_id,application_id,application_deployment_id,workflow_version_id,bundle_id,head_bundle_id,version_policy,external_user_id,title,created_by_user_id,user_identity_json,initial_input_json,environment_id,owner_caller_type,owner_caller_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(id).bind(caller.tenant_id).bind(caller.application_id).bind(route.try_get::<Uuid,_>("deployment_id")?).bind((policy != "follow_deployment").then_some(workflow_version_id)).bind(pinned_bundle).bind(bundle_id).bind(&policy).bind(&external_user_id).bind(&request.title).bind((caller.caller_type == "user").then_some(caller.subject_id)).bind(&user_identity_json).bind(&request.input).bind(identity_policy.get("environmentId").and_then(Value::as_str).and_then(|value| Uuid::parse_str(value).ok())).bind(caller.caller_type).bind(caller.subject_id).execute(&mut *tx).await?;
     if let Some(bundle) = pinned_bundle {
         sqlx::query("INSERT INTO bundle_references(id,tenant_id,bundle_id,reference_kind,owner_id) VALUES(?,?,?,'pinned_session',?)")
             .bind(Uuid::now_v7()).bind(caller.tenant_id).bind(bundle).bind(id).execute(&mut *tx).await?;
@@ -261,7 +296,7 @@ async fn invoke(
     if !matches!(mode, "sync" | "async") {
         return Err(bad_request("INVALID_RESPONSE_MODE"));
     }
-    if caller.caller_type != "user" && !request.wait_inputs.is_empty() {
+    if caller.caller_type != "user" && request.wait_inputs.is_some() {
         return Err(bad_request("WAIT_PRESET_NOT_ALLOWED"));
     }
     let accepted = create_runtime_invocation(
@@ -269,7 +304,8 @@ async fn invoke(
         caller.tenant_id,
         caller.application_id,
         InvocationCaller {
-            wait_inputs: (caller.caller_type == "user").then_some(request.wait_inputs.clone()),
+            access: pages::binding(headers)?,
+            wait_inputs: request.wait_inputs.clone(),
             trigger_context: None,
             end_user: None,
             caller_type: caller.caller_type,
@@ -312,7 +348,8 @@ async fn send_message(
     }
     let caller = authenticate_resource(&state, &headers, "session", session_id).await?;
     let idempotency_key = idempotency_key(&headers)?;
-    let request_hash = request_hash(&request)?;
+    let access = pages::binding(&headers)?;
+    let request_hash = request_hash(&json!({"request":request,"accessBinding":access}))?;
     let mut tx = state.pool.begin().await?;
     let locked = sqlx::query("SELECT application_id,next_message_sequence,status FROM application_sessions WHERE tenant_id=? AND id=? FOR UPDATE")
         .bind(caller.tenant_id).bind(session_id).fetch_optional(&mut *tx).await?.ok_or(RuntimeError::NotFound)?;
@@ -342,10 +379,14 @@ async fn send_message(
             return Err(bad_request("INVALID_MESSAGE_PART"));
         }
         if let Some(artifact_id) = part.artifact_id {
-            let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM artifacts WHERE tenant_id=? AND id=? AND deleted_at IS NULL)").bind(caller.tenant_id).bind(artifact_id).fetch_one(&mut *tx).await?;
-            if !exists {
-                return Err(RuntimeError::NotFound);
-            }
+            crate::artifact_access::require_input(
+                &mut tx,
+                caller.tenant_id,
+                caller.caller_type,
+                caller.subject_id,
+                artifact_id,
+            )
+            .await?;
         }
     }
     crate::admission::check(
@@ -354,7 +395,7 @@ async fn send_message(
         caller.tenant_id,
     )
     .await?;
-    if caller.caller_type != "user" && !request.wait_inputs.is_empty() {
+    if caller.caller_type != "user" && request.wait_inputs.is_some() {
         return Err(bad_request("WAIT_PRESET_NOT_ALLOWED"));
     }
     let input = chat_message_payload(&request);
@@ -363,7 +404,8 @@ async fn send_message(
         caller.tenant_id,
         caller.application_id,
         InvocationCaller {
-            wait_inputs: (caller.caller_type == "user").then_some(request.wait_inputs.clone()),
+            access,
+            wait_inputs: request.wait_inputs.clone(),
             trigger_context: None,
             end_user: None,
             caller_type: caller.caller_type,
@@ -533,10 +575,30 @@ async fn cancel_invocation(
     headers: HeaderMap,
 ) -> RuntimeResult<(StatusCode, Json<CommandAcceptedV1>)> {
     let caller = authenticate_resource(&state, &headers, "invocation", id).await?;
+    load_invocation(&state, &caller, id).await?;
     let key = idempotency_key(&headers)?;
+    let command_key = format!(
+        "task-cancel:{}",
+        request_hash(&json!([
+            caller.application_id,
+            caller.caller_type,
+            caller.subject_id,
+            key
+        ]))?
+        .as_str()
+    );
     let mut tx = state.pool.begin().await?;
     let row = sqlx::query("SELECT execution_id,status FROM application_invocations WHERE id=? AND tenant_id=? AND application_id=? FOR UPDATE")
         .bind(id).bind(caller.tenant_id).bind(caller.application_id).fetch_optional(&mut *tx).await?.ok_or(RuntimeError::NotFound)?;
+    if let Some(existing) = sqlx::query_scalar::<_,String>("SELECT aggregate_id FROM runtime_commands WHERE tenant_id=? AND command_type='cancel_execution' AND idempotency_key=?")
+        .bind(caller.tenant_id).bind(&command_key).fetch_optional(&mut *tx).await?
+    {
+        if existing != row.try_get::<Uuid,_>("execution_id")?.to_string() {
+            return Err(RuntimeError::Conflict(agentx_runtime_contracts::RuntimePublishErrorCodeV1::IdempotencyConflict,"Cancel request ID was reused for another task".into()));
+        }
+        tx.commit().await?;
+        return Ok((StatusCode::ACCEPTED,Json(CommandAcceptedV1{accepted:true,replayed:true})));
+    }
     if terminal(&row.try_get::<String, _>("status")?) {
         return Err(RuntimeError::Conflict(
             agentx_runtime_contracts::RuntimePublishErrorCodeV1::IdempotencyConflict,
@@ -545,11 +607,11 @@ async fn cancel_invocation(
     }
     let execution_id: Uuid = row.try_get("execution_id")?;
     let result = sqlx::query("INSERT IGNORE INTO runtime_commands(id,tenant_id,command_type,aggregate_type,aggregate_id,idempotency_key,payload_json,status) VALUES(?,?,'cancel_execution','execution',?,?,?,'pending')")
-        .bind(Uuid::now_v7()).bind(caller.tenant_id).bind(execution_id.to_string()).bind(key).bind(json!({"invocationId":id,"executionId":execution_id})).execute(&mut *tx).await?;
+        .bind(Uuid::now_v7()).bind(caller.tenant_id).bind(execution_id.to_string()).bind(&command_key).bind(json!({"invocationId":id,"executionId":execution_id})).execute(&mut *tx).await?;
     let replayed = result.rows_affected() == 0;
     if replayed {
         let existing: String = sqlx::query_scalar("SELECT aggregate_id FROM runtime_commands WHERE tenant_id=? AND command_type='cancel_execution' AND idempotency_key=?")
-            .bind(caller.tenant_id).bind(key).fetch_one(&mut *tx).await?;
+            .bind(caller.tenant_id).bind(&command_key).fetch_one(&mut *tx).await?;
         if existing != execution_id.to_string() {
             return Err(RuntimeError::Conflict(
                 agentx_runtime_contracts::RuntimePublishErrorCodeV1::IdempotencyConflict,
@@ -585,12 +647,20 @@ async fn invocation_events(
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(0);
     let pool = state.pool.clone();
+    let stream_state = state.clone();
+    let stream_headers = headers.clone();
     let tenant_id = caller.tenant_id;
     let mut wakeups = state.wakeups.subscribe(id);
     let stream = async_stream::stream! {
         let _connection = metrics.track("agentx_sse_connections").await;
         let mut cursor = after;
         loop {
+            if authenticate_resource(&stream_state, &stream_headers, "invocation", id).await.is_err()
+                || load_invocation(&stream_state, &caller, id).await.is_err()
+            {
+                yield Ok(Event::default().event("authorization.revoked").data("{}"));
+                break;
+            }
             let mut terminal_seen = false;
             match sqlx::query("SELECT sequence_number,event_type,payload_json FROM invocation_events WHERE tenant_id=? AND invocation_id=? AND sequence_number>? ORDER BY sequence_number LIMIT 100")
                 .bind(tenant_id).bind(id).bind(cursor).fetch_all(&pool).await {
@@ -614,7 +684,7 @@ async fn invocation_events(
             if sqlx::query_scalar::<_, bool>("SELECT status IN ('completed','failed','cancelled') FROM application_invocations WHERE tenant_id=? AND id=?")
                 .bind(tenant_id).bind(id).fetch_one(&pool).await.unwrap_or(false)
             {
-                let latest = sqlx::query_scalar::<_, u64>("SELECT COALESCE(MAX(sequence_number),0) FROM invocation_events WHERE tenant_id=? AND invocation_id=?")
+                let latest = sqlx::query_scalar::<_, u64>("SELECT CAST(COALESCE(MAX(sequence_number),0) AS UNSIGNED) FROM invocation_events WHERE tenant_id=? AND invocation_id=?")
                     .bind(tenant_id).bind(id).fetch_one(&pool).await;
                 if latest.is_ok_and(|latest| cursor >= latest) { break; }
             }
@@ -1047,6 +1117,7 @@ async fn webhook(
         caller.tenant_id,
         caller.application_id,
         InvocationCaller {
+            access: None,
             wait_inputs: None,
             trigger_context: None,
             end_user: None,
@@ -1099,6 +1170,8 @@ async fn authenticate(
                 ..agentx_runtime_contracts::ExecutionOriginV1::system(None)
             },
         })
+    } else if token.starts_with("ory_at_") {
+        oauth::authenticate(state, token, route, None).await
     } else {
         let claims = state.trust.user(token)?;
         let row = sqlx::query("SELECT r.application_id,r.route_key FROM runtime_user_admission u JOIN runtime_user_application_grants g ON g.tenant_id=u.tenant_id AND g.user_id=u.user_id JOIN application_routes r ON r.tenant_id=g.tenant_id AND r.application_id=g.application_id JOIN deployment_heads h ON h.tenant_id=r.tenant_id AND h.application_id=r.application_id JOIN tenant_admission t ON t.tenant_id=r.tenant_id WHERE u.tenant_id=? AND u.user_id=? AND u.status='active' AND u.token_version=? AND g.status='active' AND g.can_invoke=TRUE AND r.status='active' AND r.active_bundle_id=h.bundle_id AND t.status='active' AND r.route_key=? LIMIT 1")
@@ -1121,7 +1194,7 @@ async fn authenticate_resource(
     id: Uuid,
 ) -> RuntimeResult<Caller> {
     let token = bearer_token(headers)?;
-    if token.starts_with("axk_") {
+    if token.starts_with("axk_") || token.starts_with("ory_at_") {
         return authenticate(state, headers, None).await;
     }
     let claims = state.trust.user(token)?;
@@ -1149,7 +1222,7 @@ async fn authenticate_resource(
 
 async fn authenticate_artifact(state: &RuntimeState, headers: &HeaderMap) -> RuntimeResult<Caller> {
     let token = bearer_token(headers)?;
-    if token.starts_with("axk_") {
+    if token.starts_with("axk_") || token.starts_with("ory_at_") {
         return authenticate(state, headers, None).await;
     }
     let claims = state.trust.user(token)?;
@@ -1201,8 +1274,8 @@ async fn load_session(
     caller: &Caller,
     id: Uuid,
 ) -> RuntimeResult<SessionResponseV1> {
-    let row = sqlx::query("SELECT id,application_id,application_deployment_id,workflow_version_id,bundle_id,version_policy,external_user_id,title,status,version,updated_at,user_identity_json FROM application_sessions WHERE tenant_id=? AND application_id=? AND id=?")
-        .bind(caller.tenant_id).bind(caller.application_id).bind(id).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)?;
+    let row = sqlx::query("SELECT id,application_id,application_deployment_id,workflow_version_id,bundle_id,version_policy,external_user_id,title,status,version,updated_at,user_identity_json FROM application_sessions WHERE tenant_id=? AND application_id=? AND id=? AND owner_caller_type=? AND owner_caller_id=?")
+        .bind(caller.tenant_id).bind(caller.application_id).bind(id).bind(caller.caller_type).bind(caller.subject_id).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)?;
     Ok(SessionResponseV1 {
         end_user: row
             .try_get::<Option<Value>, _>("user_identity_json")?
@@ -1228,8 +1301,8 @@ async fn load_invocation(
     caller: &Caller,
     id: Uuid,
 ) -> RuntimeResult<InvocationResponseV1> {
-    let row = sqlx::query("SELECT id,application_id,session_id,execution_id,bundle_id,admission_epoch,status,result_json,error_json,created_at,provider_event_id,conversation_id,trigger_context_json,user_identity_json FROM application_invocations WHERE tenant_id=? AND application_id=? AND id=?")
-        .bind(caller.tenant_id).bind(caller.application_id).bind(id).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)?;
+    let row = sqlx::query("SELECT id,application_id,session_id,execution_id,bundle_id,admission_epoch,status,result_json,error_json,created_at,provider_event_id,conversation_id,trigger_context_json,user_identity_json FROM application_invocations WHERE tenant_id=? AND application_id=? AND id=? AND caller_type=? AND caller_id=?")
+        .bind(caller.tenant_id).bind(caller.application_id).bind(id).bind(caller.caller_type).bind(caller.subject_id).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)?;
     Ok(InvocationResponseV1 {
         messages: crate::workflow_interaction::messages(
             &state.pool,
@@ -1359,6 +1432,13 @@ pub fn public_openapi() -> Value {
     insert_public_schema::<ArtifactUploadResponseV1>(&mut schemas, "ArtifactUploadResponse");
     insert_public_schema::<CommandAcceptedV1>(&mut schemas, "CommandAccepted");
     insert_public_schema::<GatewayErrorV1>(&mut schemas, "GatewayError");
+    insert_public_schema::<agentx_runtime_contracts::TaskViewV1>(&mut schemas, "TaskView");
+    insert_public_schema::<agentx_runtime_contracts::MyTasksPageV1>(&mut schemas, "MyTasksPage");
+    insert_public_schema::<agentx_runtime_contracts::ApplicationPageViewV1>(
+        &mut schemas,
+        "ApplicationPageView",
+    );
+    insert_public_schema::<pages::SubmitPage>(&mut schemas, "SubmitPage");
     insert_public_schema::<agentx_runtime_contracts::SubmitWaitInputV1>(
         &mut schemas,
         "SubmitWaitInput",
@@ -1380,6 +1460,8 @@ pub fn public_openapi() -> Value {
         "openapi":"3.1.0",
         "info":{"title":"Agentx Runtime Gateway API","version":"1","description":"Production Runtime ingress. All write operations require Idempotency-Key."},
         "paths":{
+            "/gateway/v1/pages/{slug}":{"get":public_get("getApplicationPage","ApplicationPageView")},
+            "/gateway/v1/pages/{slug}/invocations":{"post":public_post("invokeApplicationPage","SubmitPage","TaskView","202")},
             "/gateway/v1/applications/{slug}/sessions":{"post":public_post("createSession","CreateSessionRequest","SessionResponse","201")},
             "/gateway/v1/sessions/{id}":{"get":public_get("getSession","SessionResponse")},
             "/gateway/v1/sessions/{id}/messages":{
@@ -1387,6 +1469,17 @@ pub fn public_openapi() -> Value {
                 "post":public_post("sendMessage","MessageRequest","InvocationResponse","202")
             },
             "/gateway/v1/applications/{slug}/invocations":{"post":public_post("createInvocation","InvocationRequest","InvocationResponse","202")},
+            "/gateway/v1/applications/{slug}/my-tasks":{"get":{
+                "operationId":"listMyTasks",
+                "parameters":[
+                    {"name":"slug","in":"path","required":true,"schema":{"type":"string"}},
+                    {"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":50}},
+                    {"name":"cursor","in":"query","required":false,"schema":{"type":"string"}},
+                    {"name":"activeOnly","in":"query","required":false,"schema":{"type":"boolean"}}
+                ],
+                "responses":public_responses("MyTasksPage","200"),"security":[{"runtimeBearer":[]}]
+            }},
+            "/gateway/v1/tasks/{id}":{"get":public_get("getTask","TaskView")},
             "/gateway/v1/workflows/{slug}/invoke":{"post":public_invoke()},
             "/gateway/v1/artifacts":{"post":{
                 "operationId":"uploadArtifact",
@@ -1434,15 +1527,25 @@ pub fn public_openapi() -> Value {
 
 fn insert_public_schema<T: JsonSchema>(schemas: &mut Map<String, Value>, name: &str) {
     let mut schema = serde_json::to_value(schema_for!(T)).expect("public schema serializes");
+    let definitions = schema
+        .as_object_mut()
+        .expect("schema object")
+        .remove("$defs")
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
     rewrite_local_definitions(&mut schema, name);
     schemas.insert(name.to_owned(), schema);
+    for (definition, mut schema) in definitions {
+        rewrite_local_definitions(&mut schema, name);
+        schemas.insert(format!("{name}_{definition}"), schema);
+    }
 }
 
 fn rewrite_local_definitions(value: &mut Value, component: &str) {
     match value {
         Value::String(reference) if reference.starts_with("#/$defs/") => {
             *reference = format!(
-                "#/components/schemas/{component}/$defs/{}",
+                "#/components/schemas/{component}_{}",
                 reference.trim_start_matches("#/$defs/")
             );
         }

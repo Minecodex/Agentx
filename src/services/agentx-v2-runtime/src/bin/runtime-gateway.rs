@@ -113,16 +113,17 @@ async fn main() -> Result<()> {
     });
     let public_gateway = agentx_v2_runtime::gateway::router().layer(runtime_cors()?);
     let router = Router::new()
+        .merge(agentx_v2_runtime::oauth_proxy::routes())
         .route(
-            "/internal/runtime/v1/studio-model:submit",
+            "/internal/runtime/v1/design-model:submit",
             post(agentx_v2_runtime::builder_model::submit),
         )
         .route(
-            "/internal/runtime/v1/studio-model:inspect",
+            "/internal/runtime/v1/design-model:inspect",
             post(agentx_v2_runtime::builder_model::inspect),
         )
         .route(
-            "/internal/runtime/v1/studio-model:cancel",
+            "/internal/runtime/v1/design-model:cancel",
             post(agentx_v2_runtime::builder_model::cancel),
         )
         .route(
@@ -140,6 +141,14 @@ async fn main() -> Result<()> {
         .route(
             "/internal/runtime/v1/bundles:prepare",
             post(agentx_v2_runtime::publish::prepare_bundle),
+        )
+        .route(
+            "/internal/runtime/v1/pages:prepare",
+            post(agentx_v2_runtime::application_pages::prepare),
+        )
+        .route(
+            "/internal/runtime/v1/pages:activate",
+            post(agentx_v2_runtime::application_pages::activate),
         )
         .route(
             "/internal/runtime/v1/admission-commands:apply",

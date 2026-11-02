@@ -940,15 +940,15 @@ fn validate_agent_node(index: usize, node: &WorkflowNode, issues: &mut Vec<Defin
     for (reference_index, reference) in node.resource_references.iter().enumerate() {
         let path = format!("{node_path}.resourceReferences[{reference_index}]");
         // Every embedded Agent resource names its frozen slot via bindingRole.
-        if let Some(binding_role) = reference.binding_role.as_deref() {
-            if binding_role.is_empty() {
-                issue(
-                    issues,
-                    "AGENT_RESOURCE_SLOT_INVALID",
-                    &format!("{path}.bindingRole"),
-                    "Agent attachment bindingRole must not be empty",
-                );
-            }
+        if let Some(binding_role) = reference.binding_role.as_deref()
+            && binding_role.is_empty()
+        {
+            issue(
+                issues,
+                "AGENT_RESOURCE_SLOT_INVALID",
+                &format!("{path}.bindingRole"),
+                "Agent attachment bindingRole must not be empty",
+            );
         }
 
         let valid = match (reference.binding_role.as_deref(), reference.resource_type) {

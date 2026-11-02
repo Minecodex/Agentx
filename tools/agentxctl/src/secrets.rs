@@ -88,6 +88,32 @@ pub async fn ensure_local_secrets(config: &DeploymentConfig, targets: &[&str]) -
         return ensure_existing_secrets(config).await;
     }
     let selected: BTreeSet<_> = targets.iter().copied().collect();
+    if selected.contains("dependencies")
+        && get_secret(config.namespace("dependencies"), "agentx-oauth")
+            .await?
+            .is_none()
+    {
+        let database_password = password();
+        let credentials = Secret::from([
+            ("MYSQL_ROOT_PASSWORD".into(), password()),
+            ("MYSQL_PASSWORD".into(), database_password.clone()),
+            (
+                "DSN".into(),
+                format!(
+                    "mysql://hydra:{database_password}@tcp(hydra-mysql.{}.svc:3306)/agentx_oauth?parseTime=true&max_conns=10&max_idle_conns=4",
+                    config.namespace("dependencies")
+                ),
+            ),
+            ("SECRETS_SYSTEM".into(), password()),
+        ]);
+        apply_secret(
+            config.namespace("dependencies"),
+            "agentx-oauth",
+            &credentials,
+        )
+        .await?;
+    }
+
     let canonical_name = config.string("/global/secrets/dependencies").unwrap();
     let dependencies = config.namespace("dependencies");
     if let Some(mut existing) = get_secret(dependencies, canonical_name).await? {
@@ -557,34 +583,34 @@ fn inspect_secret_references(
         }
         Value::Object(object) => {
             for field in ["secretKeyRef", "secretRef"] {
-                if let Some(reference) = object.get(field).and_then(Value::as_object) {
-                    if reference.get("optional").and_then(Value::as_bool) != Some(true) {
-                        add_reference(
-                            required,
-                            namespace,
-                            reference.get("name").and_then(Value::as_str),
-                            reference.get("key").and_then(Value::as_str),
-                        );
-                    }
+                if let Some(reference) = object.get(field).and_then(Value::as_object)
+                    && reference.get("optional").and_then(Value::as_bool) != Some(true)
+                {
+                    add_reference(
+                        required,
+                        namespace,
+                        reference.get("name").and_then(Value::as_str),
+                        reference.get("key").and_then(Value::as_str),
+                    );
                 }
             }
-            if let Some(secret) = object.get("secret").and_then(Value::as_object) {
-                if secret.get("optional").and_then(Value::as_bool) != Some(true) {
-                    let name = secret.get("secretName").and_then(Value::as_str);
-                    add_reference(required, namespace, name, None);
-                    for item in secret
-                        .get("items")
-                        .and_then(Value::as_array)
-                        .into_iter()
-                        .flatten()
-                    {
-                        add_reference(
-                            required,
-                            namespace,
-                            name,
-                            item.get("key").and_then(Value::as_str),
-                        );
-                    }
+            if let Some(secret) = object.get("secret").and_then(Value::as_object)
+                && secret.get("optional").and_then(Value::as_bool) != Some(true)
+            {
+                let name = secret.get("secretName").and_then(Value::as_str);
+                add_reference(required, namespace, name, None);
+                for item in secret
+                    .get("items")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    add_reference(
+                        required,
+                        namespace,
+                        name,
+                        item.get("key").and_then(Value::as_str),
+                    );
                 }
             }
             for field in ["imagePullSecrets", "tls"] {

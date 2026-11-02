@@ -41,7 +41,7 @@ test('P8-MODEL-01/P8-E2E-16: tenant model is shared with workflow editors; model
   let editorSession=''
   let editorAck:Record<string,unknown>|undefined
   other.on('request',request=>{
-    const match=request.url().match(/\/studio-builder\/sessions\/([^/]+)\/runs$/)
+    const match=request.url().match(/\/design-agent\/sessions\/([^/]+)\/runs$/)
     if(match)editorSession=match[1]!
     if(request.url().endsWith('/acknowledgements')&&request.method()==='POST')editorAck=request.postDataJSON() as Record<string,unknown>
   })
@@ -56,10 +56,10 @@ test('P8-MODEL-01/P8-E2E-16: tenant model is shared with workflow editors; model
   await saved(other,editor,created)
   expect(editorAck).toBeTruthy()
   for(const suffix of ['', '/entries', `/commands/${editorAck!.commandId}`]){
-    const inaccessible=await page.request.get(`/api/v1/studio-builder/sessions/${editorSession}${suffix}`,{headers:{Authorization:`Bearer ${token}`}})
+    const inaccessible=await page.request.get(`/api/v1/design-agent/sessions/${editorSession}${suffix}`,{headers:{Authorization:`Bearer ${token}`}})
     expect(inaccessible.status(),await inaccessible.text()).toBe(404)
   }
-  const foreignAck=await page.request.post(`/api/v1/studio-builder/sessions/${editorSession}/acknowledgements`,{headers:{Authorization:`Bearer ${token}`},data:editorAck})
+  const foreignAck=await page.request.post(`/api/v1/design-agent/sessions/${editorSession}/acknowledgements`,{headers:{Authorization:`Bearer ${token}`},data:editorAck})
   expect(foreignAck.status(),await foreignAck.text()).toBe(404)
   const parent=await read<{definition:{nodes:Record<string,unknown>[]}}>(other,editor,`/workflows/${created.id}/drafts/${created.documentId}`)
   parent.definition.nodes.push({id:'private-child',key:'private_child',type:'sub_workflow',typeVersion:1,name:'Private child',parameters:{workflowVersionId:childVersion.id,inputs:{kind:'object',fields:{}}},resourceReferences:[],settings:{}})
@@ -87,14 +87,14 @@ test('P8-E2E-17: disabled credentials cancel pending work; credential replacemen
   await setModel(page,alias)
   const created=await create(page,`P8 revoke ${Date.now()}`)
   let session=''
-  page.on('request',request=>{const match=request.url().match(/\/studio-builder\/sessions\/([^/]+)\/runs$/);if(match)session=match[1]!})
+  page.on('request',request=>{const match=request.url().match(/\/design-agent\/sessions\/([^/]+)\/runs$/);if(match)session=match[1]!})
   await page.getByRole('button',{name:'AI 创作',exact:true}).click()
   const run=await send(page,'P8FIX: question label=Revoked')
   await expect(page.getByTestId('studio-builder-panel').getByText('Which label should the node use?',{exact:true})).toBeVisible()
   const credential=await read<{name:string;version:number}>(page,token,`/credentials/${model.credentialId}`)
   const changed=await page.request.patch(`/api/v1/credentials/${model.credentialId}`,{headers:{Authorization:`Bearer ${token}`},data:{name:credential.name,version:credential.version,status:'disabled'}})
   expect(changed.ok(),await changed.text()).toBeTruthy()
-  await expect.poll(async()=> (await read<{runs:Array<{id:string;status:string}>}>(page,token,`/studio-builder/sessions/${session}`)).runs.find(item=>item.id===run)?.status).toBe('cancelled')
+  await expect.poll(async()=> (await read<{runs:Array<{id:string;status:string}>}>(page,token,`/design-agent/sessions/${session}`)).runs.find(item=>item.id===run)?.status).toBe('cancelled')
   expect(await setting(page,token)).toMatchObject({status:'unavailable',reason:'credential_disabled'})
   const reenabled=await page.request.patch(`/api/v1/credentials/${model.credentialId}`,{headers:{Authorization:`Bearer ${token}`},data:{name:credential.name,version:(await changed.json()).version,status:'active'}})
   expect(reenabled.ok(),await reenabled.text()).toBeTruthy()
@@ -155,7 +155,7 @@ test('P8-MODEL-03: CAS conflicts and model snapshots across old and new runs',as
   await setModel(page,process.env.AGENTX_E2E_STUDIO_FIXTURE_ALIAS!)
   const created=await create(page,`P8 frozen models ${Date.now()}`)
   let session=''
-  page.on('request',request=>{const match=request.url().match(/\/studio-builder\/sessions\/([^/]+)\/runs$/);if(match)session=match[1]!})
+  page.on('request',request=>{const match=request.url().match(/\/design-agent\/sessions\/([^/]+)\/runs$/);if(match)session=match[1]!})
   await page.getByRole('button',{name:'AI 创作',exact:true}).click()
   const old=await send(page,'P8FIX: question label=OriginalModel')
   await expect(page.getByTestId('studio-builder-panel').getByText('Which label should the node use?',{exact:true})).toBeVisible()
@@ -165,7 +165,7 @@ test('P8-MODEL-03: CAS conflicts and model snapshots across old and new runs',as
   await completed(page)
   const next=await send(page,'P8FIX: label=NextModel')
   await completed(page)
-  const summary=await read<{runs:Array<{id:string;modelAliasId:string;settingVersion:number}>}>(page,token,`/studio-builder/sessions/${session}`)
+  const summary=await read<{runs:Array<{id:string;modelAliasId:string;settingVersion:number}>}>(page,token,`/design-agent/sessions/${session}`)
   expect(summary.runs.find(run=>run.id===old)?.modelAliasId).toBe(process.env.AGENTX_E2E_STUDIO_FIXTURE_ID)
   expect(summary.runs.find(run=>run.id===next)?.modelAliasId).toBe(process.env.AGENTX_E2E_STUDIO_ALTERNATE_ID)
   expect(summary.runs.find(run=>run.id===next)!.settingVersion).toBeGreaterThan(summary.runs.find(run=>run.id===old)!.settingVersion)

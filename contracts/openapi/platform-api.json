@@ -563,6 +563,848 @@
         ],
         "type": "object"
       },
+      "ApplicationMcpDiagnostic": {
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationMcpDiagnostic_DiagnosticCheck"
+            },
+            "type": "array"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "publicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "publicationId",
+          "revision",
+          "passed",
+          "checks"
+        ],
+        "title": "McpDiagnostic",
+        "type": "object"
+      },
+      "ApplicationMcpDiagnostic_DiagnosticCheck": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "passed"
+        ],
+        "type": "object"
+      },
+      "ApplicationMcpRevision": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "deletionStatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "publication": {
+            "$ref": "#/components/schemas/ApplicationMcpRevision_ApplicationMcpPublicationV1"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "publication",
+          "status",
+          "createdAt",
+          "deleted"
+        ],
+        "title": "McpRevision",
+        "type": "object"
+      },
+      "ApplicationMcpRevision_ApplicationMcpPublicationV1": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "bundleId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "chatMapping": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApplicationMcpRevision_ChatMappingV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contractHash": {
+            "type": "string"
+          },
+          "deploymentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expectedRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "inputSchema": true,
+          "outputSchema": true,
+          "protocolVersion": {
+            "type": "string"
+          },
+          "publicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "toolName": {
+            "type": "string"
+          },
+          "waitInputSchema": true
+        },
+        "required": [
+          "tenantId",
+          "applicationId",
+          "publicationId",
+          "deploymentId",
+          "bundleId",
+          "revision",
+          "expectedRevision",
+          "slug",
+          "toolName",
+          "title",
+          "description",
+          "inputSchema",
+          "outputSchema",
+          "waitInputSchema",
+          "contractHash",
+          "enabled",
+          "protocolVersion"
+        ],
+        "type": "object"
+      },
+      "ApplicationMcpRevision_ChatMappingV1": {
+        "additionalProperties": false,
+        "properties": {
+          "answerFilesOutput": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "answerOutput": {
+            "type": "string"
+          },
+          "fileInput": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "questionInput": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "questionInput",
+          "answerOutput"
+        ],
+        "type": "object"
+      },
+      "ApplicationOAuthClient": {
+        "properties": {
+          "clientId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "publicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "redirectUris": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "clientId",
+          "publicationId",
+          "resource",
+          "name",
+          "redirectUris",
+          "scope",
+          "status"
+        ],
+        "title": "ClientView",
+        "type": "object"
+      },
+      "ApplicationOAuthDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "accept": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accept"
+        ],
+        "title": "Decision",
+        "type": "object"
+      },
+      "ApplicationOAuthGrant": {
+        "properties": {
+          "applicationName": {
+            "type": "string"
+          },
+          "clientId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "clientName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "clientId",
+          "clientName",
+          "applicationName"
+        ],
+        "title": "GrantView",
+        "type": "object"
+      },
+      "ApplicationOAuthRedirect": {
+        "properties": {
+          "redirectTo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "redirectTo"
+        ],
+        "title": "Redirect",
+        "type": "object"
+      },
+      "ApplicationOAuthRequest": {
+        "properties": {
+          "applicationName": {
+            "type": "string"
+          },
+          "clientName": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "clientName",
+          "applicationName",
+          "scopes",
+          "resource"
+        ],
+        "title": "AuthorizationRequest",
+        "type": "object"
+      },
+      "ApplicationOAuthRevocation": {
+        "properties": {
+          "revoked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "revoked"
+        ],
+        "title": "Revocation",
+        "type": "object"
+      },
+      "ApplicationPageDraftV1": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "contract": {
+            "$ref": "#/components/schemas/ApplicationPageDraftV1_ApplicationPageContractV1"
+          },
+          "contractHash": {
+            "type": "string"
+          },
+          "html": {
+            "type": "string"
+          },
+          "htmlHash": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "applicationId",
+          "contract",
+          "contractHash",
+          "html",
+          "htmlHash",
+          "revision"
+        ],
+        "title": "ApplicationPageDraftV1",
+        "type": "object"
+      },
+      "ApplicationPageDraftV1_ApplicationApprovalKindV1": {
+        "enum": [
+          "workflow_node",
+          "agent_tool_effect"
+        ],
+        "type": "string"
+      },
+      "ApplicationPageDraftV1_ApplicationApprovalStageV1": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ApplicationPageDraftV1_ApplicationApprovalKindV1"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodeId",
+          "title",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "ApplicationPageDraftV1_ApplicationPageContractV1": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "applicationName": {
+            "type": "string"
+          },
+          "approvalStages": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationPageDraftV1_ApplicationApprovalStageV1"
+            },
+            "type": "array"
+          },
+          "bundleId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "chatMapping": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApplicationPageDraftV1_ChatMappingV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deploymentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inputSchema": true,
+          "maxUploadBytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "outputSchema": true,
+          "sdkVersion": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "waitInputNodes": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationPageDraftV1_WaitInputNodeV1"
+            },
+            "type": "array"
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationId",
+          "applicationName",
+          "deploymentId",
+          "workflowVersionId",
+          "bundleId",
+          "inputSchema",
+          "outputSchema",
+          "waitInputNodes",
+          "approvalStages",
+          "sdkVersion",
+          "maxUploadBytes"
+        ],
+        "type": "object"
+      },
+      "ApplicationPageDraftV1_ChatMappingV1": {
+        "additionalProperties": false,
+        "properties": {
+          "answerFilesOutput": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "answerOutput": {
+            "type": "string"
+          },
+          "fileInput": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "questionInput": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "questionInput",
+          "answerOutput"
+        ],
+        "type": "object"
+      },
+      "ApplicationPageDraftV1_WaitInputNodeV1": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "responseSchema": true
+        },
+        "required": [
+          "path",
+          "nodeId",
+          "name"
+        ],
+        "type": "object"
+      },
+      "ApplicationPageViewV1": {
+        "additionalProperties": false,
+        "properties": {
+          "historical": {
+            "type": "boolean"
+          },
+          "html": {
+            "type": "string"
+          },
+          "publication": {
+            "$ref": "#/components/schemas/ApplicationPageViewV1_ApplicationPagePublicationV1"
+          },
+          "routeKey": {
+            "type": "string"
+          },
+          "sdkScript": {
+            "type": "string"
+          },
+          "stylesheet": {
+            "type": "string"
+          },
+          "taskId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "publication",
+          "html",
+          "sdkScript",
+          "stylesheet",
+          "routeKey",
+          "historical"
+        ],
+        "title": "ApplicationPageViewV1",
+        "type": "object"
+      },
+      "ApplicationPageViewV1_ApplicationApprovalKindV1": {
+        "enum": [
+          "workflow_node",
+          "agent_tool_effect"
+        ],
+        "type": "string"
+      },
+      "ApplicationPageViewV1_ApplicationApprovalStageV1": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ApplicationPageViewV1_ApplicationApprovalKindV1"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodeId",
+          "title",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "ApplicationPageViewV1_ApplicationPageContractV1": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "applicationName": {
+            "type": "string"
+          },
+          "approvalStages": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationPageViewV1_ApplicationApprovalStageV1"
+            },
+            "type": "array"
+          },
+          "bundleId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "chatMapping": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApplicationPageViewV1_ChatMappingV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deploymentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inputSchema": true,
+          "maxUploadBytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "outputSchema": true,
+          "sdkVersion": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "waitInputNodes": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationPageViewV1_WaitInputNodeV1"
+            },
+            "type": "array"
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationId",
+          "applicationName",
+          "deploymentId",
+          "workflowVersionId",
+          "bundleId",
+          "inputSchema",
+          "outputSchema",
+          "waitInputNodes",
+          "approvalStages",
+          "sdkVersion",
+          "maxUploadBytes"
+        ],
+        "type": "object"
+      },
+      "ApplicationPageViewV1_ApplicationPagePublicationV1": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "contract": {
+            "$ref": "#/components/schemas/ApplicationPageViewV1_ApplicationPageContractV1"
+          },
+          "contractHash": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expectedRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "html": {
+            "$ref": "#/components/schemas/ApplicationPageViewV1_RuntimeObjectReferenceV1"
+          },
+          "htmlHash": {
+            "type": "string"
+          },
+          "publicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sdk": {
+            "$ref": "#/components/schemas/ApplicationPageViewV1_RuntimeObjectReferenceV1"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "styleVersion": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stylesheet": {
+            "$ref": "#/components/schemas/ApplicationPageViewV1_RuntimeObjectReferenceV1"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "uiVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "applicationId",
+          "publicationId",
+          "uiVersionId",
+          "revision",
+          "expectedRevision",
+          "slug",
+          "enabled",
+          "contract",
+          "contractHash",
+          "html",
+          "htmlHash",
+          "styleVersion",
+          "sdk",
+          "stylesheet"
+        ],
+        "type": "object"
+      },
+      "ApplicationPageViewV1_ChatMappingV1": {
+        "additionalProperties": false,
+        "properties": {
+          "answerFilesOutput": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "answerOutput": {
+            "type": "string"
+          },
+          "fileInput": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "questionInput": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "questionInput",
+          "answerOutput"
+        ],
+        "type": "object"
+      },
+      "ApplicationPageViewV1_RuntimeObjectReferenceV1": {
+        "additionalProperties": false,
+        "properties": {
+          "contentHash": {
+            "type": "string"
+          },
+          "mediaType": {
+            "type": "string"
+          },
+          "objectId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "objectKey": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "storageDomain": {
+            "$ref": "#/components/schemas/ApplicationPageViewV1_StorageDomain"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "storageDomain",
+          "objectId",
+          "objectKey",
+          "contentHash",
+          "sizeBytes",
+          "mediaType"
+        ],
+        "type": "object"
+      },
+      "ApplicationPageViewV1_StorageDomain": {
+        "enum": [
+          "runtime",
+          "observability"
+        ],
+        "type": "string"
+      },
+      "ApplicationPageViewV1_WaitInputNodeV1": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "responseSchema": true
+        },
+        "required": [
+          "path",
+          "nodeId",
+          "name"
+        ],
+        "type": "object"
+      },
       "ApplicationResponse": {
         "properties": {
           "activeDeploymentId": {
@@ -573,7 +1415,7 @@
             ]
           },
           "activeVersionNumber": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": [
               "integer",
@@ -597,13 +1439,19 @@
             "format": "uuid",
             "type": "string"
           },
+          "publishedPageSlug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "publishedRuntimeConfigRevision": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
           },
           "runtimeConfigRevision": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
           },
@@ -614,11 +1462,10 @@
             "type": "string"
           },
           "updatedAt": {
-            "format": "date-time",
             "type": "string"
           },
           "version": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
           },
@@ -647,6 +1494,7 @@
           "version",
           "updatedAt"
         ],
+        "title": "ApplicationResponse",
         "type": "object"
       },
       "ApplicationTestContract": {
@@ -709,7 +1557,8 @@
           },
           "path": {
             "type": "string"
-          }
+          },
+          "responseSchema": true
         },
         "required": [
           "path",
@@ -878,6 +1727,9 @@
           "status": {
             "type": "string"
           },
+          "subject": {
+            "$ref": "#/components/schemas/ApprovalSubjectV1"
+          },
           "title": {
             "type": "string"
           },
@@ -905,9 +1757,86 @@
           "resumeStatus",
           "version",
           "createdAt",
-          "buttons"
+          "buttons",
+          "subject"
         ],
         "type": "object"
+      },
+      "ApprovalSubjectV1": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "workflow_node",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "agentRunId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "argumentsHash": {
+                "type": "string"
+              },
+              "effectId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "kind": {
+                "const": "agent_tool_effect",
+                "type": "string"
+              },
+              "operationId": {
+                "type": "string"
+              },
+              "policyHash": {
+                "type": "string"
+              },
+              "policyRevision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "toolCallId": {
+                "type": "string"
+              },
+              "toolId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "toolVersion": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "effectId",
+              "agentRunId",
+              "operationId",
+              "toolCallId",
+              "toolId",
+              "toolVersion",
+              "toolName",
+              "argumentsHash",
+              "policyRevision",
+              "policyHash"
+            ],
+            "type": "object"
+          }
+        ],
+        "title": "ApprovalSubjectV1"
       },
       "ArchiveVersionRequest": {
         "additionalProperties": false,
@@ -4157,6 +5086,42 @@
         ],
         "type": "object"
       },
+      "CreateDesignInput": {
+        "additionalProperties": false,
+        "properties": {
+          "editorInstanceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CreateDesignInput_InputKind"
+          },
+          "messageId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "messageId",
+          "editorInstanceId",
+          "kind",
+          "text"
+        ],
+        "title": "CreateInput",
+        "type": "object"
+      },
+      "CreateDesignInput_InputKind": {
+        "enum": [
+          "steering",
+          "follow_up"
+        ],
+        "type": "string"
+      },
       "CreateEntryRequest": {
         "properties": {
           "entryType": {
@@ -4454,6 +5419,143 @@
           "ownerDepartmentId",
           "price"
         ],
+        "type": "object"
+      },
+      "CreatePageBuilderRun": {
+        "additionalProperties": false,
+        "properties": {
+          "prompt": {
+            "type": "string"
+          },
+          "runId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/CreatePageBuilderRun_PageEditorSnapshotV1"
+          }
+        },
+        "required": [
+          "runId",
+          "prompt",
+          "snapshot"
+        ],
+        "title": "CreateRun",
+        "type": "object"
+      },
+      "CreatePageBuilderRun_PageEditorSnapshotV1": {
+        "additionalProperties": false,
+        "properties": {
+          "editorInstanceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "html": {
+            "type": "string"
+          },
+          "htmlHash": {
+            "type": "string"
+          },
+          "localRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "saveStatus": {
+            "$ref": "#/components/schemas/CreatePageBuilderRun_StudioSaveStatusV1"
+          },
+          "serverRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "editorInstanceId",
+          "localRevision",
+          "serverRevision",
+          "html",
+          "htmlHash",
+          "saveStatus"
+        ],
+        "type": "object"
+      },
+      "CreatePageBuilderRun_StudioSaveStatusV1": {
+        "enum": [
+          "saved",
+          "unsaved"
+        ],
+        "type": "string"
+      },
+      "CreatePageBuilderSession": {
+        "additionalProperties": false,
+        "properties": {
+          "snapshot": {
+            "$ref": "#/components/schemas/CreatePageBuilderSession_PageEditorSnapshotV1"
+          }
+        },
+        "required": [
+          "snapshot"
+        ],
+        "title": "CreateSession",
+        "type": "object"
+      },
+      "CreatePageBuilderSession_PageEditorSnapshotV1": {
+        "additionalProperties": false,
+        "properties": {
+          "editorInstanceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "html": {
+            "type": "string"
+          },
+          "htmlHash": {
+            "type": "string"
+          },
+          "localRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "saveStatus": {
+            "$ref": "#/components/schemas/CreatePageBuilderSession_StudioSaveStatusV1"
+          },
+          "serverRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "editorInstanceId",
+          "localRevision",
+          "serverRevision",
+          "html",
+          "htmlHash",
+          "saveStatus"
+        ],
+        "type": "object"
+      },
+      "CreatePageBuilderSession_StudioSaveStatusV1": {
+        "enum": [
+          "saved",
+          "unsaved"
+        ],
+        "type": "string"
+      },
+      "CreatePageDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "deploymentId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deploymentId"
+        ],
+        "title": "CreateDraft",
         "type": "object"
       },
       "CreateResourceGrantRequest": {
@@ -5157,7 +6259,8 @@
           },
           "path": {
             "type": "string"
-          }
+          },
+          "responseSchema": true
         },
         "required": [
           "path",
@@ -5767,6 +6870,32 @@
         ],
         "type": "object"
       },
+      "DesignInputReceipt": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "messageId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "replayed": {
+            "type": "boolean"
+          },
+          "runId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accepted",
+          "runId",
+          "messageId",
+          "replayed"
+        ],
+        "title": "InputReceipt",
+        "type": "object"
+      },
       "DraftResponse": {
         "properties": {
           "archived": {
@@ -6111,6 +7240,7 @@
             "minimum": 0,
             "type": "integer"
           },
+          "responseSchema": true,
           "resumeUrl": {
             "type": [
               "string",
@@ -7152,7 +8282,8 @@
           },
           "path": {
             "type": "string"
-          }
+          },
+          "responseSchema": true
         },
         "required": [
           "path",
@@ -7494,6 +8625,16 @@
       "McpToolResponse": {
         "properties": {
           "annotations": {},
+          "approvalRule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ToolApprovalRuleV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "availability": {
             "type": "string"
           },
@@ -8472,6 +9613,1048 @@
         ],
         "type": "object"
       },
+      "PageBuilderAcknowledgement": {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "report": true,
+          "snapshot": {
+            "$ref": "#/components/schemas/PageBuilderAcknowledgement_PageEditorSnapshotV1"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PageBuilderAcknowledgement_StudioAcknowledgementStatusV1"
+          }
+        },
+        "required": [
+          "commandId",
+          "status",
+          "snapshot"
+        ],
+        "title": "Acknowledgement",
+        "type": "object"
+      },
+      "PageBuilderAcknowledgement_PageEditorSnapshotV1": {
+        "additionalProperties": false,
+        "properties": {
+          "editorInstanceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "html": {
+            "type": "string"
+          },
+          "htmlHash": {
+            "type": "string"
+          },
+          "localRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "saveStatus": {
+            "$ref": "#/components/schemas/PageBuilderAcknowledgement_StudioSaveStatusV1"
+          },
+          "serverRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "editorInstanceId",
+          "localRevision",
+          "serverRevision",
+          "html",
+          "htmlHash",
+          "saveStatus"
+        ],
+        "type": "object"
+      },
+      "PageBuilderAcknowledgement_StudioAcknowledgementStatusV1": {
+        "enum": [
+          "applied",
+          "stale",
+          "read_only",
+          "rejected"
+        ],
+        "type": "string"
+      },
+      "PageBuilderAcknowledgement_StudioSaveStatusV1": {
+        "enum": [
+          "saved",
+          "unsaved"
+        ],
+        "type": "string"
+      },
+      "PageBuilderSessionV1": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/PageBuilderSessionV1_StudioBuilderRunSummaryV1"
+            },
+            "type": "array"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/PageBuilderSessionV1_PageEditorSnapshotV1"
+          },
+          "uiDraftId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "uiDraftId",
+          "snapshot",
+          "runs"
+        ],
+        "title": "PageBuilderSessionV1",
+        "type": "object"
+      },
+      "PageBuilderSessionV1_PageEditorSnapshotV1": {
+        "additionalProperties": false,
+        "properties": {
+          "editorInstanceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "html": {
+            "type": "string"
+          },
+          "htmlHash": {
+            "type": "string"
+          },
+          "localRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "saveStatus": {
+            "$ref": "#/components/schemas/PageBuilderSessionV1_StudioSaveStatusV1"
+          },
+          "serverRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "editorInstanceId",
+          "localRevision",
+          "serverRevision",
+          "html",
+          "htmlHash",
+          "saveStatus"
+        ],
+        "type": "object"
+      },
+      "PageBuilderSessionV1_StudioBuilderRunSummaryV1": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "modelAliasId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "settingVersion": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "modelAliasId",
+          "settingVersion"
+        ],
+        "type": "object"
+      },
+      "PageBuilderSessionV1_StudioSaveStatusV1": {
+        "enum": [
+          "saved",
+          "unsaved"
+        ],
+        "type": "string"
+      },
+      "PageCheckReceipt": {
+        "properties": {
+          "recorded": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "recorded"
+        ],
+        "title": "PageCheckReceipt",
+        "type": "object"
+      },
+      "PageCheckReport": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "contractHash": {
+            "type": "string"
+          },
+          "diagnosticText": {
+            "maxLength": 8000,
+            "type": "string"
+          },
+          "errors": {
+            "items": true,
+            "type": "array"
+          },
+          "fields": {
+            "items": true,
+            "type": "array"
+          },
+          "formalRequests": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "htmlHash": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "sdkVersion": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "synthetic": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "htmlHash",
+          "contractHash",
+          "sdkVersion",
+          "mode",
+          "synthetic",
+          "formalRequests",
+          "errors",
+          "fields",
+          "actions",
+          "diagnosticText"
+        ],
+        "title": "PageCheckReport",
+        "type": "object"
+      },
+      "PageEditCommandV1": {
+        "additionalProperties": false,
+        "properties": {
+          "baseHtmlHash": {
+            "type": "string"
+          },
+          "baseLocalRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "baseServerRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "commandId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "editorInstanceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "html": {
+            "type": "string"
+          },
+          "htmlHash": {
+            "type": "string"
+          },
+          "runId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "uiDraftId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "commandId",
+          "runId",
+          "uiDraftId",
+          "editorInstanceId",
+          "baseLocalRevision",
+          "baseServerRevision",
+          "baseHtmlHash",
+          "html",
+          "htmlHash",
+          "summary"
+        ],
+        "title": "PageEditCommandV1",
+        "type": "object"
+      },
+      "PageEditorSnapshotV1": {
+        "additionalProperties": false,
+        "properties": {
+          "editorInstanceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "html": {
+            "type": "string"
+          },
+          "htmlHash": {
+            "type": "string"
+          },
+          "localRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "saveStatus": {
+            "$ref": "#/components/schemas/PageEditorSnapshotV1_StudioSaveStatusV1"
+          },
+          "serverRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "editorInstanceId",
+          "localRevision",
+          "serverRevision",
+          "html",
+          "htmlHash",
+          "saveStatus"
+        ],
+        "title": "PageEditorSnapshotV1",
+        "type": "object"
+      },
+      "PageEditorSnapshotV1_StudioSaveStatusV1": {
+        "enum": [
+          "saved",
+          "unsaved"
+        ],
+        "type": "string"
+      },
+      "PagePublicationStatus": {
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PagePublicationStatus_ApplicationPagePublicationV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "uiVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "uiVersionId",
+          "revision",
+          "status",
+          "slug"
+        ],
+        "title": "PublicationStatus",
+        "type": "object"
+      },
+      "PagePublicationStatus_ApplicationApprovalKindV1": {
+        "enum": [
+          "workflow_node",
+          "agent_tool_effect"
+        ],
+        "type": "string"
+      },
+      "PagePublicationStatus_ApplicationApprovalStageV1": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/PagePublicationStatus_ApplicationApprovalKindV1"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodeId",
+          "title",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "PagePublicationStatus_ApplicationPageContractV1": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "applicationName": {
+            "type": "string"
+          },
+          "approvalStages": {
+            "items": {
+              "$ref": "#/components/schemas/PagePublicationStatus_ApplicationApprovalStageV1"
+            },
+            "type": "array"
+          },
+          "bundleId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "chatMapping": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PagePublicationStatus_ChatMappingV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deploymentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inputSchema": true,
+          "maxUploadBytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "outputSchema": true,
+          "sdkVersion": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "waitInputNodes": {
+            "items": {
+              "$ref": "#/components/schemas/PagePublicationStatus_WaitInputNodeV1"
+            },
+            "type": "array"
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationId",
+          "applicationName",
+          "deploymentId",
+          "workflowVersionId",
+          "bundleId",
+          "inputSchema",
+          "outputSchema",
+          "waitInputNodes",
+          "approvalStages",
+          "sdkVersion",
+          "maxUploadBytes"
+        ],
+        "type": "object"
+      },
+      "PagePublicationStatus_ApplicationPagePublicationV1": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "contract": {
+            "$ref": "#/components/schemas/PagePublicationStatus_ApplicationPageContractV1"
+          },
+          "contractHash": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expectedRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "html": {
+            "$ref": "#/components/schemas/PagePublicationStatus_RuntimeObjectReferenceV1"
+          },
+          "htmlHash": {
+            "type": "string"
+          },
+          "publicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sdk": {
+            "$ref": "#/components/schemas/PagePublicationStatus_RuntimeObjectReferenceV1"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "styleVersion": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stylesheet": {
+            "$ref": "#/components/schemas/PagePublicationStatus_RuntimeObjectReferenceV1"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "uiVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "applicationId",
+          "publicationId",
+          "uiVersionId",
+          "revision",
+          "expectedRevision",
+          "slug",
+          "enabled",
+          "contract",
+          "contractHash",
+          "html",
+          "htmlHash",
+          "styleVersion",
+          "sdk",
+          "stylesheet"
+        ],
+        "type": "object"
+      },
+      "PagePublicationStatus_ChatMappingV1": {
+        "additionalProperties": false,
+        "properties": {
+          "answerFilesOutput": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "answerOutput": {
+            "type": "string"
+          },
+          "fileInput": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "questionInput": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "questionInput",
+          "answerOutput"
+        ],
+        "type": "object"
+      },
+      "PagePublicationStatus_RuntimeObjectReferenceV1": {
+        "additionalProperties": false,
+        "properties": {
+          "contentHash": {
+            "type": "string"
+          },
+          "mediaType": {
+            "type": "string"
+          },
+          "objectId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "objectKey": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "storageDomain": {
+            "$ref": "#/components/schemas/PagePublicationStatus_StorageDomain"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "storageDomain",
+          "objectId",
+          "objectKey",
+          "contentHash",
+          "sizeBytes",
+          "mediaType"
+        ],
+        "type": "object"
+      },
+      "PagePublicationStatus_StorageDomain": {
+        "enum": [
+          "runtime",
+          "observability"
+        ],
+        "type": "string"
+      },
+      "PagePublicationStatus_WaitInputNodeV1": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "responseSchema": true
+        },
+        "required": [
+          "path",
+          "nodeId",
+          "name"
+        ],
+        "type": "object"
+      },
+      "PagePublications": {
+        "properties": {
+          "activePublicationId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "publications": {
+            "items": {
+              "$ref": "#/components/schemas/PagePublications_PublicationStatus"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "revision",
+          "enabled",
+          "publications"
+        ],
+        "title": "PagePublications",
+        "type": "object"
+      },
+      "PagePublications_ApplicationApprovalKindV1": {
+        "enum": [
+          "workflow_node",
+          "agent_tool_effect"
+        ],
+        "type": "string"
+      },
+      "PagePublications_ApplicationApprovalStageV1": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/PagePublications_ApplicationApprovalKindV1"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodeId",
+          "title",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "PagePublications_ApplicationPageContractV1": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "applicationName": {
+            "type": "string"
+          },
+          "approvalStages": {
+            "items": {
+              "$ref": "#/components/schemas/PagePublications_ApplicationApprovalStageV1"
+            },
+            "type": "array"
+          },
+          "bundleId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "chatMapping": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PagePublications_ChatMappingV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deploymentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inputSchema": true,
+          "maxUploadBytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "outputSchema": true,
+          "sdkVersion": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "waitInputNodes": {
+            "items": {
+              "$ref": "#/components/schemas/PagePublications_WaitInputNodeV1"
+            },
+            "type": "array"
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationId",
+          "applicationName",
+          "deploymentId",
+          "workflowVersionId",
+          "bundleId",
+          "inputSchema",
+          "outputSchema",
+          "waitInputNodes",
+          "approvalStages",
+          "sdkVersion",
+          "maxUploadBytes"
+        ],
+        "type": "object"
+      },
+      "PagePublications_ApplicationPagePublicationV1": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "contract": {
+            "$ref": "#/components/schemas/PagePublications_ApplicationPageContractV1"
+          },
+          "contractHash": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expectedRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "html": {
+            "$ref": "#/components/schemas/PagePublications_RuntimeObjectReferenceV1"
+          },
+          "htmlHash": {
+            "type": "string"
+          },
+          "publicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sdk": {
+            "$ref": "#/components/schemas/PagePublications_RuntimeObjectReferenceV1"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "styleVersion": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stylesheet": {
+            "$ref": "#/components/schemas/PagePublications_RuntimeObjectReferenceV1"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "uiVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "applicationId",
+          "publicationId",
+          "uiVersionId",
+          "revision",
+          "expectedRevision",
+          "slug",
+          "enabled",
+          "contract",
+          "contractHash",
+          "html",
+          "htmlHash",
+          "styleVersion",
+          "sdk",
+          "stylesheet"
+        ],
+        "type": "object"
+      },
+      "PagePublications_ChatMappingV1": {
+        "additionalProperties": false,
+        "properties": {
+          "answerFilesOutput": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "answerOutput": {
+            "type": "string"
+          },
+          "fileInput": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "questionInput": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "questionInput",
+          "answerOutput"
+        ],
+        "type": "object"
+      },
+      "PagePublications_PublicationStatus": {
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PagePublications_ApplicationPagePublicationV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "uiVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "uiVersionId",
+          "revision",
+          "status",
+          "slug"
+        ],
+        "type": "object"
+      },
+      "PagePublications_RuntimeObjectReferenceV1": {
+        "additionalProperties": false,
+        "properties": {
+          "contentHash": {
+            "type": "string"
+          },
+          "mediaType": {
+            "type": "string"
+          },
+          "objectId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "objectKey": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "storageDomain": {
+            "$ref": "#/components/schemas/PagePublications_StorageDomain"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "storageDomain",
+          "objectId",
+          "objectKey",
+          "contentHash",
+          "sizeBytes",
+          "mediaType"
+        ],
+        "type": "object"
+      },
+      "PagePublications_StorageDomain": {
+        "enum": [
+          "runtime",
+          "observability"
+        ],
+        "type": "string"
+      },
+      "PagePublications_WaitInputNodeV1": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "responseSchema": true
+        },
+        "required": [
+          "path",
+          "nodeId",
+          "name"
+        ],
+        "type": "object"
+      },
       "PermissionResponse": {
         "properties": {
           "description": {
@@ -8728,6 +10911,42 @@
         ],
         "type": "object"
       },
+      "PublishApplicationMcp": {
+        "additionalProperties": false,
+        "properties": {
+          "deploymentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expectedRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "toolName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deploymentId",
+          "expectedRevision",
+          "slug",
+          "toolName",
+          "description",
+          "enabled"
+        ],
+        "title": "PublishMcp",
+        "type": "object"
+      },
       "PublishAttemptResponse": {
         "properties": {
           "activationSequence": {
@@ -8788,6 +11007,51 @@
           "activationSequence",
           "updatedAt"
         ],
+        "type": "object"
+      },
+      "PublishPage": {
+        "additionalProperties": false,
+        "properties": {
+          "draftId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expectedDraftRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "expectedPublicationRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "uiVersionId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "expectedPublicationRevision",
+          "slug",
+          "enabled"
+        ],
+        "title": "PublishPage",
         "type": "object"
       },
       "PublishSkillVersionRequest": {
@@ -9012,6 +11276,36 @@
           "targetUserId",
           "version"
         ],
+        "type": "object"
+      },
+      "RegisterApplicationOAuthClient": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "publicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "redirectUris": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestId",
+          "publicationId",
+          "name",
+          "redirectUris"
+        ],
+        "title": "RegisterClient",
         "type": "object"
       },
       "ResourceAuthorizationInput": {
@@ -10720,6 +13014,48 @@
           "expectedRevision",
           "definition"
         ],
+        "type": "object"
+      },
+      "SavePageDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "baseRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "html": {
+            "type": "string"
+          },
+          "saveId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "saveId",
+          "baseRevision",
+          "html"
+        ],
+        "title": "SaveDraft",
+        "type": "object"
+      },
+      "SavePageReceipt": {
+        "properties": {
+          "htmlHash": {
+            "type": "string"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "htmlHash"
+        ],
+        "title": "SaveReceipt",
         "type": "object"
       },
       "SaveTestCaseRequest": {
@@ -15977,6 +18313,37 @@
         ],
         "type": "object"
       },
+      "ToolApprovalRuleV1": {
+        "additionalProperties": false,
+        "properties": {
+          "roleIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "timeoutSeconds": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "userIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "userIds",
+          "roleIds",
+          "timeoutSeconds"
+        ],
+        "title": "ToolApprovalRuleV1",
+        "type": "object"
+      },
       "TraceContent": {
         "properties": {
           "contentRef": {
@@ -16713,7 +19080,18 @@
         "type": "object"
       },
       "UpdateMcpToolPolicyRequest": {
+        "additionalProperties": false,
         "properties": {
+          "approvalRule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateMcpToolPolicyRequest_ToolApprovalRuleV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "debugEnabled": {
             "type": "boolean"
           },
@@ -16724,12 +19102,12 @@
             "type": "string"
           },
           "timeoutSeconds": {
-            "format": "int32",
+            "format": "uint32",
             "minimum": 0,
             "type": "integer"
           },
           "version": {
-            "format": "int64",
+            "format": "uint64",
             "minimum": 0,
             "type": "integer"
           }
@@ -16740,6 +19118,37 @@
           "timeoutSeconds",
           "sideEffect",
           "version"
+        ],
+        "title": "PolicyRequest",
+        "type": "object"
+      },
+      "UpdateMcpToolPolicyRequest_ToolApprovalRuleV1": {
+        "additionalProperties": false,
+        "properties": {
+          "roleIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "timeoutSeconds": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "userIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "userIds",
+          "roleIds",
+          "timeoutSeconds"
         ],
         "type": "object"
       },
@@ -17359,7 +19768,8 @@
           },
           "path": {
             "type": "string"
-          }
+          },
+          "responseSchema": true
         },
         "required": [
           "path",
@@ -19115,6 +21525,182 @@
         ]
       }
     },
+    "/api/v1/application-ui/sessions/{session}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageBuilderSessionV1"
+                }
+              }
+            },
+            "description": "Application page authoring result"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "409": {
+            "description": "Stale binding, revision or request identity"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/application-ui/sessions/{session}/acknowledgements": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageBuilderAcknowledgement"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Application page authoring result"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "409": {
+            "description": "Stale binding, revision or request identity"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/application-ui/sessions/{session}/runs": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePageBuilderRun"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Application page authoring result"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "409": {
+            "description": "Stale binding, revision or request identity"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/application-ui/sessions/{session}/snapshot": {
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageEditorSnapshotV1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Application page authoring result"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "409": {
+            "description": "Stale binding, revision or request identity"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/applications": {
       "get": {
         "operationId": "list_applications",
@@ -20280,6 +22866,275 @@
         ]
       }
     },
+    "/api/v1/applications/{application}/mcp/clients": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApplicationOAuthClient"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Application OAuth result"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterApplicationOAuthClient"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationOAuthClient"
+                }
+              }
+            },
+            "description": "Application OAuth result"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/mcp/clients/{client}": {
+      "delete": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "client",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationOAuthRevocation"
+                }
+              }
+            },
+            "description": "Application OAuth result"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/mcp/diagnostics": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "publicationId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationMcpDiagnostic"
+                }
+              }
+            },
+            "description": "Application MCP publication result"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/mcp/publications": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApplicationMcpRevision"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Application MCP publication result"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishApplicationMcp"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationMcpRevision"
+                }
+              }
+            },
+            "description": "Application MCP publication result"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/mcp/publications/{publication}": {
+      "delete": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "publication",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationMcpRevision"
+                }
+              }
+            },
+            "description": "Application MCP publication result"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/applications/{application}/test-case-validation": {
       "post": {
         "parameters": [
@@ -20348,6 +23203,428 @@
               }
             },
             "description": "Application test operation"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/ui/drafts": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApplicationPageDraftV1"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Application page authoring result"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "409": {
+            "description": "Stale binding, revision or request identity"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePageDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationPageDraftV1"
+                }
+              }
+            },
+            "description": "Application page authoring result"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "409": {
+            "description": "Stale binding, revision or request identity"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/ui/drafts/{draft}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationPageDraftV1"
+                }
+              }
+            },
+            "description": "Application page authoring result"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "409": {
+            "description": "Stale binding, revision or request identity"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavePageDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavePageReceipt"
+                }
+              }
+            },
+            "description": "Application page authoring result"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "409": {
+            "description": "Stale binding, revision or request identity"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/ui/drafts/{draft}/builder-sessions": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePageBuilderSession"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageBuilderSessionV1"
+                }
+              }
+            },
+            "description": "Application page authoring result"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "409": {
+            "description": "Stale binding, revision or request identity"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/ui/drafts/{draft}/checks": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageCheckReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageCheckReceipt"
+                }
+              }
+            },
+            "description": "Application page publication result"
+          },
+          "409": {
+            "description": "Page revision or address conflict"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/ui/publications": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagePublications"
+                }
+              }
+            },
+            "description": "Application page publication result"
+          },
+          "409": {
+            "description": "Page revision or address conflict"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishPage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagePublicationStatus"
+                }
+              }
+            },
+            "description": "Application page publication result"
+          },
+          "409": {
+            "description": "Page revision or address conflict"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications/{application}/ui/publications/{publication}/preview": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "publication",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationPageViewV1"
+                }
+              }
+            },
+            "description": "Application page publication result"
+          },
+          "409": {
+            "description": "Page revision or address conflict"
           }
         },
         "security": [
@@ -22387,6 +25664,389 @@
         "responses": {},
         "tags": [
           "resource_access"
+        ]
+      }
+    },
+    "/api/v1/design-agent/sessions/{session}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudioBuilderSessionV1"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/design-agent/sessions/{session}/acknowledgements": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudioEditorAcknowledgementV1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/design-agent/sessions/{session}/answers": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudioBuilderAnswer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/design-agent/sessions/{session}/commands/{command}/receipt": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "command",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuilderCommandReceipt"
+                }
+              }
+            },
+            "description": "Durable editor command status"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/design-agent/sessions/{session}/entries": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/design-agent/sessions/{session}/events": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/design-agent/sessions/{session}/runs": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBuilderRun"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/design-agent/sessions/{session}/runs/{run}/cancel": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/design-agent/sessions/{session}/runs/{run}/inputs": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDesignInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignInputReceipt"
+                }
+              }
+            },
+            "description": "Guidance accepted for this original run"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Session or run not found"
+          },
+          "409": {
+            "description": "Closed run, stale editor, conflicting identity, or guidance limit"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "Design Agent"
+        ]
+      }
+    },
+    "/api/v1/design-agent/sessions/{session}/snapshot": {
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudioEditorSnapshotV1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
         ]
       }
     },
@@ -24695,6 +28355,148 @@
         ]
       }
     },
+    "/api/v1/oauth/grants": {
+      "get": {
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApplicationOAuthGrant"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Application OAuth result"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/oauth/grants/{client}": {
+      "delete": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "client",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationOAuthRevocation"
+                }
+              }
+            },
+            "description": "Application OAuth result"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/oauth/requests/{kind}/{challenge}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "challenge",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationOAuthRequest"
+                }
+              }
+            },
+            "description": "Application OAuth result"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "challenge",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationOAuthDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationOAuthRedirect"
+                }
+              }
+            },
+            "description": "Application OAuth result"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/permissions": {
       "get": {
         "operationId": "list_permissions",
@@ -25758,326 +29560,6 @@
         "responses": {},
         "tags": [
           "skills_control"
-        ]
-      }
-    },
-    "/api/v1/studio-builder/sessions/{session}": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StudioBuilderSessionV1"
-                }
-              }
-            },
-            "description": "Success"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/studio-builder/sessions/{session}/acknowledgements": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StudioEditorAcknowledgementV1"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/studio-builder/sessions/{session}/answers": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StudioBuilderAnswer"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/studio-builder/sessions/{session}/commands/{command}/receipt": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "command",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BuilderCommandReceipt"
-                }
-              }
-            },
-            "description": "Durable editor command status"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/studio-builder/sessions/{session}/entries": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "after",
-            "schema": {
-              "minimum": 0,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/studio-builder/sessions/{session}/events": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "after",
-            "schema": {
-              "minimum": 0,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/event-stream": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Success"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/studio-builder/sessions/{session}/runs": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateBuilderRun"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/studio-builder/sessions/{session}/runs/{run}/cancel": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "run",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/studio-builder/sessions/{session}/snapshot": {
-      "put": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StudioEditorSnapshotV1"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
         ]
       }
     },
@@ -27787,6 +31269,6 @@
       "name": "Agentx M3"
     }
   ],
-  "x-agentx-contract-version": "plan8",
+  "x-agentx-contract-version": "plan9",
   "x-agentx-generator": "platform-control"
 }

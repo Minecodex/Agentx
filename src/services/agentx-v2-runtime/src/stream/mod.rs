@@ -355,10 +355,11 @@ pub async fn channel_status(
     let claims = state
         .trust
         .delegation(&headers, tenant_id, "runtime.channels.status")?;
-    if let Some(application_id) = application_id {
-        if !claims.tenant_wide && !claims.application_ids.contains(&application_id) {
-            return Err(crate::error::RuntimeError::Unauthorized);
-        }
+    if let Some(application_id) = application_id
+        && !claims.tenant_wide
+        && !claims.application_ids.contains(&application_id)
+    {
+        return Err(crate::error::RuntimeError::Unauthorized);
     }
     let rows = sqlx::query("SELECT id,application_id,channel_mode,connection_status,connection_error,last_connected_at,heartbeat_at FROM webhook_bindings WHERE tenant_id=? AND channel_mode='stream' AND (? IS NULL OR application_id=?)")
         .bind(tenant_id).bind(application_id).bind(application_id)

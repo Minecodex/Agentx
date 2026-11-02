@@ -15,6 +15,7 @@ pub struct WaitInputNodeV1 {
     pub path: String,
     pub node_id: String,
     pub name: String,
+    pub response_schema: Option<Value>,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -37,6 +38,7 @@ pub struct InputWaitV1 {
     pub node_path: String,
     pub occurrence: u32,
     pub status: String,
+    pub response_schema: Option<Value>,
     pub resume_url: Option<String>,
     pub expires_at: Option<String>,
     pub content: Option<Value>,

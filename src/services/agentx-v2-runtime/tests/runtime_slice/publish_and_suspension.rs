@@ -172,12 +172,6 @@ async fn v2_publish_execution_query_recovery_and_gc_are_fenced_and_idempotent() 
         authenticate_api_key(&fixture.state.pool, "runtime-slice", &fixture.api_key).await,
         Err(RuntimeError::Unauthorized)
     ));
-    let rejected = rollback_request(&fixture, &second, Some(3), 4, 1, "rollback:revoked").await;
-    assert_eq!(rejected.status, PublishReceiptStatusV1::Rejected);
-    assert!(matches!(
-        rejected.rejection.unwrap().code,
-        agentx_runtime_contracts::RuntimePublishErrorCodeV1::AdmissionPrerequisiteMissing
-    ));
     let key_status: String =
         sqlx::query_scalar("SELECT status FROM api_key_admission WHERE tenant_id=? AND key_id=?")
             .bind(fixture.tenant_id)
@@ -208,6 +202,8 @@ async fn v2_publish_execution_query_recovery_and_gc_are_fenced_and_idempotent() 
     retention_dry_run_reference_block_and_object_sweep_are_fenced(&fixture).await;
     event_sequencer_quarantines_invalid_payload_without_blocking_valid_events(&fixture).await;
     runtime_user_projection_orders_by_token_version(&fixture).await;
+    publication_and_rollback_keep_revoked_service_keys_revoked(&fixture).await;
+    page_publications_are_atomic_and_history_retains_its_exact_page(&fixture).await;
 }
 
 async fn runtime_user_projection_orders_by_token_version(fixture: &Fixture) {
@@ -228,6 +224,7 @@ async fn runtime_user_projection_orders_by_token_version(fixture: &Fixture) {
                 department_name: format!("Department version {version}"),
                 token_version: version,
                 enabled,
+                can_approve: enabled,
                 tenant_query_enabled: enabled,
                 role_assignments: vec![],
             },
@@ -300,6 +297,7 @@ async fn execution_context_projection_changes_only_affect_future_executions(fixt
         fixture.tenant_id,
         fixture.application_id,
         InvocationCaller {
+            access: None,
             wait_inputs: None,
             trigger_context: None,
             end_user: None,
@@ -349,6 +347,7 @@ async fn execution_context_projection_changes_only_affect_future_executions(fixt
         fixture.tenant_id,
         fixture.application_id,
         InvocationCaller {
+            access: None,
             wait_inputs: None,
             trigger_context: None,
             end_user: None,
@@ -422,8 +421,9 @@ async fn execution_context_projection_changes_only_affect_future_executions(fixt
             fixture.tenant_id,
             fixture.application_id,
             InvocationCaller {
-            wait_inputs: None,
-            trigger_context: None,
+                access: None,
+                wait_inputs: None,
+                trigger_context: None,
                 end_user: None,
                 caller_type: trigger_type,
                 caller_id: source_id,
@@ -1016,6 +1016,15 @@ async fn quota_projection_covers_all_dimensions_and_has_no_terminal_residue(fixt
 }
 
 async fn wait_and_approval_resume_exactly_once(fixture: &Fixture) {
+    sqlx::query("INSERT INTO runtime_user_admission(tenant_id,user_id,user_name,department_id,department_name,token_version,status,tenant_query_enabled,role_assignments_json,admission_epoch) VALUES(?,?,'Approver',UUID_TO_BIN(UUID()),'Approvals',1,'active',FALSE,JSON_ARRAY(),1) ON DUPLICATE KEY UPDATE status='active'").bind(fixture.tenant_id).bind(fixture.identity_id).execute(&fixture.state.pool).await.unwrap();
+    sqlx::query(
+        "UPDATE runtime_user_admission SET can_approve=TRUE WHERE tenant_id=? AND user_id=?",
+    )
+    .bind(fixture.tenant_id)
+    .bind(fixture.identity_id)
+    .execute(&fixture.state.pool)
+    .await
+    .unwrap();
     let approval_execution = start_suspending_work_package(fixture, "approval").await;
     let task: (Uuid, u64, String) = sqlx::query_as(
         "SELECT id,version,title FROM approval_tasks WHERE tenant_id=? AND execution_id=?",

@@ -93,6 +93,7 @@ impl Fixture {
             HashMap::from([("publisher-current".into(), PUBLIC_KEY.to_vec())]),
         )
         .with_bundle_key("bundle-current", signing_key.verifying_key())
+        .with_user_key("page-user",PUBLIC_KEY.to_vec())
         .with_work_package_key(
             "work-package-current",
             work_package_signing_key.verifying_key(),
@@ -1638,6 +1639,8 @@ fn test_judge(
         endpoint: "https://provider.example.test/evaluate".into(),
         model: "evaluator-fixture".into(),
         context_window: 128000,
+        max_output_tokens: 4096,
+        parameters: serde_json::json!({}),
         price: agentx_runtime_contracts::RuntimeModelPriceV1 {
             version_id: "price:1".into(),
             currency: "USD".into(),

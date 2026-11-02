@@ -71,8 +71,8 @@ async function layoutDomain(nodes: StudioNode[], edges: StudioEdge[], manifests:
     'elk.padding': '[top=0,left=0,bottom=0,right=0]', 'elk.spacing.nodeNode': String(LAYOUT_NODE_GAP),
     'elk.spacing.componentComponent': String(LAYOUT_NODE_GAP), 'elk.layered.spacing.nodeNodeBetweenLayers': String(LAYOUT_LAYER_GAP),
     'elk.layered.spacing.edgeNodeBetweenLayers': '24', 'elk.layered.spacing.edgeEdgeBetweenLayers': '12',
-    'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES', 'elk.layered.crossingMinimization.forceNodeModelOrder': 'true',
-    'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX', 'elk.layered.nodePlacement.favorStraightEdges': 'true',
+    // Fixed card ports and the ordered graph carry branch order. ELK's default
+    // placement avoids ordering every long-edge dummy in a shared-exit graph.
   }, children, edges: edges.map(edge => {
     const source = geometries.get(edge.source)?.ports.find(port => port.direction === 'output' && port.id === (edge.sourceHandle ?? 'main'))
     const target = geometries.get(edge.target)?.ports.find(port => port.direction === 'input' && port.id === (edge.targetHandle ?? 'main'))

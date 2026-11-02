@@ -427,6 +427,35 @@ async fn apply_admission_inner(
         return Ok(receipt);
     }
     match &request.target {
+        AdmissionTargetV1::ApplicationMcp { state: publication } => {
+            ensure_tenant(tenant_id, publication.tenant_id)?;
+            crate::application_mcp::apply(&mut tx, publication).await?;
+        }
+        AdmissionTargetV1::ApplicationMcpRemoved { state: removal } => {
+            ensure_tenant(tenant_id, removal.tenant_id)?;
+            crate::application_mcp::remove(&mut tx, removal).await?;
+        }
+        AdmissionTargetV1::McpToolPolicy { state: policy } => {
+            ensure_tenant(tenant_id, policy.tenant_id)?;
+            let existing=sqlx::query("SELECT revision,content_hash,enabled FROM mcp_tool_policy_projection WHERE tenant_id=? AND tool_id=? FOR UPDATE").bind(tenant_id).bind(policy.tool_id).fetch_optional(&mut *tx).await?;
+            if let Some(row) = existing {
+                let revision: u64 = row.try_get("revision")?;
+                if revision == policy.revision
+                    && (row.try_get::<String, _>("content_hash")? != policy.content_hash.as_str()
+                        || row.try_get::<bool, _>("enabled")? != policy.enabled)
+                {
+                    return Err(RuntimeError::StateConflict(
+                        "MCP_POLICY_CONFLICT",
+                        "The tool policy revision was reused".into(),
+                    ));
+                }
+                if revision < policy.revision {
+                    sqlx::query("UPDATE mcp_tool_policy_projection SET revision=?,content_hash=?,enabled=? WHERE tenant_id=? AND tool_id=?").bind(policy.revision).bind(policy.content_hash.as_str()).bind(policy.enabled).bind(tenant_id).bind(policy.tool_id).execute(&mut *tx).await?;
+                }
+            } else {
+                sqlx::query("INSERT INTO mcp_tool_policy_projection(tenant_id,tool_id,revision,content_hash,enabled) VALUES(?,?,?,?,?)").bind(tenant_id).bind(policy.tool_id).bind(policy.revision).bind(policy.content_hash.as_str()).bind(policy.enabled).execute(&mut *tx).await?;
+            }
+        }
         AdmissionTargetV1::Tenant { enabled } => {
             sqlx::query("UPDATE tenant_admission SET status=?,admission_epoch=? WHERE tenant_id=? AND admission_epoch<=?")
                 .bind(if *enabled { "active" } else { "disabled" }).bind(request.admission_epoch).bind(tenant_id).bind(request.admission_epoch).execute(&mut *tx).await?;
@@ -463,8 +492,8 @@ async fn apply_admission_inner(
             // nor let an older user snapshot restore revoked access.
             let role_assignments = serde_json::to_value(&user.role_assignments)
                 .map_err(|error| RuntimeError::Internal(error.into()))?;
-            sqlx::query("INSERT INTO runtime_user_admission(tenant_id,user_id,user_name,department_id,department_name,token_version,status,tenant_query_enabled,role_assignments_json,admission_epoch) VALUES(?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE user_name=IF(token_version<=VALUES(token_version),VALUES(user_name),user_name),department_id=IF(token_version<=VALUES(token_version),VALUES(department_id),department_id),department_name=IF(token_version<=VALUES(token_version),VALUES(department_name),department_name),token_version=IF(token_version<=VALUES(token_version),VALUES(token_version),token_version),status=IF(token_version<=VALUES(token_version),VALUES(status),status),tenant_query_enabled=IF(token_version<=VALUES(token_version),VALUES(tenant_query_enabled),tenant_query_enabled),role_assignments_json=IF(token_version<=VALUES(token_version),VALUES(role_assignments_json),role_assignments_json),admission_epoch=GREATEST(admission_epoch,VALUES(admission_epoch))")
-                .bind(user.tenant_id).bind(user.user_id).bind(&user.user_name).bind(user.department_id).bind(&user.department_name).bind(user.token_version).bind(if user.enabled{"active"}else{"disabled"}).bind(user.tenant_query_enabled).bind(role_assignments).bind(request.admission_epoch).execute(&mut *tx).await?;
+            sqlx::query("INSERT INTO runtime_user_admission(tenant_id,user_id,user_name,department_id,department_name,token_version,status,tenant_query_enabled,can_approve,role_assignments_json,admission_epoch) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE user_name=IF(token_version<=VALUES(token_version),VALUES(user_name),user_name),department_id=IF(token_version<=VALUES(token_version),VALUES(department_id),department_id),department_name=IF(token_version<=VALUES(token_version),VALUES(department_name),department_name),can_approve=IF(token_version<=VALUES(token_version),VALUES(can_approve),can_approve),token_version=IF(token_version<=VALUES(token_version),VALUES(token_version),token_version),status=IF(token_version<=VALUES(token_version),VALUES(status),status),tenant_query_enabled=IF(token_version<=VALUES(token_version),VALUES(tenant_query_enabled),tenant_query_enabled),role_assignments_json=IF(token_version<=VALUES(token_version),VALUES(role_assignments_json),role_assignments_json),admission_epoch=GREATEST(admission_epoch,VALUES(admission_epoch))")
+                .bind(user.tenant_id).bind(user.user_id).bind(&user.user_name).bind(user.department_id).bind(&user.department_name).bind(user.token_version).bind(if user.enabled{"active"}else{"disabled"}).bind(user.tenant_query_enabled).bind(user.can_approve).bind(role_assignments).bind(request.admission_epoch).execute(&mut *tx).await?;
         }
         AdmissionTargetV1::RuntimeUserApplicationGrant { state: grant } => {
             ensure_tenant(tenant_id, grant.tenant_id)?;
@@ -582,7 +611,7 @@ async fn apply_approval_action(
 ) -> RuntimeResult<()> {
     use agentx_runtime_contracts::ApprovalActionValueV1;
 
-    let task = sqlx::query("SELECT a.execution_id,a.node_execution_id,a.status,a.claimed_by,a.deadline_at,a.version,a.request_payload_json,a.buttons_json,e.status execution_status FROM approval_tasks a JOIN workflow_executions e ON e.tenant_id=a.tenant_id AND e.id=a.execution_id WHERE a.tenant_id=? AND a.id=? FOR UPDATE")
+    let task = sqlx::query("SELECT a.execution_id,a.node_execution_id,a.status,a.claimed_by,a.deadline_at,a.version,a.request_payload_json,a.buttons_json,a.tool_effect_id,e.status execution_status FROM approval_tasks a JOIN workflow_executions e ON e.tenant_id=a.tenant_id AND e.id=a.execution_id WHERE a.tenant_id=? AND a.id=? FOR UPDATE")
         .bind(tenant_id)
         .bind(action.task_id)
         .fetch_optional(&mut **tx)
@@ -602,14 +631,11 @@ async fn apply_approval_action(
         task.try_get::<String, _>("execution_status")?.as_str(),
         "succeeded" | "failed" | "cancelled" | "timed_out"
     );
-    let actor_is_candidate: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM approval_candidates WHERE tenant_id=? AND approval_task_id=? AND candidate_type='user' AND candidate_id=?)",
-    )
-    .bind(tenant_id)
-    .bind(action.task_id)
-    .bind(action.actor_id)
-    .fetch_one(&mut **tx)
-    .await?;
+    let actor_is_candidate =
+        crate::approval_candidates::current(tx, tenant_id, action.task_id, action.actor_id).await?;
+    let before_deadline = task
+        .try_get::<Option<OffsetDateTime>, _>("deadline_at")?
+        .is_none_or(|deadline| deadline > OffsetDateTime::now_utc());
     let target_status = match &action.action {
         ApprovalActionValueV1::Claim | ApprovalActionValueV1::Reassign => "claimed",
         ApprovalActionValueV1::Release => "pending",
@@ -619,21 +645,15 @@ async fn apply_approval_action(
     };
     let valid = match &action.action {
         ApprovalActionValueV1::Claim => {
-            execution_active && actor_is_candidate && status == "pending"
+            execution_active && before_deadline && actor_is_candidate && status == "pending"
         }
         ApprovalActionValueV1::Release => {
             execution_active && status == "claimed" && claimed_by == Some(action.actor_id)
         }
         ApprovalActionValueV1::Reassign => {
             let target_is_candidate = if let Some(target_user_id) = action.target_user_id {
-                sqlx::query_scalar(
-                    "SELECT EXISTS(SELECT 1 FROM approval_candidates WHERE tenant_id=? AND approval_task_id=? AND candidate_type='user' AND candidate_id=?)",
-                )
-                .bind(tenant_id)
-                .bind(action.task_id)
-                .bind(target_user_id)
-                .fetch_one(&mut **tx)
-                .await?
+                crate::approval_candidates::current(tx, tenant_id, action.task_id, target_user_id)
+                    .await?
             } else {
                 false
             };
@@ -651,6 +671,7 @@ async fn apply_approval_action(
                     })
                 });
             execution_active
+                && before_deadline
                 && actor_is_candidate
                 && status == "claimed"
                 && claimed_by == Some(action.actor_id)
@@ -711,7 +732,9 @@ async fn apply_approval_action(
             "Approval Task changed while applying the action".into(),
         ));
     }
-    if matches!(&action.action, ApprovalActionValueV1::Decide { .. }) {
+    if matches!(&action.action, ApprovalActionValueV1::Decide { .. })
+        && task.try_get::<Option<Uuid>, _>("tool_effect_id")?.is_none()
+    {
         sqlx::query("INSERT INTO runtime_commands(id,tenant_id,command_type,aggregate_type,aggregate_id,idempotency_key,payload_json,status) VALUES(?,?,'resume_execution','execution',?,?,?,'pending')")
             .bind(command_id)
             .bind(tenant_id)
@@ -911,10 +934,8 @@ async fn activate_inner<T: Serialize>(
         .bind(manifest.tenant_id).bind(manifest.minimum_admission_epoch).fetch_one(&mut *tx).await?;
     let route_ok: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM application_routes WHERE tenant_id=? AND application_id=? AND status='active' AND admission_epoch>=?)")
         .bind(manifest.tenant_id).bind(manifest.application_id).bind(manifest.minimum_admission_epoch).fetch_one(&mut *tx).await?;
-    let key_ok: bool = sqlx::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM api_key_admission WHERE tenant_id=? AND application_id=?) OR EXISTS(SELECT 1 FROM api_key_admission WHERE tenant_id=? AND application_id=? AND status='active' AND admission_epoch>=? AND (expires_at IS NULL OR expires_at>UTC_TIMESTAMP(6)))")
-        .bind(manifest.tenant_id).bind(manifest.application_id)
-        .bind(manifest.tenant_id).bind(manifest.application_id).bind(manifest.minimum_admission_epoch)
-        .fetch_one(&mut *tx).await?;
+    // Entry credentials are authorized per request. Revoking every service key
+    // must not block a Web/OAuth application's Bundle publication or rollback.
     let payload: Value = bundle.try_get("payload_json")?;
     let specification: agentx_runtime_contracts::ExecutionSpecPayloadV2 =
         serde_json::from_value(payload.clone())
@@ -950,7 +971,7 @@ async fn activate_inner<T: Serialize>(
         .await?;
         resources_ok &= found;
     }
-    if !(tenant_ok && route_ok && key_ok && identity_ok && grants_ok && resources_ok) {
+    if !(tenant_ok && route_ok && identity_ok && grants_ok && resources_ok) {
         return Err(RuntimeError::Conflict(
             RuntimePublishErrorCodeV1::AdmissionPrerequisiteMissing,
             "Runtime Admission prerequisites are incomplete".into(),

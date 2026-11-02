@@ -195,8 +195,9 @@ def invoke(state, *, platform=False, replies=None):
     return response.json()
 
 
-def invocation(state, identifier):
-    response = state["gateway"].get(f"/gateway/v1/invocations/{identifier}")
+def invocation(state, identifier, *, platform=False):
+    headers = {"Authorization": f"Bearer {state['token']}"} if platform else {}
+    response = state["gateway"].get(f"/gateway/v1/invocations/{identifier}", headers=headers)
     response.raise_for_status()
     return response.json()
 
@@ -284,8 +285,10 @@ def test_api_hook_asr_resume_restart_and_event_stream(interaction_app):
 def test_platform_presets_and_exhaustion_do_not_send_hooks(interaction_app):
     state = interaction_app
     accepted = invoke(state, platform=True, replies={"/ask": ["我再考虑一下", "确认"]})
+    assert state["gateway"].get(f"/gateway/v1/invocations/{accepted['id']}").status_code == 404
     completed = poll(
-        lambda: invocation(state, accepted["id"]), lambda value: value["status"] in ("completed", "failed")
+        lambda: invocation(state, accepted["id"], platform=True),
+        lambda value: value["status"] in ("completed", "failed"),
     )
     assert completed["status"] == "completed", completed
     rows = _runtime_mysql(
@@ -300,9 +303,44 @@ def test_platform_presets_and_exhaustion_do_not_send_hooks(interaction_app):
     )
     assert forbidden.status_code == 400 and forbidden.json()["code"] == "WAIT_PRESET_NOT_ALLOWED"
     missing = invoke(state, platform=True, replies={"/ask": ["not confirmation"]})
-    failed = poll(lambda: invocation(state, missing["id"]), lambda value: value["status"] in ("completed", "failed"))
+    failed = poll(
+        lambda: invocation(state, missing["id"], platform=True),
+        lambda value: value["status"] in ("completed", "failed"),
+    )
     assert failed["status"] == "failed", failed
     assert "WAIT_INPUT_EXHAUSTED" in json.dumps(failed)
+
+
+def managed_channel_invocation(state, identifier):
+    """Observe webhook-owned work through the existing authorized administrator API."""
+    cursor = None
+    while True:
+        response = state["control"].get(
+            f"/api/v1/applications/{state['app']['id']}/invocations",
+            params={"cursor": cursor} if cursor else {},
+        )
+        response.raise_for_status()
+        page = response.json()
+        for item in page["items"]:
+            if item["invocationId"] == identifier:
+                assert item["callerType"] == "webhook", item
+                return item
+        following = page["next"]
+        assert following and following != cursor, f"Administrator cannot observe channel invocation {identifier}"
+        cursor = following
+
+
+def managed_channel_wait(state, identifier, previous=None):
+    def read_wait():
+        summary = managed_channel_invocation(state, identifier)
+        assert summary["status"] not in ("failed", "cancelled"), summary
+        details = read(state["control"], f"/executions/{summary['executionId']}/runtime-details")
+        return next(
+            (wait for wait in details["inputWaits"] if wait["status"] == "waiting" and wait["waitId"] != previous),
+            None,
+        )
+
+    return poll(read_wait, bool)
 
 
 def test_channel_next_reply_and_provider_redelivery_keep_one_invocation(interaction_app):
@@ -334,7 +372,8 @@ def test_channel_next_reply_and_provider_redelivery_keep_one_invocation(interact
         ).strip(),
         bool,
     )
-    current = waiting(state, identifier)
+    assert state["gateway"].get(f"/gateway/v1/invocations/{identifier}").status_code == 404
+    current = managed_channel_wait(state, identifier)
     for suffix, sender, room in (
         ("other-user", "second-voice-user", conversation),
         ("other-room", "voice-user", conversation + "-other"),
@@ -350,22 +389,24 @@ def test_channel_next_reply_and_provider_redelivery_keep_one_invocation(interact
             bool,
         )
         assert isolated_id != identifier
-        waiting(state, isolated_id)
-        assert waiting(state, identifier)["activeWaits"][0]["waitId"] == current["activeWaits"][0]["waitId"]
+        managed_channel_wait(state, isolated_id)
+        assert managed_channel_wait(state, identifier)["waitId"] == current["waitId"]
         assert deliver(event + "-confirmed", "确认", sender=sender, conversation_id=room).status_code in (200, 202)
         completed_isolated = poll(
-            lambda isolated_id=isolated_id: invocation(state, isolated_id),
+            lambda isolated_id=isolated_id: managed_channel_invocation(state, isolated_id),
             lambda value: value["status"] in ("completed", "failed"),
         )
         assert completed_isolated["status"] == "completed", completed_isolated
     first = deliver("voice-continue-" + conversation, "我再考虑一下")
     assert first.status_code in (200, 202), first.text
-    again = waiting(state, identifier, current["activeWaits"][0]["waitId"])
+    again = managed_channel_wait(state, identifier, current["waitId"])
     duplicate = deliver("voice-continue-" + conversation, "我再考虑一下")
     assert duplicate.status_code in (200, 202), duplicate.text
-    assert waiting(state, identifier)["activeWaits"][0]["waitId"] == again["activeWaits"][0]["waitId"]
+    assert managed_channel_wait(state, identifier)["waitId"] == again["waitId"]
     assert deliver("voice-confirm-" + conversation, "确认").status_code in (200, 202)
-    completed = poll(lambda: invocation(state, identifier), lambda value: value["status"] in ("completed", "failed"))
+    completed = poll(
+        lambda: managed_channel_invocation(state, identifier), lambda value: value["status"] in ("completed", "failed")
+    )
     assert completed["status"] == "completed", completed
     assert completed["executionId"] == current["executionId"]
     assert deliver("voice-confirm-" + conversation, "确认").status_code in (200, 202)

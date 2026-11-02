@@ -1,0 +1,198 @@
+{
+  "$defs": {
+    "ApplicationApprovalKindV1": {
+      "enum": [
+        "workflow_node",
+        "agent_tool_effect"
+      ],
+      "type": "string"
+    },
+    "ApplicationApprovalStageV1": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ApplicationApprovalKindV1"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nodeId",
+        "title",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "ApplicationPageContractV1": {
+      "additionalProperties": false,
+      "properties": {
+        "applicationId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "applicationName": {
+          "type": "string"
+        },
+        "approvalStages": {
+          "items": {
+            "$ref": "#/$defs/ApplicationApprovalStageV1"
+          },
+          "type": "array"
+        },
+        "bundleId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "chatMapping": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChatMappingV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deploymentId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inputSchema": true,
+        "maxUploadBytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "outputSchema": true,
+        "sdkVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "waitInputNodes": {
+          "items": {
+            "$ref": "#/$defs/WaitInputNodeV1"
+          },
+          "type": "array"
+        },
+        "workflowVersionId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "applicationId",
+        "applicationName",
+        "deploymentId",
+        "workflowVersionId",
+        "bundleId",
+        "inputSchema",
+        "outputSchema",
+        "waitInputNodes",
+        "approvalStages",
+        "sdkVersion",
+        "maxUploadBytes"
+      ],
+      "type": "object"
+    },
+    "ChatMappingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "answerFilesOutput": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "answerOutput": {
+          "type": "string"
+        },
+        "fileInput": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "questionInput": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "questionInput",
+        "answerOutput"
+      ],
+      "type": "object"
+    },
+    "WaitInputNodeV1": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "responseSchema": true
+      },
+      "required": [
+        "path",
+        "nodeId",
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "applicationId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "contract": {
+      "$ref": "#/$defs/ApplicationPageContractV1"
+    },
+    "contractHash": {
+      "type": "string"
+    },
+    "html": {
+      "type": "string"
+    },
+    "htmlHash": {
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "revision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "applicationId",
+    "contract",
+    "contractHash",
+    "html",
+    "htmlHash",
+    "revision"
+  ],
+  "title": "ApplicationPageDraftV1",
+  "type": "object"
+}

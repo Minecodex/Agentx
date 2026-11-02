@@ -540,6 +540,18 @@ async fn resource_options(
         }));
     }
     attach_model_metadata(&state, actor.tenant_id, &query.resource_type, &mut items).await?;
+    if query.resource_type == "mcp_tool" {
+        for item in &mut items {
+            let id = item["id"]
+                .as_str()
+                .and_then(|id| Uuid::parse_str(id).ok())
+                .ok_or_else(|| ApiError::internal("Invalid tool option identity"))?;
+            let row=sqlx::query("SELECT version,approval_rule_json FROM mcp_tool_policies WHERE tenant_id=? AND tool_id=?").bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
+            let rule: Option<Value> = row.try_get("approval_rule_json")?;
+            item["metadata"] = json!({"toolApproval":{"required":rule.is_some(),"revision":row.try_get::<u64,_>("version")?,"timeoutSeconds":rule.as_ref().and_then(|value|value.get("timeoutSeconds"))}});
+        }
+    }
+
     if query.resource_type == "rag" {
         for item in &mut items {
             let id = item["id"]

@@ -31,10 +31,10 @@ fn apply_schema_defaults(value: &mut Value, schema: &Value) {
                 return;
             };
             for (name, property_schema) in properties {
-                if !object.contains_key(name) {
-                    if let Some(default) = property_schema.get("default") {
-                        object.insert(name.clone(), default.clone());
-                    }
+                if !object.contains_key(name)
+                    && let Some(default) = property_schema.get("default")
+                {
+                    object.insert(name.clone(), default.clone());
                 }
                 if let Some(child) = object.get_mut(name) {
                     apply_schema_defaults(child, property_schema);

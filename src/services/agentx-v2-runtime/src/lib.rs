@@ -1,7 +1,11 @@
 pub mod admission;
 mod agent_model_protocol;
 pub mod agent_session_queue;
+pub mod agent_tool_approvals;
+pub mod application_pages;
+mod approval_candidates;
 pub mod artifact;
+mod artifact_access;
 mod assistant_message;
 pub mod auth;
 pub mod builder_model;
@@ -122,3 +126,7 @@ impl RuntimeState {
 
 mod memory_audit;
 mod user_identity;
+
+pub(crate) mod application_mcp;
+
+pub mod oauth_proxy;

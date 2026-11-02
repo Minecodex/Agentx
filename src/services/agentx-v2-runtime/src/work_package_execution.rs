@@ -970,6 +970,14 @@ fn stable_id(namespace: Uuid, label: &[u8]) -> Uuid {
     Uuid::from_bytes(bytes)
 }
 
+async fn cost_by_currency(
+    tx: &mut Transaction<'_, MySql>,
+    tenant: Uuid,
+    execution: Option<Uuid>,
+) -> RuntimeResult<std::collections::BTreeMap<String, u64>> {
+    Ok(sqlx::query_as::<_,(String,u64)>("SELECT cost_currency,CAST(SUM(cost_micros) AS UNSIGNED) FROM runtime_calls WHERE tenant_id=? AND execution_id=? AND cost_currency IS NOT NULL GROUP BY cost_currency").bind(tenant).bind(execution).fetch_all(&mut **tx).await?.into_iter().collect())
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1013,12 +1021,4 @@ mod tests {
             "cancelled"
         );
     }
-}
-
-async fn cost_by_currency(
-    tx: &mut Transaction<'_, MySql>,
-    tenant: Uuid,
-    execution: Option<Uuid>,
-) -> RuntimeResult<std::collections::BTreeMap<String, u64>> {
-    Ok(sqlx::query_as::<_,(String,u64)>("SELECT cost_currency,CAST(SUM(cost_micros) AS UNSIGNED) FROM runtime_calls WHERE tenant_id=? AND execution_id=? AND cost_currency IS NOT NULL GROUP BY cost_currency").bind(tenant).bind(execution).fetch_all(&mut **tx).await?.into_iter().collect())
 }

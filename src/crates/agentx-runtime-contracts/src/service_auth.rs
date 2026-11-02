@@ -248,14 +248,13 @@ fn validate_egress_claims(
     if claims.iat > now + 5 || claims.exp <= now {
         return Err(ServiceJwtError::Invalid);
     }
-    if let Some((host, port)) = expected_target {
-        if !claims
+    if let Some((host, port)) = expected_target
+        && !claims
             .destinations
             .iter()
             .any(|destination| destination_matches(destination, host, port))
-        {
-            return Err(ServiceJwtError::ScopeNotAllowed);
-        }
+    {
+        return Err(ServiceJwtError::ScopeNotAllowed);
     }
     if claims.destinations.is_empty()
         || claims.destinations.len() > 32

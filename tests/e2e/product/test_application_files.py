@@ -134,7 +134,7 @@ def test_application_output_file_download_authorization(installed_agentx, servic
             gateway.headers["Authorization"] = f"Bearer {applications[1][1][0]['secret']}"
             assert gateway.get(path).status_code == 404
             gateway.headers["Authorization"] = f"Bearer {keys[1]['secret']}"
-            assert gateway.get(path).content == content
+            assert gateway.get(path).status_code == 404
             revoked = control.post(f"/api/v1/applications/{app['id']}/api-keys/{keys[0]['id']}/revoke")
             assert revoked.is_success, revoked.text
             gateway.headers["Authorization"] = f"Bearer {keys[0]['secret']}"
@@ -155,6 +155,6 @@ def test_application_output_file_download_authorization(installed_agentx, servic
                 "crossApplicationDenied": True,
                 "anonymousDenied": True,
                 "revokedKeyDenied": True,
-                "sameApplicationAlternateKeyAllowed": True,
+                "sameApplicationAlternateKeyDenied": True,
             },
         )

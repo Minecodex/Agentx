@@ -10,7 +10,7 @@ test('P8-E2E-11: reload before layout ACK replays the durable geometry once', as
   let original: Ack | undefined
   const delivered: Ack[] = []
   let session = ''
-  await page.route('**/studio-builder/sessions/*/acknowledgements', async route => {
+  await page.route('**/design-agent/sessions/*/acknowledgements', async route => {
     if (blocked) {
       original ??= route.request().postDataJSON() as Ack
       session = new URL(route.request().url()).pathname.split('/').at(-2)!
@@ -25,7 +25,7 @@ test('P8-E2E-11: reload before layout ACK replays the durable geometry once', as
   // React Flow may measure newly mounted cards after the command is applied.
   // Preserve that saved canvas too, while replaying the exact earlier receipt.
   const beforeReload = await saved(page, token, created) as unknown as Ack['snapshot']['document']
-  expect((await read<{ status: string }>(page, token, `/studio-builder/sessions/${session}/commands/${original!.commandId}/receipt`)).status).toBe('pending')
+  expect((await read<{ status: string }>(page, token, `/design-agent/sessions/${session}/commands/${original!.commandId}/receipt`)).status).toBe('pending')
   await page.reload()
   await expect(page.getByTestId('studio-loop-p8-loop')).toBeAttached()
   blocked = false

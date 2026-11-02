@@ -9,6 +9,7 @@ import { useAuth } from './providers/auth-provider'
 vi.mock('./providers/auth-provider', () => ({ useAuth: vi.fn() }))
 
 const auth = {
+  sessionId: 1,
   status: 'authenticated' as const,
   user: undefined,
   changeToken: undefined,

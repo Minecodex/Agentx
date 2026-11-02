@@ -18,7 +18,7 @@ use uuid::Uuid;
 use crate::{
     api_error::{ApiError, ApiResult},
     control_api::{Actor, ControlApiState},
-    studio_builder_runtime::append_entry,
+    design_agent_runtime::append_entry,
 };
 
 pub(crate) fn routes() -> Router<ControlApiState> {
@@ -27,41 +27,42 @@ pub(crate) fn routes() -> Router<ControlApiState> {
             "/api/v1/workflows/{workflow}/drafts/{draft}/builder-sessions",
             axum::routing::post(create_session),
         )
+        .route("/api/v1/design-agent/sessions/{session}", get(get_session))
         .route(
-            "/api/v1/studio-builder/sessions/{session}",
-            get(get_session),
-        )
-        .route(
-            "/api/v1/studio-builder/sessions/{session}/snapshot",
+            "/api/v1/design-agent/sessions/{session}/snapshot",
             axum::routing::put(sync_snapshot),
         )
         .route(
-            "/api/v1/studio-builder/sessions/{session}/runs",
+            "/api/v1/design-agent/sessions/{session}/runs",
             axum::routing::post(create_run),
         )
         .route(
-            "/api/v1/studio-builder/sessions/{session}/entries",
+            "/api/v1/design-agent/sessions/{session}/entries",
             get(entries),
         )
         .route(
-            "/api/v1/studio-builder/sessions/{session}/events",
+            "/api/v1/design-agent/sessions/{session}/events",
             get(events),
         )
         .route(
-            "/api/v1/studio-builder/sessions/{session}/acknowledgements",
+            "/api/v1/design-agent/sessions/{session}/acknowledgements",
             axum::routing::post(acknowledge),
         )
         .route(
-            "/api/v1/studio-builder/sessions/{session}/commands/{command}/receipt",
+            "/api/v1/design-agent/sessions/{session}/commands/{command}/receipt",
             get(command_receipt),
         )
         .route(
-            "/api/v1/studio-builder/sessions/{session}/answers",
+            "/api/v1/design-agent/sessions/{session}/answers",
             axum::routing::post(answer),
         )
         .route(
-            "/api/v1/studio-builder/sessions/{session}/runs/{run}/cancel",
+            "/api/v1/design-agent/sessions/{session}/runs/{run}/cancel",
             axum::routing::post(cancel_run),
+        )
+        .route(
+            "/api/v1/design-agent/sessions/{session}/runs/{run}/inputs",
+            axum::routing::post(crate::design_agent_inputs::create),
         )
 }
 
@@ -85,7 +86,7 @@ async fn command_receipt(
     Path((session, command)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<CommandReceipt>> {
     session_row(&state, &actor, session, false).await?;
-    let row=sqlx::query("SELECT status FROM studio_builder_effects WHERE tenant_id=? AND session_id=? AND id=? AND tool_name='workflow_edit'").bind(actor.tenant_id).bind(session).bind(command).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Editor command"))?;
+    let row=sqlx::query("SELECT status FROM design_agent_effects WHERE tenant_id=? AND session_id=? AND id=? AND tool_name IN ('workflow_edit','page_edit','page_check')").bind(actor.tenant_id).bind(session).bind(command).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Editor command"))?;
     let status = serde_json::from_value(Value::String(row.try_get("status")?))
         .map_err(ApiError::internal)?;
     Ok(Json(CommandReceipt { status }))
@@ -109,28 +110,28 @@ pub(crate) async fn revoke_runs(
         DesignRevocation::Credential(id, version) => (None, None, 0, Some(id), version),
     };
     let mut tx = state.pool.begin().await?;
-    let rows=sqlx::query("SELECT r.id,s.id session_id,s.workflow_id,s.draft_id,s.user_id,s.state_json FROM studio_builder_runs r JOIN studio_builder_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id WHERE r.tenant_id=? AND r.status IN ('queued','running','waiting') AND (? IS NULL OR r.setting_version<=?) AND (? IS NULL OR (r.model_alias_id=? AND r.model_alias_version<=?)) AND (? IS NULL OR (r.credential_id=? AND r.credential_version<=?)) FOR UPDATE").bind(tenant).bind(setting).bind(setting).bind(model).bind(model).bind(model_epoch).bind(credential).bind(credential).bind(credential_epoch).fetch_all(&mut *tx).await?;
+    let rows=sqlx::query("SELECT r.id,s.id session_id,s.workflow_id,s.draft_id,s.user_id,s.state_json,s.target_kind,s.application_id,s.ui_draft_id,s.bundle_id,s.contract_hash FROM design_agent_runs r JOIN design_agent_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id WHERE r.tenant_id=? AND r.status IN ('queued','running','waiting') AND (? IS NULL OR r.setting_version<=?) AND (? IS NULL OR (r.model_alias_id=? AND r.model_alias_version<=?)) AND (? IS NULL OR (r.credential_id=? AND r.credential_version<=?)) FOR UPDATE").bind(tenant).bind(setting).bind(setting).bind(model).bind(model).bind(model_epoch).bind(credential).bind(credential).bind(credential_epoch).fetch_all(&mut *tx).await?;
     for row in &rows {
         let run: Uuid = row.try_get("id")?;
-        sqlx::query("UPDATE studio_builder_runs SET status='cancelled',completed_at=UTC_TIMESTAMP(6),lease_owner=NULL,lease_until=NULL WHERE tenant_id=? AND id=?").bind(tenant).bind(run).execute(&mut *tx).await?;
-        sqlx::query("UPDATE studio_builder_effects SET status='cancelled' WHERE tenant_id=? AND run_id=? AND status='pending'").bind(tenant).bind(run).execute(&mut *tx).await?;
+        sqlx::query("UPDATE design_agent_runs SET status='cancelled',completed_at=UTC_TIMESTAMP(6),lease_owner=NULL,lease_until=NULL WHERE tenant_id=? AND id=?").bind(tenant).bind(run).execute(&mut *tx).await?;
+        sqlx::query("UPDATE design_agent_effects SET status='cancelled' WHERE tenant_id=? AND run_id=? AND status='pending'").bind(tenant).bind(run).execute(&mut *tx).await?;
     }
     tx.commit().await?;
     for row in rows {
-        let target = StudioBuilderTargetV1 {
-            tenant_id: tenant,
-            run_id: row.try_get("id")?,
-            session_id: row.try_get("session_id")?,
-            workflow_id: row.try_get("workflow_id")?,
-            draft_id: row.try_get("draft_id")?,
-            user_id: row.try_get("user_id")?,
-        };
+        let target = crate::design_agent_host::target_from_row(
+            &row,
+            tenant,
+            row.try_get("user_id")?,
+            row.try_get("session_id")?,
+            row.try_get("id")?,
+        )?;
+
         let core: AgentSessionStateV1 =
             serde_json::from_value(row.try_get("state_json")?).map_err(ApiError::internal)?;
         if let Some(operation) = core.operation.filter(|operation| {
             operation
                 .operation_id
-                .starts_with(&target.run_id.to_string())
+                .starts_with(&target.identity().run_id.to_string())
                 && matches!(
                     operation.operation_kind,
                     agentx_agent_core::OperationKindV1::Model
@@ -138,15 +139,15 @@ pub(crate) async fn revoke_runs(
                 )
         }) {
             let effect = agentx_runtime_contracts::deterministic_uuid(
-                target.run_id,
+                target.identity().run_id,
                 operation.effect_id.as_bytes(),
             );
-            let _ = crate::studio_builder_runtime::cancel(state, &target, effect).await;
+            let _ = crate::design_agent_runtime::cancel(state, &target, effect).await;
         }
         append_entry(
             state,
             &target,
-            &format!("terminal:{}", target.run_id),
+            &format!("terminal:{}", target.identity().run_id),
             json!({"type":"terminal","status":"cancelled","reason":"model_authorization_revoked"}),
         )
         .await?;
@@ -225,16 +226,19 @@ pub(crate) async fn session_row(
     session: Uuid,
     write: bool,
 ) -> ApiResult<sqlx::mysql::MySqlRow> {
+    let row =
+        sqlx::query("SELECT * FROM design_agent_sessions WHERE tenant_id=? AND id=? AND user_id=?")
+            .bind(actor.tenant_id)
+            .bind(session)
+            .bind(actor.user_id)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or_else(|| ApiError::not_found("Builder session"))?;
+    if row.try_get::<String, _>("target_kind")? == "application_ui_builder" {
+        crate::application_ui_api::authorize_session(state, actor, &row, write).await?;
+        return Ok(row);
+    }
     actor.require("workflow:edit")?;
-    let row = sqlx::query(
-        "SELECT * FROM studio_builder_sessions WHERE tenant_id=? AND id=? AND user_id=?",
-    )
-    .bind(actor.tenant_id)
-    .bind(session)
-    .bind(actor.user_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| ApiError::not_found("Builder session"))?;
     let workflow = row.try_get("workflow_id")?;
     crate::workflow_api::require_workflow_access(state, actor, workflow, write).await?;
     let draft =
@@ -251,13 +255,31 @@ pub(crate) async fn session_row(
     Ok(row)
 }
 
-async fn lock_binding(
+async fn workflow_session_row(
+    state: &ControlApiState,
+    actor: &Actor,
+    session: Uuid,
+    write: bool,
+) -> ApiResult<sqlx::mysql::MySqlRow> {
+    let row = session_row(state, actor, session, write).await?;
+    if row.try_get::<String, _>("target_kind")? != "workflow_builder" {
+        return Err(ApiError::forbidden(
+            "This endpoint requires a workflow authoring session",
+        ));
+    }
+    Ok(row)
+}
+
+pub(crate) async fn lock_binding(
     tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
     actor: &Actor,
     row: &sqlx::mysql::MySqlRow,
 ) -> ApiResult<()> {
+    if row.try_get::<String, _>("target_kind")? == "application_ui_builder" {
+        return crate::application_ui_api::lock_binding(tx, actor, row).await;
+    }
     crate::workflow_versions::lock_workflow(tx, actor, row.try_get("workflow_id")?).await?;
-    let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM studio_builder_sessions s JOIN workflow_drafts d ON d.tenant_id=s.tenant_id AND d.id=s.draft_id JOIN workflow_versions v ON v.tenant_id=d.tenant_id AND v.working_draft_id=d.id WHERE s.tenant_id=? AND s.id=? AND s.document_generation=d.generation AND v.archived=FALSE)").bind(actor.tenant_id).bind(row.try_get::<Uuid,_>("id")?).fetch_one(&mut **tx).await?;
+    let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM design_agent_sessions s JOIN workflow_drafts d ON d.tenant_id=s.tenant_id AND d.id=s.draft_id JOIN workflow_versions v ON v.tenant_id=d.tenant_id AND v.working_draft_id=d.id WHERE s.tenant_id=? AND s.id=? AND s.document_generation=d.generation AND v.archived=FALSE)").bind(actor.tenant_id).bind(row.try_get::<Uuid,_>("id")?).fetch_one(&mut **tx).await?;
     if !valid {
         return Err(ApiError::conflict(
             "EDITOR_BINDING_STALE",
@@ -296,9 +318,9 @@ async fn create_session(
         session_id: id.to_string(),
         ..Default::default()
     };
-    sqlx::query("INSERT INTO studio_builder_sessions(id,tenant_id,workflow_id,draft_id,user_id,editor_instance_id,snapshot_json,state_json,document_generation) VALUES(?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id")
+    sqlx::query("INSERT INTO design_agent_sessions(id,tenant_id,target_kind,workflow_id,draft_id,user_id,editor_instance_id,snapshot_json,state_json,document_generation) VALUES(?,?,'workflow_builder',?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id")
         .bind(id).bind(actor.tenant_id).bind(workflow).bind(draft).bind(actor.user_id).bind(input.snapshot.editor_instance_id).bind(serde_json::to_value(&input.snapshot).map_err(ApiError::internal)?).bind(serde_json::to_value(core).map_err(ApiError::internal)?).bind(value.generation).execute(&mut *tx).await?;
-    let id: Uuid = sqlx::query_scalar("SELECT id FROM studio_builder_sessions WHERE tenant_id=? AND draft_id=? AND user_id=? AND editor_instance_id=? AND document_generation=?")
+    let id: Uuid = sqlx::query_scalar("SELECT id FROM design_agent_sessions WHERE tenant_id=? AND draft_id=? AND user_id=? AND editor_instance_id=? AND document_generation=?")
         .bind(actor.tenant_id).bind(draft).bind(actor.user_id).bind(input.snapshot.editor_instance_id).bind(value.generation).fetch_one(&mut *tx).await?;
     tx.commit().await?;
     get_session(State(state), actor, Path(id)).await
@@ -309,8 +331,8 @@ async fn get_session(
     actor: Actor,
     Path(session): Path<Uuid>,
 ) -> ApiResult<Json<Value>> {
-    let row = session_row(&state, &actor, session, false).await?;
-    let runs = sqlx::query("SELECT id,status,model_alias_id,setting_version,created_at FROM studio_builder_runs WHERE tenant_id=? AND session_id=? ORDER BY created_at DESC LIMIT 20")
+    let row = workflow_session_row(&state, &actor, session, false).await?;
+    let runs = sqlx::query("SELECT id,status,model_alias_id,setting_version,created_at FROM design_agent_runs WHERE tenant_id=? AND session_id=? ORDER BY created_at DESC LIMIT 20")
         .bind(actor.tenant_id).bind(session).fetch_all(&state.pool).await?.into_iter().map(|row| Ok(json!({"id":row.try_get::<Uuid,_>("id")?,"status":row.try_get::<String,_>("status")?,"modelAliasId":row.try_get::<Uuid,_>("model_alias_id")?,"settingVersion":row.try_get::<u64,_>("setting_version")?}))).collect::<Result<Vec<_>,sqlx::Error>>()?;
     Ok(Json(
         json!({"id":session,"draftId":row.try_get::<Uuid,_>("draft_id")?,"snapshot":row.try_get::<Value,_>("snapshot_json")?,"runs":runs,"canEdit":crate::workflow_api::require_workflow_access(&state,&actor,row.try_get("workflow_id")?,true).await.is_ok() && session_row(&state,&actor,session,true).await.is_ok()}),
@@ -323,11 +345,11 @@ async fn sync_snapshot(
     Path(session): Path<Uuid>,
     Json(snapshot): Json<StudioEditorSnapshotV1>,
 ) -> ApiResult<Json<Value>> {
-    let binding = session_row(&state, &actor, session, true).await?;
+    let binding = workflow_session_row(&state, &actor, session, true).await?;
     verify_snapshot(&snapshot)?;
     let mut tx = state.pool.begin().await?;
     lock_binding(&mut tx, &actor, &binding).await?;
-    let row = sqlx::query("SELECT snapshot_json,editor_instance_id FROM studio_builder_sessions WHERE tenant_id=? AND id=? FOR UPDATE").bind(actor.tenant_id).bind(session).fetch_one(&mut *tx).await?;
+    let row = sqlx::query("SELECT snapshot_json,editor_instance_id FROM design_agent_sessions WHERE tenant_id=? AND id=? FOR UPDATE").bind(actor.tenant_id).bind(session).fetch_one(&mut *tx).await?;
     let old: StudioEditorSnapshotV1 =
         serde_json::from_value(row.try_get("snapshot_json")?).map_err(ApiError::internal)?;
     if row.try_get::<Uuid, _>("editor_instance_id")? != snapshot.editor_instance_id
@@ -340,7 +362,7 @@ async fn sync_snapshot(
             "Editor snapshot is stale",
         ));
     }
-    sqlx::query("UPDATE studio_builder_sessions SET snapshot_json=? WHERE tenant_id=? AND id=?")
+    sqlx::query("UPDATE design_agent_sessions SET snapshot_json=? WHERE tenant_id=? AND id=?")
         .bind(serde_json::to_value(snapshot).map_err(ApiError::internal)?)
         .bind(actor.tenant_id)
         .bind(session)
@@ -356,15 +378,15 @@ async fn create_run(
     Path(session): Path<Uuid>,
     Json(input): Json<CreateBuilderRun>,
 ) -> ApiResult<Json<Value>> {
-    let row = session_row(&state, &actor, session, true).await?;
+    let row = workflow_session_row(&state, &actor, session, true).await?;
     if input.prompt.trim().is_empty() || input.prompt.len() > 65536 {
         return Err(ApiError::bad_request(
             "BUILDER_PROMPT_INVALID",
             "A prompt between 1 and 65536 bytes is required",
         ));
     }
-    if let agentx_runtime_contracts::StudioEditScopeV1::Nodes { node_ids } = &input.edit_scope {
-        if node_ids.is_empty()
+    if let agentx_runtime_contracts::StudioEditScopeV1::Nodes { node_ids } = &input.edit_scope
+        && (node_ids.is_empty()
             || node_ids.iter().any(|id| {
                 !input
                     .snapshot
@@ -373,17 +395,16 @@ async fn create_run(
                     .nodes
                     .iter()
                     .any(|node| &node.id == id)
-            })
-        {
-            return Err(ApiError::bad_request(
-                "BUILDER_EDIT_SCOPE_INVALID",
-                "Select existing nodes before starting a scoped run",
-            ));
-        }
+            }))
+    {
+        return Err(ApiError::bad_request(
+            "BUILDER_EDIT_SCOPE_INVALID",
+            "Select existing nodes before starting a scoped run",
+        ));
     }
     // Idempotency is the caller's run ID, before resolving a potentially changed tenant model setting.
     if let Some(existing) = sqlx::query(
-        "SELECT prompt,status,edit_scope_json FROM studio_builder_runs WHERE tenant_id=? AND session_id=? AND id=?",
+        "SELECT prompt,status,edit_scope_json FROM design_agent_runs WHERE tenant_id=? AND session_id=? AND id=?",
     )
     .bind(actor.tenant_id)
     .bind(session)
@@ -422,7 +443,7 @@ async fn create_run(
             .fetch_one(&mut *tx)
             .await?;
     }
-    let open:i64=sqlx::query_scalar("SELECT COUNT(*) FROM studio_builder_runs WHERE tenant_id=? AND status IN ('queued','running','waiting')").bind(actor.tenant_id).fetch_one(&mut *tx).await?;
+    let open:i64=sqlx::query_scalar("SELECT COUNT(*) FROM design_agent_runs WHERE tenant_id=? AND status IN ('queued','running','waiting')").bind(actor.tenant_id).fetch_one(&mut *tx).await?;
     if open >= 4 {
         return Err(ApiError::conflict(
             "BUILDER_CAPACITY_BUSY",
@@ -432,7 +453,7 @@ async fn create_run(
     let (model, credential, setting, binding, parameters, model_version, credential_version) =
         crate::platform_ai_model::freeze_model(&state, &actor).await?;
     let deadline = OffsetDateTime::now_utc() + time::Duration::minutes(10);
-    sqlx::query("INSERT INTO studio_builder_runs(id,tenant_id,session_id,token_version,prompt,edit_scope_json,model_alias_id,model_alias_version,credential_id,credential_version,setting_version,model_binding_json,model_parameters_json,deadline_at,delta_cursors_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,JSON_OBJECT())")
+    sqlx::query("INSERT INTO design_agent_runs(id,tenant_id,session_id,token_version,prompt,edit_scope_json,model_alias_id,model_alias_version,credential_id,credential_version,setting_version,model_binding_json,model_parameters_json,deadline_at,delta_cursors_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,JSON_OBJECT())")
         .bind(input.run_id).bind(actor.tenant_id).bind(session).bind(actor.token_version).bind(&input.prompt).bind(serde_json::to_value(&input.edit_scope).map_err(ApiError::internal)?).bind(model).bind(model_version).bind(credential).bind(credential_version).bind(setting).bind(serde_json::to_value(binding).map_err(ApiError::internal)?).bind(parameters).bind(deadline).execute(&mut *tx).await.map_err(|error| match &error {sqlx::Error::Database(db) if db.is_unique_violation() => ApiError::conflict("BUILDER_SESSION_BUSY","This session already has an open run"),_=>error.into()})?;
     tx.commit().await?;
     let target = StudioBuilderTargetV1 {
@@ -470,7 +491,7 @@ async fn read_entries(
     session: Uuid,
     after: u64,
 ) -> ApiResult<Value> {
-    let rows = sqlx::query("SELECT id,run_id,payload_json FROM studio_builder_entries FORCE INDEX(idx_studio_builder_cursor) WHERE tenant_id=? AND session_id=? AND id>? ORDER BY id LIMIT 200").bind(tenant).bind(session).bind(after).fetch_all(&state.pool).await?;
+    let rows = sqlx::query("SELECT id,run_id,payload_json FROM design_agent_entries FORCE INDEX(idx_design_agent_cursor) WHERE tenant_id=? AND session_id=? AND id>? ORDER BY id LIMIT 200").bind(tenant).bind(session).bind(after).fetch_all(&state.pool).await?;
     let items = rows.into_iter().map(|row| Ok(json!({"sequence":row.try_get::<u64,_>("id")?,"runId":row.try_get::<Option<Uuid>,_>("run_id")?,"payload":row.try_get::<Value,_>("payload_json")?}))).collect::<Result<Vec<_>,sqlx::Error>>()?;
     let next = items
         .last()
@@ -515,12 +536,12 @@ async fn acknowledge(
     Path(session): Path<Uuid>,
     Json(input): Json<StudioEditorAcknowledgementV1>,
 ) -> ApiResult<Json<Value>> {
-    let session_data = session_row(&state, &actor, session, true).await?;
+    let session_data = workflow_session_row(&state, &actor, session, true).await?;
     verify_snapshot(&input.snapshot)?;
     let mut tx = state.pool.begin().await?;
     lock_binding(&mut tx, &actor, &session_data).await?;
     lock_effect_run(&mut tx, actor.tenant_id, session, input.command_id).await?;
-    let effect = sqlx::query("SELECT e.*,r.status run_status FROM studio_builder_effects e JOIN studio_builder_runs r ON r.id=e.run_id AND r.tenant_id=e.tenant_id WHERE e.tenant_id=? AND e.session_id=? AND e.id=? FOR UPDATE").bind(actor.tenant_id).bind(session).bind(input.command_id).fetch_optional(&mut *tx).await?.ok_or_else(||ApiError::not_found("Editor command"))?;
+    let effect = sqlx::query("SELECT e.*,r.status run_status FROM design_agent_effects e JOIN design_agent_runs r ON r.id=e.run_id AND r.tenant_id=e.tenant_id WHERE e.tenant_id=? AND e.session_id=? AND e.id=? FOR UPDATE").bind(actor.tenant_id).bind(session).bind(input.command_id).fetch_optional(&mut *tx).await?.ok_or_else(||ApiError::not_found("Editor command"))?;
     let receipt = serde_json::to_value(&input).map_err(ApiError::internal)?;
     if let Some(saved) = effect.try_get::<Option<Value>, _>("acknowledgement_json")? {
         if saved != receipt {
@@ -529,9 +550,8 @@ async fn acknowledge(
                 "Command already has a different acknowledgement",
             ));
         }
-        tx.commit().await?;
         append_ack(
-            &state,
+            &mut tx,
             &actor,
             &session_data,
             effect.try_get("run_id")?,
@@ -539,6 +559,7 @@ async fn acknowledge(
             &input,
         )
         .await?;
+        tx.commit().await?;
         return Ok(Json(json!({"acknowledged":true,"replayed":true})));
     }
     if !matches!(
@@ -578,13 +599,12 @@ async fn acknowledge(
         is_error: !applied,
         terminate: false,
     };
-    sqlx::query("UPDATE studio_builder_effects SET status='settled',result_json=?,acknowledgement_json=? WHERE id=? AND status='pending'").bind(serde_json::to_value(result).map_err(ApiError::internal)?).bind(receipt).bind(input.command_id).execute(&mut *tx).await?;
+    sqlx::query("UPDATE design_agent_effects SET status='settled',result_json=?,acknowledgement_json=? WHERE id=? AND status='pending'").bind(serde_json::to_value(result).map_err(ApiError::internal)?).bind(receipt).bind(input.command_id).execute(&mut *tx).await?;
     if applied {
-        sqlx::query("UPDATE studio_builder_sessions SET snapshot_json=? WHERE tenant_id=? AND id=? AND JSON_EXTRACT(snapshot_json,'$.localDocumentRevision')<=?").bind(serde_json::to_value(&input.snapshot).map_err(ApiError::internal)?).bind(actor.tenant_id).bind(session).bind(command.expected_local_document_revision+1).execute(&mut *tx).await?;
+        sqlx::query("UPDATE design_agent_sessions SET snapshot_json=? WHERE tenant_id=? AND id=? AND JSON_EXTRACT(snapshot_json,'$.localDocumentRevision')<=?").bind(serde_json::to_value(&input.snapshot).map_err(ApiError::internal)?).bind(actor.tenant_id).bind(session).bind(command.expected_local_document_revision+1).execute(&mut *tx).await?;
     }
-    tx.commit().await?;
     append_ack(
-        &state,
+        &mut tx,
         &actor,
         &session_data,
         effect.try_get("run_id")?,
@@ -592,6 +612,7 @@ async fn acknowledge(
         &input,
     )
     .await?;
+    tx.commit().await?;
     Ok(Json(json!({"acknowledged":true})))
 }
 
@@ -621,7 +642,7 @@ async fn answer(
     let mut tx = state.pool.begin().await?;
     lock_binding(&mut tx, &actor, &row).await?;
     lock_effect_run(&mut tx, actor.tenant_id, session, input.question_id).await?;
-    let effect = sqlx::query("SELECT e.run_id,e.status,e.result_json,r.status run_status FROM studio_builder_effects e JOIN studio_builder_runs r ON r.tenant_id=e.tenant_id AND r.id=e.run_id WHERE e.tenant_id=? AND e.session_id=? AND e.id=? AND e.tool_name='ask_user' FOR UPDATE").bind(actor.tenant_id).bind(session).bind(input.question_id).fetch_optional(&mut *tx).await?.ok_or_else(||ApiError::not_found("Builder question"))?;
+    let effect = sqlx::query("SELECT e.run_id,e.status,e.result_json,r.status run_status FROM design_agent_effects e JOIN design_agent_runs r ON r.tenant_id=e.tenant_id AND r.id=e.run_id WHERE e.tenant_id=? AND e.session_id=? AND e.id=? AND e.tool_name='ask_user' FOR UPDATE").bind(actor.tenant_id).bind(session).bind(input.question_id).fetch_optional(&mut *tx).await?.ok_or_else(||ApiError::not_found("Builder question"))?;
     let result_json = serde_json::to_value(result).map_err(ApiError::internal)?;
     if let Some(saved) = effect.try_get::<Option<Value>, _>("result_json")? {
         if saved != result_json {
@@ -642,7 +663,7 @@ async fn answer(
                 "Question or run has stopped",
             ));
         }
-        sqlx::query("UPDATE studio_builder_effects SET status='settled',result_json=? WHERE tenant_id=? AND id=?").bind(result_json).bind(actor.tenant_id).bind(input.question_id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE design_agent_effects SET status='settled',result_json=? WHERE tenant_id=? AND id=?").bind(result_json).bind(actor.tenant_id).bind(input.question_id).execute(&mut *tx).await?;
     }
     tx.commit().await?;
     let target = target_for(&actor, &row, session, effect.try_get("run_id")?)?;
@@ -663,7 +684,7 @@ async fn cancel_run(
 ) -> ApiResult<Json<Value>> {
     let row = session_row(&state, &actor, session, false).await?;
     let current: String = sqlx::query_scalar(
-        "SELECT status FROM studio_builder_runs WHERE tenant_id=? AND session_id=? AND id=?",
+        "SELECT status FROM design_agent_runs WHERE tenant_id=? AND session_id=? AND id=?",
     )
     .bind(actor.tenant_id)
     .bind(session)
@@ -677,16 +698,10 @@ async fn cancel_run(
     ) {
         return Ok(Json(json!({"cancelled":false,"status":current})));
     }
-    sqlx::query("UPDATE studio_builder_runs SET status='cancelled',completed_at=UTC_TIMESTAMP(6),lease_owner=NULL,lease_until=NULL WHERE tenant_id=? AND session_id=? AND id=? AND status IN ('queued','running','waiting')").bind(actor.tenant_id).bind(session).bind(run).execute(&state.pool).await?;
-    sqlx::query("UPDATE studio_builder_effects SET status='cancelled' WHERE tenant_id=? AND session_id=? AND run_id=? AND status='pending'").bind(actor.tenant_id).bind(session).bind(run).execute(&state.pool).await?;
-    let target = StudioBuilderTargetV1 {
-        tenant_id: actor.tenant_id,
-        workflow_id: row.try_get("workflow_id")?,
-        draft_id: row.try_get("draft_id")?,
-        session_id: session,
-        run_id: run,
-        user_id: actor.user_id,
-    };
+    sqlx::query("UPDATE design_agent_runs SET status='cancelled',completed_at=UTC_TIMESTAMP(6),lease_owner=NULL,lease_until=NULL WHERE tenant_id=? AND session_id=? AND id=? AND status IN ('queued','running','waiting')").bind(actor.tenant_id).bind(session).bind(run).execute(&state.pool).await?;
+    sqlx::query("UPDATE design_agent_effects SET status='cancelled' WHERE tenant_id=? AND session_id=? AND run_id=? AND status='pending'").bind(actor.tenant_id).bind(session).bind(run).execute(&state.pool).await?;
+    let target = target_for(&actor, &row, session, run)?;
+
     let state_json: AgentSessionStateV1 =
         serde_json::from_value(row.try_get("state_json")?).map_err(ApiError::internal)?;
     if let Some(operation) = state_json.operation.filter(|op| {
@@ -699,7 +714,7 @@ async fn cancel_run(
     }) {
         let effect =
             agentx_runtime_contracts::deterministic_uuid(run, operation.effect_id.as_bytes());
-        let _ = crate::studio_builder_runtime::cancel(&state, &target, effect).await;
+        let _ = crate::design_agent_runtime::cancel(&state, &target, effect).await;
     }
     append_entry(
         &state,
@@ -716,15 +731,8 @@ fn target_for(
     row: &sqlx::mysql::MySqlRow,
     session: Uuid,
     run: Uuid,
-) -> ApiResult<StudioBuilderTargetV1> {
-    Ok(StudioBuilderTargetV1 {
-        tenant_id: actor.tenant_id,
-        workflow_id: row.try_get("workflow_id")?,
-        draft_id: row.try_get("draft_id")?,
-        session_id: session,
-        run_id: run,
-        user_id: actor.user_id,
-    })
+) -> ApiResult<agentx_runtime_contracts::DesignModelTargetV1> {
+    crate::design_agent_host::target_from_row(row, actor.tenant_id, actor.user_id, session, run)
 }
 async fn lock_effect_run(
     tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
@@ -732,19 +740,19 @@ async fn lock_effect_run(
     session: Uuid,
     effect: Uuid,
 ) -> ApiResult<()> {
-    sqlx::query("SELECT id FROM studio_builder_runs WHERE tenant_id=? AND session_id=? AND id=(SELECT run_id FROM studio_builder_effects WHERE tenant_id=? AND session_id=? AND id=?) FOR UPDATE")
+    sqlx::query("SELECT id FROM design_agent_runs WHERE tenant_id=? AND session_id=? AND id=(SELECT run_id FROM design_agent_effects WHERE tenant_id=? AND session_id=? AND id=?) FOR UPDATE")
         .bind(tenant).bind(session).bind(tenant).bind(session).bind(effect)
         .fetch_optional(&mut **tx).await?.ok_or_else(||ApiError::not_found("Builder effect"))?;
     Ok(())
 }
 
 async fn append_ack(
-    state: &ControlApiState,
+    tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
     actor: &Actor,
     row: &sqlx::mysql::MySqlRow,
     run: Uuid,
     session: Uuid,
     input: &StudioEditorAcknowledgementV1,
 ) -> ApiResult<()> {
-    append_entry(state,&target_for(actor,row,session,run)?,&format!("ack:{}",input.command_id),json!({"type":"command_acknowledged","commandId":input.command_id,"status":input.status,"documentHash":input.snapshot.document_hash,"saveStatus":input.snapshot.save_status,"issues":input.issues})).await
+    crate::design_agent_runtime::append_entry_tx(tx,&target_for(actor,row,session,run)?,&format!("ack:{}",input.command_id),json!({"type":"command_acknowledged","commandId":input.command_id,"status":input.status,"documentHash":input.snapshot.document_hash,"saveStatus":input.snapshot.save_status,"issues":input.issues})).await
 }

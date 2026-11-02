@@ -159,6 +159,26 @@ async fn publisher_claim_takeover_and_transition_are_fenced() {
     current_tx.commit().await.unwrap();
 
     runtime_success_before_local_transition_is_replayed_after_takeover(&pool).await;
+    admission_takeover_recovers_processing_mcp_publications(&pool).await;
+}
+
+async fn admission_takeover_recovers_processing_mcp_publications(pool: &sqlx::MySqlPool) {
+    let first = publisher(pool.clone());
+    let second = publisher(pool.clone());
+    let id = Uuid::now_v7();
+    let tenant = Uuid::now_v7();
+    sqlx::query("INSERT INTO outbox(id,tenant_id,event_type,aggregate_type,aggregate_id,payload_json,status,locked_by,locked_until,fencing_token) VALUES(?,?,'ApplicationMcpChanged','application_mcp_admission',?,JSON_OBJECT(),'processing',?,UTC_TIMESTAMP(6)-INTERVAL 1 SECOND,4)")
+        .bind(id).bind(tenant).bind(Uuid::now_v7().to_string()).bind(first.owner.0).execute(pool).await.unwrap();
+    let (a, b) = tokio::join!(first.claim_admission(), second.claim_admission());
+    let mut claims = a.unwrap();
+    claims.extend(b.unwrap());
+    assert_eq!(
+        claims.len(),
+        1,
+        "One Publisher must recover the expired processing lease"
+    );
+    assert_eq!(claims[0].id, id);
+    assert_eq!(claims[0].fencing_token, 5);
 }
 
 async fn runtime_success_before_local_transition_is_replayed_after_takeover(

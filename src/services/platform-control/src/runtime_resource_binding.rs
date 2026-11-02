@@ -109,9 +109,26 @@ fn from_parts(
                 endpoint: required_json_string(&snapshot, "endpoint")?,
                 model: required_json_string(&snapshot, "modelName")?,
                 context_window: snapshot
-                    .get("contextWindow")
+                    .get("maxInputTokens")
                     .and_then(Value::as_u64)
-                    .unwrap_or(128_000),
+                    .filter(|limit| *limit > 0)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Model Runtime binding requires maxInputTokens")
+                    })?,
+                max_output_tokens: snapshot
+                    .get("maxOutputTokens")
+                    .and_then(Value::as_u64)
+                    .filter(|limit| *limit > 0)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Model Runtime binding requires maxOutputTokens")
+                    })?,
+                parameters: snapshot
+                    .get("defaultParameters")
+                    .filter(|value| value.is_object())
+                    .cloned()
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Model Runtime binding requires defaultParameters")
+                    })?,
                 price: RuntimeModelPriceV1 {
                     version_id: required_json_scalar_string(
                         snapshot.pointer("/price/versionId"),
@@ -156,6 +173,16 @@ fn from_parts(
             (
                 RuntimeResourceKindV1::Mcp,
                 RuntimeResourceConfigurationV1::Mcp {
+                    tool_policy: if resource_type == "mcp_tool" {
+                        Some(serde_json::from_value(
+                            snapshot
+                                .get("toolPolicy")
+                                .context("MCP tool requires its frozen policy")?
+                                .clone(),
+                        )?)
+                    } else {
+                        None
+                    },
                     server_id: json_uuid(&snapshot, "serverId")
                         .context("MCP Runtime binding requires serverId")?,
                     server_version_id: json_uuid(&snapshot, "serverVersionId")
@@ -560,7 +587,9 @@ mod tests {
             "providerType":"openai_compatible",
             "endpoint":"https://provider.test/v1",
             "modelName":"fixture",
-            "contextWindow":4096,
+            "maxInputTokens":4096,
+            "maxOutputTokens":1024,
+            "defaultParameters":{"reasoning_effort":"low"},
             "price":{
                 "versionId":Uuid::nil(),
                 "currency":"USD",
@@ -579,8 +608,10 @@ mod tests {
         assert_eq!(binding.resource_kind, RuntimeResourceKindV1::Model);
         assert!(matches!(
             binding.configuration,
-            RuntimeResourceConfigurationV1::Model { context_window, price, .. }
+            RuntimeResourceConfigurationV1::Model { context_window, max_output_tokens, parameters, price, .. }
                 if context_window == 4096
+                    && max_output_tokens == 1024
+                    && parameters["reasoning_effort"] == "low"
                     && price.currency == "USD"
                     && price.input_per_million == "5.00000000"
                     && price.output_per_million == "30.00000000"

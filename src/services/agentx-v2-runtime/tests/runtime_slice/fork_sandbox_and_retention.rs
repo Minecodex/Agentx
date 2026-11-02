@@ -561,6 +561,8 @@ async fn agent_worker_runs_a_bounded_tool_loop_and_persists_usage(fixture: &Fixt
         endpoint: format!("{endpoint}/model"),
         model: "fixture-model".into(),
         context_window: 128_000,
+        max_output_tokens: 4096,
+        parameters: serde_json::json!({}),
         price: agentx_runtime_contracts::RuntimeModelPriceV1 {
             version_id: "price:1".into(),
             currency: "USD".into(),
@@ -760,6 +762,8 @@ async fn application_session_agent_restores_context_across_executions(fixture: &
         endpoint: "https://provider.example.test/model".into(),
         model: "fixture-model".into(),
         context_window: 128_000,
+        max_output_tokens: 4096,
+        parameters: serde_json::json!({}),
         price: agentx_runtime_contracts::RuntimeModelPriceV1 {
             version_id: "price:1".into(),
             currency: "USD".into(),

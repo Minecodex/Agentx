@@ -42,6 +42,8 @@ const commonAllowedRoots = new Set([
 ])
 
 const dynamicRoots: Record<string, Set<string>> = {
+  applicationMcp: new Set(['check_publication', 'check_authorization', 'check_resource', 'check_oauth']),
+  applicationUi: new Set(['before', 'after', 'publishStatus']),
   testing: new Set(['profiles', 'runs', 'name', 'readiness', 'caseCount', 'needsAttention', 'filters', 'status']),
   applications: new Set(['edit', 'key', 'webhook', 'schedule', 'private', 'department', 'company', 'draft', 'active', 'disabled', 'pinned', 'follow_deployment', 'manual_upgrade', 'fire_once', 'skip', 'webhookEdit', 'scheduleEdit', 'sessionUpgrade', 'upgrade', 'channels', 'addChannel', 'provider', 'providerHint', 'channelMode', 'channelModeCallback', 'channelModeStream', 'channelModeHint', 'channelSecretKeep', 'channelFields', 'connectionStatus', 'connectionPending', 'connectionConnected', 'connectionReconnecting', 'connectionDisconnected', 'connectionError', 'streamNoEndpoint', 'channelEnabled', 'channelDisabled', 'enableChannel', 'disableChannel', 'inputMappings', 'fixedInputs', 'channelDetails', 'productionEndpoint', 'endpointInactive', 'sourceMapping', 'multiConversationHint', 'mappingCount', 'noChannels', 'published', 'sourceField', 'workflowInput', 'removeMapping', 'addMapping', 'fixedInputName', 'fixedInputValue', 'removeFixedInput', 'addFixedInput']),
   datasets: new Set(['private', 'department', 'company', 'active', 'disabled']),
@@ -170,7 +172,7 @@ describe('locale preference', () => {
         if (!used.has(domain)) used.set(domain, new Set())
         if (root) used.get(domain)?.add(root)
       }
-      for (const match of source.matchAll(/['"]((?:testing|common|navigation|auth|workflows|studio|applications|executions|approvals|notifications|datasets|evaluations|runtime|trace|credentials|models|mcp|skills|knowledge|memory|sandbox|resourceGrants|organization|roles|errors)\.[A-Za-z0-9_.-]+)['"]/g)) {
+      for (const match of source.matchAll(/['"]((?:testing|common|navigation|auth|workflows|studio|applications|applicationUi|applicationMcp|executions|approvals|notifications|datasets|evaluations|runtime|trace|credentials|models|mcp|skills|knowledge|memory|sandbox|resourceGrants|organization|roles|errors)\.[A-Za-z0-9_.-]+)['"]/g)) {
         const [domain, root] = match[1].split('.')
         if (!used.has(domain)) used.set(domain, new Set())
         if (root) used.get(domain)?.add(root)

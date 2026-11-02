@@ -319,6 +319,8 @@ Dataset 导入先检查文件内重复，再在事务中检查现有 Case，并�
 
 这份租户配置明确授权画布创作与系统评测，均不向业务 Workflow 自动写 Grant。每个新 Run/批次冻结具体部署、凭据、参数和价格；普通切换影响新任务。清除设置、停用模型或凭据通过持久 Admission 撤销相关未完成评分授权，错误进入报告，不切换备用模型。Alias 使用另一凭据后须重新设置。
 
+[plan9](plan9/README.md) 已确定待实施的网页创作扩展：AI 应用页面复用这同一个选中模型与凭据，不增加网页/应用独立模型配置；模型用途授权、调用目标联合、Receipt/Quota/撤销按 [共用设计态 Agent](plan9/06-shared-design-agent.md) 扩展。应用详情增加“访问界面”和“MCP 接入”Tab，员工通过登录保护的 `/a/{slug}` 使用页面，工具审批复用现有审批中心；不新增侧栏菜单。业务工作流仍使用自身运行模型与授权。本段为计划范围，现有接口与已实现用途仍以上文为准。
+
 ## 工作流输入交互
 
 中间回复和输入等待统一归入 `agentx/core`，持久化与恢复由 Runtime 承担。`input_waits`、`workflow_messages` 和 `channel_input_receipts` 分别保存等待、消息和渠道幂等凭据；Hook 复用 delivery outbox。平台入口共享等待节点发现及回复序列编辑器，定时和测试用例版本冻结 `waitInputs`，评测投影保存实际等待和消息。详见 [工作流交互协议](14-workflow-interactions.md)。

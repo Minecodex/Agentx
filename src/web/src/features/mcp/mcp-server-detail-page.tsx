@@ -1,3 +1,4 @@
+import { approvalPolicyFields } from './mcp-approval-fields'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Activity, Bug, Pencil, RefreshCw, Settings2, TerminalSquare } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -56,7 +57,7 @@ export function McpServerDetailPage() {
   }
   const updatePolicy = async (values: Record<string, string>) => {
     if (!selected) return
-    await apiRequest(`/mcp/tools/${selected.id}/policy`, { method: 'PATCH', body: jsonBody({ enabled: values.enabled === 'true', debugEnabled: values.debugEnabled === 'true', timeoutSeconds: Number(values.timeout), sideEffect: values.sideEffect, version: selected.version }) })
+    await apiRequest(`/mcp/tools/${selected.id}/policy`, { method: 'PATCH', body: jsonBody({ enabled: values.enabled === 'true', debugEnabled: values.approvalMode === 'required' ? false : values.debugEnabled === 'true', approvalRule: values.approvalMode === 'required' ? {userIds:JSON.parse(values.approval_user||'[]') as string[],roleIds:JSON.parse(values.approval_role||'[]') as string[],timeoutSeconds:Number(values.approvalTimeout)} : null, timeoutSeconds: Number(values.timeout), sideEffect: values.sideEffect, version: selected.version }) })
     await invalidate()
   }
   const invoke = async (values: Record<string, string>) => {
@@ -81,6 +82,7 @@ export function McpServerDetailPage() {
     { name: 'configuration', label: t('mcp.configuration'), type: 'textarea', defaultValue: '{}' },
   ] : []
   const policyFields: EntityFormField[] = selected ? [
+    ...approvalPolicyFields(t,selected),
     { name: 'enabled', label: t('mcp.toolEnabled'), type: 'select', defaultValue: String(selected.enabled), required: true, options: booleanOptions(t) },
     { name: 'debugEnabled', label: t('mcp.debugEnabled'), type: 'select', defaultValue: String(selected.debugEnabled), required: true, options: booleanOptions(t) },
     { name: 'timeout', label: t('mcp.timeoutSeconds'), type: 'number', defaultValue: String(selected.timeoutSeconds), required: true },

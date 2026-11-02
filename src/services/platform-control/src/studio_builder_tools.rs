@@ -1,8 +1,11 @@
+use crate::design_agent_tools::tool;
+#[cfg(test)]
+use agentx_agent_core::ToolOriginV1;
 use std::collections::BTreeMap;
 
 use agentx_agent_core::{
-    EffectContextV1, EffectObservationV1, ReplayPolicyV1, ToolCallV1, ToolDefinitionV1,
-    ToolOriginV1, ToolPort, ToolPortError, ToolResultV1,
+    EffectContextV1, EffectObservationV1, ToolCallV1, ToolDefinitionV1, ToolPort, ToolPortError,
+    ToolResultV1,
 };
 use agentx_runtime_contracts::{StudioEditIntentV1, StudioEditorCommandV1, StudioEditorSnapshotV1};
 use schemars::JsonSchema;
@@ -140,54 +143,6 @@ struct AskInput {
     options: Vec<String>,
 }
 
-fn tool<T: JsonSchema>(name: &str, description: &str) -> ToolDefinitionV1 {
-    let mut schema = serde_json::to_value(schemars::schema_for!(T)).unwrap();
-    expose_discriminated_properties(&mut schema);
-    ToolDefinitionV1 {
-        name: name.into(),
-        description: description.into(),
-        input_schema: schema,
-        origin: ToolOriginV1::Platform,
-        replay_policy: ReplayPolicyV1::IdempotencyRequired,
-    }
-}
-
-// Providers inspect top-level properties to guide tool generation. Retain the
-// closed union for validation while exposing every discriminator and field.
-fn expose_discriminated_properties(schema: &mut Value) {
-    match schema {
-        Value::Array(items) => items.iter_mut().for_each(expose_discriminated_properties),
-        Value::Object(object) => {
-            object
-                .values_mut()
-                .for_each(expose_discriminated_properties);
-            let Some(branches) = object.get("oneOf").and_then(Value::as_array) else {
-                return;
-            };
-            let Some(discriminator) = ["action", "kind"].into_iter().find(|key| {
-                branches.iter().all(|branch| {
-                    branch["type"] == "object" && branch["properties"][key]["const"].is_string()
-                })
-            }) else {
-                return;
-            };
-            let mut properties = serde_json::Map::new();
-            for branch in branches {
-                for (key, value) in branch["properties"].as_object().unwrap() {
-                    properties
-                        .entry(key.clone())
-                        .or_insert_with(|| value.clone());
-                }
-            }
-            properties.insert(discriminator.into(),json!({"type":"string","enum":branches.iter().map(|branch|branch["properties"][discriminator]["const"].clone()).collect::<Vec<_>>()}));
-            object.insert("type".into(), json!("object"));
-            object.insert("properties".into(), Value::Object(properties));
-            object.insert("required".into(), json!([discriminator]));
-            object.insert("additionalProperties".into(), json!(false));
-        }
-        _ => {}
-    }
-}
 pub(crate) fn registry() -> Vec<ToolDefinitionV1> {
     vec![
         tool::<ReadInput>(
@@ -239,16 +194,70 @@ fn result(value: Value, error: bool) -> ToolResultV1 {
         terminate: false,
     }
 }
-fn parse<T: for<'de> Deserialize<'de>>(call: &ToolCallV1) -> ApiResult<T> {
-    serde_json::from_value(call.arguments.clone()).map_err(|error| {
+fn parse<T: for<'de> Deserialize<'de> + JsonSchema>(call: &ToolCallV1) -> ApiResult<T> {
+    parse_value(
+        &call.arguments,
+        "BUILDER_TOOL_ARGUMENT_INVALID",
+        "/arguments",
+        "Tool arguments do not match the registered schema",
+    )
+}
+
+fn parse_value<T: for<'de> Deserialize<'de> + JsonSchema>(
+    value: &Value,
+    code: &'static str,
+    prefix: &str,
+    heading: &str,
+) -> ApiResult<T> {
+    serde_json::from_value(value.clone()).map_err(|error| {
         let detail = error.to_string();
-        let message = if detail.starts_with("missing field") || detail.starts_with("unknown field")
-        {
-            format!("Tool arguments do not match the registered schema: {detail}")
+        let reason = if detail.starts_with("missing field") || detail.starts_with("unknown field") {
+            detail
         } else {
-            "Tool action and field types must match the registered schema".into()
+            "The action or field type is invalid".into()
         };
-        ApiError::bad_request("BUILDER_TOOL_ARGUMENT_INVALID", message)
+        // Reuse the exact schema already exposed to the model. Serde remains
+        // authoritative; schema errors only locate a rejected value and never
+        // echo that value into the diagnostic.
+        let schema = tool::<T>("diagnostic", "").input_schema;
+        let mut paths = jsonschema::validator_for(&schema)
+            .map(|validator| {
+                validator
+                    .iter_errors(value)
+                    .map(|issue| issue.instance_path.to_string())
+                    .filter(|path| !path.is_empty())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        paths.sort_by(|left, right| {
+            right
+                .matches('/')
+                .count()
+                .cmp(&left.matches('/').count())
+                .then_with(|| left.cmp(right))
+        });
+        paths.dedup();
+        if paths.is_empty() {
+            paths.push(String::new());
+        }
+        let mut error = ApiError::bad_request(
+            code,
+            format!("{heading}: {reason}")
+                .chars()
+                .take(1600)
+                .collect::<String>(),
+        );
+        for path in paths.into_iter().take(5) {
+            error = error.with_field_error(
+                format!("{prefix}{path}")
+                    .chars()
+                    .take(1000)
+                    .collect::<String>(),
+                "INVALID_VALUE",
+                "Must match the registered schema",
+            );
+        }
+        error
     })
 }
 
@@ -313,7 +322,7 @@ impl ToolPort for BuilderTools {
                 } else {
                     json!({"type":"question","questionId":id,"question":call.arguments["question"],"options":call.arguments["options"]})
                 };
-                crate::studio_builder_runtime::append_entry(
+                crate::design_agent_runtime::append_entry(
                     &self.context.state,
                     &self.context.target,
                     &format!("pending:{id}"),
@@ -362,7 +371,7 @@ impl ToolPort for BuilderTools {
                 preview["artifactId"] = json!(id);
                 value.content = preview.to_string();
             }
-            sqlx::query("INSERT INTO studio_builder_effects(id,tenant_id,session_id,run_id,effect_key,tool_name,request_hash,input_json,result_json,status) VALUES(?,?,?,?,?,?,?,?,?,'settled') ON DUPLICATE KEY UPDATE id=id")
+            sqlx::query("INSERT INTO design_agent_effects(id,tenant_id,session_id,run_id,effect_key,tool_name,request_hash,input_json,result_json,status) VALUES(?,?,?,?,?,?,?,?,?,'settled') ON DUPLICATE KEY UPDATE id=id")
                 .bind(id).bind(self.context.target.tenant_id).bind(self.context.target.session_id).bind(self.context.target.run_id).bind(&context.effect_id).bind(&call.name).bind(agentx_domain::canonical_content_hash(&serde_json::to_value(call).unwrap()).unwrap()).bind(&call.arguments).bind(serde_json::to_value(&value).unwrap()).execute(&self.context.state.pool).await.map_err(|_|ToolPortError::Effect("Tool receipt could not be persisted".into()))?;
             Ok(value)
         })
@@ -372,7 +381,7 @@ impl ToolPort for BuilderTools {
 impl BuilderTools {
     async fn stored(&self, context: &EffectContextV1) -> ApiResult<Option<sqlx::mysql::MySqlRow>> {
         Ok(sqlx::query(
-            "SELECT * FROM studio_builder_effects WHERE tenant_id=? AND run_id=? AND effect_key=?",
+            "SELECT * FROM design_agent_effects WHERE tenant_id=? AND run_id=? AND effect_key=?",
         )
         .bind(self.context.target.tenant_id)
         .bind(self.context.target.run_id)
@@ -382,7 +391,7 @@ impl BuilderTools {
     }
     async fn snapshot(&self) -> ApiResult<StudioEditorSnapshotV1> {
         let value: Value = sqlx::query_scalar(
-            "SELECT snapshot_json FROM studio_builder_sessions WHERE tenant_id=? AND id=?",
+            "SELECT snapshot_json FROM design_agent_sessions WHERE tenant_id=? AND id=?",
         )
         .bind(self.context.target.tenant_id)
         .bind(self.context.target.session_id)
@@ -407,7 +416,7 @@ impl BuilderTools {
                     offset,
                     limit,
                 } => {
-                    let stored: Value=sqlx::query_scalar("SELECT result_json FROM studio_builder_effects WHERE tenant_id=? AND session_id=? AND id=? AND status='settled'").bind(target.tenant_id).bind(target.session_id).bind(artifact_id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Design artifact"))?;
+                    let stored: Value=sqlx::query_scalar("SELECT result_json FROM design_agent_effects WHERE tenant_id=? AND session_id=? AND id=? AND status='settled'").bind(target.tenant_id).bind(target.session_id).bind(artifact_id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Design artifact"))?;
                     if stored["truncated"] != true || stored["structuredResult"].is_null() {
                         return Err(ApiError::not_found("Design artifact"));
                     }
@@ -721,7 +730,10 @@ impl BuilderTools {
                     }) {
                         return Err(ApiError::bad_request(
                             "PROTECTED_NODE",
-                            "Protected nodes cannot be removed or converted",
+                            format!(
+                                "Protected node {} must retain its id, type and protected:true. upsert_node replaces the complete node; include protected:true when editing this node.",
+                                node.id
+                            ),
                         ));
                     }
                 }
@@ -840,7 +852,7 @@ impl BuilderTools {
                 }
                 report["documentHash"] = json!(hash);
                 report["executionPerformed"] = json!(false);
-                crate::studio_builder_runtime::append_entry(
+                crate::design_agent_runtime::append_entry(
                     state,
                     target,
                     &format!("validation:{}", context.effect_id),
@@ -910,7 +922,7 @@ impl BuilderTools {
         let mut tx = self.context.state.pool.begin().await?;
         // Serialize command preparation with cancellation and lease takeover.
         // Run precedes Session, matching Core commits and acknowledgements.
-        let active:Option<Uuid>=sqlx::query_scalar("SELECT id FROM studio_builder_runs WHERE tenant_id=? AND id=? AND session_id=? AND fencing_token=? AND status IN ('queued','running','waiting') AND lease_until>UTC_TIMESTAMP(6) FOR UPDATE")
+        let active:Option<Uuid>=sqlx::query_scalar("SELECT id FROM design_agent_runs WHERE tenant_id=? AND id=? AND session_id=? AND fencing_token=? AND status IN ('queued','running','waiting') AND lease_until>UTC_TIMESTAMP(6) FOR UPDATE")
             .bind(self.context.target.tenant_id).bind(self.context.target.run_id).bind(self.context.target.session_id).bind(self.context.fence).fetch_optional(&mut *tx).await?;
         if active.is_none() {
             return Err(ApiError::conflict(
@@ -918,22 +930,27 @@ impl BuilderTools {
                 "The run stopped before command preparation",
             ));
         }
-        let current:Value=sqlx::query_scalar("SELECT snapshot_json FROM studio_builder_sessions WHERE tenant_id=? AND id=? FOR UPDATE").bind(self.context.target.tenant_id).bind(self.context.target.session_id).fetch_one(&mut *tx).await?;
-        if let Some(command) = command {
-            if current["documentHash"].as_str() != Some(&command.expected_document_hash)
+        let current: Value = sqlx::query_scalar(
+            "SELECT snapshot_json FROM design_agent_sessions WHERE tenant_id=? AND id=? FOR UPDATE",
+        )
+        .bind(self.context.target.tenant_id)
+        .bind(self.context.target.session_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if let Some(command) = command
+            && (current["documentHash"].as_str() != Some(&command.expected_document_hash)
                 || current["localDocumentRevision"].as_u64()
-                    != Some(command.expected_local_document_revision)
-            {
-                return Err(ApiError::conflict(
-                    "EDITOR_DOCUMENT_STALE",
-                    "Canvas changed while the command was prepared",
-                ));
-            }
+                    != Some(command.expected_local_document_revision))
+        {
+            return Err(ApiError::conflict(
+                "EDITOR_DOCUMENT_STALE",
+                "Canvas changed while the command was prepared",
+            ));
         }
-        sqlx::query("INSERT INTO studio_builder_effects(id,tenant_id,session_id,run_id,effect_key,tool_name,request_hash,input_json,command_json) VALUES(?,?,?,?,?,?,?,?,?)")
+        sqlx::query("INSERT INTO design_agent_effects(id,tenant_id,session_id,run_id,effect_key,tool_name,request_hash,input_json,command_json) VALUES(?,?,?,?,?,?,?,?,?)")
             .bind(id).bind(self.context.target.tenant_id).bind(self.context.target.session_id).bind(self.context.target.run_id).bind(&context.effect_id).bind(&call.name).bind(agentx_domain::canonical_content_hash(&serde_json::to_value(call).unwrap()).unwrap()).bind(&call.arguments).bind(command.map(|command|serde_json::to_value(command).unwrap())).execute(&mut *tx).await?;
         tx.commit().await?;
-        crate::studio_builder_runtime::append_entry(
+        crate::design_agent_runtime::append_entry(
             &self.context.state,
             &self.context.target,
             &format!("pending:{id}"),
@@ -974,8 +991,12 @@ fn apply_intent(
 ) -> ApiResult<()> {
     match intent {
         StudioEditIntentV1::AutoLayout => {}
-        StudioEditIntentV1::ReplaceDocument { document: next } => *document = next,
-        StudioEditIntentV1::UpsertNode { node, layout } => {
+        StudioEditIntentV1::ReplaceDocument { document: mut next } => {
+            normalize_exit_parameters(&mut next.definition.nodes)?;
+            *document = next;
+        }
+        StudioEditIntentV1::UpsertNode { mut node, layout } => {
+            normalize_exit_parameters(std::slice::from_mut(&mut node))?;
             if let Some(existing) = document
                 .definition
                 .nodes
@@ -1042,6 +1063,31 @@ fn apply_intent(
     }
     Ok(())
 }
+fn normalize_exit_parameters(nodes: &mut [agentx_domain::WorkflowNode]) -> ApiResult<()> {
+    for node in nodes
+        .iter_mut()
+        .filter(|node| node.node_type == agentx_domain::WORKFLOW_EXIT_NODE_TYPE)
+    {
+        let parameters: agentx_domain::ExitParameters = if node.parameters.is_null() {
+            Default::default()
+        } else {
+            parse_value(
+                &node.parameters,
+                "INVALID_EXIT_PARAMETERS",
+                &format!(
+                    "/nodes/{}/parameters",
+                    node.id.replace('~', "~0").replace('/', "~1")
+                ),
+                "Exit parameters must use the registered outputs/errorOutputs mapping schema",
+            )?
+        };
+        // Materialize the same typed defaults as the manual editor before the
+        // command is hashed. The exact document/ACK guard remains unchanged.
+        node.parameters = parameters.to_value();
+    }
+    Ok(())
+}
+
 fn changed_nodes(
     before: &agentx_domain::WorkflowDefinition,
     after: &agentx_domain::WorkflowDefinition,
@@ -1064,6 +1110,110 @@ fn changed_nodes(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn invalid_tool_types_report_exact_fields_without_values() {
+        let call = ToolCallV1 {
+            call_id: "invalid-cursor".into(),
+            name: "workflow_read".into(),
+            arguments: json!({"action":"document","cursor":"PRIVATE_BUSINESS_VALUE"}),
+        };
+        let feedback = parse::<ReadInput>(&call).err().unwrap().design_feedback();
+        assert_eq!(feedback["code"], "BUILDER_TOOL_ARGUMENT_INVALID");
+        assert!(
+            feedback["fieldErrors"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|field| field["field"] == "/arguments/cursor")
+        );
+        assert!(!feedback.to_string().contains("PRIVATE_BUSINESS_VALUE"));
+
+        let mut node =
+            serde_json::to_value(agentx_domain::WorkflowDefinition::empty().nodes.remove(0))
+                .unwrap();
+        node["typeVersion"] = json!("PRIVATE_TYPE_VALUE");
+        let call = ToolCallV1 {
+            call_id: "invalid-node-type".into(),
+            name: "workflow_edit".into(),
+            arguments: json!({"action":"batch","expectedLocalDocumentRevision":0,"expectedDocumentHash":"hash","intents":[{"kind":"upsert_node","node":node}]}),
+        };
+        let feedback = parse::<EditInput>(&call).err().unwrap().design_feedback();
+        assert!(
+            feedback["fieldErrors"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|field| field["field"] == "/arguments/intents/0/node/typeVersion")
+        );
+        assert!(!feedback.to_string().contains("PRIVATE_TYPE_VALUE"));
+    }
+
+    #[test]
+    fn rejected_exit_selector_reports_its_parameter_path() {
+        let mut node = agentx_domain::WorkflowDefinition::empty().nodes.remove(0);
+        node.id = "exit/error".into();
+        node.parameters = json!({"outputs":{"delivery":{"kind":"reference","selector":{"namespace":"inputs","path":["delivery"],"run":{"kind":"current"},"item":{"kind":"current"},"missingPolicy":{"kind":"error"}},"missingPolicy":{"kind":"error"}}}});
+        let feedback = normalize_exit_parameters(std::slice::from_mut(&mut node))
+            .err()
+            .unwrap()
+            .design_feedback();
+        assert_eq!(feedback["code"], "INVALID_EXIT_PARAMETERS");
+        assert!(feedback["fieldErrors"].as_array().unwrap().iter().any(
+            |field| field["field"] == "/nodes/exit~1error/parameters/outputs/delivery/selector"
+        ));
+    }
+
+    #[test]
+    fn exit_edit_defaults_are_canonical_for_upsert_and_replacement() {
+        let mut document = agentx_runtime_contracts::StudioDocumentV1 {
+            definition: agentx_domain::WorkflowDefinition::empty(),
+            editor_document: Default::default(),
+        };
+        let mut node = document.definition.nodes[0].clone();
+        let output = json!({"decision":{"kind":"literal","value":"approved"}});
+        node.parameters = json!({"outputs":output});
+        apply_intent(
+            &mut document,
+            StudioEditIntentV1::UpsertNode { node, layout: None },
+        )
+        .unwrap();
+        assert_eq!(
+            document.definition.nodes[0].parameters,
+            json!({"outputs":output,"errorOutputs":{}})
+        );
+        let mut replacement = document.clone();
+        let errors = json!({"message":{"kind":"literal","value":"Failure"}});
+        replacement.definition.nodes[0].parameters = json!({"errorOutputs":errors});
+        apply_intent(
+            &mut document,
+            StudioEditIntentV1::ReplaceDocument {
+                document: replacement,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            document.definition.nodes[0].parameters,
+            json!({"outputs":{},"errorOutputs":errors})
+        );
+        assert!(document.definition.nodes[0].protected);
+        let original = document.clone();
+        let mut invalid = document.definition.nodes[0].clone();
+        invalid.parameters = json!({"outputs":{},"unrecognized":true});
+        assert!(
+            apply_intent(
+                &mut document,
+                StudioEditIntentV1::UpsertNode {
+                    node: invalid,
+                    layout: None
+                }
+            )
+            .is_err()
+        );
+        assert_eq!(
+            serde_json::to_value(document.definition).unwrap(),
+            serde_json::to_value(original.definition).unwrap()
+        );
+    }
     #[test]
     fn connection_orders_are_local_to_each_output_port() {
         let edge = |id: &str, port: &str, order| agentx_domain::WorkflowConnection {

@@ -11,6 +11,19 @@
     "owning_task": "V2P-002"
   },
   {
+    "table": "agent_tool_effects",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-worker protected tool adapter and workflow-runtime approval recovery",
+    "allowed_readers": [
+      "runtime-gateway approval API",
+      "workflow-runtime command and retention"
+    ],
+    "cross_plane_contract": "AgentToolApprovalSubjectV1 / Core Pending Effect / resume command",
+    "retention_and_delete_rule": "Preserve original operation, Effect, parameter hash, decision and receipt. Retain unresolved/unknown effects; consume settled receipts once, never replay uncertain writes.",
+    "owning_task": "P9-04",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
+  },
+  {
     "table": "application_chat_mappings",
     "plane": "runtime",
     "authoritative_writer": "runtime-gateway chat mapping command handler",
@@ -21,6 +34,110 @@
     "cross_plane_contract": "ApplyChatMappingRequestV1 and ChatMappingV1",
     "retention_and_delete_rule": "retain the latest monotonic mapping version with its published Bundle and Deployment",
     "owning_task": "V2C-007"
+  },
+  {
+    "table": "application_mcp_routes",
+    "plane": "control",
+    "authoritative_writer": "platform-control MCP publisher",
+    "allowed_readers": [
+      "platform-control MCP API",
+      "platform-control publisher"
+    ],
+    "cross_plane_contract": "ApplicationMcpPublicationV1 / RuntimeAdmissionCommandV1",
+    "retention_and_delete_rule": "Globally reserve a suffix to one tenant/application while any retained publication uses it; share across same-application tools. Release after the final retraction is acknowledged.",
+    "owning_task": "P9-05",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "application_mcp_heads",
+    "plane": "control",
+    "authoritative_writer": "platform-control MCP publisher",
+    "allowed_readers": [
+      "platform-control MCP API",
+      "platform-control publisher"
+    ],
+    "cross_plane_contract": "ApplicationMcpPublicationV1 / RuntimeAdmissionCommandV1",
+    "retention_and_delete_rule": "Retain monotonic publication sequence and immutable manifests. Publications coexist until a precise removal; preserve task bindings and a deletion tombstone. Deletion releases only that publication Bundle reference.",
+    "owning_task": "P9-05",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "application_mcp_routes",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-runtime admission handler",
+    "allowed_readers": [
+      "runtime-gateway MCP API",
+      "runtime-gateway OAuth authority"
+    ],
+    "cross_plane_contract": "ApplicationMcpPublicationV1 / RuntimeAdmissionCommandV1",
+    "retention_and_delete_rule": "Globally reserve a suffix to one tenant/application while any retained publication uses it; share across same-application tools. Release after the final retraction is acknowledged.",
+    "owning_task": "P9-05",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
+  },
+  {
+    "table": "application_mcp_heads",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-runtime admission handler",
+    "allowed_readers": [
+      "runtime-gateway MCP API",
+      "runtime-gateway OAuth authority"
+    ],
+    "cross_plane_contract": "ApplicationMcpPublicationV1 / RuntimeAdmissionCommandV1",
+    "retention_and_delete_rule": "Retain monotonic publication sequence and immutable manifests. Publications coexist until a precise removal; preserve task bindings and a deletion tombstone. Deletion releases only that publication Bundle reference.",
+    "owning_task": "P9-05",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
+  },
+  {
+    "table": "application_mcp_publications",
+    "plane": "control",
+    "authoritative_writer": "platform-control MCP publisher",
+    "allowed_readers": [
+      "platform-control MCP API",
+      "platform-control publisher"
+    ],
+    "cross_plane_contract": "ApplicationMcpPublicationV1 / RuntimeAdmissionCommandV1",
+    "retention_and_delete_rule": "Retain monotonic publication sequence and immutable manifests. Publications coexist until a precise removal; preserve task bindings and a deletion tombstone. Deletion releases only that publication Bundle reference.",
+    "owning_task": "P9-05",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "application_mcp_publications",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-runtime admission handler",
+    "allowed_readers": [
+      "runtime-gateway MCP API",
+      "runtime-gateway OAuth authority"
+    ],
+    "cross_plane_contract": "ApplicationMcpPublicationV1 / RuntimeAdmissionCommandV1",
+    "retention_and_delete_rule": "Retain monotonic publication sequence and immutable manifests. Publications coexist until a precise removal; preserve task bindings and a deletion tombstone. Deletion releases only that publication Bundle reference.",
+    "owning_task": "P9-05",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
+  },
+  {
+    "table": "application_oauth_clients",
+    "plane": "control",
+    "authoritative_writer": "platform-control OAuth registration",
+    "allowed_readers": [
+      "platform-control OAuth login and consent",
+      "platform-control MCP API"
+    ],
+    "cross_plane_contract": "Hydra client registration, login/consent and introspection",
+    "retention_and_delete_rule": "Retain client/application/scope association and revocation audit. Token bodies belong only to the independent Hydra database.",
+    "owning_task": "P9-05",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "application_page_publications",
+    "plane": "runtime",
+    "authoritative_writer": "runtime-gateway page prepare/activate",
+    "allowed_readers": [
+      "runtime-gateway page API",
+      "workflow-runtime retention"
+    ],
+    "cross_plane_contract": "ApplicationPagePublicationV1 / TaskViewV1",
+    "retention_and_delete_rule": "Atomically activate verified materials. Retain exact historical page/SDK/Bundle while referenced by invocations or unresolved Effects.",
+    "owning_task": "P9-03",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
   },
   {
     "table": "application_playground_configs",
@@ -45,6 +162,97 @@
     "cross_plane_contract": "RuntimeTriggerSpecV1 in ExecutionSpecBundleV2",
     "retention_and_delete_rule": "immutable revision; retain with every Deployment that captured the manifest hash",
     "owning_task": "V2G-004"
+  },
+  {
+    "table": "application_ui_checks",
+    "plane": "control",
+    "authoritative_writer": "platform-control page editing use cases",
+    "allowed_readers": [
+      "platform-control shared design Agent Host",
+      "platform-control page publisher"
+    ],
+    "cross_plane_contract": "ApplicationPageDraftV1 / PageEditorSnapshotV1 / PageEditCommandV1",
+    "retention_and_delete_rule": "Retain exact revision/hash save and check receipts; stale checks cannot authorize publication. Delete only with owning application after reference checks.",
+    "owning_task": "P9-02",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "application_ui_drafts",
+    "plane": "control",
+    "authoritative_writer": "platform-control page editing use cases",
+    "allowed_readers": [
+      "platform-control shared design Agent Host",
+      "platform-control page publisher"
+    ],
+    "cross_plane_contract": "ApplicationPageDraftV1 / PageEditorSnapshotV1 / PageEditCommandV1",
+    "retention_and_delete_rule": "Retain exact revision/hash save and check receipts; stale checks cannot authorize publication. Delete only with owning application after reference checks.",
+    "owning_task": "P9-02",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "application_ui_publications",
+    "plane": "control",
+    "authoritative_writer": "platform-control paired page publisher",
+    "allowed_readers": [
+      "platform-control page API",
+      "platform-control retention"
+    ],
+    "cross_plane_contract": "ApplicationPagePublicationV1 / PrepareBundleRequestV1",
+    "retention_and_delete_rule": "Immutable page and Bundle pair; preserve HTML/SDK/style references for historical tasks. Head changes use monotonic revisions.",
+    "owning_task": "P9-03",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "application_ui_saves",
+    "plane": "control",
+    "authoritative_writer": "platform-control page editing use cases",
+    "allowed_readers": [
+      "platform-control shared design Agent Host",
+      "platform-control page publisher"
+    ],
+    "cross_plane_contract": "ApplicationPageDraftV1 / PageEditorSnapshotV1 / PageEditCommandV1",
+    "retention_and_delete_rule": "Retain exact revision/hash save and check receipts; stale checks cannot authorize publication. Delete only with owning application after reference checks.",
+    "owning_task": "P9-02",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "application_ui_versions",
+    "plane": "control",
+    "authoritative_writer": "platform-control paired page publisher",
+    "allowed_readers": [
+      "platform-control page API",
+      "platform-control retention"
+    ],
+    "cross_plane_contract": "ApplicationPagePublicationV1 / PrepareBundleRequestV1",
+    "retention_and_delete_rule": "Immutable page and Bundle pair; preserve HTML/SDK/style references for historical tasks. Head changes use monotonic revisions.",
+    "owning_task": "P9-03",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "application_web_heads",
+    "plane": "control",
+    "authoritative_writer": "platform-control paired page publisher",
+    "allowed_readers": [
+      "platform-control page API",
+      "platform-control retention"
+    ],
+    "cross_plane_contract": "ApplicationPagePublicationV1 / PrepareBundleRequestV1",
+    "retention_and_delete_rule": "Immutable page and Bundle pair; preserve HTML/SDK/style references for historical tasks. Head changes use monotonic revisions.",
+    "owning_task": "P9-03",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "application_web_heads",
+    "plane": "runtime",
+    "authoritative_writer": "runtime-gateway page prepare/activate",
+    "allowed_readers": [
+      "runtime-gateway page API",
+      "workflow-runtime retention"
+    ],
+    "cross_plane_contract": "ApplicationPagePublicationV1 / TaskViewV1",
+    "retention_and_delete_rule": "Atomically activate verified materials. Retain exact historical page/SDK/Bundle while referenced by invocations or unresolved Effects.",
+    "owning_task": "P9-03",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
   },
   {
     "table": "bundle_gc_items",
@@ -122,6 +330,19 @@
     "owning_task": "V2P-009"
   },
   {
+    "table": "channel_input_receipts",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-runtime interaction coordinator",
+    "allowed_readers": [
+      "runtime-gateway task and interaction API",
+      "workflow-runtime recovery"
+    ],
+    "cross_plane_contract": "Channel input command / wait receipt",
+    "retention_and_delete_rule": "Retain stable inbound idempotency receipts with source message and original wait activation.",
+    "owning_task": "P9-01",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
+  },
+  {
     "table": "delivery_dead_letters",
     "plane": "runtime",
     "authoritative_writer": "runtime delivery loop dead letter migration",
@@ -142,6 +363,66 @@
     "cross_plane_contract": "DeliveryOutboxV1 delivery record and status machine",
     "retention_and_delete_rule": "deleted with the application invocation lifecycle retention",
     "owning_task": "plan7 P7-A"
+  },
+  {
+    "table": "design_agent_effects",
+    "plane": "control",
+    "authoritative_writer": "platform-control shared design Agent Host",
+    "allowed_readers": [
+      "platform-control shared design Agent Host"
+    ],
+    "cross_plane_contract": "DesignModelTargetV1 / DesignModelEffectRequestV1 / DesignModelReceiptV1 / target-specific editor acknowledgements",
+    "retention_and_delete_rule": "Retain unresolved Effects and referenced artifacts; purge settled design history by tenant retention after checking workflow/page target ownership and active references.",
+    "owning_task": "P9-02",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "design_agent_entries",
+    "plane": "control",
+    "authoritative_writer": "platform-control shared design Agent Host",
+    "allowed_readers": [
+      "platform-control shared design Agent Host"
+    ],
+    "cross_plane_contract": "DesignModelTargetV1 / DesignModelEffectRequestV1 / DesignModelReceiptV1 / target-specific editor acknowledgements",
+    "retention_and_delete_rule": "Retain unresolved Effects and referenced artifacts; purge settled design history by tenant retention after checking workflow/page target ownership and active references.",
+    "owning_task": "P9-02",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "design_agent_runs",
+    "plane": "control",
+    "authoritative_writer": "platform-control shared design Agent Host",
+    "allowed_readers": [
+      "platform-control shared design Agent Host"
+    ],
+    "cross_plane_contract": "DesignModelTargetV1 / DesignModelEffectRequestV1 / DesignModelReceiptV1 / target-specific editor acknowledgements",
+    "retention_and_delete_rule": "Retain unresolved Effects and referenced artifacts; purge settled design history by tenant retention after checking workflow/page target ownership and active references.",
+    "owning_task": "P9-02",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "design_agent_sessions",
+    "plane": "control",
+    "authoritative_writer": "platform-control shared design Agent Host",
+    "allowed_readers": [
+      "platform-control shared design Agent Host"
+    ],
+    "cross_plane_contract": "DesignModelTargetV1 / DesignModelEffectRequestV1 / DesignModelReceiptV1 / target-specific editor acknowledgements",
+    "retention_and_delete_rule": "Retain unresolved Effects and referenced artifacts; purge settled design history by tenant retention after checking workflow/page target ownership and active references.",
+    "owning_task": "P9-02",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "design_model_deltas",
+    "plane": "runtime",
+    "authoritative_writer": "runtime-gateway design model Effect adapter",
+    "allowed_readers": [
+      "runtime-gateway design model Effect adapter"
+    ],
+    "cross_plane_contract": "DesignModelTargetV1 / DesignModelEffectRequestV1 / DesignModelReceiptV1 / target-specific editor acknowledgements",
+    "retention_and_delete_rule": "Retain unresolved Effects and referenced artifacts; purge settled design history by tenant retention after checking workflow/page target ownership and active references.",
+    "owning_task": "P9-02",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
   },
   {
     "table": "evaluation_batches",
@@ -230,6 +511,19 @@
     "owning_task": "V2P-001"
   },
   {
+    "table": "input_waits",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-runtime interaction coordinator",
+    "allowed_readers": [
+      "runtime-gateway task and interaction API",
+      "workflow-runtime recovery"
+    ],
+    "cross_plane_contract": "InputWaitV1 / SubmitInputRequestV1",
+    "retention_and_delete_rule": "Retain activation waitId, frozen response schema and accepted input; reject terminal late/repeated mutations.",
+    "owning_task": "P9-01",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
+  },
+  {
     "table": "integration_event_log",
     "plane": "runtime",
     "authoritative_writer": "workflow-runtime integration event sequencer",
@@ -252,6 +546,31 @@
     "cross_plane_contract": "RuntimeEventExportResponseV1 retention floor",
     "retention_and_delete_rule": "retain the singleton cursor and monotonic floor permanently",
     "owning_task": "V2Q-002"
+  },
+  {
+    "table": "mcp_tool_policy_projection",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-runtime admission handler",
+    "allowed_readers": [
+      "workflow-worker tool approval adapter"
+    ],
+    "cross_plane_contract": "RuntimeMcpToolPolicyV1 / RuntimeAdmissionCommandV1",
+    "retention_and_delete_rule": "Retain latest policy status/hash for authorization rechecks; original Provider receipts remain authoritative.",
+    "owning_task": "P9-04",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
+  },
+  {
+    "table": "mcp_tool_policy_versions",
+    "plane": "control",
+    "authoritative_writer": "platform-control MCP policy editing",
+    "allowed_readers": [
+      "platform-control bundle builder",
+      "platform-control publisher"
+    ],
+    "cross_plane_contract": "RuntimeMcpToolPolicyV1 / RuntimeAdmissionCommandV1",
+    "retention_and_delete_rule": "Retain immutable policy versions referenced by Bundles and Effects. Policy changes never rewrite an approved proposal.",
+    "owning_task": "P9-04",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
   },
   {
     "table": "observability_consumer_health",
@@ -556,66 +875,6 @@
     "schema_file": "deploy/migrations/runtime/0001_initial.sql"
   },
   {
-    "table": "studio_builder_effects",
-    "plane": "control",
-    "authoritative_writer": "platform-control Studio Builder Host",
-    "allowed_readers": [
-      "platform-control Studio Builder Host"
-    ],
-    "cross_plane_contract": "DesignModelEffectRequestV1 / DesignModelReceiptV1 / StudioEditorAcknowledgementV1",
-    "retention_and_delete_rule": "Retain unresolved effects; purge settled design history after tenant retention window; delete draft/session-owned history only with owning workflow deletion. Provider sandbox TTL and lease reconciliation terminate all instances.",
-    "owning_task": "P8-Builder",
-    "schema_file": "deploy/migrations/control/0001_initial.sql"
-  },
-  {
-    "table": "studio_builder_entries",
-    "plane": "control",
-    "authoritative_writer": "platform-control Studio Builder Host",
-    "allowed_readers": [
-      "platform-control Studio Builder Host"
-    ],
-    "cross_plane_contract": "DesignModelEffectRequestV1 / DesignModelReceiptV1 / StudioEditorAcknowledgementV1",
-    "retention_and_delete_rule": "Retain unresolved effects; purge settled design history after tenant retention window; delete draft/session-owned history only with owning workflow deletion. Provider sandbox TTL and lease reconciliation terminate all instances.",
-    "owning_task": "P8-Builder",
-    "schema_file": "deploy/migrations/control/0001_initial.sql"
-  },
-  {
-    "table": "studio_builder_runs",
-    "plane": "control",
-    "authoritative_writer": "platform-control Studio Builder Host",
-    "allowed_readers": [
-      "platform-control Studio Builder Host"
-    ],
-    "cross_plane_contract": "DesignModelEffectRequestV1 / DesignModelReceiptV1 / StudioEditorAcknowledgementV1",
-    "retention_and_delete_rule": "Retain unresolved effects; purge settled design history after tenant retention window; delete draft/session-owned history only with owning workflow deletion. Provider sandbox TTL and lease reconciliation terminate all instances.",
-    "owning_task": "P8-Builder",
-    "schema_file": "deploy/migrations/control/0001_initial.sql"
-  },
-  {
-    "table": "studio_builder_sessions",
-    "plane": "control",
-    "authoritative_writer": "platform-control Studio Builder Host",
-    "allowed_readers": [
-      "platform-control Studio Builder Host"
-    ],
-    "cross_plane_contract": "DesignModelEffectRequestV1 / DesignModelReceiptV1 / StudioEditorAcknowledgementV1",
-    "retention_and_delete_rule": "Retain unresolved effects; purge settled design history after tenant retention window; delete draft/session-owned history only with owning workflow deletion. Provider sandbox TTL and lease reconciliation terminate all instances.",
-    "owning_task": "P8-Builder",
-    "schema_file": "deploy/migrations/control/0001_initial.sql"
-  },
-  {
-    "table": "studio_model_deltas",
-    "plane": "runtime",
-    "authoritative_writer": "runtime-gateway design model Host",
-    "allowed_readers": [
-      "runtime-gateway design model Host"
-    ],
-    "cross_plane_contract": "DesignModelReceiptV1",
-    "retention_and_delete_rule": "Retain unresolved effects; purge settled design history after tenant retention window; delete draft/session-owned history only with owning workflow deletion. Provider sandbox TTL and lease reconciliation terminate all instances.",
-    "owning_task": "P8-Builder",
-    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
-  },
-  {
     "table": "trace_ingest_conflicts",
     "plane": "observability",
     "authoritative_writer": "observability trace consumer",
@@ -650,6 +909,19 @@
     "cross_plane_contract": "RuntimeWorkPackageV1 and DebugChanged event",
     "retention_and_delete_rule": "expire package after one hour and retain the terminal governance receipt",
     "owning_task": "V2R-014"
+  },
+  {
+    "table": "workflow_messages",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-runtime interaction coordinator",
+    "allowed_readers": [
+      "runtime-gateway task and interaction API",
+      "workflow-runtime recovery"
+    ],
+    "cross_plane_contract": "WorkflowMessageV1 / TaskViewV1",
+    "retention_and_delete_rule": "Retain authorized intermediate messages with their root invocation/execution ownership.",
+    "owning_task": "P9-01",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
   },
   {
     "table": "workflow_trace_events",

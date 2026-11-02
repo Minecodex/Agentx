@@ -13,6 +13,57 @@
         {
           "additionalProperties": false,
           "properties": {
+            "kind": {
+              "const": "application_mcp",
+              "type": "string"
+            },
+            "state": {
+              "$ref": "#/$defs/ApplicationMcpPublicationV1"
+            }
+          },
+          "required": [
+            "kind",
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "application_mcp_removed",
+              "type": "string"
+            },
+            "state": {
+              "$ref": "#/$defs/ApplicationMcpRemovalV1"
+            }
+          },
+          "required": [
+            "kind",
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "mcp_tool_policy",
+              "type": "string"
+            },
+            "state": {
+              "$ref": "#/$defs/McpToolPolicyAdmissionV1"
+            }
+          },
+          "required": [
+            "kind",
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
             "enabled": {
               "type": "boolean"
             },
@@ -295,6 +346,118 @@
       ],
       "type": "object"
     },
+    "ApplicationMcpPublicationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "applicationId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "bundleId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "chatMapping": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChatMappingV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contractHash": {
+          "type": "string"
+        },
+        "deploymentId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "expectedRevision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "inputSchema": true,
+        "outputSchema": true,
+        "protocolVersion": {
+          "type": "string"
+        },
+        "publicationId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "tenantId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "toolName": {
+          "type": "string"
+        },
+        "waitInputSchema": true
+      },
+      "required": [
+        "tenantId",
+        "applicationId",
+        "publicationId",
+        "deploymentId",
+        "bundleId",
+        "revision",
+        "expectedRevision",
+        "slug",
+        "toolName",
+        "title",
+        "description",
+        "inputSchema",
+        "outputSchema",
+        "waitInputSchema",
+        "contractHash",
+        "enabled",
+        "protocolVersion"
+      ],
+      "type": "object"
+    },
+    "ApplicationMcpRemovalV1": {
+      "additionalProperties": false,
+      "properties": {
+        "applicationId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "publicationId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "tenantId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenantId",
+        "applicationId",
+        "publicationId"
+      ],
+      "type": "object"
+    },
     "ApplicationRouteAdmissionV1": {
       "additionalProperties": false,
       "properties": {
@@ -355,6 +518,34 @@
           "type": "object"
         }
       ]
+    },
+    "ChatMappingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "answerFilesOutput": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "answerOutput": {
+          "type": "string"
+        },
+        "fileInput": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "questionInput": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "questionInput",
+        "answerOutput"
+      ],
+      "type": "object"
     },
     "CommandEnvelopeV1": {
       "additionalProperties": false,
@@ -473,6 +664,38 @@
         "code",
         "name",
         "dataScope"
+      ],
+      "type": "object"
+    },
+    "McpToolPolicyAdmissionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "contentHash": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tenantId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "toolId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenantId",
+        "toolId",
+        "revision",
+        "contentHash",
+        "enabled"
       ],
       "type": "object"
     },
@@ -852,6 +1075,9 @@
     "RuntimeUserAdmissionV1": {
       "additionalProperties": false,
       "properties": {
+        "canApprove": {
+          "type": "boolean"
+        },
         "departmentId": {
           "format": "uuid",
           "type": "string"
@@ -897,6 +1123,7 @@
         "tokenVersion",
         "enabled",
         "tenantQueryEnabled",
+        "canApprove",
         "roleAssignments"
       ],
       "type": "object"

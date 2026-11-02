@@ -58,6 +58,7 @@ function installFetch(options: { execution?: unknown; nodes?: unknown; traceStat
 
 function renderPage(permissions: string[]) {
   vi.mocked(useAuth).mockReturnValue({
+    sessionId: 1,
     status: 'authenticated', user: undefined, changeToken: undefined,
     setup: vi.fn(), login: vi.fn(), changePassword: vi.fn(), logout: vi.fn(),
     hasPermission: (permission) => permissions.includes(permission),

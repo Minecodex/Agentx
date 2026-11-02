@@ -126,57 +126,29 @@ def test_changed_hosted_hardware_cannot_pass_the_frozen_capacity_gate(section, f
 
 
 def test_configured_model_credential_is_hidden_and_cleared(monkeypatch, tmp_path):
-    import base64
-    from types import SimpleNamespace
-
-    import httpx
-
     from tests.e2e.product import existing_model_support as source
 
-    stopped = []
-    monkeypatch.setattr(source, "ROOT", tmp_path)
-    monkeypatch.setattr(source.ssl, "create_default_context", lambda **kwargs: True)
-    monkeypatch.setattr(
-        source, "start_process", lambda *args, **kwargs: SimpleNamespace(stop=lambda: stopped.append(True))
-    )
-    monkeypatch.setattr(
-        source,
-        "run",
-        lambda *args, **kwargs: SimpleNamespace(
-            json=lambda: {
-                "data": {
-                    "AGENTX_CONTROL_VAULT_TOKEN": base64.b64encode(b"test-vault-token").decode(),
-                    "ca.crt": base64.b64encode(b"test-ca").decode(),
-                }
-            }
-        ),
-    )
-
-    class Vault:
-        def __init__(self, **kwargs):
-            pass
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            pass
-
-        def get(self, url, **kwargs):
-            assert url.endswith("/v1/agentx-v2/data/model-secret")
-            assert kwargs["params"] == {"version": 2}
-            return httpx.Response(200, json={"data": {"data": {"value": "isolated-fixture-key"}}})
-
-    monkeypatch.setattr(source.httpx, "Client", Vault)
-    generator = source.existing_model_secret.__wrapped__(
-        "configured", {"secretRef": "model-secret", "secretVersion": 2}
-    )
+    credential = tmp_path / "explicit-test-credential"
+    credential.write_text("isolated-fixture-key\n")
+    credential.chmod(0o600)
+    monkeypatch.delenv("AGENTX_E2E_LLM_API_KEY", raising=False)
+    monkeypatch.setenv("AGENTX_E2E_LLM_API_KEY_FILE", str(credential))
+    generator = source.existing_model_secret.__wrapped__({"modelName": "glm-5.3-flash"})
     secret = next(generator)
     assert secret.value == "isolated-fixture-key"
     assert "isolated-fixture-key" not in repr(secret)
     generator.close()
     assert secret.value == ""
-    assert stopped == [True]
+
+
+def test_real_model_fixture_requires_explicit_test_configuration(monkeypatch):
+    from tests.e2e.product import existing_model_support as source
+
+    for key in ("AGENTX_E2E_LLM_API_KEY", "AGENTX_E2E_LLM_API_KEY_FILE"):
+        monkeypatch.delenv(key, raising=False)
+    generator = source.existing_model_secret.__wrapped__({"modelName": "glm-5.3-flash"})
+    with pytest.raises(pytest.fail.Exception, match="Set exactly one"):
+        next(generator)
 
 
 def test_hosted_cluster_is_deleted_even_when_startup_and_diagnostics_fail(monkeypatch, tmp_path):

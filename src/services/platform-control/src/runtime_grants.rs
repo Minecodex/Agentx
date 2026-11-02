@@ -73,6 +73,7 @@ pub async fn application_user_targets(
                 department_name: row.try_get("department_name")?,
                 token_version: row.try_get("token_version")?,
                 enabled,
+                can_approve: enabled && can_approve_user(pool, tenant_id, user_id).await?,
                 tenant_query_enabled: enabled && row.try_get::<bool, _>("tenant_query_enabled")?,
                 role_assignments: roles_by_user.remove(&user_id).unwrap_or_default(),
             },
@@ -170,6 +171,34 @@ async fn role_assignments_by_user(
             });
     }
     Ok(roles_by_user)
+}
+
+pub(crate) async fn authorize_user_application(
+    pool: &sqlx::MySqlPool,
+    tenant: Uuid,
+    application: Uuid,
+    user: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let row = sqlx::query(APPLICATION_USER_QUERY)
+        .bind(application)
+        .bind(tenant)
+        .bind(Some(user))
+        .bind(Some(user))
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.as_ref().is_some_and(|row| {
+        row.try_get::<String, _>("status")
+            .is_ok_and(|status| status == "active")
+            && row.try_get::<bool, _>("can_invoke").unwrap_or(false)
+    }))
+}
+
+pub(crate) async fn can_approve_user(
+    pool: &sqlx::MySqlPool,
+    tenant: Uuid,
+    user: Uuid,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users u JOIN user_roles ur ON ur.tenant_id=u.tenant_id AND ur.user_id=u.id JOIN roles r ON r.tenant_id=ur.tenant_id AND r.id=ur.role_id JOIN role_permissions rp ON rp.tenant_id=r.tenant_id AND rp.role_id=r.id JOIN permissions p ON p.id=rp.permission_id WHERE u.tenant_id=? AND u.id=? AND u.status='active' AND r.status='active' AND p.permission_key='approval:act')").bind(tenant).bind(user).fetch_one(pool).await
 }
 
 #[cfg(test)]

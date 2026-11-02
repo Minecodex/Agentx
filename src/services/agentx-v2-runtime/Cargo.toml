@@ -31,6 +31,8 @@ jsonschema.workspace = true
 object_store.workspace = true
 rand.workspace = true
 regex.workspace = true
+rmcp.workspace = true
+tower.workspace = true
 redis.workspace = true
 reqwest.workspace = true
 rust_decimal.workspace = true
@@ -68,7 +70,6 @@ agentx-bundle-builder.workspace = true
 http-body-util.workspace = true
 rand.workspace = true
 testcontainers = "0.25"
-tower.workspace = true
 
 [[bin]]
 name = "runtime-gateway"

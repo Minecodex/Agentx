@@ -146,6 +146,7 @@ impl RuntimeWorker {
                     agentx_agent_core::TerminalReasonV1::Completed => "succeeded",
                     agentx_agent_core::TerminalReasonV1::Cancelled => "cancelled",
                     agentx_agent_core::TerminalReasonV1::OutcomeUnknown => "outcome_unknown",
+                    agentx_agent_core::TerminalReasonV1::Suspended => "suspended",
                     _ => "failed",
                 },
                 None,

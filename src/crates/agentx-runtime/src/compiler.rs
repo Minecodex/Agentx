@@ -25,6 +25,8 @@ mod compiler_agent;
 mod compiler_code;
 #[path = "compiler_graph.rs"]
 mod compiler_graph;
+#[path = "compiler_node_schemas.rs"]
+mod node_schemas;
 #[path = "compiler_normalization.rs"]
 mod normalization;
 #[path = "compiler_parameter_bindings.rs"]
@@ -34,8 +36,8 @@ mod references;
 #[path = "compiler_schema.rs"]
 mod schema;
 use compiler_agent::{compile_agent_node, validate_binding_slots};
-use compiler_code::validate_code_node;
 use compiler_graph::{adjacency, strongly_connected_components};
+use node_schemas::validate_node_owned_schemas;
 use normalization::{
     normalized_context_writes, normalized_node_parameters, validate_parameter_reference_types,
 };
@@ -1082,42 +1084,6 @@ fn validate_parameters(
     }
 }
 
-fn validate_node_owned_schemas(
-    definition_index: usize,
-    node: &WorkflowNode,
-    issues: &mut Vec<CompileIssue>,
-) {
-    if node.node_type == "code" {
-        validate_code_node(definition_index, node, issues);
-        return;
-    }
-    let field = match node.node_type.as_str() {
-        "model"
-            if node.parameters.get("responseMode").and_then(Value::as_str)
-                == Some("json_schema") =>
-        {
-            Some("structuredSchema")
-        }
-        _ => None,
-    };
-    let Some(field) = field else { return };
-    let Some(schema) = node.parameters.get(field) else {
-        issues.push(CompileIssue {
-            code: "NODE_OUTPUT_SCHEMA_REQUIRED".into(),
-            path: format!("nodes[{definition_index}].parameters.{field}"),
-            message: format!("{field} is required for this node configuration"),
-        });
-        return;
-    };
-    if let Err(error) = jsonschema::validator_for(schema) {
-        issues.push(CompileIssue {
-            code: "NODE_OUTPUT_SCHEMA_INVALID".into(),
-            path: format!("nodes[{definition_index}].parameters.{field}"),
-            message: error.to_string(),
-        });
-    }
-}
-
 fn validate_dynamic_branch_ids(
     definition_index: usize,
     node: &WorkflowNode,
@@ -1173,6 +1139,9 @@ fn validate_dynamic_branch_ids(
 }
 
 fn dynamic_output_handle_valid(node: &WorkflowNode, handle: &str) -> bool {
+    if node.node_type == "approval" && handle == "decision" {
+        return false;
+    }
     let (prefix, field) = match node.node_type.as_str() {
         "if" if handle.starts_with("case:") => ("case:", "cases"),
         "approval" if handle.starts_with("decision:") => ("decision:", "buttons"),

@@ -10,7 +10,8 @@
     },
     "path": {
       "type": "string"
-    }
+    },
+    "responseSchema": true
   },
   "required": [
     "path",

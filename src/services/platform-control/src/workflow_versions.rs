@@ -342,8 +342,8 @@ pub(crate) async fn invalidate_editors(
     tenant: Uuid,
     draft: Uuid,
 ) -> ApiResult<()> {
-    sqlx::query("UPDATE studio_builder_runs r JOIN studio_builder_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id SET r.status='cancelled',r.completed_at=UTC_TIMESTAMP(6),r.lease_owner=NULL,r.lease_until=NULL,r.fencing_token=r.fencing_token+1 WHERE s.tenant_id=? AND s.draft_id=? AND r.status IN ('queued','running','waiting','outcome_unknown')").bind(tenant).bind(draft).execute(&mut **tx).await?;
-    sqlx::query("UPDATE studio_builder_effects e JOIN studio_builder_sessions s ON s.tenant_id=e.tenant_id AND s.id=e.session_id SET e.status='cancelled' WHERE s.tenant_id=? AND s.draft_id=? AND e.status='pending'").bind(tenant).bind(draft).execute(&mut **tx).await?;
+    sqlx::query("UPDATE design_agent_runs r JOIN design_agent_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id SET r.status='cancelled',r.completed_at=UTC_TIMESTAMP(6),r.lease_owner=NULL,r.lease_until=NULL,r.fencing_token=r.fencing_token+1 WHERE s.tenant_id=? AND s.draft_id=? AND r.status IN ('queued','running','waiting','outcome_unknown')").bind(tenant).bind(draft).execute(&mut **tx).await?;
+    sqlx::query("UPDATE design_agent_effects e JOIN design_agent_sessions s ON s.tenant_id=e.tenant_id AND s.id=e.session_id SET e.status='cancelled' WHERE s.tenant_id=? AND s.draft_id=? AND e.status='pending'").bind(tenant).bind(draft).execute(&mut **tx).await?;
     sqlx::query("UPDATE workflow_drafts SET generation=generation+1 WHERE tenant_id=? AND id=?")
         .bind(tenant)
         .bind(draft)
@@ -518,16 +518,16 @@ pub(crate) async fn frozen_resources(
 /// The transactional fence is authoritative; stop in-flight inference after commit as well.
 pub(crate) async fn cancel_expired_models(state: &ControlApiState, tenant: Uuid, workflow: Uuid) {
     let result:ApiResult<()>=async {
-        let rows=sqlx::query("SELECT s.id session_id,s.draft_id,s.user_id,s.state_json,r.id run_id FROM studio_builder_sessions s JOIN workflow_drafts d ON d.tenant_id=s.tenant_id AND d.id=s.draft_id JOIN studio_builder_runs r ON r.tenant_id=s.tenant_id AND r.session_id=s.id WHERE s.tenant_id=? AND s.workflow_id=? AND s.document_generation<>d.generation AND r.status='cancelled'").bind(tenant).bind(workflow).fetch_all(&state.pool).await?;
+        let rows=sqlx::query("SELECT s.id session_id,s.draft_id,s.user_id,s.state_json,r.id run_id FROM design_agent_sessions s JOIN workflow_drafts d ON d.tenant_id=s.tenant_id AND d.id=s.draft_id JOIN design_agent_runs r ON r.tenant_id=s.tenant_id AND r.session_id=s.id WHERE s.tenant_id=? AND s.workflow_id=? AND s.document_generation<>d.generation AND r.status='cancelled'").bind(tenant).bind(workflow).fetch_all(&state.pool).await?;
         for row in rows {
             let run:Uuid=row.try_get("run_id")?;
             let core:agentx_agent_core::AgentSessionStateV1=serde_json::from_value(row.try_get("state_json")?).map_err(ApiError::internal)?;
             let target=agentx_runtime_contracts::StudioBuilderTargetV1{tenant_id:tenant,workflow_id:workflow,draft_id:row.try_get("draft_id")?,session_id:row.try_get("session_id")?,run_id:run,user_id:row.try_get("user_id")?};
             if let Some(operation)=core.operation.filter(|operation|operation.operation_id.starts_with(&run.to_string())&&matches!(operation.operation_kind,agentx_agent_core::OperationKindV1::Model|agentx_agent_core::OperationKindV1::Compaction)) {
                 let effect=agentx_runtime_contracts::deterministic_uuid(run,operation.effect_id.as_bytes());
-                let _=crate::studio_builder_runtime::cancel(state,&target,effect).await;
+                let _=crate::design_agent_runtime::cancel(state,&target,effect).await;
             }
-            crate::studio_builder_runtime::append_entry(state,&target,&format!("terminal:{run}"),json!({"type":"terminal","status":"cancelled"})).await?;
+            crate::design_agent_runtime::append_entry(state,&target,&format!("terminal:{run}"),json!({"type":"terminal","status":"cancelled"})).await?;
         }
         Ok(())
     }.await;

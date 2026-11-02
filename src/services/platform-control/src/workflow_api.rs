@@ -420,7 +420,7 @@ async fn delete_workflow(
     .await?;
     let mut tx = state.pool.begin().await?;
     crate::workflow_versions::lock_workflow(&mut tx, &actor, id).await?;
-    let references: i64 = sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM applications WHERE tenant_id=? AND workflow_id=?)+(SELECT COUNT(*) FROM workflow_deployments WHERE tenant_id=? AND workflow_id=?)+(SELECT COUNT(*) FROM workflow_versions WHERE tenant_id=? AND workflow_id=? AND publication_status='published')+(SELECT COUNT(*) FROM studio_builder_runs r JOIN studio_builder_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id WHERE s.tenant_id=? AND s.workflow_id=? AND r.status IN ('queued','running','waiting','outcome_unknown'))")
+    let references: i64 = sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM applications WHERE tenant_id=? AND workflow_id=?)+(SELECT COUNT(*) FROM workflow_deployments WHERE tenant_id=? AND workflow_id=?)+(SELECT COUNT(*) FROM workflow_versions WHERE tenant_id=? AND workflow_id=? AND publication_status='published')+(SELECT COUNT(*) FROM design_agent_runs r JOIN design_agent_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id WHERE s.tenant_id=? AND s.workflow_id=? AND (r.status IN ('queued','running','waiting','outcome_unknown') OR EXISTS(SELECT 1 FROM design_agent_entries mi WHERE mi.tenant_id=r.tenant_id AND mi.run_id=r.id AND mi.event_key LIKE 'model-dispatch:%' AND NOT EXISTS(SELECT 1 FROM design_agent_entries mr WHERE mr.tenant_id=mi.tenant_id AND mr.session_id=mi.session_id AND mr.event_key=REPLACE(mi.event_key,'model-dispatch:','model-resolved:')))))")
         .bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&mut *tx).await?;
     if references != 0 {
         return Err(ApiError::conflict(
@@ -429,10 +429,10 @@ async fn delete_workflow(
         ));
     }
     for statement in [
-        "DELETE e FROM studio_builder_entries e JOIN studio_builder_sessions s ON s.tenant_id=e.tenant_id AND s.id=e.session_id WHERE s.tenant_id=? AND s.workflow_id=?",
-        "DELETE e FROM studio_builder_effects e JOIN studio_builder_sessions s ON s.tenant_id=e.tenant_id AND s.id=e.session_id WHERE s.tenant_id=? AND s.workflow_id=?",
-        "DELETE r FROM studio_builder_runs r JOIN studio_builder_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id WHERE s.tenant_id=? AND s.workflow_id=?",
-        "DELETE FROM studio_builder_sessions WHERE tenant_id=? AND workflow_id=?",
+        "DELETE e FROM design_agent_entries e JOIN design_agent_sessions s ON s.tenant_id=e.tenant_id AND s.id=e.session_id WHERE s.tenant_id=? AND s.workflow_id=?",
+        "DELETE e FROM design_agent_effects e JOIN design_agent_sessions s ON s.tenant_id=e.tenant_id AND s.id=e.session_id WHERE s.tenant_id=? AND s.workflow_id=?",
+        "DELETE r FROM design_agent_runs r JOIN design_agent_sessions s ON s.tenant_id=r.tenant_id AND s.id=r.session_id WHERE s.tenant_id=? AND s.workflow_id=?",
+        "DELETE FROM design_agent_sessions WHERE tenant_id=? AND workflow_id=?",
         "DELETE FROM workflow_debug_overlays WHERE tenant_id=? AND workflow_id=?",
         "DELETE FROM workflow_draft_resources WHERE tenant_id=? AND workflow_id=?",
         "DELETE FROM workflow_versions WHERE tenant_id=? AND workflow_id=? AND publication_status='unpublished'",
@@ -932,7 +932,7 @@ async fn validate_document(
 ) -> ApiResult<Json<ValidateDraftResponse>> {
     actor.require("workflow:view")?;
     require_workflow_access(&state, &actor, id, false).await?;
-    load_draft(&state, actor.tenant_id, id, draft_id).await?;
+    let current_draft = load_draft(&state, actor.tenant_id, id, draft_id).await?;
     let editor_value = input.editor_document;
     let mut issues = Vec::new();
     let mut definition_hash = None;
@@ -1008,6 +1008,19 @@ async fn validate_document(
                     }
                 }
             }
+            if issues.is_empty() {
+                // Use Save's read-only resource preparation before an editor
+                // command can create a locally applied but unsaveable graph.
+                let _ = crate::workflow_revision_resources::for_save(
+                    &state,
+                    actor.tenant_id,
+                    id,
+                    draft_id,
+                    current_draft.revision,
+                    &definition,
+                )
+                .await?;
+            }
             definition_hash = canonical_content_hash(&input.definition).ok();
             editor_hash = canonical_content_hash(&editor_value).ok();
         }
@@ -1026,10 +1039,10 @@ async fn validate_document(
                 .and_then(|node| node.get("id"))
                 .and_then(Value::as_str)
                 .map(str::to_owned);
-            if let Some(path) = &mut issue.field_path {
-                if let Some(field) = path.strip_prefix(&format!("nodes[{index}].")) {
-                    *path = field.to_owned();
-                }
+            if let Some(path) = &mut issue.field_path
+                && let Some(field) = path.strip_prefix(&format!("nodes[{index}]."))
+            {
+                *path = field.to_owned();
             }
         }
     }

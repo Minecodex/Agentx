@@ -257,7 +257,7 @@ async fn delete_credential(
         id,
     )
     .await?;
-    let builder_reference: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenant_settings WHERE tenant_id=? AND platform_ai_credential_id=?) OR EXISTS(SELECT 1 FROM studio_builder_runs WHERE tenant_id=? AND credential_id=? AND status IN ('queued','running','waiting','outcome_unknown'))").bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
+    let builder_reference: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenant_settings WHERE tenant_id=? AND platform_ai_credential_id=?) OR EXISTS(SELECT 1 FROM design_agent_runs r WHERE r.tenant_id=? AND r.credential_id=? AND (r.status IN ('queued','running','waiting','outcome_unknown') OR EXISTS(SELECT 1 FROM design_agent_entries mi WHERE mi.tenant_id=r.tenant_id AND mi.run_id=r.id AND mi.event_key LIKE 'model-dispatch:%' AND NOT EXISTS(SELECT 1 FROM design_agent_entries mr WHERE mr.tenant_id=mi.tenant_id AND mr.session_id=mi.session_id AND mr.event_key=REPLACE(mi.event_key,'model-dispatch:','model-resolved:')))))").bind(actor.tenant_id).bind(id).bind(actor.tenant_id).bind(id).fetch_one(&state.pool).await?;
     if builder_reference {
         return Err(ApiError::conflict(
             "RESOURCE_REFERENCED",

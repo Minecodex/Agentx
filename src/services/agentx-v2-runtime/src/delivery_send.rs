@@ -60,15 +60,14 @@ fn allowed_host(url: &str, suffixes: &[&str]) -> Result<(), DeliverySendError> {
     // E2E fixtures and in-cluster relays point sessionWebhook at services
     // like `im-mock.<namespace>.svc`; extra entries match the leading DNS
     // label exactly and extend (never replace) the per-provider suffixes.
-    if let Ok(extra) = std::env::var("AGENTX_DELIVERY_DOMAIN_EXTRA_ALLOWLIST") {
-        if extra
+    if let Ok(extra) = std::env::var("AGENTX_DELIVERY_DOMAIN_EXTRA_ALLOWLIST")
+        && extra
             .split(',')
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .any(|label| host == label || host.starts_with(&format!("{label}.")))
-        {
-            return Ok(());
-        }
+    {
+        return Ok(());
     }
     Err(DeliverySendError::rejected(format!(
         "delivery host {host} is outside the provider allowlist"

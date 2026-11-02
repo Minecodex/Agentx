@@ -65,6 +65,22 @@ pub async fn respond(request: &Value) -> Response {
     if request.get("tools").is_some() && prompt.contains("slow") && results.is_empty() {
         tokio::time::sleep(std::time::Duration::from_secs(8)).await;
     }
+    let validation_artifact = results.iter().rev().find_map(|(name, value)| {
+        (name == "workflow_validate")
+            .then(|| value.get("artifactId").and_then(Value::as_str))
+            .flatten()
+    });
+    let validation_artifact_read = validation_artifact.is_some_and(|id| {
+        results.iter().any(|(name, value)| {
+            name == "workflow_read"
+                && value["artifactId"].as_str() == Some(id)
+                && value["offset"] == 0
+                && value["totalCharacters"].as_u64().is_some()
+                && value["content"]
+                    .as_str()
+                    .is_some_and(|text| !text.is_empty() && text.chars().count() <= 8000)
+        })
+    });
     let mut tool = None;
     let mut text =
         "P8 fixture: edits acknowledged and statically checked. No workflow was executed."
@@ -148,6 +164,13 @@ pub async fn respond(request: &Value) -> Response {
         .is_some_and(|(name, value)| name == "workflow_validate" && value.get("error").is_some())
     {
         tool = Some(call("workflow_read", json!({"action":"summary"})));
+    } else if let Some(artifact_id) = validation_artifact.filter(|_| !validation_artifact_read) {
+        tool = Some(call(
+            "workflow_read",
+            json!({"action":"artifact","artifactId":artifact_id,"offset":0,"limit":8000}),
+        ));
+    } else if validation_artifact_read {
+        text = "P8 fixture: validation completed and a bounded chunk of its full-result artifact was read. No workflow was executed.".into();
     } else if prompt.contains("question") && !results.iter().any(|(name, _)| name == "ask_user") {
         tool = Some(call(
             "ask_user",
@@ -345,4 +368,98 @@ pub async fn respond(request: &Value) -> Response {
         .header(header::CONTENT_TYPE, "text/event-stream")
         .body(Body::from(body))
         .unwrap()
+}
+
+#[cfg(test)]
+mod validation_artifact_tests {
+    use super::respond;
+    use axum::body::to_bytes;
+    use serde_json::{Value, json};
+
+    const ARTIFACT: &str = "018f0000-0000-7000-8000-000000000088";
+
+    fn request(validation: Value, read: Option<Value>) -> Value {
+        let mut messages = vec![
+            json!({"role":"user","content":"P8FIX: large=300 label=LargeGraph"}),
+            json!({"role":"assistant","tool_calls":[{"id":"read","function":{"name":"workflow_read","arguments":"{}"}}]}),
+            json!({"role":"tool","tool_call_id":"read","content":json!({"metadata":{"documentHash":"fixture-hash"},"nodes":[]}).to_string()}),
+            json!({"role":"assistant","tool_calls":[{"id":"edit","function":{"name":"workflow_edit","arguments":"{}"}}]}),
+            json!({"role":"tool","tool_call_id":"edit","content":json!({"status":"applied","documentHash":"fixture-hash"}).to_string()}),
+            json!({"role":"assistant","tool_calls":[{"id":"validate","function":{"name":"workflow_validate","arguments":"{}"}}]}),
+            json!({"role":"tool","tool_call_id":"validate","content":validation.to_string()}),
+        ];
+        if let Some(read) = read {
+            messages.push(json!({"role":"assistant","tool_calls":[{"id":"artifact-read","function":{"name":"workflow_read","arguments":"{}"}}]}));
+            messages.push(
+                json!({"role":"tool","tool_call_id":"artifact-read","content":read.to_string()}),
+            );
+        }
+        json!({"tools":[{}],"messages":messages})
+    }
+
+    async fn completion(request: Value) -> Value {
+        let response = respond(&request).await;
+        assert!(response.status().is_success());
+        let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let text = std::str::from_utf8(&bytes).unwrap();
+        serde_json::from_str(text.lines().next().unwrap().strip_prefix("data: ").unwrap()).unwrap()
+    }
+
+    fn chunk() -> Value {
+        json!({"artifactId":ARTIFACT,"offset":0,"totalCharacters":100000,"content":"{\"executionPerformed\":false,\"issues\":["})
+    }
+
+    #[tokio::test]
+    async fn validation_reference_requests_a_bounded_read_instead_of_revalidating() {
+        let reply = completion(request(json!({"artifactId":ARTIFACT}), None)).await;
+        let function = &reply["choices"][0]["delta"]["tool_calls"][0]["function"];
+        assert_eq!(function["name"], "workflow_read");
+        let args: Value = serde_json::from_str(function["arguments"].as_str().unwrap()).unwrap();
+        assert_eq!(args["action"], "artifact");
+        assert_eq!(args["artifactId"], ARTIFACT);
+        assert_eq!(args["offset"], 0);
+        assert!(
+            args["limit"]
+                .as_u64()
+                .is_some_and(|limit| limit > 0 && limit <= 8000)
+        );
+    }
+
+    #[tokio::test]
+    async fn matching_bounded_validation_chunk_ends_the_fixture_run() {
+        let reply = completion(request(json!({"artifactId":ARTIFACT}), Some(chunk()))).await;
+        assert_eq!(reply["choices"][0]["finish_reason"], "stop");
+        assert!(reply["choices"][0]["delta"].get("tool_calls").is_none());
+    }
+
+    #[tokio::test]
+    async fn unrelated_empty_or_noninitial_chunk_does_not_satisfy_the_validation_read() {
+        let mut wrong = chunk();
+        wrong["artifactId"] = json!("another-report");
+        let mut empty = chunk();
+        empty["content"] = json!("");
+        let mut late = chunk();
+        late["offset"] = json!(8000);
+        for read in [wrong, empty, late] {
+            let reply = completion(request(json!({"artifactId":ARTIFACT}), Some(read))).await;
+            assert_eq!(reply["choices"][0]["finish_reason"], "tool_calls");
+            let function = &reply["choices"][0]["delta"]["tool_calls"][0]["function"];
+            assert_eq!(function["name"], "workflow_read");
+            let args: Value =
+                serde_json::from_str(function["arguments"].as_str().unwrap()).unwrap();
+            assert_eq!(args["action"], "artifact");
+            assert_eq!(args["artifactId"], ARTIFACT);
+            assert_eq!(args["offset"], 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn inline_validation_keeps_its_existing_completion_behavior() {
+        let reply = completion(request(
+            json!({"executionPerformed":false,"issues":[]}),
+            None,
+        ))
+        .await;
+        assert_eq!(reply["choices"][0]["finish_reason"], "stop");
+    }
 }

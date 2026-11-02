@@ -20,6 +20,8 @@ export default {
   "replyHint": "产生一条中间消息后继续执行。渠道发送到来源会话，API 通过事件流或查询获取，测试界面实时展示。最终结果由结束节点产生。",
   "outputs": "输出内容",
   "waitSettings": "等待设置",
+  "responseSchema": "回复结构",
+  "responseSchemaHint": "可选 JSON Schema。页面与 MCP 使用同一份固定结构；所有入口校验后才恢复原任务，内容保持原样。",
   "timeoutHint": "不填写则持续等待，直到收到输入或执行被取消。单位为毫秒。",
   "exits": "执行出口",
   "received": "收到输入，继续后续节点",

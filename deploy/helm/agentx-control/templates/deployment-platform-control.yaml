@@ -20,6 +20,10 @@ spec:
           imagePullPolicy: {{ .Values.global.images.pullPolicy }}
           args: []
           env:
+            - { name: AGENTX_HYDRA_ADMIN_URL, value: {{ printf "http://hydra.%s.svc:4445" .Values.global.namespaces.dependencies | quote }} }
+            - { name: AGENTX_HYDRA_PUBLIC_URL, value: {{ printf "http://hydra.%s.svc:4444" .Values.global.namespaces.dependencies | quote }} }
+            - { name: AGENTX_RUNTIME_PUBLIC_ORIGIN, value: {{ printf "%s://%s" (ternary "https" "http" (ne .Values.global.ingress.runtimeTlsSecretName nil)) .Values.global.ingress.runtimeHost | quote }} }
+            - { name: AGENTX_OAUTH_ISSUER, value: {{ printf "%s://%s" (ternary "https" "http" (ne .Values.global.ingress.runtimeTlsSecretName nil)) .Values.global.ingress.runtimeHost | quote }} }
             - name: AGENTX_INSTANCE_ID
               valueFrom: { fieldRef: { fieldPath: metadata.uid } }
             - { name: AGENTX_CONTROL_ROLES, value: {{ join "," .Values.control.services.platformControl.roles | quote }} }
@@ -82,7 +86,7 @@ spec:
             - { name: http, containerPort: 8080 }
             - { name: admin, containerPort: 9091 }
             - { name: metrics, containerPort: 9092 }
-          resources: { requests: { cpu: 100m, memory: 128Mi, ephemeral-storage: 64Mi }, limits: { cpu: 1, memory: 512Mi, ephemeral-storage: 256Mi } }
+          resources: { requests: { cpu: 100m, memory: 128Mi, ephemeral-storage: 64Mi }, limits: { cpu: 1, memory: 1Gi, ephemeral-storage: 256Mi } }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, runAsNonRoot: true, capabilities: { drop: [ALL] } }
           startupProbe: { httpGet: { path: /health/live, port: http }, periodSeconds: 2, failureThreshold: 30 }
           readinessProbe: { httpGet: { path: /health/ready, port: http }, periodSeconds: 5, failureThreshold: 2 }

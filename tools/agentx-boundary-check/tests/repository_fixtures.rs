@@ -10,6 +10,67 @@ fn positive_fixture_passes_the_production_checker() {
 }
 
 #[test]
+fn same_named_tables_have_independent_plane_ownership() {
+    let fixture = fixture_repository();
+    let root = fixture.path();
+    let rows = ["control", "runtime"].map(|plane| {
+        json!({
+            "table": "paired_publications", "plane": plane,
+            "authoritative_writer": format!("{plane} publisher"),
+            "allowed_readers": [format!("{plane} API")],
+            "cross_plane_contract": "immutable publication copy",
+            "retention_and_delete_rule": "retain referenced publications",
+            "owning_task": "P9-03",
+            "schema_file": format!("deploy/migrations/{plane}/0002_publications.sql")
+        })
+    });
+    write(
+        root,
+        "docs/planv2/contracts/v2-schema-table-ownership.json",
+        &serde_json::to_string(&rows).unwrap(),
+    );
+    for plane in ["control", "runtime"] {
+        write(
+            root,
+            &format!("deploy/migrations/{plane}/0002_publications.sql"),
+            "CREATE TABLE paired_publications (id BINARY(16) PRIMARY KEY);\n",
+        );
+    }
+    for source in [
+        "src/crates/agentx-control-infrastructure/src/lib.rs",
+        "src/services/workflow-worker/src/main.rs",
+    ] {
+        write(
+            root,
+            source,
+            "fn access() { let _ = \"SELECT * FROM paired_publications\"; }\n",
+        );
+    }
+    assert_checker(
+        &fixture,
+        true,
+        "shared table name with independent ownership",
+    );
+    write(
+        root,
+        "src/services/workflow-worker/src/main.rs",
+        "fn forbidden() { let _ = \"SELECT * FROM control_only_table\"; }\n",
+    );
+    assert_checker(
+        &fixture,
+        false,
+        "Control-only data is still forbidden to Runtime",
+    );
+    let duplicate = vec![rows[0].clone(), rows[0].clone(), rows[1].clone()];
+    write(
+        root,
+        "docs/planv2/contracts/v2-schema-table-ownership.json",
+        &serde_json::to_string(&duplicate).unwrap(),
+    );
+    assert_checker(&fixture, false, "duplicate ownership in the same plane");
+}
+
+#[test]
 fn all_five_negative_fixtures_fail_the_production_checker() {
     for category in ["cargo", "sql", "env", "secret", "network"] {
         let fixture = fixture_repository();

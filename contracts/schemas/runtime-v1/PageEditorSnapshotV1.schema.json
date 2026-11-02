@@ -1,0 +1,48 @@
+{
+  "$defs": {
+    "StudioSaveStatusV1": {
+      "enum": [
+        "saved",
+        "unsaved"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "editorInstanceId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "html": {
+      "type": "string"
+    },
+    "htmlHash": {
+      "type": "string"
+    },
+    "localRevision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "saveStatus": {
+      "$ref": "#/$defs/StudioSaveStatusV1"
+    },
+    "serverRevision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "editorInstanceId",
+    "localRevision",
+    "serverRevision",
+    "html",
+    "htmlHash",
+    "saveStatus"
+  ],
+  "title": "PageEditorSnapshotV1",
+  "type": "object"
+}

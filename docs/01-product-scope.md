@@ -22,7 +22,8 @@ Agentx 是企业级 Workflow 开发、运行、发布和评测平台。
 - 节点级 Trace、Checkpoint 和重新执行
 - Workflow 中的人工审批
 - 测试集、批量评测和版本对比
-- 发布后的应用、会话、消息和调用 API
+- 发布后的应用、会话、消息、调用 API、AI 业务网页和应用 MCP 接入
+- Agent 具体工具操作在执行前进入既有审批中心
 - 围绕 Workflow 资源的部门、角色和数据权限
 
 ## 2. 产品主链路
@@ -50,9 +51,10 @@ Agentx 是企业级 Workflow 开发、运行、发布和评测平台。
 
 1. 将 Workflow Version 发布为 Deployment。
 2. Deployment 绑定到 Application。
-3. Application 提供 Playground、会话和 API。
-4. 外部请求创建 Session、Message 和 Workflow Execution。
-5. 每轮消息都可以查询独立的 Trace 和成本。
+3. Application 提供 Playground、会话和 API；管理员可在应用内生成并发布业务网页，或发布应用 MCP。
+4. 员工通过 `/a/{slug}` 登录使用业务页；外部 AI 使用个人 OAuth 或应用服务 Key 调用整个应用。
+5. 所有入口复用 Invocation、Session 和 Workflow Runtime，任务 ID 就是 Invocation ID。
+6. 每轮消息都可以查询独立的 Trace 和成本；业务使用者只获得其任务与文件，不自动获得管理和 Trace 权限。
 
 ### 运行阶段
 
@@ -72,7 +74,9 @@ Agentx 是企业级 Workflow 开发、运行、发布和评测平台。
 | Draft Revision | 草稿自动保存形成的历史修订 |
 | Workflow Version | 未发布时可修改，发布定稿后永久冻结的画布版本 |
 | Deployment | 某环境正在运行的 Workflow Version |
-| Application | 对外提供 Playground、会话和 API 的应用 |
+| Application | 对外提供 Playground、会话、API、可选业务网页与 MCP 的应用 |
+| Application UI Version / Publication | 不可变 HTML、SDK/样式、交互契约与业务 Bundle 的成对发布 |
+| TaskView | Invocation 的授权只读视图，包含真实状态、全部待办、输出与文件 |
 | Execution | 一次完整 Workflow 运行 |
 | Node Execution | 某节点在某次循环或分支中的运行 |
 | Node Attempt | 节点一次实际尝试，重试会产生多个 Attempt |
@@ -132,6 +136,6 @@ Agentx 是企业级 Workflow 开发、运行、发布和评测平台。
 
 Workflow 详情以环境状态与版本列表为入口。新建画布创建空白未发布版本；未发布内容随保存更新，已发布内容被冻结，后续保存进入该版本唯一的共享工作草稿。草稿发布生成来源为原版本的新版本并恢复原版本工作基线；只部署原版本时不增号。详情为只读画布，编辑与还原受版本归档、权限和修订约束。还原已发布版本的草稿时恢复该版本自身，不回退到其 lineage base；未发布版本恢复创建时内容。成员通过弹框管理。
 
-管理员在模型列表设置平台 AI 模型（画布与评测）。AI 只修改和静态校验；保存、调试由画布操作，发布统一由版本列表操作。生命周期变更使旧编辑会话失效。当前规则见 [版本与画布管理](plan8/09-version-canvases.md)，早期多独立草稿验收保留在 plan8 历史记录中。
+管理员在模型列表设置平台 AI 模型，供工作流创作、网页创作及独立评测授权使用。工作流与网页创作共用 Rust Core 和持久设计态 Host，由固定提示词、工具和目标范围区分。AI 只编辑和检查，不自动执行业务或发布；业务模型保持工作流自己的冻结配置。生命周期变更使旧编辑会话失效。当前画布规则见 [版本与画布管理](plan8/09-version-canvases.md)，网页与 MCP 规则见 [plan9](plan9/README.md)；完整真实验收状态单独记录。
 
 应用评测仅运行工作流的单次输入输出。测试集固定已发布版本的完整参数契约，契约改变后新建测试集；自动冻结数据快照。模型评分使用平台选中模型及独立的批次授权，业务工作流不能借用裁判资源。[详细规则](plan8/12-application-evaluations.md)。

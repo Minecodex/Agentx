@@ -1,4 +1,5 @@
 mod knowledge;
+mod plan9;
 mod studio_builder;
 use std::{env, net::SocketAddr};
 
@@ -15,7 +16,7 @@ use futures_util::StreamExt;
 use rmcp::{
     Json, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{ServerCapabilities, ServerInfo},
+    model::{ProtocolVersion, ServerCapabilities, ServerConfig},
     schemars, tool, tool_handler, tool_router,
     transport::{
         StreamableHttpServerConfig,
@@ -42,13 +43,16 @@ struct EchoResponse {
 #[derive(Debug, Clone)]
 struct EchoService {
     tool_router: ToolRouter<Self>,
+    crm: plan9::CrmLedger,
 }
 
 impl EchoService {
-    fn new() -> Self {
-        Self {
-            tool_router: Self::tool_router(),
+    fn with_crm(crm: plan9::CrmLedger) -> Self {
+        let mut tool_router = Self::tool_router();
+        if env::var("AGENTX_FIXTURE_PLAN9").as_deref() != Ok("1") {
+            tool_router.remove_route("crm_create_quote");
         }
+        Self { tool_router, crm }
     }
 }
 
@@ -61,16 +65,24 @@ impl EchoService {
     ) -> Json<EchoResponse> {
         Json(EchoResponse { text })
     }
+
+    #[tool(
+        description = "Create one actual CRM quotation. This writes a new record on every call; approval must precede the call. Return its real receipt and amount."
+    )]
+    fn crm_create_quote(
+        &self,
+        Parameters(input): Parameters<plan9::CreateQuote>,
+    ) -> Json<plan9::Quote> {
+        Json(self.crm.create(input))
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for EchoService {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some("Agentx local Echo MCP test server".into()),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            ..Default::default()
-        }
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+            .with_protocol_version(ProtocolVersion::V_2025_11_25)
+            .with_instructions("Agentx local Echo MCP test server")
     }
 }
 
@@ -88,15 +100,21 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| "0.0.0.0:8090".to_owned())
         .parse()?;
     let cancellation = CancellationToken::new();
+    let crm = plan9::CrmLedger::default();
+    let tool_crm = crm.clone();
     let service: StreamableHttpService<EchoService, LocalSessionManager> =
         StreamableHttpService::new(
-            || Ok(EchoService::new()),
+            move || Ok(EchoService::with_crm(tool_crm.clone())),
             Default::default(),
-            StreamableHttpServerConfig {
-                stateful_mode: true,
-                sse_keep_alive: None,
-                cancellation_token: cancellation.child_token(),
-            },
+            StreamableHttpServerConfig::default()
+                .with_legacy_session_mode(
+                    env::var("AGENTX_FIXTURE_MCP_STATELESS").as_deref() != Ok("1"),
+                )
+                .with_json_response(env::var("AGENTX_FIXTURE_MCP_STATELESS").as_deref() == Ok("1"))
+                .with_sse_keep_alive(None)
+                // This authenticated test fixture is addressed through arbitrary temporary namespaces.
+                .disable_allowed_hosts()
+                .with_cancellation_token(cancellation.child_token()),
         );
     let app = Router::new()
         .route(
@@ -128,9 +146,18 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/plan5/binary", get(plan5_binary))
         .route("/v1/plan5/request", get(plan5_request))
         .route("/v1/plan5/maybe-fail", get(plan5_maybe_fail))
+        .route(
+            "/v1/plan9/quotes",
+            get(move || {
+                let ledger = crm.clone();
+                async move { AxumJson(ledger.0.lock().expect("CRM fixture lock").clone()) }
+            }),
+        )
+        .route("/v1/plan9/report", get(plan9::report))
         .route("/v2/runtime/model", post(v2_runtime_model))
         .route("/v2/runtime/mcp", post(v2_runtime_mcp))
         .nest_service("/mcp", service)
+        .layer(axum::middleware::from_fn(plan9::lose_quote_response))
         .layer(axum::middleware::from_fn(require_mcp_bearer));
     let listener = tokio::net::TcpListener::bind(bind_addr).await?;
     tracing::info!(%bind_addr, "Echo MCP is listening");
