@@ -481,3 +481,16 @@ async fn release_reservations(
     }
     Ok(())
 }
+
+/// Release physical slots while retaining the original Agent budget across human waiting.
+pub(crate) async fn pause_attempt(
+    tx: &mut Transaction<'_, MySql>,
+    tenant: Uuid,
+    attempt: Uuid,
+    until: time::OffsetDateTime,
+) -> RuntimeResult<()> {
+    let ids:Vec<Uuid>=sqlx::query_scalar("SELECT id FROM quota_reservations WHERE tenant_id=? AND scope_type='attempt' AND scope_id=? AND status='active' AND dimension_key IN ('node_concurrency','sandbox_concurrency') ORDER BY id").bind(tenant).bind(attempt.to_string()).fetch_all(&mut **tx).await?;
+    release_reservations(tx, &ids, "tool_approval_wait").await?;
+    sqlx::query("UPDATE quota_reservations SET expires_at=GREATEST(expires_at,?) WHERE tenant_id=? AND scope_type='attempt' AND scope_id=? AND status='active'").bind(until).bind(tenant).bind(attempt.to_string()).execute(&mut **tx).await?;
+    Ok(())
+}

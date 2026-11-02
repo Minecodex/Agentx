@@ -231,6 +231,7 @@ impl Projector {
                 workflow_id,
                 node_id,
                 title,
+                subject,
                 description,
                 request,
                 buttons,
@@ -249,8 +250,8 @@ impl Projector {
                 .fetch_optional(&mut **tx)
                 .await?;
                 let eligible = current.is_none_or(|version| version <= *task_version);
-                let changed = sqlx::query("INSERT INTO approval_task_projection(id,tenant_id,execution_id,workflow_id,node_id,title,description,request_payload_json,buttons_json,status,resume_status,claimed_by,deadline_at,version,projection_generation,source_event_id,source_event_cursor,projection_deleted,decision_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE execution_id=IF(version<=VALUES(version),VALUES(execution_id),execution_id),workflow_id=IF(version<=VALUES(version),VALUES(workflow_id),workflow_id),node_id=IF(version<=VALUES(version),VALUES(node_id),node_id),title=IF(version<=VALUES(version),VALUES(title),title),description=IF(version<=VALUES(version),VALUES(description),description),request_payload_json=IF(version<=VALUES(version),VALUES(request_payload_json),request_payload_json),buttons_json=IF(version<=VALUES(version),VALUES(buttons_json),buttons_json),status=IF(version<=VALUES(version),VALUES(status),status),resume_status=IF(version<=VALUES(version),VALUES(resume_status),resume_status),claimed_by=IF(version<=VALUES(version),VALUES(claimed_by),claimed_by),deadline_at=IF(version<=VALUES(version),VALUES(deadline_at),deadline_at),decision_json=IF(version<=VALUES(version),VALUES(decision_json),decision_json),projection_generation=IF(version<=VALUES(version),VALUES(projection_generation),projection_generation),source_event_id=IF(version<=VALUES(version),VALUES(source_event_id),source_event_id),source_event_cursor=IF(version<=VALUES(version),GREATEST(source_event_cursor,VALUES(source_event_cursor)),source_event_cursor),projection_deleted=IF(version<=VALUES(version),FALSE,projection_deleted),version=GREATEST(version,VALUES(version))")
-                    .bind(task_id).bind(event.tenant_id).bind(execution_id).bind(workflow_id).bind(node_id).bind(title).bind(description).bind(request).bind(serde_json::to_value(buttons)?).bind(status).bind(resume_status).bind(claimed_by).bind(deadline_at).bind(task_version).bind(generation).bind(event.event_id).bind(event.cursor).bind(false).bind(decision).execute(&mut **tx).await?.rows_affected() > 0;
+                let changed = sqlx::query("INSERT INTO approval_task_projection(id,tenant_id,execution_id,workflow_id,node_id,title,subject_json,description,request_payload_json,buttons_json,status,resume_status,claimed_by,deadline_at,version,projection_generation,source_event_id,source_event_cursor,projection_deleted,decision_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE subject_json=IF(version<=VALUES(version),VALUES(subject_json),subject_json),execution_id=IF(version<=VALUES(version),VALUES(execution_id),execution_id),workflow_id=IF(version<=VALUES(version),VALUES(workflow_id),workflow_id),node_id=IF(version<=VALUES(version),VALUES(node_id),node_id),title=IF(version<=VALUES(version),VALUES(title),title),description=IF(version<=VALUES(version),VALUES(description),description),request_payload_json=IF(version<=VALUES(version),VALUES(request_payload_json),request_payload_json),buttons_json=IF(version<=VALUES(version),VALUES(buttons_json),buttons_json),status=IF(version<=VALUES(version),VALUES(status),status),resume_status=IF(version<=VALUES(version),VALUES(resume_status),resume_status),claimed_by=IF(version<=VALUES(version),VALUES(claimed_by),claimed_by),deadline_at=IF(version<=VALUES(version),VALUES(deadline_at),deadline_at),decision_json=IF(version<=VALUES(version),VALUES(decision_json),decision_json),projection_generation=IF(version<=VALUES(version),VALUES(projection_generation),projection_generation),source_event_id=IF(version<=VALUES(version),VALUES(source_event_id),source_event_id),source_event_cursor=IF(version<=VALUES(version),GREATEST(source_event_cursor,VALUES(source_event_cursor)),source_event_cursor),projection_deleted=IF(version<=VALUES(version),FALSE,projection_deleted),version=GREATEST(version,VALUES(version))")
+                    .bind(task_id).bind(event.tenant_id).bind(execution_id).bind(workflow_id).bind(node_id).bind(title).bind(serde_json::to_value(subject)?).bind(description).bind(request).bind(serde_json::to_value(buttons)?).bind(status).bind(resume_status).bind(claimed_by).bind(deadline_at).bind(task_version).bind(generation).bind(event.event_id).bind(event.cursor).bind(false).bind(decision).execute(&mut **tx).await?.rows_affected() > 0;
                 let applied = eligible && changed;
                 if applied {
                     self.replace_approval_candidates(
@@ -827,6 +828,7 @@ fn snapshot_event_payload(item: &RuntimeGovernanceSnapshotItemV1) -> Result<Runt
             workflow_id,
             node_id,
             title,
+            subject,
             description,
             request,
             buttons,
@@ -842,6 +844,7 @@ fn snapshot_event_payload(item: &RuntimeGovernanceSnapshotItemV1) -> Result<Runt
             execution_id: *execution_id,
             workflow_id: *workflow_id,
             node_id: node_id.clone(),
+            subject: (**subject).clone(),
             title: title.clone(),
             description: description.clone(),
             request: request.clone(),

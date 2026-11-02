@@ -27,7 +27,7 @@ use crate::{
 macro_rules! tool_select {
     ($tail:literal) => {
         concat!(
-            "SELECT t.id,t.server_id,t.name,t.title,t.description,t.availability,t.current_version_number,t.version,tv.id current_version_id,tv.input_schema,tv.output_schema,tv.annotations_json,tv.schema_hash,p.enabled,p.debug_enabled,p.timeout_seconds,p.side_effect,p.version policy_version FROM mcp_tools t JOIN mcp_servers s ON s.tenant_id=t.tenant_id AND s.id=t.server_id JOIN mcp_tool_versions tv ON tv.tenant_id=t.tenant_id AND tv.tool_id=t.id AND tv.version_number=t.current_version_number JOIN mcp_tool_policies p ON p.tenant_id=t.tenant_id AND p.tool_id=t.id ",
+            "SELECT t.id,t.server_id,t.name,t.title,t.description,t.availability,t.current_version_number,t.version,tv.id current_version_id,tv.input_schema,tv.output_schema,tv.annotations_json,tv.schema_hash,p.enabled,p.debug_enabled,p.timeout_seconds,p.side_effect,p.approval_rule_json,p.version policy_version FROM mcp_tools t JOIN mcp_servers s ON s.tenant_id=t.tenant_id AND s.id=t.server_id JOIN mcp_tool_versions tv ON tv.tenant_id=t.tenant_id AND tv.tool_id=t.id AND tv.version_number=t.current_version_number JOIN mcp_tool_policies p ON p.tenant_id=t.tenant_id AND p.tool_id=t.id ",
             $tail
         )
     };
@@ -35,6 +35,7 @@ macro_rules! tool_select {
 
 pub fn routes() -> Router<ControlApiState> {
     Router::new()
+        .route("/api/v1/mcp/approval-candidates", get(approval_candidates))
         .route("/api/v1/mcp/servers", get(list_servers).post(create_server))
         .route(
             "/api/v1/mcp/servers/{id}",
@@ -159,15 +160,17 @@ struct ToolResponse {
     debug_enabled: bool,
     timeout_seconds: u32,
     side_effect: String,
+    approval_rule: Option<agentx_runtime_contracts::ToolApprovalRuleV1>,
     version: u64,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PolicyRequest {
+pub(crate) struct PolicyRequest {
     enabled: bool,
     debug_enabled: bool,
     timeout_seconds: u32,
     side_effect: String,
+    approval_rule: Option<agentx_runtime_contracts::ToolApprovalRuleV1>,
     version: u64,
 }
 #[derive(Deserialize)]
@@ -549,13 +552,23 @@ async fn update_tool_policy(
             "MCP tool policy is invalid",
         ));
     }
-    let changed=sqlx::query("UPDATE mcp_tool_policies SET enabled=?,debug_enabled=?,timeout_seconds=?,side_effect=?,version=version+1,updated_by=? WHERE tenant_id=? AND tool_id=? AND version=?").bind(input.enabled).bind(input.debug_enabled).bind(input.timeout_seconds).bind(input.side_effect).bind(actor.user_id).bind(actor.tenant_id).bind(id).bind(input.version).execute(&state.pool).await?;
+    let configuration = crate::mcp_tool_policy::PolicyConfiguration {
+        enabled: input.enabled,
+        debug_enabled: input.debug_enabled,
+        timeout_seconds: input.timeout_seconds,
+        side_effect: input.side_effect.clone(),
+        approval_rule: input.approval_rule.clone(),
+    };
+    let mut tx = state.pool.begin().await?;
+    let changed=sqlx::query("UPDATE mcp_tool_policies SET enabled=?,debug_enabled=?,timeout_seconds=?,side_effect=?,approval_rule_json=?,version=version+1,updated_by=? WHERE tenant_id=? AND tool_id=? AND version=?").bind(input.enabled).bind(input.debug_enabled).bind(input.timeout_seconds).bind(input.side_effect).bind(input.approval_rule.map(serde_json::to_value).transpose().map_err(ApiError::internal)?).bind(actor.user_id).bind(actor.tenant_id).bind(id).bind(input.version).execute(&mut *tx).await?;
     if changed.rows_affected() != 1 {
         return Err(ApiError::conflict(
             "MCP_TOOL_POLICY_CONFLICT",
             "MCP tool policy changed",
         ));
     }
+    crate::mcp_tool_policy::record(&mut tx, &actor, id, input.version + 1, &configuration).await?;
+    tx.commit().await?;
     Ok(Json(load_tool(&state, actor.tenant_id, id).await?))
 }
 async fn debug_invoke(
@@ -567,6 +580,11 @@ async fn debug_invoke(
     actor.require("mcp:debug")?;
     require_tool(&state, &actor, id).await?;
     let tool = load_tool(&state, actor.tenant_id, id).await?;
+    if tool.approval_rule.is_some() {
+        return Err(ApiError::forbidden(
+            "Approval protected tools must execute through the original Agent Effect",
+        ));
+    }
     if !tool.enabled || !tool.debug_enabled || tool.availability != "available" {
         return Err(ApiError::unprocessable(
             "MCP_DEBUG_DISABLED",
@@ -647,6 +665,11 @@ async fn delete_server(
         .await?;
     for row in tools {
         let tool: Uuid = row.try_get("id")?;
+        sqlx::query("DELETE FROM mcp_tool_policy_versions WHERE tenant_id=? AND tool_id=?")
+            .bind(actor.tenant_id)
+            .bind(tool)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("DELETE FROM mcp_tool_policies WHERE tenant_id=? AND tool_id=?")
             .bind(actor.tenant_id)
             .bind(tool)
@@ -722,6 +745,20 @@ async fn upsert_tool(
             .bind(actor.user_id)
             .execute(&mut **tx)
             .await?;
+        crate::mcp_tool_policy::record(
+            tx,
+            actor,
+            id,
+            1,
+            &crate::mcp_tool_policy::PolicyConfiguration {
+                enabled: true,
+                debug_enabled: true,
+                timeout_seconds: 30,
+                side_effect: "unknown".into(),
+                approval_rule: None,
+            },
+        )
+        .await?;
         (id, 1)
     };
     let known:Option<u64>=sqlx::query_scalar("SELECT version_number FROM mcp_tool_versions WHERE tenant_id=? AND tool_id=? AND schema_hash=?").bind(actor.tenant_id).bind(id).bind(&hash).fetch_optional(&mut **tx).await?;
@@ -921,6 +958,11 @@ fn tool_from_row(row: MySqlRow) -> Result<ToolResponse, sqlx::Error> {
         debug_enabled: row.try_get("debug_enabled")?,
         timeout_seconds: row.try_get("timeout_seconds")?,
         side_effect: row.try_get("side_effect")?,
+        approval_rule: row
+            .try_get::<Option<Value>, _>("approval_rule_json")?
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
         version: row.try_get("policy_version")?,
     })
 }
@@ -1271,4 +1313,45 @@ mod tests {
         assert!(validate_configuration(&json!([])).is_err());
         assert!(validate_arguments(&json!({"required":["text"]}), &json!({"text":"ok"})).is_ok());
     }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ApprovalCandidateQuery {
+    kind: String,
+    #[serde(default)]
+    search: String,
+}
+async fn approval_candidates(
+    State(state): State<ControlApiState>,
+    actor: Actor,
+    Query(input): Query<ApprovalCandidateQuery>,
+) -> ApiResult<Json<Value>> {
+    actor.require("mcp:manage")?;
+    if input.search.len() > 100 {
+        return Err(ApiError::bad_request(
+            "SEARCH_INVALID",
+            "Search text is too long",
+        ));
+    }
+    let query = match input.kind.as_str() {
+        "user" => {
+            "SELECT u.id,u.display_name name FROM users u WHERE u.tenant_id=? AND u.status='active' AND u.display_name LIKE ? AND EXISTS(SELECT 1 FROM user_roles ur JOIN roles r ON r.tenant_id=ur.tenant_id AND r.id=ur.role_id JOIN role_permissions rp ON rp.tenant_id=r.tenant_id AND rp.role_id=r.id JOIN permissions p ON p.id=rp.permission_id WHERE ur.tenant_id=u.tenant_id AND ur.user_id=u.id AND r.status='active' AND p.permission_key='approval:act') ORDER BY u.display_name,u.id LIMIT 100"
+        }
+        "role" => {
+            "SELECT r.id,r.name FROM roles r WHERE r.tenant_id=? AND r.status='active' AND r.name LIKE ? AND EXISTS(SELECT 1 FROM role_permissions rp JOIN permissions p ON p.id=rp.permission_id WHERE rp.tenant_id=r.tenant_id AND rp.role_id=r.id AND p.permission_key='approval:act') ORDER BY r.name,r.id LIMIT 100"
+        }
+        _ => {
+            return Err(ApiError::bad_request(
+                "APPROVER_KIND_INVALID",
+                "Choose a member or a role",
+            ));
+        }
+    };
+    let rows = sqlx::query(query)
+        .bind(actor.tenant_id)
+        .bind(format!("%{}%", input.search))
+        .fetch_all(&state.pool)
+        .await?;
+    Ok(Json(json!(rows.into_iter().map(|row|Ok(json!({"value":row.try_get::<Uuid,_>("id")?,"label":row.try_get::<String,_>("name")?}))).collect::<ApiResult<Vec<_>>>()?)))
 }

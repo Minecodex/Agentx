@@ -17,7 +17,7 @@ from tests.e2e.product.live_text_support import Secret, post
 from tests.e2e.product.next_batch_support import get, publish_application
 from tests.e2e.product.test_model_streaming import _grant_model_to_workflow, _stream_workflow
 from tests.e2e.product.user_auth import UserTokenAuth
-from tests.e2e.runtime.test_agent_attachments import _access_token
+from tests.e2e.runtime.test_agent_attachments import ADMIN_PASSWORD, ADMIN_USERNAME, _access_token
 from tests.e2e.support import ROOT, RestartingPortForward, run
 
 
@@ -69,7 +69,9 @@ def boundary_state(installed_agentx, service_urls, run_id):
     with httpx.Client(base_url=service_urls["web"], timeout=60) as control:
         token, me = _access_token(control)
         token = Secret(token)
-        control.auth = UserTokenAuth(service_urls["web"], token)
+        control.auth = UserTokenAuth(
+            service_urls["web"], token, username=ADMIN_USERNAME, password=Secret(ADMIN_PASSWORD)
+        )
         control.headers["Authorization"] = f"Bearer {token.value}"
         yield {
             "control": control,

@@ -1,10 +1,10 @@
 const translations = {
   "platformAiReset": "重新设置",
   "platformAiSet": "设为平台 AI 模型",
-  "platformAiSelected": "平台 AI 模型（画布与评测）",
+  "platformAiSelected": "平台 AI 模型（工作流、网页与评测）",
   "platformAiClear": "清除设置",
   "platformAiSaved": "平台 AI 模型设置已保存",
-  "platformAiAuthorization": "授权该模型及关联凭据用于画布创作和应用 AI 评测，业务工作流仍使用独立资源授权",
+  "platformAiAuthorization": "授权该模型及关联凭据用于工作流、网页创作和应用 AI 评测，业务工作流仍使用独立资源授权",
   "platformAiPermission": "需要模型管理、公司管理和资源授权权限",
 
   "create": "新建模型",

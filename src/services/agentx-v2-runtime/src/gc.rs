@@ -41,14 +41,14 @@ pub async fn mark_collectable(state: &RuntimeState, run_id: Uuid) -> RuntimeResu
 
     let remaining = GC_BATCH_SIZE.saturating_sub(marked) as u32;
     if remaining > 0 {
-        let objects = sqlx::query("SELECT o.tenant_id,o.object_id FROM runtime_objects o WHERE o.status='ready' AND o.ready_at<=DATE_SUB(UTC_TIMESTAMP(6),INTERVAL 1 HOUR) AND NOT EXISTS(SELECT 1 FROM bundle_objects bo WHERE bo.tenant_id=o.tenant_id AND bo.object_id=o.object_id) AND NOT EXISTS(SELECT 1 FROM bundle_gc_items i WHERE i.tenant_id=o.tenant_id AND i.object_id=o.object_id AND i.status IN ('marked','deleting','failed')) ORDER BY o.ready_at,o.object_id LIMIT ? FOR UPDATE SKIP LOCKED")
+        let objects = sqlx::query("SELECT o.tenant_id,o.object_id FROM runtime_objects o WHERE o.status='ready' AND o.ready_at<=DATE_SUB(UTC_TIMESTAMP(6),INTERVAL 1 HOUR) AND NOT EXISTS(SELECT 1 FROM bundle_objects bo WHERE bo.tenant_id=o.tenant_id AND bo.object_id=o.object_id) AND NOT EXISTS(SELECT 1 FROM application_page_publications p WHERE p.tenant_id=o.tenant_id AND (p.html_object_id=o.object_id OR p.sdk_object_id=o.object_id OR p.style_object_id=o.object_id)) AND NOT EXISTS(SELECT 1 FROM bundle_gc_items i WHERE i.tenant_id=o.tenant_id AND i.object_id=o.object_id AND i.status IN ('marked','deleting','failed')) ORDER BY o.ready_at,o.object_id LIMIT ? FOR UPDATE SKIP LOCKED")
             .bind(remaining)
             .fetch_all(&mut *tx)
             .await?;
         for row in objects {
             let tenant: Uuid = row.try_get("tenant_id")?;
             let object: Uuid = row.try_get("object_id")?;
-            let changed = sqlx::query("UPDATE runtime_objects o SET o.status='deleting' WHERE o.tenant_id=? AND o.object_id=? AND o.status='ready' AND NOT EXISTS(SELECT 1 FROM bundle_objects bo WHERE bo.tenant_id=o.tenant_id AND bo.object_id=o.object_id)")
+            let changed = sqlx::query("UPDATE runtime_objects o SET o.status='deleting' WHERE o.tenant_id=? AND o.object_id=? AND o.status='ready' AND NOT EXISTS(SELECT 1 FROM bundle_objects bo WHERE bo.tenant_id=o.tenant_id AND bo.object_id=o.object_id) AND NOT EXISTS(SELECT 1 FROM application_page_publications p WHERE p.tenant_id=o.tenant_id AND (p.html_object_id=o.object_id OR p.sdk_object_id=o.object_id OR p.style_object_id=o.object_id))")
                 .bind(tenant)
                 .bind(object)
                 .execute(&mut *tx)
@@ -134,7 +134,7 @@ pub async fn sweep_one(state: &RuntimeState, run_id: Uuid, owner: Uuid) -> Runti
         let object = object.ok_or_else(|| {
             RuntimeError::Internal(anyhow::anyhow!("Object GC item has no Object ID"))
         })?;
-        let row = sqlx::query("SELECT CAST(o.object_key AS CHAR CHARACTER SET utf8mb4) AS object_key FROM runtime_objects o WHERE o.tenant_id=? AND o.object_id=? AND o.status='deleting' AND NOT EXISTS(SELECT 1 FROM bundle_objects bo WHERE bo.tenant_id=o.tenant_id AND bo.object_id=o.object_id) FOR UPDATE")
+        let row = sqlx::query("SELECT CAST(o.object_key AS CHAR CHARACTER SET utf8mb4) AS object_key FROM runtime_objects o WHERE o.tenant_id=? AND o.object_id=? AND o.status='deleting' AND NOT EXISTS(SELECT 1 FROM bundle_objects bo WHERE bo.tenant_id=o.tenant_id AND bo.object_id=o.object_id) AND NOT EXISTS(SELECT 1 FROM application_page_publications p WHERE p.tenant_id=o.tenant_id AND (p.html_object_id=o.object_id OR p.sdk_object_id=o.object_id OR p.style_object_id=o.object_id)) FOR UPDATE")
             .bind(tenant)
             .bind(object)
             .fetch_optional(&mut *tx)

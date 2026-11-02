@@ -1,0 +1,144 @@
+# OAuth data and system keys are independent of Control/Runtime databases and credentials.
+apiVersion: v1
+kind: Service
+metadata: { name: hydra-mysql, namespace: {{ .Values.global.namespaces.dependencies }} }
+spec:
+  selector: { app.kubernetes.io/name: hydra-mysql }
+  ports: [{ name: mysql, port: 3306, targetPort: 3306 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: { name: hydra-mysql, namespace: {{ .Values.global.namespaces.dependencies }} }
+spec:
+  serviceName: hydra-mysql
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: hydra-mysql } }
+  template:
+    metadata: { labels: { app.kubernetes.io/name: hydra-mysql, agentx.io/plane: dependencies } }
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: mysql
+          image: mysql:8.4
+          imagePullPolicy: {{ .Values.global.images.pullPolicy }}
+          args: ["--max-connections=40", "--innodb-buffer-pool-size=67108864"]
+          env:
+            - { name: MYSQL_DATABASE, value: agentx_oauth }
+            - { name: MYSQL_USER, value: hydra }
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom: { secretKeyRef: { name: agentx-oauth, key: MYSQL_ROOT_PASSWORD } }
+            - name: MYSQL_PASSWORD
+              valueFrom: { secretKeyRef: { name: agentx-oauth, key: MYSQL_PASSWORD } }
+          ports: [{ name: mysql, containerPort: 3306 }]
+          readinessProbe: { tcpSocket: { port: mysql }, periodSeconds: 5 }
+          resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: 1, memory: 512Mi } }
+          volumeMounts: [{ name: data, mountPath: /var/lib/mysql }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec: { accessModes: [ReadWriteOnce], resources: { requests: { storage: 1Gi } } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: hydra, namespace: {{ .Values.global.namespaces.dependencies }} }
+spec:
+  selector: { app.kubernetes.io/name: hydra }
+  ports: [{ name: public, port: 4444, targetPort: public }, { name: admin, port: 4445, targetPort: admin }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: hydra, namespace: {{ .Values.global.namespaces.dependencies }} }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: hydra } }
+  template:
+    metadata: { labels: { app.kubernetes.io/name: hydra, agentx.io/plane: dependencies } }
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+        - name: schema
+          image: oryd/hydra:v26.2.0@sha256:ff67c7fb5f95074fa53374d41151713554960504b340cd3f95b09e65deaea2a9
+          args: [migrate, sql, -e, --yes]
+          env:
+            - name: DSN
+              valueFrom: { secretKeyRef: { name: agentx-oauth, key: DSN } }
+      containers:
+        - name: hydra
+          image: oryd/hydra:v26.2.0@sha256:ff67c7fb5f95074fa53374d41151713554960504b340cd3f95b09e65deaea2a9
+          imagePullPolicy: {{ .Values.global.images.pullPolicy }}
+          args: [serve, all{{ if ne .Values.global.environment "production" }}, --dev{{ end }}, --sqa-opt-out]
+          env:
+            - name: DSN
+              valueFrom: { secretKeyRef: { name: agentx-oauth, key: DSN } }
+            - name: SECRETS_SYSTEM
+              valueFrom: { secretKeyRef: { name: agentx-oauth, key: SECRETS_SYSTEM } }
+            - { name: URLS_SELF_ISSUER, value: {{ printf "%s://%s" (ternary "https" "http" (ne .Values.global.ingress.runtimeTlsSecretName nil)) .Values.global.ingress.runtimeHost | quote }} }
+            - { name: URLS_LOGIN, value: {{ printf "%s://%s/oauth/login" (ternary "https" "http" (ne .Values.global.ingress.controlTlsSecretName nil)) .Values.global.ingress.controlHost | quote }} }
+            - { name: URLS_CONSENT, value: {{ printf "%s://%s/oauth/consent" (ternary "https" "http" (ne .Values.global.ingress.controlTlsSecretName nil)) .Values.global.ingress.controlHost | quote }} }
+            - { name: SERVE_TLS_ALLOW_TERMINATION_FROM, value: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16" }
+            - { name: OAUTH2_PKCE_ENFORCED, value: "true" }
+            - { name: STRATEGIES_ACCESS_TOKEN, value: opaque }
+            - { name: TTL_ACCESS_TOKEN, value: 15m }
+            - { name: TTL_REFRESH_TOKEN, value: 720h }
+            - { name: SERVE_COOKIES_SAME_SITE_MODE, value: Lax }
+            - { name: LOG_LEVEL, value: warn }
+            - { name: LOG_LEAK_SENSITIVE_VALUES, value: "false" }
+          ports: [{ name: public, containerPort: 4444 }, { name: admin, containerPort: 4445 }]
+          readinessProbe: { httpGet: { path: /health/ready, port: admin }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /health/alive, port: admin }, periodSeconds: 10 }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, runAsNonRoot: true, runAsUser: 1000, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 1, memory: 256Mi } }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: hydra-access, namespace: {{ .Values.global.namespaces.dependencies }} }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: hydra } }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.global.namespaces.runtime }} } }
+          podSelector: { matchLabels: { app.kubernetes.io/name: runtime-gateway } }
+      ports: [{ protocol: TCP, port: 4444 }, { protocol: TCP, port: 4445 }]
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.global.namespaces.control }} } }
+          podSelector: { matchLabels: { app.kubernetes.io/name: platform-control } }
+      ports: [{ protocol: TCP, port: 4445 }]
+  egress:
+    - to: [{ podSelector: { matchLabels: { app.kubernetes.io/name: hydra-mysql } } }]
+      ports: [{ protocol: TCP, port: 3306 }]
+    - to: [{ namespaceSelector: {}, podSelector: { matchLabels: { k8s-app: kube-dns } } }]
+      ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: hydra-mysql-access, namespace: {{ .Values.global.namespaces.dependencies }} }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: hydra-mysql } }
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{ podSelector: { matchLabels: { app.kubernetes.io/name: hydra } } }]
+      ports: [{ protocol: TCP, port: 3306 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: hydra-control-egress, namespace: {{ .Values.global.namespaces.control }} }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: platform-control } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.global.namespaces.dependencies }} } }
+          podSelector: { matchLabels: { app.kubernetes.io/name: hydra } }
+      ports: [{ protocol: TCP, port: 4445 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: hydra-runtime-egress, namespace: {{ .Values.global.namespaces.runtime }} }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: runtime-gateway } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.global.namespaces.dependencies }} } }
+          podSelector: { matchLabels: { app.kubernetes.io/name: hydra } }
+      ports: [{ protocol: TCP, port: 4444 }, { protocol: TCP, port: 4445 }]

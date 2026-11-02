@@ -21,7 +21,44 @@ pub(crate) fn request(request: &ModelRequestV1, model: &str, streaming: bool) ->
     body
 }
 
+pub(crate) fn apply_parameters(body: &mut Value, parameters: &Value, output_ceiling: u64) {
+    for name in [
+        "temperature",
+        "top_p",
+        "presence_penalty",
+        "frequency_penalty",
+        "seed",
+        "stop",
+        "thinking",
+        "reasoning_effort",
+    ] {
+        if let Some(value) = parameters.get(name) {
+            body[name] = value.clone();
+        }
+    }
+    let limit = if parameters.get("max_completion_tokens").is_some() {
+        "max_completion_tokens"
+    } else {
+        "max_tokens"
+    };
+    let output = parameters
+        .get(limit)
+        .and_then(Value::as_u64)
+        .unwrap_or(output_ceiling)
+        .min(output_ceiling);
+    body[limit] = json!(output);
+}
+
 pub(crate) fn response(payload: &Value, message_id: String) -> Result<ModelResponseV1, String> {
+    if payload
+        .pointer("/choices/0/finish_reason")
+        .and_then(Value::as_str)
+        == Some("length")
+    {
+        return Err(
+            "MODEL_OUTPUT_LIMIT_REACHED: The provider stopped at its output token limit".into(),
+        );
+    }
     let message = payload
         .pointer("/choices/0/message")
         .ok_or("Provider response has no assistant message")?;
@@ -58,13 +95,52 @@ pub(crate) fn response(payload: &Value, message_id: String) -> Result<ModelRespo
             arguments,
         });
     }
+    let content = message
+        .get("content")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if content.trim().is_empty() && tool_calls.is_empty() {
+        return Err("MODEL_RESPONSE_EMPTY: No answer or tool call was returned".into());
+    }
     Ok(ModelResponseV1 {
         message_id,
-        content: message
-            .get("content")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .into(),
+        content: content.into(),
         tool_calls,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frozen_model_parameters_preserve_identity_and_respect_the_output_budget() {
+        let mut body = json!({"model":"pinned-model","messages":[{"role":"user","content":"business input"}],"stream":true});
+        apply_parameters(
+            &mut body,
+            &json!({"model":"untrusted-override","messages":[],"stream":false,"max_tokens":16000,"reasoning_effort":"low","temperature":0.2}),
+            4096,
+        );
+        assert_eq!(body["model"], "pinned-model");
+        assert_eq!(body["messages"][0]["content"], "business input");
+        assert_eq!(body["stream"], true);
+        assert_eq!(body["max_tokens"], 4096);
+        assert_eq!(body["reasoning_effort"], "low");
+        assert_eq!(body["temperature"], 0.2);
+        let mut completion = json!({"model":"pinned-model"});
+        apply_parameters(
+            &mut completion,
+            &json!({"max_completion_tokens":2048}),
+            4096,
+        );
+        assert_eq!(completion["max_completion_tokens"], 2048);
+        assert!(completion.get("max_tokens").is_none());
+    }
+    #[test]
+    fn thinking_only_and_truncated_responses_cannot_complete_a_run_or_execute_tools() {
+        assert!(response(&json!({"choices":[{"finish_reason":"stop","message":{"reasoning_content":"internal thought","content":""}}]}),"m".into()).unwrap_err().contains("MODEL_RESPONSE_EMPTY"));
+        let call = json!({"id":"call-1","function":{"name":"page_edit","arguments":"{}"}});
+        assert!(response(&json!({"choices":[{"finish_reason":"length","message":{"content":"partial","tool_calls":[call.clone()]}}]}),"m".into()).unwrap_err().contains("MODEL_OUTPUT_LIMIT_REACHED"));
+        assert_eq!(response(&json!({"choices":[{"finish_reason":"tool_calls","message":{"content":"","tool_calls":[call]}}]}),"m".into()).unwrap().tool_calls.len(),1);
+    }
 }

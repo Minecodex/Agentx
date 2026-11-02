@@ -94,6 +94,15 @@ pub struct RuntimeAdmissionCommandV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AdmissionTargetV1 {
+    ApplicationMcp {
+        state: Box<crate::ApplicationMcpPublicationV1>,
+    },
+    ApplicationMcpRemoved {
+        state: crate::ApplicationMcpRemovalV1,
+    },
+    McpToolPolicy {
+        state: crate::McpToolPolicyAdmissionV1,
+    },
     Tenant {
         enabled: bool,
     },

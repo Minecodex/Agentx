@@ -225,6 +225,10 @@ fn check_provider_http_clients(root: &Path, failures: &mut Vec<String>) -> Resul
         "src/services/agentx-v2-runtime/src/egress.rs",
         "src/services/agentx-v2-runtime/src/sandbox.rs",
         "src/services/agentx-v2-runtime/src/vault.rs",
+        // These adapters only contact deployment-configured Hydra endpoints:
+        // the public protocol allowlist and the fixed introspection endpoint.
+        "src/services/agentx-v2-runtime/src/oauth_proxy.rs",
+        "src/services/agentx-v2-runtime/src/gateway/oauth.rs",
         "src/services/agentx-v2-runtime/src/bin/runtime-fault-proxy.rs",
         "src/services/agentx-v2-runtime/src/bin/sandbox-manager.rs",
     ]);
@@ -495,7 +499,12 @@ fn snapshot(root: &Path) -> Result<()> {
             let task = tables
                 .get(&value)
                 .map(|row| row.owning_task.as_str())
-                .or_else(|| v2_tables.get(&value).map(|row| row.owning_task.as_str()))
+                .or_else(|| {
+                    v2_tables
+                        .values()
+                        .find(|row| row.table == value)
+                        .map(|row| row.owning_task.as_str())
+                })
                 .unwrap_or("V2A-009");
             CountedException {
                 owner: format!("{} / {task}", owner_for_path(&path)),
@@ -577,8 +586,9 @@ fn load_v2_tables(root: &Path) -> Result<BTreeMap<String, V2SchemaTableOwnership
     )?;
     let mut result = BTreeMap::new();
     for row in rows {
-        if result.insert(row.table.clone(), row).is_some() {
-            bail!("V2 schema ownership contains a duplicate table");
+        let key = format!("{}.{}", row.plane, row.table);
+        if result.insert(key.clone(), row).is_some() {
+            bail!("V2 schema ownership contains a duplicate table in the same plane: {key}");
         }
     }
     Ok(result)
@@ -903,7 +913,7 @@ fn sql_findings(
 ) -> Result<Vec<Finding>> {
     let table_pattern = tables
         .keys()
-        .chain(v2_tables.keys())
+        .chain(v2_tables.values().map(|row| &row.table))
         .map(|table| regex::escape(table))
         .collect::<Vec<_>>()
         .join("|");
@@ -952,14 +962,20 @@ fn table_access_is_allowed(
     v2_tables: &BTreeMap<String, V2SchemaTableOwnership>,
 ) -> bool {
     let plane = plane_for_path(root, Path::new(&finding.path));
-    if let Some(row) = v2_tables.get(&finding.value) {
-        return matches!(
-            (plane, row.plane.as_str()),
-            (Plane::Control, "control")
-                | (Plane::Runtime, "runtime")
-                | (Plane::Observability, "observability")
-                | (Plane::V2Operations, _)
-        );
+    let owners = v2_tables
+        .values()
+        .filter(|row| row.table == finding.value)
+        .collect::<Vec<_>>();
+    if !owners.is_empty() {
+        return owners.iter().any(|row| {
+            matches!(
+                (plane, row.plane.as_str()),
+                (Plane::Control, "control")
+                    | (Plane::Runtime, "runtime")
+                    | (Plane::Observability, "observability")
+                    | (Plane::V2Operations, _)
+            )
+        });
     }
     let row = tables.get(&finding.value);
     let decision = row.map(|row| row.decision.as_str());

@@ -45,6 +45,7 @@ pub struct ApiKeyCaller {
 
 #[derive(Clone, Debug)]
 pub struct InvocationCaller {
+    pub access: Option<agentx_runtime_contracts::ApplicationAccessBindingV1>,
     pub wait_inputs: Option<agentx_runtime_contracts::WaitInputsV1>,
     pub trigger_context: Option<Value>,
     pub end_user: Option<agentx_runtime_contracts::ApplicationUserIdentityV1>,
@@ -334,6 +335,7 @@ pub async fn create_invocation(
         tenant_id,
         application_id,
         InvocationCaller {
+            access: None,
             wait_inputs: None,
             trigger_context: None,
             end_user: None,
@@ -445,6 +447,7 @@ async fn create_runtime_invocation_tx_inner(
                 "callerId": caller.caller_id,
                 "waitInputs": caller.wait_inputs,
                 "triggerContext": caller.trigger_context,
+                "accessBinding": caller.access,
             }))
             .map_err(|error| RuntimeError::Internal(error.into()))?
         )
@@ -473,7 +476,13 @@ async fn create_runtime_invocation_tx_inner(
     } else {
         caller.origin.clone()
     };
-    let mut selected_bundle_id = bundle_id;
+    let mut selected_bundle_id = match &caller.access {
+        Some(binding) => {
+            crate::application_pages::resolve_binding(tx, tenant_id, application_id, binding)
+                .await?
+        }
+        None => bundle_id,
+    };
     let mut identity_policy =
         crate::user_identity::api_policy(tx, tenant_id, application_id).await?;
     let mut end_user = caller.end_user.clone().or_else(|| {
@@ -487,10 +496,12 @@ async fn create_runtime_invocation_tx_inner(
     let mut session_initial_input = json!({});
     let mut session_external_user_id = None;
     if let Some(session_id) = session_id {
-        let session = sqlx::query("SELECT application_id,bundle_id,version_policy,status,external_user_id,user_identity_json,initial_input_json,environment_id FROM application_sessions WHERE tenant_id=? AND id=? FOR UPDATE")
+        let session = sqlx::query("SELECT application_id,bundle_id,version_policy,status,external_user_id,user_identity_json,initial_input_json,environment_id,owner_caller_type,owner_caller_id FROM application_sessions WHERE tenant_id=? AND id=? FOR UPDATE")
             .bind(tenant_id).bind(session_id).fetch_optional(&mut **tx).await?.ok_or(RuntimeError::NotFound)?;
         if session.try_get::<Uuid, _>("application_id")? != application_id
             || session.try_get::<String, _>("status")? != "active"
+            || session.try_get::<String, _>("owner_caller_type")? != caller.caller_type
+            || session.try_get::<Uuid, _>("owner_caller_id")? != caller.caller_id
         {
             return Err(RuntimeError::Unauthorized);
         }
@@ -506,7 +517,13 @@ async fn create_runtime_invocation_tx_inner(
         session_initial_input = session
             .try_get::<Option<Value>, _>("initial_input_json")?
             .unwrap_or_else(|| json!({}));
-        if session.try_get::<String, _>("version_policy")? != "follow_deployment" {
+        if caller.access.is_some() {
+            if session.try_get::<Option<Uuid>, _>("bundle_id")? != Some(selected_bundle_id) {
+                return Err(crate::application_pages::conflict(
+                    "The conversation belongs to another business Bundle",
+                ));
+            }
+        } else if session.try_get::<String, _>("version_policy")? != "follow_deployment" {
             selected_bundle_id = session
                 .try_get::<Option<Uuid>, _>("bundle_id")?
                 .ok_or(RuntimeError::NotFound)?;
@@ -522,15 +539,50 @@ async fn create_runtime_invocation_tx_inner(
     let spec: ExecutionSpecPayloadV2 = serde_json::from_value(payload.clone())
         .map_err(|error| RuntimeError::Internal(error.into()))?;
     let (mut input, chat_mapping_version, chat_mapping_json) = if chat_message {
-        let row = sqlx::query("SELECT version,mapping_json FROM application_chat_mappings WHERE tenant_id=? AND application_id=? AND bundle_id=? FOR SHARE")
+        let frozen = if let Some(agentx_runtime_contracts::ApplicationAccessBindingV1::Web {
+            publication_id,
+            revision,
+        }) = &caller.access
+        {
+            let value:Value=sqlx::query_scalar("SELECT manifest_json FROM application_page_publications WHERE tenant_id=? AND application_id=? AND id=?")
+                .bind(tenant_id).bind(application_id).bind(publication_id).fetch_one(&mut **tx).await?;
+            let publication: agentx_runtime_contracts::ApplicationPagePublicationV1 =
+                serde_json::from_value(value).map_err(|e| RuntimeError::Internal(e.into()))?;
+            Some((
+                *revision,
+                serde_json::to_value(publication.contract.chat_mapping)
+                    .map_err(|e| RuntimeError::Internal(e.into()))?,
+            ))
+        } else if let Some(agentx_runtime_contracts::ApplicationAccessBindingV1::Mcp {
+            publication_id,
+            revision,
+        }) = &caller.access
+        {
+            let value:Value=sqlx::query_scalar("SELECT manifest_json FROM application_mcp_publications WHERE tenant_id=? AND application_id=? AND id=?").bind(tenant_id).bind(application_id).bind(publication_id).fetch_one(&mut **tx).await?;
+            let publication: agentx_runtime_contracts::ApplicationMcpPublicationV1 =
+                serde_json::from_value(value).map_err(|e| RuntimeError::Internal(e.into()))?;
+            Some((
+                *revision,
+                serde_json::to_value(publication.chat_mapping)
+                    .map_err(|e| RuntimeError::Internal(e.into()))?,
+            ))
+        } else {
+            None
+        };
+        let (version, mapping_value) = if let Some(frozen) = frozen {
+            frozen
+        } else {
+            let row = sqlx::query("SELECT version,mapping_json FROM application_chat_mappings WHERE tenant_id=? AND application_id=? AND bundle_id=? FOR SHARE")
             .bind(tenant_id)
             .bind(application_id)
             .bind(selected_bundle_id)
             .fetch_optional(&mut **tx)
             .await?
             .ok_or_else(|| RuntimeError::InvalidRequest("CHAT_MAPPING_NOT_CONFIGURED", "Conversation testing is not configured for this Deployment".into()))?;
-        let version: u64 = row.try_get("version")?;
-        let mapping_value: Value = row.try_get("mapping_json")?;
+            let version: u64 = row.try_get("version")?;
+            let mapping_value: Value = row.try_get("mapping_json")?;
+            (version, mapping_value)
+        };
         let mapping = serde_json::from_value::<Option<agentx_runtime_contracts::ChatMappingV1>>(
             mapping_value.clone(),
         )
@@ -553,13 +605,12 @@ async fn create_runtime_invocation_tx_inner(
     } else {
         (input.clone(), None, None)
     };
-    if chat_message {
-        if let (Some(initial), Some(projected)) =
+    if chat_message
+        && let (Some(initial), Some(projected)) =
             (session_initial_input.as_object_mut(), input.as_object())
-        {
-            initial.extend(projected.clone());
-            input = session_initial_input;
-        }
+    {
+        initial.extend(projected.clone());
+        input = session_initial_input;
     }
     agentx_runtime::materialize_and_validate_start_input(&mut input, &spec.input_contract)
         .map_err(|error| {
@@ -567,6 +618,16 @@ async fn create_runtime_invocation_tx_inner(
         })?;
     let input_artifact_ids =
         validate_input_artifacts(tx, tenant_id, &input, &spec.input_contract).await?;
+    for id in &input_artifact_ids {
+        crate::artifact_access::require_input(
+            tx,
+            tenant_id,
+            caller.caller_type,
+            caller.caller_id,
+            *id,
+        )
+        .await?;
+    }
     let invocation_id = Uuid::now_v7();
     let execution_id = Uuid::now_v7();
     let started_at = OffsetDateTime::now_utc();
@@ -575,8 +636,8 @@ async fn create_runtime_invocation_tx_inner(
     let state_hash =
         agentx_runtime_contracts::content_hash(&json!({"status":"queued","input":input}))
             .map_err(|error| RuntimeError::Internal(error.into()))?;
-    sqlx::query("INSERT INTO application_invocations(id,tenant_id,application_id,session_id,workflow_version_id,bundle_id,admission_epoch,state_version,execution_id,caller_type,caller_id,caller_token_version,chat_mapping_version,chat_mapping_json,request_hash,idempotency_key,status,input_json) VALUES(?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,'queued',?) ON DUPLICATE KEY UPDATE id=id")
-        .bind(invocation_id).bind(tenant_id).bind(application_id).bind(session_id).bind(spec.workflow_version_id).bind(selected_bundle_id).bind(admission_epoch).bind(execution_id).bind(caller.caller_type).bind(caller.caller_id).bind(caller.token_version).bind(chat_mapping_version).bind(&chat_mapping_json).bind(&request_hash).bind(idempotency_key).bind(&input).execute(&mut **tx).await?;
+    sqlx::query("INSERT INTO application_invocations(id,tenant_id,application_id,session_id,workflow_version_id,bundle_id,admission_epoch,state_version,execution_id,caller_type,caller_id,caller_token_version,chat_mapping_version,chat_mapping_json,request_hash,idempotency_key,status,input_json,access_binding_json) VALUES(?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,'queued',?,?) ON DUPLICATE KEY UPDATE id=id")
+        .bind(invocation_id).bind(tenant_id).bind(application_id).bind(session_id).bind(spec.workflow_version_id).bind(selected_bundle_id).bind(admission_epoch).bind(execution_id).bind(caller.caller_type).bind(caller.caller_id).bind(caller.token_version).bind(chat_mapping_version).bind(&chat_mapping_json).bind(&request_hash).bind(idempotency_key).bind(&input).bind(caller.access.as_ref().map(serde_json::to_value).transpose().map_err(|e|RuntimeError::Internal(e.into()))?).execute(&mut **tx).await?;
     if let Some(context) = &caller.trigger_context {
         sqlx::query("UPDATE application_invocations SET trigger_context_json=?,provider_event_id=?,conversation_id=? WHERE tenant_id=? AND id=?")
             .bind(context).bind(context.get("providerEventId").and_then(Value::as_str)).bind(context.pointer("/conversation/id").and_then(Value::as_str))
@@ -808,7 +869,7 @@ fn project_chat_message_input(
     Ok(Value::Object(projected))
 }
 
-fn validate_runtime_chat_mapping(
+pub(crate) fn validate_runtime_chat_mapping(
     mapping: &agentx_runtime_contracts::ChatMappingV1,
     input_contract: &Value,
     output_contract: &Value,

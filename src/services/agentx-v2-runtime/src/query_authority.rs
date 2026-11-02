@@ -413,8 +413,8 @@ pub(crate) async fn execution_artifact_response(
     id: Uuid,
     artifact_id: Uuid,
 ) -> RuntimeResult<Response> {
-    let row = sqlx::query("SELECT a.content_type,a.size_bytes,a.sha256,a.storage_key FROM artifacts a JOIN artifact_references r ON r.tenant_id=a.tenant_id AND r.artifact_id=a.id WHERE a.tenant_id=? AND a.id=? AND a.deleted_at IS NULL AND (r.owner_id=? OR EXISTS(SELECT 1 FROM node_executions n WHERE n.tenant_id=a.tenant_id AND n.execution_id=? AND r.owner_id=BIN_TO_UUID(n.id))) LIMIT 1")
-        .bind(tenant_id).bind(artifact_id).bind(id.to_string()).bind(id).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)?;
+    let row = sqlx::query(&format!("{}SELECT a.content_type,a.size_bytes,a.sha256,a.storage_key FROM artifacts a JOIN artifact_references r ON r.tenant_id=a.tenant_id AND r.artifact_id=a.id WHERE a.tenant_id=? AND a.id=? AND a.deleted_at IS NULL AND ((r.owner_type='execution' AND r.owner_id IN (SELECT BIN_TO_UUID(id) FROM task_executions)) OR (r.owner_type='node_execution' AND r.owner_id IN (SELECT BIN_TO_UUID(n.id) FROM node_executions n JOIN task_executions t ON t.id=n.execution_id WHERE n.tenant_id=?))) LIMIT 1",crate::artifact_access::EXECUTION_TREE))
+        .bind(tenant_id).bind(id).bind(tenant_id).bind(tenant_id).bind(artifact_id).bind(tenant_id).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)?;
     let content_type: String = row.try_get("content_type")?;
     let size_bytes: u64 = row.try_get("size_bytes")?;
     let sha256: String = row.try_get("sha256")?;
@@ -690,10 +690,10 @@ async fn authorize_execution_row(
     if !claims.execution_ids.is_empty() && !claims.execution_ids.contains(&id) {
         return Err(RuntimeError::Unauthorized);
     }
-    if let Some(application_id) = row.try_get::<Option<Uuid>, _>("application_id")? {
-        if claims.execution_ids.contains(&id) || claims.application_ids.contains(&application_id) {
-            return verify_application_grant(state, claims, application_id).await;
-        }
+    if let Some(application_id) = row.try_get::<Option<Uuid>, _>("application_id")?
+        && (claims.execution_ids.contains(&id) || claims.application_ids.contains(&application_id))
+    {
+        return verify_application_grant(state, claims, application_id).await;
     }
     let workflow_id: Uuid = row.try_get("workflow_id")?;
     if claims.execution_ids.contains(&id) || claims.workflow_ids.contains(&workflow_id) {
@@ -994,6 +994,91 @@ fn parsed_end_user(
         .map_err(|error| RuntimeError::Internal(error.into()))
 }
 
+pub async fn check_test_artifacts(
+    State(state): State<RuntimeState>,
+    headers: HeaderMap,
+    Json(request): Json<agentx_runtime_contracts::TestArtifactCheckV1>,
+) -> RuntimeResult<Json<Vec<agentx_runtime_contracts::TestArtifactIssueV1>>> {
+    use crate::execution::{collect_artifact_constraints, content_type_matches};
+    use agentx_runtime_contracts::TestArtifactIssueV1;
+    if request.schemas.len() != request.values.len() {
+        return Err(RuntimeError::InvalidRequest(
+            "INVALID_TEST_ARTIFACT_CHECK",
+            "Values and schemas differ in length".into(),
+        ));
+    }
+    let hash = query_request_hash("test-artifacts", &request)?;
+    let claims = authorize_delegation(
+        &state,
+        &headers,
+        request.tenant_id,
+        "runtime.query.test_artifacts",
+        &hash,
+    )
+    .await?;
+    // This token authorizes file metadata only. It does not authorize execution
+    // history; Control has already checked the application's dataset permission.
+    if !claims.application_ids.contains(&request.application_id) {
+        return Err(RuntimeError::Unauthorized);
+    }
+    let mut issues = Vec::new();
+    for (index, (schema, value)) in request.schemas.iter().zip(&request.values).enumerate() {
+        let mut constraints = Vec::new();
+        if collect_artifact_constraints(value, schema, "", &mut constraints).is_err() {
+            issues.push(TestArtifactIssueV1 {
+                index,
+                field: String::new(),
+                message: "Complete the file reference".into(),
+            });
+            continue;
+        }
+        for constraint in constraints {
+            let mut total = 0;
+            for id in constraint.artifact_ids {
+                let row=sqlx::query("SELECT size_bytes,content_type FROM artifacts WHERE tenant_id=? AND id=? AND deleted_at IS NULL").bind(request.tenant_id).bind(id).fetch_optional(&state.pool).await?;
+                let message = if let Some(row) = row {
+                    let size: u64 = row.try_get("size_bytes")?;
+                    let content_type: String = row.try_get("content_type")?;
+                    total += size;
+                    if constraint.max_size_bytes.is_some_and(|max| size > max) {
+                        Some("The file exceeds the field size limit")
+                    } else if !constraint.content_types.is_empty()
+                        && !constraint
+                            .content_types
+                            .iter()
+                            .any(|allowed| content_type_matches(allowed, &content_type))
+                    {
+                        Some("The file type is not allowed")
+                    } else {
+                        None
+                    }
+                } else {
+                    Some("The file is missing or expired; upload it again")
+                };
+                if let Some(message) = message {
+                    issues.push(TestArtifactIssueV1 {
+                        index,
+                        field: constraint.path.clone(),
+                        message: message.into(),
+                    })
+                }
+            }
+            if constraint
+                .max_total_size_bytes
+                .is_some_and(|max| total > max)
+            {
+                issues.push(TestArtifactIssueV1 {
+                    index,
+                    field: constraint.path,
+                    message: "Files exceed the combined size limit".into(),
+                })
+            }
+        }
+    }
+    complete_query_receipt(&state, claims.jti, "OK").await?;
+    Ok(Json(issues))
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -1086,89 +1171,4 @@ mod tests {
         assert!(enforce_snapshot_budget(10_000).is_ok());
         assert!(enforce_snapshot_budget(10_001).is_err());
     }
-}
-
-pub async fn check_test_artifacts(
-    State(state): State<RuntimeState>,
-    headers: HeaderMap,
-    Json(request): Json<agentx_runtime_contracts::TestArtifactCheckV1>,
-) -> RuntimeResult<Json<Vec<agentx_runtime_contracts::TestArtifactIssueV1>>> {
-    use crate::execution::{collect_artifact_constraints, content_type_matches};
-    use agentx_runtime_contracts::TestArtifactIssueV1;
-    if request.schemas.len() != request.values.len() {
-        return Err(RuntimeError::InvalidRequest(
-            "INVALID_TEST_ARTIFACT_CHECK",
-            "Values and schemas differ in length".into(),
-        ));
-    }
-    let hash = query_request_hash("test-artifacts", &request)?;
-    let claims = authorize_delegation(
-        &state,
-        &headers,
-        request.tenant_id,
-        "runtime.query.test_artifacts",
-        &hash,
-    )
-    .await?;
-    // This token authorizes file metadata only. It does not authorize execution
-    // history; Control has already checked the application's dataset permission.
-    if !claims.application_ids.contains(&request.application_id) {
-        return Err(RuntimeError::Unauthorized);
-    }
-    let mut issues = Vec::new();
-    for (index, (schema, value)) in request.schemas.iter().zip(&request.values).enumerate() {
-        let mut constraints = Vec::new();
-        if collect_artifact_constraints(value, schema, "", &mut constraints).is_err() {
-            issues.push(TestArtifactIssueV1 {
-                index,
-                field: String::new(),
-                message: "Complete the file reference".into(),
-            });
-            continue;
-        }
-        for constraint in constraints {
-            let mut total = 0;
-            for id in constraint.artifact_ids {
-                let row=sqlx::query("SELECT size_bytes,content_type FROM artifacts WHERE tenant_id=? AND id=? AND deleted_at IS NULL").bind(request.tenant_id).bind(id).fetch_optional(&state.pool).await?;
-                let message = if let Some(row) = row {
-                    let size: u64 = row.try_get("size_bytes")?;
-                    let content_type: String = row.try_get("content_type")?;
-                    total += size;
-                    if constraint.max_size_bytes.is_some_and(|max| size > max) {
-                        Some("The file exceeds the field size limit")
-                    } else if !constraint.content_types.is_empty()
-                        && !constraint
-                            .content_types
-                            .iter()
-                            .any(|allowed| content_type_matches(allowed, &content_type))
-                    {
-                        Some("The file type is not allowed")
-                    } else {
-                        None
-                    }
-                } else {
-                    Some("The file is missing or expired; upload it again")
-                };
-                if let Some(message) = message {
-                    issues.push(TestArtifactIssueV1 {
-                        index,
-                        field: constraint.path.clone(),
-                        message: message.into(),
-                    })
-                }
-            }
-            if constraint
-                .max_total_size_bytes
-                .is_some_and(|max| total > max)
-            {
-                issues.push(TestArtifactIssueV1 {
-                    index,
-                    field: constraint.path,
-                    message: "Files exceed the combined size limit".into(),
-                })
-            }
-        }
-    }
-    complete_query_receipt(&state, claims.jti, "OK").await?;
-    Ok(Json(issues))
 }

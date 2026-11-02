@@ -1,0 +1,105 @@
+{
+  "$defs": {
+    "PageEditorSnapshotV1": {
+      "additionalProperties": false,
+      "properties": {
+        "editorInstanceId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "html": {
+          "type": "string"
+        },
+        "htmlHash": {
+          "type": "string"
+        },
+        "localRevision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "saveStatus": {
+          "$ref": "#/$defs/StudioSaveStatusV1"
+        },
+        "serverRevision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "editorInstanceId",
+        "localRevision",
+        "serverRevision",
+        "html",
+        "htmlHash",
+        "saveStatus"
+      ],
+      "type": "object"
+    },
+    "StudioBuilderRunSummaryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "modelAliasId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "settingVersion": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "modelAliasId",
+        "settingVersion"
+      ],
+      "type": "object"
+    },
+    "StudioSaveStatusV1": {
+      "enum": [
+        "saved",
+        "unsaved"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "runs": {
+      "items": {
+        "$ref": "#/$defs/StudioBuilderRunSummaryV1"
+      },
+      "type": "array"
+    },
+    "snapshot": {
+      "$ref": "#/$defs/PageEditorSnapshotV1"
+    },
+    "uiDraftId": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "uiDraftId",
+    "snapshot",
+    "runs"
+  ],
+  "title": "PageBuilderSessionV1",
+  "type": "object"
+}

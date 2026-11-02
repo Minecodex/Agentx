@@ -41,7 +41,14 @@ use uuid::Uuid;
 mod api_error;
 mod application_catalog_api;
 mod application_evaluation_dispatch;
+mod application_mcp_api;
+mod application_mcp_diagnostics;
+mod application_page_api;
+mod application_page_publisher;
 mod application_testing;
+mod application_ui_api;
+mod application_ui_host;
+mod application_ui_tools;
 mod bootstrap_api;
 mod canvas_plugin_api;
 mod canvas_plugin_resolution;
@@ -50,6 +57,10 @@ mod control_api;
 mod control_helpers;
 mod credential_api;
 mod deletion_api;
+mod design_agent_host;
+mod design_agent_inputs;
+mod design_agent_runtime;
+mod design_agent_tools;
 mod external_resource_api;
 mod governance_api;
 mod iam_api;
@@ -57,7 +68,9 @@ mod insights_api;
 mod knowledge_document_api;
 mod knowledge_provider;
 mod mcp_api;
+mod mcp_tool_policy;
 mod model_api;
+mod oauth_api;
 mod openapi_contract;
 mod operations_api;
 mod platform_ai_model;
@@ -77,7 +90,6 @@ mod studio_builder_configuration;
 mod studio_builder_host;
 mod studio_builder_layout;
 mod studio_builder_retention;
-mod studio_builder_runtime;
 mod studio_builder_scope;
 mod studio_builder_tools;
 mod test_contract;
@@ -223,7 +235,7 @@ async fn main() -> Result<()> {
         let builder_progress =
             role_health::watchdog("studio-builder", &health, &lifecycle, &metrics).await;
         tasks.spawn(async move {
-            studio_builder_host::run_loop(builder_state, builder_lifecycle, builder_progress).await
+            design_agent_host::run_loop(builder_state, builder_lifecycle, builder_progress).await
         });
         let evaluation_state = api_state.clone();
         let evaluation_lifecycle = lifecycle.clone();
@@ -282,6 +294,7 @@ impl Publisher {
                 return Ok(());
             }
             let started = std::time::Instant::now();
+            self.publish_pages().await?;
             for attempt in self.claim().await? {
                 if let Err(error) = self.advance(&attempt).await {
                     tracing::warn!(attempt_id=%attempt.id, %error, "Publish Attempt failed");
@@ -378,14 +391,14 @@ impl Publisher {
 
     async fn claim_admission(&self) -> Result<Vec<AdmissionEvent>> {
         let mut tx = self.pool.begin().await?;
-        let rows = sqlx::query("SELECT id FROM outbox WHERE aggregate_type IN ('application_admission','runtime_user_admission','workflow_admission','application_chat_mapping') AND status IN ('pending','failed') AND available_at<=UTC_TIMESTAMP(6) AND (locked_until IS NULL OR locked_until<=UTC_TIMESTAMP(6)) ORDER BY occurred_at,id LIMIT ? FOR UPDATE SKIP LOCKED")
+        let rows = sqlx::query("SELECT id FROM outbox WHERE aggregate_type IN ('application_admission','runtime_user_admission','workflow_admission','application_chat_mapping','mcp_policy_admission','application_mcp_admission') AND available_at<=UTC_TIMESTAMP(6) AND ((status IN ('pending','failed') AND (locked_until IS NULL OR locked_until<=UTC_TIMESTAMP(6))) OR (status='processing' AND locked_until<=UTC_TIMESTAMP(6))) ORDER BY occurred_at,id LIMIT ? FOR UPDATE SKIP LOCKED")
             .bind(DEFAULT_BATCH_SIZE).fetch_all(&mut *tx).await?;
         for row in rows {
-            sqlx::query("UPDATE outbox SET status='processing',locked_by=?,locked_until=DATE_ADD(UTC_TIMESTAMP(6),INTERVAL 30 SECOND),fencing_token=fencing_token+1,attempt_count=attempt_count+1 WHERE id=? AND status IN ('pending','failed')")
+            sqlx::query("UPDATE outbox SET status='processing',locked_by=?,locked_until=DATE_ADD(UTC_TIMESTAMP(6),INTERVAL 30 SECOND),fencing_token=fencing_token+1,attempt_count=attempt_count+1 WHERE id=? AND (status IN ('pending','failed') OR (status='processing' AND locked_until<=UTC_TIMESTAMP(6)))")
                 .bind(self.owner.0).bind(row.try_get::<Uuid,_>("id")?).execute(&mut *tx).await?;
         }
         tx.commit().await?;
-        let rows = sqlx::query("SELECT id,tenant_id,event_type,aggregate_type,aggregate_id,payload_json,occurred_at,fencing_token FROM outbox WHERE aggregate_type IN ('application_admission','runtime_user_admission','workflow_admission','application_chat_mapping') AND status='processing' AND locked_by=? AND locked_until>UTC_TIMESTAMP(6) ORDER BY occurred_at,id")
+        let rows = sqlx::query("SELECT id,tenant_id,event_type,aggregate_type,aggregate_id,payload_json,occurred_at,fencing_token FROM outbox WHERE aggregate_type IN ('application_admission','runtime_user_admission','workflow_admission','application_chat_mapping','mcp_policy_admission','application_mcp_admission') AND status='processing' AND locked_by=? AND locked_until>UTC_TIMESTAMP(6) ORDER BY occurred_at,id")
             .bind(self.owner.0).fetch_all(&self.pool).await?;
         rows.into_iter()
             .map(|row| {
@@ -484,8 +497,20 @@ impl Publisher {
                 | "RuntimeUserWorkflowGrantChanged"
                 | "ServiceIdentityAdmissionChanged"
                 | "ResourceGrantAdmissionChanged"
+                | "McpToolPolicyChanged"
+                | "ApplicationMcpChanged"
+                | "ApplicationMcpRemoved"
         ) {
             let target = match event.event_type.as_str() {
+                "ApplicationMcpChanged" => AdmissionTargetV1::ApplicationMcp {
+                    state: serde_json::from_value(event.payload["publication"].clone())?,
+                },
+                "ApplicationMcpRemoved" => AdmissionTargetV1::ApplicationMcpRemoved {
+                    state: serde_json::from_value(event.payload["removal"].clone())?,
+                },
+                "McpToolPolicyChanged" => AdmissionTargetV1::McpToolPolicy {
+                    state: serde_json::from_value(event.payload["policy"].clone())?,
+                },
                 "RuntimeUserAdmissionChanged"
                 | "RuntimeUserApplicationGrantChanged"
                 | "RuntimeUserWorkflowGrantChanged" => {
@@ -515,6 +540,12 @@ impl Publisher {
                                     .get("enabled")
                                     .and_then(Value::as_bool)
                                     .unwrap_or(true),
+                                can_approve: crate::runtime_grants::can_approve_user(
+                                    &self.pool,
+                                    event.tenant_id,
+                                    user_id,
+                                )
+                                .await?,
                                 tenant_query_enabled: event
                                     .payload
                                     .get("tenantQueryEnabled")
@@ -746,12 +777,22 @@ impl Publisher {
         } else {
             anyhow::bail!("unsupported Admission Outbox event {}", event.event_type);
         }
+        let mut tx = self.pool.begin().await?;
         let changed = sqlx::query("UPDATE outbox SET status='published',published_at=UTC_TIMESTAMP(6),locked_by=NULL,locked_until=NULL,last_error=NULL WHERE id=? AND locked_by=? AND fencing_token=? AND status='processing' AND locked_until>UTC_TIMESTAMP(6)")
-            .bind(event.id).bind(self.owner.0).bind(event.fencing_token).execute(&self.pool).await?;
+            .bind(event.id).bind(self.owner.0).bind(event.fencing_token).execute(&mut *tx).await?;
         anyhow::ensure!(
             changed.rows_affected() == 1,
             "Admission Outbox Lease was lost"
         );
+        if event.event_type == "ApplicationMcpRemoved" {
+            crate::application_mcp_api::release_deleted_routes(
+                &mut tx,
+                event.tenant_id,
+                event.aggregate_id,
+            )
+            .await?;
+        }
+        tx.commit().await?;
         Ok(())
     }
 
@@ -1338,6 +1379,23 @@ impl Publisher {
                 grant_ids: required_grants,
             },
         });
+        for resource in &payload.resources {
+            if let RuntimeResourceConfigurationV1::Mcp {
+                tool_policy: Some(policy),
+                ..
+            } = &resource.configuration
+            {
+                commands.push(AdmissionTargetV1::McpToolPolicy {
+                    state: agentx_runtime_contracts::McpToolPolicyAdmissionV1 {
+                        tenant_id: a.tenant_id,
+                        tool_id: resource.resource_id,
+                        revision: policy.revision,
+                        content_hash: policy.content_hash.clone(),
+                        enabled: true,
+                    },
+                });
+            }
+        }
         commands.extend(grant_targets);
         commands.extend(
             runtime_grants::application_user_targets(

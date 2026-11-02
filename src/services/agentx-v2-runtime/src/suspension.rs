@@ -71,7 +71,7 @@ pub(crate) async fn resolve_and_create(
             ..ExpressionContext::default()
         },
     );
-    let resolved_parameters = match resolved_parameters {
+    let mut resolved_parameters = match resolved_parameters {
         Ok(parameters) => parameters,
         Err(error) => {
             fail_suspended_node(
@@ -84,6 +84,12 @@ pub(crate) async fn resolve_and_create(
             return Ok(());
         }
     };
+    // A wait's schema is an immutable literal contract, never an expression result.
+    if request.node.node_type == "await_input"
+        && let Some(schema) = request.node.parameters.get("responseSchema")
+    {
+        resolved_parameters["responseSchema"] = schema.clone();
+    }
     let result = create(
         tx,
         request.tenant_id,
@@ -101,6 +107,9 @@ pub(crate) async fn resolve_and_create(
     .await;
     match result {
         Err(RuntimeError::InvalidRequest(code, message)) => {
+            fail_suspended_node(tx, &mut request, code, message).await
+        }
+        Err(RuntimeError::Validation { code, message, .. }) => {
             fail_suspended_node(tx, &mut request, code, message).await
         }
         result => result,
@@ -156,7 +165,7 @@ async fn fail_suspended_node(
 pub async fn enqueue_due(pool: &sqlx::MySqlPool, _owner: Uuid, limit: u32) -> RuntimeResult<u64> {
     let mut tx = pool.begin().await?;
     let approvals = sqlx::query(
-        "SELECT id,tenant_id,execution_id,node_execution_id,request_payload_json FROM approval_tasks WHERE status IN ('pending','claimed') AND deadline_at<=UTC_TIMESTAMP(6) ORDER BY deadline_at,id LIMIT ? FOR UPDATE SKIP LOCKED",
+        "SELECT id,tenant_id,execution_id,node_execution_id,request_payload_json,tool_effect_id FROM approval_tasks WHERE status IN ('pending','claimed') AND deadline_at<=UTC_TIMESTAMP(6) ORDER BY deadline_at,id LIMIT ? FOR UPDATE SKIP LOCKED",
     )
     .bind(limit.clamp(1, 100))
     .fetch_all(&mut *tx)
@@ -170,11 +179,13 @@ pub async fn enqueue_due(pool: &sqlx::MySqlPool, _owner: Uuid, limit: u32) -> Ru
         let input: Option<Value> = row.try_get("request_payload_json")?;
         sqlx::query("UPDATE approval_tasks SET status='timed_out',resume_status='pending',version=version+1,locked_by=NULL,locked_until=NULL WHERE tenant_id=? AND id=? AND status IN ('pending','claimed')")
             .bind(tenant_id).bind(task_id).execute(&mut *tx).await?;
-        sqlx::query("INSERT IGNORE INTO runtime_commands(id,tenant_id,command_type,aggregate_type,aggregate_id,idempotency_key,payload_json,status) VALUES(?,?,'resume_execution','execution',?,?,?,'pending')")
+        if row.try_get::<Option<Uuid>, _>("tool_effect_id")?.is_none() {
+            sqlx::query("INSERT IGNORE INTO runtime_commands(id,tenant_id,command_type,aggregate_type,aggregate_id,idempotency_key,payload_json,status) VALUES(?,?,'resume_execution','execution',?,?,?,'pending')")
             .bind(crate::engine_names::deterministic_uuid(task_id, b"approval-timeout-command"))
             .bind(tenant_id).bind(execution_id.to_string()).bind(format!("approval-timeout:{task_id}"))
             .bind(json!({"nodeExecutionId":node_execution_id,"outputPort":"timed_out","waitStatus":"timed_out","payload":approval_timeout_output(task_id,input.unwrap_or(Value::Null))}))
             .execute(&mut *tx).await?;
+        }
         crate::event_export::enqueue_approval_event_from_task(&mut tx, tenant_id, task_id).await?;
     }
     tx.commit().await?;

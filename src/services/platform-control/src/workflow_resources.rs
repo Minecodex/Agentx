@@ -124,6 +124,38 @@ pub(crate) async fn resolve_snapshots(
                 "Skill dependency graph contains a cycle",
             ));
         }
+        if snapshot
+            .pointer("/toolPolicy/approval")
+            .is_some_and(|value| !value.is_null())
+        {
+            let (node_index, node) = definition
+                .nodes
+                .iter()
+                .enumerate()
+                .find(|(_, node)| node.id == node_id)
+                .ok_or_else(|| {
+                    ApiError::unprocessable(
+                        "APPROVAL_NODE_MISSING",
+                        "Protected tool node was not found",
+                    )
+                })?;
+            if node.node_type != "agent"
+                || node
+                    .resource_references
+                    .iter()
+                    .any(|reference| reference.binding_role.as_deref() == Some("workspace_sandbox"))
+            {
+                let message = "Use protected MCP tools in an Agent without an unrestricted workspace; use a separate workflow step for files";
+                return Err(
+                    ApiError::unprocessable("TOOL_APPROVAL_AGENT_REQUIRED", message)
+                        .with_field_error(
+                            format!("nodes[{node_index}].resourceReferences"),
+                            "TOOL_APPROVAL_AGENT_REQUIRED",
+                            message,
+                        ),
+                );
+            }
+        }
         let identity = (
             node_id.clone(),
             reference.resource_type,
@@ -488,7 +520,7 @@ async fn mcp_tool_snapshot(
     let version_id =
         resolve_version(state, tenant_id, reference, "mcp_tool_versions", "tool_id").await?;
     reference.resource_version_id = Some(version_id);
-    let row = sqlx::query("SELECT tv.id,tv.version_number,tv.input_schema,tv.output_schema,tv.annotations_json,tv.schema_hash,t.name,t.title,s.id server_id,sv.id server_version_id,sv.transport,sv.endpoint,sv.credential_id,sv.runtime_sandbox_profile_id,sv.runtime_sandbox_profile_version_id,sv.configuration_json,sv.configuration_hash,p.timeout_seconds,p.side_effect FROM mcp_tool_versions tv JOIN mcp_tools t ON t.id=tv.tool_id JOIN mcp_servers s ON s.id=t.server_id JOIN mcp_server_versions sv ON sv.id=tv.server_version_id AND sv.server_id=s.id JOIN mcp_tool_policies p ON p.tool_id=t.id AND p.tenant_id=t.tenant_id WHERE tv.tenant_id=? AND tv.id=? AND tv.tool_id=? AND t.availability='available' AND s.status='active' AND p.enabled=TRUE")
+    let row = sqlx::query("SELECT tv.id,tv.version_number,tv.input_schema,tv.output_schema,tv.annotations_json,tv.schema_hash,t.name,t.title,s.id server_id,sv.id server_version_id,sv.transport,sv.endpoint,sv.credential_id,sv.runtime_sandbox_profile_id,sv.runtime_sandbox_profile_version_id,sv.configuration_json,sv.configuration_hash,p.timeout_seconds,p.side_effect,p.version policy_revision,pv.content_hash policy_hash,pv.configuration_json policy_configuration FROM mcp_tool_versions tv JOIN mcp_tools t ON t.id=tv.tool_id JOIN mcp_servers s ON s.id=t.server_id JOIN mcp_server_versions sv ON sv.id=tv.server_version_id AND sv.server_id=s.id JOIN mcp_tool_policies p ON p.tool_id=t.id AND p.tenant_id=t.tenant_id JOIN mcp_tool_policy_versions pv ON pv.tenant_id=p.tenant_id AND pv.tool_id=p.tool_id AND pv.revision=p.version WHERE tv.tenant_id=? AND tv.id=? AND tv.tool_id=? AND t.availability='available' AND s.status='active' AND p.enabled=TRUE")
         .bind(tenant_id).bind(version_id).bind(reference.resource_id).fetch_optional(&state.pool).await?
         .ok_or_else(|| ApiError::unprocessable("RESOURCE_UNAVAILABLE", "MCP tool is missing, disabled, or unavailable"))?;
     let credential_id: Option<Uuid> = row.try_get("credential_id")?;
@@ -502,7 +534,8 @@ async fn mcp_tool_snapshot(
     )
     .await?;
     Ok(
-        json!({"toolVersionId":version_id,"toolVersionNumber":row.try_get::<u64,_>("version_number")?,
+        json!({"toolPolicy":{"revision":row.try_get::<u64,_>("policy_revision")?,"contentHash":row.try_get::<String,_>("policy_hash")?,"approval":row.try_get::<Value,_>("policy_configuration")?["approvalRule"]},
+        "toolVersionId":version_id,"toolVersionNumber":row.try_get::<u64,_>("version_number")?,
         "toolName":row.try_get::<String,_>("name")?,"title":row.try_get::<Option<String>,_>("title")?,
         "serverId":row.try_get::<Uuid,_>("server_id")?,"serverVersionId":row.try_get::<Uuid,_>("server_version_id")?,
         "transport":transport,

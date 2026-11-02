@@ -4,6 +4,10 @@ let accessToken: string | undefined
 let refreshHandler: (() => Promise<boolean>) | undefined
 let refreshPromise: Promise<boolean> | undefined
 let apiErrorTranslator: ((detail: ApiError, status: number) => string) | undefined
+let authSession = 0
+export function currentAuthSession() { return authSession }
+export function invalidateAuthSession() { return ++authSession }
+function requireAuthSession(expected?:number) { if(expected!==undefined&&expected!==authSession)throw new ApiClientError(401,{code:'AUTH_SESSION_CHANGED',message:'The signed-in account changed; reopen this application page',requestId:''}) }
 const runtimeBaseUrl = (window as Window & { __AGENTX_RUNTIME__?: { runtimeBaseUrl?: string } }).__AGENTX_RUNTIME__?.runtimeBaseUrl?.replace(/\/$/, '') ?? ''
 
 export function runtimePublicBaseUrl() { return runtimeBaseUrl || window.location.origin }
@@ -33,7 +37,8 @@ async function parseError(response: Response): Promise<ApiError> {
   }
 }
 
-async function sendRaw(basePath: string, path: string, init: RequestInit, retry: boolean): Promise<Response> {
+async function sendRaw(basePath: string, path: string, init: RequestInit, retry: boolean, expectedSession?:number): Promise<Response> {
+  requireAuthSession(expectedSession)
   const headers = new Headers(init.headers)
   if (init.body && !(typeof FormData !== 'undefined' && init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
@@ -43,9 +48,10 @@ async function sendRaw(basePath: string, path: string, init: RequestInit, retry:
   } catch {
     throw new ApiClientError(0, { code: 'NETWORK_ERROR', message: 'Network request failed', requestId: '' })
   }
+  requireAuthSession(expectedSession)
   if (response.status === 401 && retry && refreshHandler) {
     refreshPromise ??= refreshHandler().finally(() => { refreshPromise = undefined })
-    if (await refreshPromise) return sendRaw(basePath, path, init, false)
+    if (await refreshPromise) return sendRaw(basePath, path, init, false, expectedSession)
   }
   if (!response.ok) throw new ApiClientError(response.status, await parseError(response))
   return response
@@ -72,6 +78,15 @@ export async function apiRequestCompleted<T>(path: string, init: RequestInit = {
 export function publicRequest<T>(path: string, init: RequestInit = {}) { return send<T>('/api/v1', path, init, false) }
 export function gatewayRequest<T>(path: string, init: RequestInit = {}) { return send<T>(`${runtimeBaseUrl}/gateway/v1`, path, init, true) }
 export function gatewayRequestStream(path: string, init: RequestInit = {}) { return sendRaw(`${runtimeBaseUrl}/gateway/v1`, path, init, true) }
+/** Captured by a trusted page host. A 401 refresh can never move its requests to a new login. */
+export function applicationPageClient(expectedSession:number) {
+  const raw=(path:string,init:RequestInit={})=>sendRaw(`${runtimeBaseUrl}/gateway/v1`,path,init,true,expectedSession)
+  return {
+    async request<T>(path:string,init:RequestInit={}):Promise<T>{const response=await raw(path,init);const body=await response.text();requireAuthSession(expectedSession);return body?JSON.parse(body) as T:undefined as T},
+    stream:raw,
+    async blob(path:string,init:RequestInit={}){const response=await raw(path,init);const body=await response.blob();requireAuthSession(expectedSession);return body},
+  }
+}
 export async function apiRequestText(path: string, init: RequestInit = {}) { return (await sendRaw('/api/v1', path, init, true)).text() }
 export async function apiRequestBlob(path: string, init: RequestInit = {}) { return (await sendRaw('/api/v1', path, init, true)).blob() }
 export const jsonBody = (value: unknown) => JSON.stringify(value)

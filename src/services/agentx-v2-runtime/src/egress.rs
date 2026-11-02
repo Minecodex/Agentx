@@ -580,7 +580,7 @@ pub(crate) fn is_managed_cluster_fixture(url: &Url) -> bool {
     let fixture_service = http_provider_services().iter().any(|item| item == service);
     let fixture_dns =
         !host.contains('.') || host.ends_with(".svc") || host.ends_with(".svc.cluster.local");
-    url.scheme() == "http" && fixture_service && fixture_dns
+    matches!(url.scheme(), "http" | "https") && fixture_service && fixture_dns
 }
 
 fn provider_builder() -> Result<reqwest::ClientBuilder> {
@@ -634,6 +634,12 @@ mod tests {
             env::set_var("AGENTX_EGRESS_HTTP_PROVIDER_SERVICES", "echo-mcp,ragflow");
         }
         assert!(validate_provider_url("http://ragflow.agentx-deps.svc:9380/api/v1").is_ok());
+        assert!(super::is_managed_cluster_fixture(
+            &reqwest::Url::parse("https://ragflow.agentx-deps.svc:8443/v1").unwrap()
+        ));
+        assert!(!super::is_managed_cluster_fixture(
+            &reqwest::Url::parse("https://ragflow.example.com/v1").unwrap()
+        ));
         assert!(validate_provider_url("http://lightrag.agentx-deps.svc:9621/query").is_err());
         unsafe {
             env::remove_var("AGENTX_EGRESS_HTTP_PROVIDER_SERVICES");

@@ -599,6 +599,12 @@ pub(super) fn merged_output_schema(
     {
         properties.insert("structuredOutput".into(), output_schema.clone());
     }
+    if manifest_port == "main"
+        && node.node_type == "await_input"
+        && let Some(response_schema) = node.parameters.get("responseSchema")
+    {
+        properties.insert("content".into(), response_schema.clone());
+    }
     if let Some(decision_id) = port.strip_prefix("decision:")
         && let Some(decision) = properties
             .get_mut("decision")
@@ -947,7 +953,13 @@ pub(super) fn infer_json_schema(value: &Value) -> Value {
     match value {
         Value::Null => json!({}),
         Value::Bool(_) => json!({"type":"boolean"}),
-        Value::Number(number) if number.is_i64() || number.is_u64() => json!({"type":"integer"}),
+        Value::Number(number)
+            if number.is_i64()
+                || number.is_u64()
+                || number.as_f64().is_some_and(|value| value.fract() == 0.0) =>
+        {
+            json!({"type":"integer"})
+        }
         Value::Number(_) => json!({"type":"number"}),
         Value::String(_) => json!({"type":"string"}),
         Value::Array(values) => json!({"type":"array","items":infer_json_array_items(values)}),
@@ -968,16 +980,20 @@ fn infer_json_array_items(values: &[Value]) -> Value {
         return json!({});
     };
     if schemas.iter().all(|schema| {
-        json_schemas_compatible(first, schema) && json_schemas_compatible(schema, first)
-    }) {
-        first.clone()
-    } else if schemas.iter().all(|schema| {
         schema
             .get("type")
             .and_then(Value::as_str)
             .is_some_and(|kind| kind == "integer" || kind == "number")
     }) {
-        json!({"type":"number"})
+        if schemas.iter().any(|schema| schema["type"] == "number") {
+            json!({"type":"number"})
+        } else {
+            json!({"type":"integer"})
+        }
+    } else if schemas.iter().all(|schema| {
+        json_schemas_compatible(first, schema) && json_schemas_compatible(schema, first)
+    }) {
+        first.clone()
     } else {
         json!({})
     }

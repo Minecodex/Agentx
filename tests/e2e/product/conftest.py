@@ -11,7 +11,9 @@ from tests.e2e.product import live_provider_support as providers
 from tests.e2e.product import live_text_support as live
 from tests.e2e.product import remaining_support as boundary
 from tests.e2e.product import studio_builder_support as studio
+from tests.e2e.product.live_text_support import Secret
 from tests.e2e.product.user_auth import UserTokenAuth
+from tests.e2e.runtime.test_agent_attachments import ADMIN_PASSWORD, ADMIN_USERNAME
 
 cpu_embedding_service = embedding.cpu_embedding_service
 cpu_memory_service = memory.cpu_memory_service
@@ -37,6 +39,8 @@ def refresh_shared_user_credentials(request, service_urls):
     for name in ("live_application", "boundary_state"):
         if name in request.fixturenames:
             state = request.getfixturevalue(name)
-            UserTokenAuth(service_urls["web"], state["token"]).refresh_if_needed()
+            UserTokenAuth(
+                service_urls["web"], state["token"], username=ADMIN_USERNAME, password=Secret(ADMIN_PASSWORD)
+            ).refresh_if_needed()
             if "control" in state:
                 state["control"].headers["Authorization"] = f"Bearer {state['token'].value}"

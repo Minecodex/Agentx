@@ -78,6 +78,7 @@ pub enum RuntimeGovernanceSnapshotPayloadV1 {
         execution_id: Uuid,
         workflow_id: Uuid,
         node_id: String,
+        subject: Box<crate::ApprovalSubjectV1>,
         title: String,
         description: Option<String>,
         request: Option<Value>,

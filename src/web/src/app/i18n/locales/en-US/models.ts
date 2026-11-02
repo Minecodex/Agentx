@@ -1,10 +1,10 @@
 const translations = {
   "platformAiReset": "Set again",
   "platformAiSet": "Set as platform AI model",
-  "platformAiSelected": "Platform AI model (canvas and evaluations)",
+  "platformAiSelected": "Platform AI model (workflows, pages and evaluations)",
   "platformAiClear": "Clear setting",
   "platformAiSaved": "Platform AI model setting saved",
-  "platformAiAuthorization": "Authorize this model and credential for canvas creation and application AI evaluation; business Workflows retain their own resource grants",
+  "platformAiAuthorization": "Authorize this model and credential for workflow and page creation and application AI evaluation; business Workflows retain their own resource grants",
   "platformAiPermission": "Requires model management, company management, and resource grant permissions",
 
   "create": "New model",

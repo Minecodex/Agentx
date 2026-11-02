@@ -7,6 +7,27 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 
 #[test]
+fn schema_inference_survives_canonical_json_and_preserves_fractional_numbers() {
+    use super::references::infer_json_schema;
+    for (left, right) in [(json!(900), json!(900.0)), (json!(0), json!(-0.0))] {
+        assert_eq!(
+            canonical_content_hash(&left).unwrap(),
+            canonical_content_hash(&right).unwrap()
+        );
+        assert_eq!(infer_json_schema(&left), infer_json_schema(&right));
+    }
+    assert_eq!(
+        infer_json_schema(&json!({"total": 0.01}))["properties"]["total"]["type"],
+        "number"
+    );
+    assert_eq!(
+        infer_json_schema(&json!([1, 1.5]))["items"]["type"],
+        "number"
+    );
+    assert_eq!(infer_json_schema(&json!(u64::MAX))["type"], "integer");
+}
+
+#[test]
 fn raw_input_wait_loop_keeps_intent_in_the_downstream_condition() {
     let definition: WorkflowDefinition = serde_json::from_str(include_str!(
         "../../../../contracts/fixtures/workflow-input-loop.json"
@@ -1444,6 +1465,17 @@ fn freezes_approval_decision_port_schema_and_accepts_decision_reference() {
         contract.cardinalities["decision:approved"],
         OutputCardinality::ZeroOrOne
     );
+    let mut invalid = definition;
+    invalid.connections[1].source_handle = "decision".into();
+    let error = compiler
+        .compile(&invalid, &CompileContext::default())
+        .unwrap_err();
+    assert!(
+        error
+            .issues
+            .iter()
+            .any(|issue| issue.code == "UNKNOWN_DYNAMIC_SOURCE_PORT")
+    );
 }
 
 #[test]
@@ -1822,4 +1854,35 @@ fn draft_validation_rejects_malformed_bindings_and_nested_conditions_before_edit
             "{issues:?}"
         );
     }
+}
+
+#[test]
+fn typed_input_wait_content_can_be_a_required_workflow_output() {
+    let mut definition: WorkflowDefinition = serde_json::from_str(include_str!(
+        "../../../../contracts/fixtures/workflow-input-loop.json"
+    ))
+    .unwrap();
+    definition
+        .nodes
+        .retain(|node| matches!(node.id.as_str(), "ask" | "exit"));
+    let ask = definition
+        .nodes
+        .iter_mut()
+        .find(|node| node.id == "ask")
+        .unwrap();
+    ask.parameters = json!({"responseSchema":{"type":"string","minLength":3},"timeoutMs":600000});
+    definition.connections = serde_json::from_value(json!([
+        {"id":"start","sourceNodeId":"__start__","sourceHandle":"main","targetNodeId":"ask","targetHandle":"main","order":0},
+        {"id":"end","sourceNodeId":"ask","sourceHandle":"main","targetNodeId":"exit","targetHandle":"main","order":0}
+    ])).unwrap();
+    definition.end.outputs.get_mut("answer").unwrap().schema = json!({"type":"string"});
+    let registry = NodeRegistry::m5_defaults();
+    let compiled = WorkflowCompiler::new(&registry)
+        .compile(&definition, &CompileContext::default())
+        .unwrap();
+    let ask = compiled.nodes.iter().find(|node| node.id == "ask").unwrap();
+    assert_eq!(
+        ask.effective_output_contract.port_schemas["main"]["properties"]["content"],
+        json!({"type":"string","minLength":3})
+    );
 }

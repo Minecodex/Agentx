@@ -381,11 +381,9 @@ pub(super) async fn reconcile_one(state: &SandboxManagerState) -> RuntimeResult<
     let cleanup = async {
         if let (Some(sandbox_id), Some(process_id)) =
             (sandbox_id.as_deref(), provider_process_id.as_deref())
-        {
-            if let Err(error) = delete_provider_process(state, sandbox_id, process_id).await {
+            && let Err(error) = delete_provider_process(state, sandbox_id, process_id).await {
                 tracing::warn!(error = %error.message, process_session_id = %id, "Reaper PTY deletion required Sandbox termination");
             }
-        }
         if let Some(sandbox_id) = sandbox_id.as_deref() {
             terminate_provider(state, sandbox_id, &format!("process-reaper:{id}")).await?;
         }

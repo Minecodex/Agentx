@@ -291,39 +291,39 @@ mod tests {
                 "CREATE TEMPORARY TABLE authoring_value AS SELECT editor_json AS value FROM workflow_versions LIMIT 0",
             ),
             (
-                "studio_builder_sessions",
+                "design_agent_sessions",
                 "snapshot_json",
-                "CREATE TEMPORARY TABLE authoring_value AS SELECT snapshot_json AS value FROM studio_builder_sessions LIMIT 0",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT snapshot_json AS value FROM design_agent_sessions LIMIT 0",
             ),
             (
-                "studio_builder_sessions",
+                "design_agent_sessions",
                 "state_json",
-                "CREATE TEMPORARY TABLE authoring_value AS SELECT state_json AS value FROM studio_builder_sessions LIMIT 0",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT state_json AS value FROM design_agent_sessions LIMIT 0",
             ),
             (
-                "studio_builder_entries",
+                "design_agent_entries",
                 "payload_json",
-                "CREATE TEMPORARY TABLE authoring_value AS SELECT payload_json AS value FROM studio_builder_entries LIMIT 0",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT payload_json AS value FROM design_agent_entries LIMIT 0",
             ),
             (
-                "studio_builder_effects",
+                "design_agent_effects",
                 "input_json",
-                "CREATE TEMPORARY TABLE authoring_value AS SELECT input_json AS value FROM studio_builder_effects LIMIT 0",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT input_json AS value FROM design_agent_effects LIMIT 0",
             ),
             (
-                "studio_builder_effects",
+                "design_agent_effects",
                 "command_json",
-                "CREATE TEMPORARY TABLE authoring_value AS SELECT command_json AS value FROM studio_builder_effects LIMIT 0",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT command_json AS value FROM design_agent_effects LIMIT 0",
             ),
             (
-                "studio_builder_effects",
+                "design_agent_effects",
                 "acknowledgement_json",
-                "CREATE TEMPORARY TABLE authoring_value AS SELECT acknowledgement_json AS value FROM studio_builder_effects LIMIT 0",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT acknowledgement_json AS value FROM design_agent_effects LIMIT 0",
             ),
             (
-                "studio_builder_effects",
+                "design_agent_effects",
                 "result_json",
-                "CREATE TEMPORARY TABLE authoring_value AS SELECT result_json AS value FROM studio_builder_effects LIMIT 0",
+                "CREATE TEMPORARY TABLE authoring_value AS SELECT result_json AS value FROM design_agent_effects LIMIT 0",
             ),
         ] {
             let data_type: String = sqlx::query_scalar("SELECT CAST(data_type AS CHAR CHARACTER SET utf8mb4) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?")

@@ -52,6 +52,8 @@ Compiler/Publisher 验证：
 
 Worker 在进程内构造 `AgentRunInputV1`，包含稳定 Run/Session ID、Fencing、Deadline、Model Reference、可选 Workspace Binding、授权 Attachment Tool、Prompt、队列输入和 Compaction Policy。
 
+`continueCompleted` 是必填的 Host 输入接收决定。业务 Worker 固定为 `false`，完成后的原请求重试不得消费其他 Workflow Execution 的排队消息；plan9 两个设计态 Profile 固定为 `true`，只允许仍有效的原 Run 处理已接收且尚未消费的指导。Core 仅对成功完成的状态使用此决定，取消、失败、预算终止和未知结果保持终态。它不属于模型、工作流或浏览器可配置的权限。
+
 Core 的唯一基础设施出口：
 
 ```text
@@ -70,6 +72,7 @@ BudgetPort.admit_turn / charge_model / charge_tool
 - Session State可序列化，消息存储与模型 Context Projection分离。
 - Projection固定为“最新 Compaction Summary + retained tail + cut之后的消息”；完整消息历史不被删除。
 - steering 在当前 Tool/Turn结束后、下一模型调用前消费；无 steering 且 Agent本应结束时才消费 follow-up。
+- Runtime 排队的 Workflow Execution 使用 `retry` 行并绑定自己的 Attempt；StatePort 只将当前 Attempt 的该类行投影给 Core，其余由既有持久 Wakeup 恢复原 Execution。待处理表是队列唯一权威，Register 中的历史副本不能复活已消费或其他任务的消息。
 - threshold 在模型调用前触发；Provider overflow触发 overflow Compaction并只重试一次。Compaction是独立 Effect、Usage和 Trace。
 - Operation 使用 `IntentPersisted → EffectStarted/EffectCompleted → Settled*`；无法判定的副作用进入 `UnknownOutcome`。
 

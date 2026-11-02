@@ -108,6 +108,7 @@ pub(crate) async fn discover(
                     path,
                     node_id: node.id.clone(),
                     name,
+                    response_schema: node.parameters.get("responseSchema").cloned(),
                 });
             } else if node.node_type == "sub_workflow" {
                 let Some(id) = node
@@ -147,6 +148,29 @@ pub(crate) fn validate_plan(nodes: &[WaitInputNodeV1], plan: &WaitInputsV1) -> A
             "WAIT_INPUT_NODE_UNKNOWN",
             "A preset reply targets a node outside this workflow version or debug scope",
         ));
+    }
+    for node in nodes {
+        if let Some(schema) = &node.response_schema {
+            for (index, content) in plan.get(&node.path).into_iter().flatten().enumerate() {
+                let errors = agentx_runtime::validate_input_wait_content(schema, content).map_err(
+                    |message| ApiError::unprocessable("WAIT_RESPONSE_SCHEMA_INVALID", message),
+                )?;
+                if !errors.is_empty() {
+                    let mut error = ApiError::unprocessable(
+                        "WAIT_INPUT_SCHEMA_VALIDATION_FAILED",
+                        "A preset reply does not match its input wait contract",
+                    );
+                    for field in errors {
+                        error = error.with_field_error(
+                            format!("waitInputs{}/{index}{}", node.path, field.field),
+                            field.code,
+                            field.message,
+                        );
+                    }
+                    return Err(error);
+                }
+            }
+        }
     }
     Ok(())
 }

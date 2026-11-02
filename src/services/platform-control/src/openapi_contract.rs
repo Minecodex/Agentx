@@ -23,6 +23,90 @@ pub(crate) fn requested_output() -> Result<Option<PathBuf>> {
 pub(crate) fn write(path: &Path) -> Result<()> {
     let mut contract: Value = serde_json::from_str(CONTRACT).context("invalid Platform OpenAPI")?;
     application_testing::apply(&mut contract)?;
+    add_schema::<crate::application_catalog_api::ApplicationResponse>(
+        &mut contract,
+        "ApplicationResponse",
+    )?;
+    add_schema::<agentx_runtime_contracts::ApplicationPageDraftV1>(
+        &mut contract,
+        "ApplicationPageDraftV1",
+    )?;
+    add_schema::<agentx_runtime_contracts::PageBuilderSessionV1>(
+        &mut contract,
+        "PageBuilderSessionV1",
+    )?;
+    add_schema::<agentx_runtime_contracts::PageEditorSnapshotV1>(
+        &mut contract,
+        "PageEditorSnapshotV1",
+    )?;
+    add_schema::<agentx_runtime_contracts::PageEditCommandV1>(&mut contract, "PageEditCommandV1")?;
+    add_schema::<crate::application_ui_api::CreateDraft>(&mut contract, "CreatePageDraft")?;
+    add_schema::<crate::application_ui_api::SaveDraft>(&mut contract, "SavePageDraft")?;
+    add_schema::<crate::application_ui_api::SaveReceipt>(&mut contract, "SavePageReceipt")?;
+    add_schema::<crate::application_ui_api::CreateSession>(
+        &mut contract,
+        "CreatePageBuilderSession",
+    )?;
+    add_schema::<crate::application_ui_api::CreateRun>(&mut contract, "CreatePageBuilderRun")?;
+    add_schema::<crate::application_ui_api::Acknowledgement>(
+        &mut contract,
+        "PageBuilderAcknowledgement",
+    )?;
+    contract["components"]["schemas"]
+        .as_object_mut()
+        .expect("schemas")
+        .remove("Approval");
+    add_schema::<agentx_runtime_contracts::ApprovalSubjectV1>(&mut contract, "ApprovalSubjectV1")?;
+    contract["components"]["schemas"]["ApprovalResponse"]["properties"]["subject"] =
+        serde_json::json!({"$ref":"#/components/schemas/ApprovalSubjectV1"});
+    if let Some(required) =
+        contract["components"]["schemas"]["ApprovalResponse"]["required"].as_array_mut()
+        && !required.iter().any(|item| item == "subject")
+    {
+        required.push(serde_json::json!("subject"));
+    }
+    add_schema::<agentx_runtime_contracts::ToolApprovalRuleV1>(
+        &mut contract,
+        "ToolApprovalRuleV1",
+    )?;
+    contract["components"]["schemas"]["McpToolResponse"]["properties"]["approvalRule"] = serde_json::json!({"anyOf":[{"$ref":"#/components/schemas/ToolApprovalRuleV1"},{"type":"null"}]});
+    add_schema::<crate::mcp_api::PolicyRequest>(&mut contract, "UpdateMcpToolPolicyRequest")?;
+    crate::application_ui_api::apply_openapi(&mut contract);
+    add_schema::<crate::design_agent_inputs::CreateInput>(&mut contract, "CreateDesignInput")?;
+    add_schema::<crate::design_agent_inputs::InputReceipt>(&mut contract, "DesignInputReceipt")?;
+    crate::design_agent_inputs::apply_openapi(&mut contract);
+    add_schema::<crate::application_page_api::PublishPage>(&mut contract, "PublishPage")?;
+    add_schema::<crate::application_page_api::PagePublications>(&mut contract, "PagePublications")?;
+    add_schema::<agentx_runtime_contracts::ApplicationPageViewV1>(
+        &mut contract,
+        "ApplicationPageViewV1",
+    )?;
+    add_schema::<crate::application_page_api::PublicationStatus>(
+        &mut contract,
+        "PagePublicationStatus",
+    )?;
+    add_schema::<crate::application_page_api::PageCheckReport>(&mut contract, "PageCheckReport")?;
+    add_schema::<crate::application_page_api::PageCheckReceipt>(&mut contract, "PageCheckReceipt")?;
+    crate::application_page_api::apply_openapi(&mut contract);
+    add_schema::<crate::application_mcp_api::PublishMcp>(&mut contract, "PublishApplicationMcp")?;
+    add_schema::<crate::application_mcp_api::McpRevision>(&mut contract, "ApplicationMcpRevision")?;
+    add_schema::<crate::application_mcp_diagnostics::McpDiagnostic>(
+        &mut contract,
+        "ApplicationMcpDiagnostic",
+    )?;
+    add_schema::<crate::oauth_api::RegisterClient>(
+        &mut contract,
+        "RegisterApplicationOAuthClient",
+    )?;
+    add_schema::<crate::oauth_api::ClientView>(&mut contract, "ApplicationOAuthClient")?;
+    add_schema::<crate::oauth_api::AuthorizationRequest>(&mut contract, "ApplicationOAuthRequest")?;
+    add_schema::<crate::oauth_api::Redirect>(&mut contract, "ApplicationOAuthRedirect")?;
+    add_schema::<crate::oauth_api::Decision>(&mut contract, "ApplicationOAuthDecision")?;
+    add_schema::<crate::oauth_api::GrantView>(&mut contract, "ApplicationOAuthGrant")?;
+    add_schema::<crate::oauth_api::Revocation>(&mut contract, "ApplicationOAuthRevocation")?;
+    crate::application_mcp_api::apply_openapi(&mut contract);
+    crate::oauth_api::apply_openapi(&mut contract);
+
     add_schema::<agentx_runtime_contracts::SubmitWaitInputV1>(&mut contract, "SubmitWaitInput")?;
     add_schema::<agentx_runtime_contracts::WaitInputReceiptV1>(&mut contract, "WaitInputReceipt")?;
     add_schema::<agentx_runtime_contracts::WaitInputNodeV1>(&mut contract, "WaitInputNode")?;
@@ -30,7 +114,7 @@ pub(crate) fn write(path: &Path) -> Result<()> {
     contract["paths"]["/api/v1/applications/{id}/wait-input-nodes"] = serde_json::json!({"get":{"operationId":"applicationWaitNodes","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"workflowVersionId","in":"query","required":false,"schema":{"type":"string","format":"uuid"}}],"responses":{"200":{"description":"Wait nodes in the selected published version","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/WaitInputNode"}}}}}},"security":[{"bearerAuth":[]}]}});
     contract["paths"]["/api/v1/workflows/{id}/wait-input-nodes"] = serde_json::json!({"post":{"operationId":"workflowWaitNodes","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["definition"],"properties":{"definition":{"type":"object"},"includedNodeIds":{"type":"array","items":{"type":"string"}}}}}}},"responses":{"200":{"description":"Wait nodes in the selected debug scope","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/WaitInputNode"}}}}}},"security":[{"bearerAuth":[]}]}});
     contract["x-agentx-generator"] = Value::String("platform-control".into());
-    contract["x-agentx-contract-version"] = Value::String("plan8".into());
+    contract["x-agentx-contract-version"] = Value::String("plan9".into());
     contract["components"]["schemas"]["PlatformAiModelSetting"] = serde_json::to_value(
         schemars::schema_for!(crate::platform_ai_model::PlatformAiModelSetting),
     )?;
@@ -58,7 +142,7 @@ pub(crate) fn write(path: &Path) -> Result<()> {
         &mut contract,
         "BuilderCommandReceipt",
     )?;
-    contract["paths"]["/api/v1/studio-builder/sessions/{session}/commands/{command}/receipt"] = serde_json::json!({
+    contract["paths"]["/api/v1/design-agent/sessions/{session}/commands/{command}/receipt"] = serde_json::json!({
         "get": {
             "parameters": [
                 {"in":"path","name":"session","required":true,"schema":{"type":"string","format":"uuid"}},
@@ -188,10 +272,10 @@ fn add_schema<T: schemars::JsonSchema>(contract: &mut Value, name: &str) -> Resu
     fn refs(value: &mut Value, prefix: &str) {
         match value {
             Value::Object(fields) => {
-                if let Some(Value::String(reference)) = fields.get_mut("$ref") {
-                    if let Some(definition) = reference.strip_prefix("#/$defs/") {
-                        *reference = format!("#/components/schemas/{prefix}_{definition}");
-                    }
+                if let Some(Value::String(reference)) = fields.get_mut("$ref")
+                    && let Some(definition) = reference.strip_prefix("#/$defs/")
+                {
+                    *reference = format!("#/components/schemas/{prefix}_{definition}");
                 }
                 for value in fields.values_mut() {
                     refs(value, prefix);

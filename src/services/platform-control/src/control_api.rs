@@ -272,6 +272,10 @@ fn routes() -> Router<ControlApiState> {
         .merge(crate::model_api::routes())
         .merge(crate::platform_ai_model::routes())
         .merge(crate::studio_builder_api::routes())
+        .merge(crate::application_ui_api::routes())
+        .merge(crate::application_page_api::routes())
+        .merge(crate::application_mcp_api::routes())
+        .merge(crate::oauth_api::routes())
         .merge(crate::workflow_versions::routes())
         .merge(crate::operations_api::routes())
         .merge(crate::external_resource_api::routes())
@@ -677,10 +681,10 @@ async fn load_actor(state: &ControlApiState, claims: &Claims) -> ApiResult<Actor
         if !roles.contains(&role) {
             roles.push(role);
         }
-        if let Some(permission) = row.try_get::<Option<String>, _>("permission_key")? {
-            if !permissions.contains(&permission) {
-                permissions.push(permission);
-            }
+        if let Some(permission) = row.try_get::<Option<String>, _>("permission_key")?
+            && !permissions.contains(&permission)
+        {
+            permissions.push(permission);
         }
     }
     Ok(Actor {
@@ -731,6 +735,7 @@ struct ApplicationResponse {
     owner_department_id: Uuid,
     active_deployment_id: Option<Uuid>,
     active_version_number: Option<u64>,
+    published_page_slug: Option<String>,
     runtime_config_revision: u64,
     published_runtime_config_revision: u64,
     version: u64,
@@ -846,7 +851,7 @@ async fn load_application(
     id: Uuid,
 ) -> ApiResult<ApplicationResponse> {
     require_application(state, actor, id).await?;
-    let row = sqlx::query("SELECT a.id,a.workflow_id,w.name workflow_name,a.name,a.slug,a.description,a.visibility,a.status,a.owner_department_id,h.deployment_id active_deployment_id,wv.version_number active_version_number,a.runtime_config_revision,a.published_runtime_config_revision,a.version,a.updated_at FROM applications a JOIN workflows w ON w.id=a.workflow_id LEFT JOIN application_deployment_heads h ON h.tenant_id=a.tenant_id AND h.application_id=a.id LEFT JOIN application_deployments ad ON ad.id=h.deployment_id LEFT JOIN workflow_versions wv ON wv.id=ad.workflow_version_id WHERE a.id=? AND a.tenant_id=?")
+    let row = sqlx::query("SELECT a.id,a.workflow_id,w.name workflow_name,a.name,a.slug,a.description,a.visibility,a.status,a.owner_department_id,h.deployment_id active_deployment_id,wv.version_number active_version_number,(SELECT up.slug FROM application_web_heads wh JOIN application_ui_publications up ON up.tenant_id=wh.tenant_id AND up.id=wh.publication_id AND up.status='active' WHERE wh.tenant_id=a.tenant_id AND wh.application_id=a.id AND wh.enabled=TRUE AND a.status='active') published_page_slug,a.runtime_config_revision,a.published_runtime_config_revision,a.version,a.updated_at FROM applications a JOIN workflows w ON w.id=a.workflow_id LEFT JOIN application_deployment_heads h ON h.tenant_id=a.tenant_id AND h.application_id=a.id LEFT JOIN application_deployments ad ON ad.id=h.deployment_id LEFT JOIN workflow_versions wv ON wv.id=ad.workflow_version_id WHERE a.id=? AND a.tenant_id=?")
         .bind(id).bind(actor.tenant_id).fetch_one(&state.pool).await?;
     Ok(ApplicationResponse {
         id: row.try_get("id")?,
@@ -860,6 +865,7 @@ async fn load_application(
         owner_department_id: row.try_get("owner_department_id")?,
         active_deployment_id: row.try_get("active_deployment_id")?,
         active_version_number: row.try_get("active_version_number")?,
+        published_page_slug: row.try_get("published_page_slug")?,
         runtime_config_revision: row.try_get("runtime_config_revision")?,
         published_runtime_config_revision: row.try_get("published_runtime_config_revision")?,
         version: row.try_get("version")?,
@@ -1055,20 +1061,19 @@ async fn create_deployment(
     let sequence: u64 = sqlx::query_scalar("SELECT CAST(COALESCE(MAX(sequence_number),0)+1 AS UNSIGNED) FROM application_deployments WHERE tenant_id=? AND application_id=? FOR UPDATE")
         .bind(actor.tenant_id).bind(id).fetch_one(&mut *tx).await?;
     let (input_schema, output_schema) = application_webhooks::workflow_schemas(&definition);
-    if let Some(field) = input.api_user_id_input.as_deref() {
-        if input_schema
+    if let Some(field) = input.api_user_id_input.as_deref()
+        && input_schema
             .pointer(&format!(
                 "/properties/{}/type",
                 field.replace('~', "~0").replace('/', "~1")
             ))
             .and_then(Value::as_str)
             != Some("string")
-        {
-            return Err(ApiError::bad_request(
-                "API_USER_ID_INPUT_INVALID",
-                "API user ID must reference a top-level string input",
-            ));
-        }
+    {
+        return Err(ApiError::bad_request(
+            "API_USER_ID_INPUT_INVALID",
+            "API user ID must reference a top-level string input",
+        ));
     }
 
     sqlx::query("INSERT INTO application_deployments(id,tenant_id,application_id,workflow_version_id,environment_id,sequence_number,input_schema_json,output_schema_json,session_version_policy,api_user_id_input,trigger_revision,trigger_manifest_hash,status,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'building',?)")

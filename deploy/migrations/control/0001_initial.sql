@@ -150,6 +150,7 @@ CREATE TABLE approval_task_projection (
     title VARCHAR(255) NOT NULL,
     description VARCHAR(2000) NULL,
     request_payload_json JSON NULL,
+    subject_json JSON NOT NULL DEFAULT (JSON_OBJECT('kind','workflow_node')),
     buttons_json JSON NOT NULL,
     status ENUM('pending', 'claimed', 'decided', 'cancelled', 'timed_out') NOT NULL DEFAULT 'pending',
     claimed_by BINARY(16) NULL,
@@ -550,6 +551,7 @@ CREATE TABLE mcp_servers (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE mcp_tool_policies (
+    approval_rule_json JSON NULL,
     tenant_id BINARY(16) NOT NULL,
     tool_id BINARY(16) NOT NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -1568,12 +1570,58 @@ ALTER TABLE workflow_versions
 ALTER TABLE workflow_drafts
     ADD CONSTRAINT fk_draft_base_version FOREIGN KEY (tenant_id, workflow_id, base_version_id) REFERENCES workflow_versions(tenant_id, workflow_id, id);
 
-CREATE TABLE studio_builder_sessions (
+CREATE TABLE application_ui_drafts (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    tenant_id BINARY(16) NOT NULL,
+    application_id BINARY(16) NOT NULL,
+    bundle_id BINARY(16) NOT NULL,
+    contract_json JSON NOT NULL,
+    contract_hash CHAR(71) NOT NULL,
+    html LONGTEXT NOT NULL,
+    html_hash CHAR(71) NOT NULL,
+    revision BIGINT UNSIGNED NOT NULL DEFAULT 1,
+    created_by BINARY(16) NOT NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    UNIQUE KEY uq_application_ui_draft (tenant_id,application_id,id),
+    KEY idx_application_ui_draft (tenant_id,application_id,updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE application_ui_saves (
+    id BINARY(16) NOT NULL,
+    tenant_id BINARY(16) NOT NULL,
+    ui_draft_id BINARY(16) NOT NULL,
+    base_revision BIGINT UNSIGNED NOT NULL,
+    html_hash CHAR(71) NOT NULL,
+    result_revision BIGINT UNSIGNED NOT NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (tenant_id,id),
+    KEY idx_application_ui_save (tenant_id,ui_draft_id,result_revision)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE application_ui_checks (
+    tenant_id BINARY(16) NOT NULL,
+    ui_draft_id BINARY(16) NOT NULL,
+    html_hash VARCHAR(80) NOT NULL,
+    contract_hash VARCHAR(80) NOT NULL,
+    mode ENUM('static','preview') NOT NULL,
+    passed BOOLEAN NOT NULL,
+    report_json JSON NOT NULL,
+    checked_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY(tenant_id,ui_draft_id,html_hash,mode)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE design_agent_sessions (
     id BINARY(16) NOT NULL,
     document_generation BIGINT UNSIGNED NOT NULL DEFAULT 0,
     tenant_id BINARY(16) NOT NULL,
-    workflow_id BINARY(16) NOT NULL,
-    draft_id BINARY(16) NOT NULL,
+    target_kind ENUM('workflow_builder','application_ui_builder') NOT NULL,
+    workflow_id BINARY(16) NULL,
+    draft_id BINARY(16) NULL,
+    application_id BINARY(16) NULL,
+    ui_draft_id BINARY(16) NULL,
+    bundle_id BINARY(16) NULL,
+    contract_hash CHAR(71) NULL,
     user_id BINARY(16) NOT NULL,
     editor_instance_id BINARY(16) NOT NULL,
     snapshot_json LONGTEXT NOT NULL CHECK (JSON_VALID(snapshot_json)),
@@ -1582,12 +1630,18 @@ CREATE TABLE studio_builder_sessions (
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
-    UNIQUE KEY uq_studio_builder_binding (tenant_id,draft_id,user_id,editor_instance_id,document_generation),
-    KEY idx_studio_builder_workflow (tenant_id,workflow_id,draft_id),
-    CONSTRAINT fk_builder_session_draft FOREIGN KEY(tenant_id,workflow_id,draft_id) REFERENCES workflow_drafts(tenant_id,workflow_id,id) ON DELETE CASCADE
+    UNIQUE KEY uq_design_agent_binding (tenant_id,draft_id,user_id,editor_instance_id,document_generation),
+    UNIQUE KEY uq_design_agent_ui_binding (tenant_id,ui_draft_id,user_id,editor_instance_id),
+    KEY idx_design_agent_workflow (tenant_id,workflow_id,draft_id),
+    CONSTRAINT fk_builder_session_draft FOREIGN KEY(tenant_id,workflow_id,draft_id) REFERENCES workflow_drafts(tenant_id,workflow_id,id) ON DELETE CASCADE,
+    CONSTRAINT fk_builder_session_ui FOREIGN KEY(tenant_id,application_id,ui_draft_id) REFERENCES application_ui_drafts(tenant_id,application_id,id),
+    CONSTRAINT ck_design_agent_target CHECK (
+        (target_kind='workflow_builder' AND workflow_id IS NOT NULL AND draft_id IS NOT NULL AND application_id IS NULL AND ui_draft_id IS NULL AND bundle_id IS NULL AND contract_hash IS NULL)
+        OR (target_kind='application_ui_builder' AND workflow_id IS NULL AND draft_id IS NULL AND application_id IS NOT NULL AND ui_draft_id IS NOT NULL AND bundle_id IS NOT NULL AND contract_hash IS NOT NULL)
+    )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE studio_builder_runs (
+CREATE TABLE design_agent_runs (
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
     session_id BINARY(16) NOT NULL,
@@ -1612,14 +1666,14 @@ CREATE TABLE studio_builder_runs (
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     completed_at TIMESTAMP(6) NULL,
     PRIMARY KEY (id),
-    UNIQUE KEY uq_studio_builder_open_run (open_session_id),
-    KEY idx_studio_builder_pending (status,available_at,lease_until),
+    UNIQUE KEY uq_design_agent_open_run (open_session_id),
+    KEY idx_design_agent_pending (status,available_at,lease_until),
     -- session_id is also the input of a stored generated column. MySQL forbids
     -- cascading that base column; settled runs are explicitly deleted first.
-    CONSTRAINT fk_builder_run_session FOREIGN KEY(session_id) REFERENCES studio_builder_sessions(id)
+    CONSTRAINT fk_builder_run_session FOREIGN KEY(session_id) REFERENCES design_agent_sessions(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE studio_builder_entries (
+CREATE TABLE design_agent_entries (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     tenant_id BINARY(16) NOT NULL,
     session_id BINARY(16) NOT NULL,
@@ -1628,13 +1682,13 @@ CREATE TABLE studio_builder_entries (
     payload_json LONGTEXT NOT NULL CHECK (JSON_VALID(payload_json)),
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
-    UNIQUE KEY uq_studio_builder_event (session_id,event_key),
-    KEY idx_studio_builder_cursor (tenant_id,session_id,id),
-    CONSTRAINT fk_builder_entry_session FOREIGN KEY(session_id) REFERENCES studio_builder_sessions(id) ON DELETE CASCADE,
-    CONSTRAINT fk_builder_entry_run FOREIGN KEY(run_id) REFERENCES studio_builder_runs(id) ON DELETE CASCADE
+    UNIQUE KEY uq_design_agent_event (session_id,event_key),
+    KEY idx_design_agent_cursor (tenant_id,session_id,id),
+    CONSTRAINT fk_builder_entry_session FOREIGN KEY(session_id) REFERENCES design_agent_sessions(id) ON DELETE CASCADE,
+    CONSTRAINT fk_builder_entry_run FOREIGN KEY(run_id) REFERENCES design_agent_runs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE studio_builder_effects (
+CREATE TABLE design_agent_effects (
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,
     session_id BINARY(16) NOT NULL,
@@ -1650,12 +1704,12 @@ CREATE TABLE studio_builder_effects (
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
-    UNIQUE KEY uq_studio_builder_effect (tenant_id,run_id,effect_key),
-    KEY idx_studio_builder_effect_session (tenant_id,session_id,status),
-    CONSTRAINT fk_builder_effect_run FOREIGN KEY(run_id) REFERENCES studio_builder_runs(id) ON DELETE CASCADE
+    UNIQUE KEY uq_design_agent_effect (tenant_id,run_id,effect_key),
+    KEY idx_design_agent_effect_session (tenant_id,session_id,status),
+    CONSTRAINT fk_builder_effect_run FOREIGN KEY(run_id) REFERENCES design_agent_runs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-ALTER TABLE studio_builder_effects
+ALTER TABLE design_agent_effects
     ADD KEY idx_builder_effect_order (tenant_id,run_id,created_at,id);
 
 ALTER TABLE tenant_settings
@@ -1679,4 +1733,90 @@ CREATE TABLE evaluation_batches (
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY(id),
     KEY idx_evaluation_batches_application(tenant_id,application_id,created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Application page versions and durable publisher work. No runtime reads from Control.
+CREATE TABLE application_ui_versions (
+    id BINARY(16) NOT NULL,
+    tenant_id BINARY(16) NOT NULL,
+    application_id BINARY(16) NOT NULL,
+    ui_draft_id BINARY(16) NOT NULL,
+    draft_revision BIGINT UNSIGNED NOT NULL,
+    contract_json JSON NOT NULL,
+    contract_hash VARCHAR(80) NOT NULL,
+    html LONGTEXT NOT NULL,
+    html_hash VARCHAR(80) NOT NULL,
+    html_object_id BINARY(16) NOT NULL,
+    created_by BINARY(16) NOT NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY(id),
+    UNIQUE KEY uq_ui_version (tenant_id,application_id,id),
+    KEY idx_ui_version_history (tenant_id,application_id,created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE application_ui_publications (
+    id BINARY(16) NOT NULL,
+    tenant_id BINARY(16) NOT NULL,
+    application_id BINARY(16) NOT NULL,
+    ui_version_id BINARY(16) NOT NULL,
+    slug VARCHAR(80) NOT NULL,
+    revision BIGINT UNSIGNED NOT NULL,
+    expected_revision BIGINT UNSIGNED NOT NULL,
+    status ENUM('copying','preparing','activating','active','superseded','rejected') NOT NULL,
+    manifest_json JSON NULL,
+    last_error VARCHAR(1000) NULL,
+    locked_by BINARY(16) NULL,
+    locked_until TIMESTAMP(6) NULL,
+    fencing_token BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    available_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY(id),
+    UNIQUE KEY uq_ui_publish_revision (tenant_id,application_id,revision),
+    KEY idx_ui_publish_work (status,available_at,locked_until),
+    CONSTRAINT fk_ui_publication_version FOREIGN KEY(tenant_id,application_id,ui_version_id) REFERENCES application_ui_versions(tenant_id,application_id,id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE application_web_heads (
+    tenant_id BINARY(16) NOT NULL,
+    application_id BINARY(16) NOT NULL,
+    publication_id BINARY(16) NULL,
+    slug VARCHAR(80) NOT NULL,
+    revision BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY(tenant_id,application_id),
+    UNIQUE KEY uq_application_web_slug (tenant_id,slug)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE mcp_tool_policy_versions (
+    tenant_id BINARY(16) NOT NULL,
+    tool_id BINARY(16) NOT NULL,
+    revision BIGINT UNSIGNED NOT NULL,
+    content_hash VARCHAR(80) NOT NULL,
+    configuration_json JSON NOT NULL,
+    created_by BINARY(16) NOT NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY(tenant_id,tool_id,revision)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE application_mcp_publications (
+ id BINARY(16) NOT NULL, tenant_id BINARY(16) NOT NULL, application_id BINARY(16) NOT NULL,
+ revision BIGINT UNSIGNED NOT NULL, slug VARCHAR(80) NOT NULL, manifest_json JSON NOT NULL, outbox_id BINARY(16) NOT NULL,
+ deleted_at TIMESTAMP(6) NULL, deletion_outbox_id BINARY(16) NULL,
+ created_by BINARY(16) NOT NULL, created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ PRIMARY KEY(id), UNIQUE KEY uq_mcp_publication_revision(tenant_id,application_id,revision)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE application_mcp_heads (
+ tenant_id BINARY(16) NOT NULL, application_id BINARY(16) NOT NULL, revision BIGINT UNSIGNED NOT NULL,
+ PRIMARY KEY(tenant_id,application_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE application_mcp_routes (
+ slug VARCHAR(80) NOT NULL, tenant_id BINARY(16) NOT NULL, application_id BINARY(16) NOT NULL,
+ PRIMARY KEY(slug), KEY idx_mcp_route_application(tenant_id,application_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE application_oauth_clients (
+ id BINARY(16) NOT NULL, tenant_id BINARY(16) NOT NULL, application_id BINARY(16) NOT NULL,
+ publication_id BINARY(16) NOT NULL, name VARCHAR(100) NOT NULL, redirect_uris_json JSON NOT NULL, request_hash VARCHAR(96) NOT NULL,
+ status ENUM('preparing','active','revoking','revoked') NOT NULL, created_by BINARY(16) NOT NULL,
+ created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), PRIMARY KEY(id), KEY idx_oauth_application(tenant_id,application_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

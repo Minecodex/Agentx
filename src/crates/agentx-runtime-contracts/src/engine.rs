@@ -208,6 +208,8 @@ pub enum RuntimeResourceConfigurationV1 {
         endpoint: String,
         model: String,
         context_window: u64,
+        max_output_tokens: u64,
+        parameters: Value,
         price: RuntimeModelPriceV1,
         credential: Option<crate::VaultSecretReferenceV1>,
         /// Modalities the deployment accepts as native model input
@@ -216,6 +218,7 @@ pub enum RuntimeResourceConfigurationV1 {
         capabilities: Vec<String>,
     },
     Mcp {
+        tool_policy: Option<crate::RuntimeMcpToolPolicyV1>,
         server_id: Uuid,
         server_version_id: Uuid,
         transport: RuntimeMcpTransportV2,
@@ -1054,6 +1057,7 @@ pub enum RuntimeEventPayloadV1 {
         execution_id: Uuid,
         workflow_id: Uuid,
         node_id: String,
+        subject: crate::ApprovalSubjectV1,
         title: String,
         description: Option<String>,
         request: Option<Value>,

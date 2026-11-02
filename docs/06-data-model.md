@@ -338,7 +338,7 @@ Knowledge Resource 删除后，只在对应 Connection 不再拥有其他 Resour
 
 版本工作文档及其 Revision 按 tenant/workflow/draft 隔离，创建未发布版本时原子写不可变 revision 0。Version 记录 source_draft_id/source_revision_id/source_revision/base_version_id，并保存 node_manifests_json；同 Workflow 的编号由 Workflow 行锁串行分配。复合外键保护来源的归属和修订号，历史版本画布与发布使用冻结的精确 Manifest。
 
-Control 新增 studio_builder_sessions/runs/entries/effects。Session 保存 document_generation 与完整 Core State，Run 保存模型/凭据/价格及授权修订，Effect 保存命令、ACK/问题及不可变结果。Cursor 和最近 Effect 查询沿专用有序索引读取，大 JSON 不进入排序缓冲。Revision 的 resource_snapshot_json 和全部 Draft 的引用查询参与删除保护。Runtime 模型账本独立记录 studio_target_json/studio_model_binding_json，CHECK 禁止设计来源写业务身份。
+Control 使用 `design_agent_sessions/runs/entries/effects` 共用持久设计态记录。Session 的 `target_kind` 严格区分工作流和应用页面，CHECK 保证两组目标字段互斥；Session 保存 document_generation 与完整 Core State，Run 保存模型/凭据/参数/价格及授权修订，Effect 保存命令、ACK/问题及不可变结果。Cursor 和最近 Effect 查询沿专用有序索引读取，大 JSON 不进入排序缓冲。Revision 的 resource_snapshot_json 和全部 Draft 的引用查询参与删除保护。Runtime 模型账本使用 `design_target_json/design_model_binding_json`，CHECK 禁止两类设计来源写业务身份。
 
 ### 画布文档与 Builder 的无损 JSON 持久化
 
@@ -359,3 +359,13 @@ Runtime 的 `runtime_resource_states` 主键包含 `resource_version` 与 `conte
 ## 工作流输入交互
 
 中间回复和输入等待统一归入 `agentx/core`，持久化与恢复由 Runtime 承担。`input_waits`、`workflow_messages` 和 `channel_input_receipts` 分别保存等待、消息和渠道幂等凭据；Hook 复用 delivery outbox。平台入口共享等待节点发现及回复序列编辑器，定时和测试用例版本冻结 `waitInputs`，评测投影保存实际等待和消息。详见 [工作流交互协议](14-workflow-interactions.md)。
+
+## 应用页面、MCP 与具体工具审批
+
+Control 拥有 `application_ui_drafts/saves/checks/versions/publications`、页面发布 Head、应用 MCP 发布/序号/后缀归属、OAuth 客户端登记与不可变工具审批策略版本。页面检查绑定精确源码与契约；页面发布冻结 HTML Artifact、SDK/样式字节、完整交互契约和业务 Bundle。Runtime 保存独立发布副本/Head，完成全部校验后原子激活；Invocation 绑定创建时页面，不从最新 Head 重算历史任务。
+
+MCP 的 `application_mcp_heads` 仅保存应用的单调发布序号；`application_mcp_routes` 在全局将后缀归属于唯一租户/应用；同应用多条发布可共享后缀。每条 `application_mcp_publications` 冻结工具名称、说明、后缀、契约和 Bundle，多条发布同时可用。Control 删除事实和删除 Outbox、Runtime 删除墓碑分别保留；精确删除一个 publicationId 后不重算或取消其 Invocation，最后一条撤回确认后释放后缀。个人 OAuth 客户端保存登记时的 publicationId 以固定资源地址，不随最新发布自动换 Audience。
+
+`agent_tool_effects` 固定原 Core Operation/Effect、工具参数、策略和审批身份，审批与恢复复用既有任务/命令/Outbox。TaskView 是既有 Invocation 的只读投影，没有新增权威任务状态表。输入等待的 responseSchema 与每次 waitId 一同固化，后续节点的 content 类型由该 Schema 推导。
+
+Hydra 使用 Dependencies 中独立 MySQL、数据库账号和系统密钥，不复用 Control/Runtime DSN。用户令牌由 Hydra 管理并通过 introspection 实时复核；Control 的客户端登记只保存关联、范围和公开配置。数据结构直接修改初始化基线，不保留旧设计表或迁移包装。详细契约见 [plan9 共享架构](plan9/01-shared-architecture.md)。

@@ -1,5 +1,5 @@
 use agentx_runtime_contracts::{StudioDocumentV1, StudioEditScopeV1, StudioEditorCommandV1};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::api_error::{ApiError, ApiResult};
 
@@ -30,11 +30,13 @@ pub(crate) fn needs_layout(
 
 pub(crate) fn matches_result(command: &StudioEditorCommandV1, result: &StudioDocumentV1) -> bool {
     if !command.auto_layout {
-        return json!(command.document) == json!(result);
+        return same_json(&json!(command.document), &json!(result));
     }
-    if json!(command.document.definition) != json!(result.definition)
-        || !agentx_domain::validate_editor_document(&result.definition, &result.editor_document)
-            .is_empty()
+    if !same_json(
+        &json!(command.document.definition),
+        &json!(result.definition),
+    ) || !agentx_domain::validate_editor_document(&result.definition, &result.editor_document)
+        .is_empty()
     {
         return false;
     }
@@ -54,7 +56,19 @@ pub(crate) fn matches_result(command: &StudioEditorCommandV1, result: &StudioDoc
     let mut comparable = after.clone();
     comparable.node_layouts = before.node_layouts.clone();
     comparable.boundary_layouts = before.boundary_layouts.clone();
-    &comparable == before
+    same_json(&json!(comparable), &json!(before))
+}
+
+fn same_json(left: &Value, right: &Value) -> bool {
+    // Receipts cross JSON.parse/stringify in the browser. Use the same JCS
+    // semantics as document hashes: 900.0 and 900 carry the same JSON number.
+    match (
+        agentx_domain::canonical_content_hash(left),
+        agentx_domain::canonical_content_hash(right),
+    ) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -124,6 +138,36 @@ mod tests {
         assert!(!matches_result(&command, &changed));
         result.editor_document.node_layouts.clear();
         assert!(!matches_result(&command, &result));
+    }
+
+    #[test]
+    fn layout_receipts_preserve_json_numbers_across_browser_round_trips() {
+        for auto_layout in [true, false] {
+            let mut command = command();
+            command.auto_layout = auto_layout;
+            command
+                .document
+                .editor_document
+                .boundary_layouts
+                .push(BoundaryLayout {
+                    boundary: WorkflowBoundary::Start,
+                    x: 0.0,
+                    y: 0.0,
+                });
+            command.document.definition.nodes[0].parameters =
+                json!({"outputExample":{"total":900.0,"nested":[-0.0,1.5]}});
+            let mut browser = command.document.clone();
+            browser.definition.nodes[0].parameters =
+                json!({"outputExample":{"total":900,"nested":[0,1.5]}});
+            assert!(
+                matches_result(&command, &browser),
+                "auto_layout={auto_layout}"
+            );
+            browser.definition.nodes[0].parameters["outputExample"]["total"] = json!(900.01);
+            assert!(!matches_result(&command, &browser));
+            browser.definition.nodes[0].parameters["outputExample"]["total"] = json!("900");
+            assert!(!matches_result(&command, &browser));
+        }
     }
 
     #[test]

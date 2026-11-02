@@ -1,5 +1,9 @@
 //! Durable Entry/Register/Usage StatePort for Agent Core.
 
+#[cfg(test)]
+#[path = "worker_runtime_agent_state_tests.rs"]
+mod tests;
+
 use std::sync::Arc;
 
 use agentx_agent_core::{
@@ -393,8 +397,10 @@ impl StatePort for DurableStatePort {
                         })
                 })
                 .transpose()?;
-            let pending = sqlx::query("SELECT queue_kind,payload_json FROM agent_session_pending_entries WHERE tenant_id=? AND session_key=? AND stable_agent_node_key=? AND status='pending' ORDER BY sequence_number,entry_id")
-                .bind(this.tenant_id).bind(&this.session_key).bind(&this.node_key).fetch_all(&this.pool).await.map_err(|e| StatePortError::Persistence(e.to_string()))?;
+            // A queued Workflow Execution owns its retry prompt. Another
+            // active attempt must not consume it as an in-Run follow-up.
+            let pending = sqlx::query("SELECT queue_kind,payload_json FROM agent_session_pending_entries WHERE tenant_id=? AND session_key=? AND stable_agent_node_key=? AND status='pending' AND (queue_kind<>'retry' OR attempt_id=?) ORDER BY sequence_number,entry_id")
+                .bind(this.tenant_id).bind(&this.session_key).bind(&this.node_key).bind(this.attempt_id).fetch_all(&this.pool).await.map_err(|e| StatePortError::Persistence(e.to_string()))?;
             let mut steering_queue = Vec::new();
             let mut follow_up_queue = Vec::new();
             for row in pending {
@@ -407,19 +413,6 @@ impl StatePort for DurableStatePort {
                     "follow_up" | "retry" => follow_up_queue.push(message),
                     queue_kind => return Err(StatePortError::Persistence(format!("AGENT_SESSION_PENDING_KIND_UNSUPPORTED: {queue_kind}"))),
                 }
-            }
-            // Register JSON is retained as a recovery snapshot for compaction
-            // and older pending rows, but the durable pending table is the
-            // queue authority whenever it exists.
-            if steering_queue.is_empty() {
-                steering_queue = register_json.get("steeringQueue").cloned()
-                    .map(|v| serde_json::from_value(v).map_err(|error| StatePortError::Persistence(format!("AGENT_SESSION_QUEUE_INVALID: {error}"))))
-                    .transpose()?.unwrap_or_default();
-            }
-            if follow_up_queue.is_empty() {
-                follow_up_queue = register_json.get("followUpQueue").cloned()
-                    .map(|v| serde_json::from_value(v).map_err(|error| StatePortError::Persistence(format!("AGENT_SESSION_QUEUE_INVALID: {error}"))))
-                    .transpose()?.unwrap_or_default();
             }
             let operation = register_json.get("operation").cloned().filter(|v| !v.is_null())
                 .map(|v| serde_json::from_value(v).map_err(|error| StatePortError::Persistence(format!("AGENT_SESSION_OPERATION_INVALID: {error}"))))

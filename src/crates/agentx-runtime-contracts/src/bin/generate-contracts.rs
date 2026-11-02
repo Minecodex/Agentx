@@ -89,6 +89,22 @@ fn main() -> Result<()> {
 
 fn contract_schemas() -> Result<Map<String, Value>> {
     let mut schemas = Map::new();
+    insert::<agentx_runtime_contracts::ApplicationPageDraftV1>(
+        &mut schemas,
+        "ApplicationPageDraftV1",
+    )?;
+    insert::<agentx_runtime_contracts::PageBuilderSessionV1>(&mut schemas, "PageBuilderSessionV1")?;
+    insert::<agentx_runtime_contracts::PageEditCommandV1>(&mut schemas, "PageEditCommandV1")?;
+    insert::<agentx_runtime_contracts::PageEditorSnapshotV1>(&mut schemas, "PageEditorSnapshotV1")?;
+    insert::<agentx_runtime_contracts::DesignModelTargetV1>(&mut schemas, "DesignModelTargetV1")?;
+    insert::<agentx_runtime_contracts::TaskViewV1>(&mut schemas, "TaskViewV1")?;
+    schemas.insert(
+        "McpTaskViewV1".into(),
+        serde_json::to_value(agentx_runtime_contracts::application_mcp_schema(
+            schemars::schema_for!(agentx_runtime_contracts::TaskViewV1),
+        ))?,
+    );
+    insert::<agentx_runtime_contracts::MyTasksPageV1>(&mut schemas, "MyTasksPageV1")?;
     insert::<agentx_runtime_contracts::InputWaitV1>(&mut schemas, "InputWaitV1")?;
     insert::<agentx_runtime_contracts::SubmitWaitInputV1>(&mut schemas, "SubmitWaitInputV1")?;
     insert::<agentx_runtime_contracts::WaitInputReceiptV1>(&mut schemas, "WaitInputReceiptV1")?;
@@ -270,9 +286,9 @@ fn internal_openapi(schemas: Map<String, Value>) -> Value {
             "/internal/runtime/v1/retention-commands:apply": post("Apply Retention Command", "RetentionCommandRequestV1", "ApplyReceiptV1"),
             "/internal/runtime/v1/resource-checks:execute": post("Execute Resource Check", "RuntimeResourceCheckRequestV1", "RuntimeResourceCheckResponseV1"),
             "/internal/runtime/v1/resource-operations:execute": post("Execute Resource Operation", "RuntimeResourceOperationRequestV1", "RuntimeResourceOperationResponseV1"),
-            "/internal/runtime/v1/studio-model:submit": post("Submit design model effect", "DesignModelEffectRequestV1", "DesignModelReceiptV1"),
-            "/internal/runtime/v1/studio-model:inspect": post("Inspect design model receipt", "DesignModelReceiptRequestV1", "DesignModelReceiptV1"),
-            "/internal/runtime/v1/studio-model:cancel": post("Cancel design model effect", "DesignModelReceiptRequestV1", "DesignModelReceiptV1"),
+            "/internal/runtime/v1/design-model:submit": post("Submit design model effect", "DesignModelEffectRequestV1", "DesignModelReceiptV1"),
+            "/internal/runtime/v1/design-model:inspect": post("Inspect design model receipt", "DesignModelReceiptRequestV1", "DesignModelReceiptV1"),
+            "/internal/runtime/v1/design-model:cancel": post("Cancel design model effect", "DesignModelReceiptRequestV1", "DesignModelReceiptV1"),
             "/internal/runtime/v1/sandboxes:resolve": post("Resolve plugin in a network-denied sandbox", "PluginDesignOperationRequestV1", "PluginDesignOperationResponseV1"),
             "/internal/runtime/v1/sandboxes:close-resolve-session": post("Close resolve-only sandbox session", "PluginResolveSessionV1", "PluginResolveSessionV1"),
             "/internal/runtime/v1/plugin-resolve-sessions:close": post("Close plugin definition resolution session", "PluginResolveSessionV1", "PluginResolveSessionV1"),

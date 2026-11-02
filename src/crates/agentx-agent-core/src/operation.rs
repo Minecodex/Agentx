@@ -47,6 +47,7 @@ pub enum EffectObservationV1 {
     NotStarted,
     Pending(String),
     Confirmed(Value),
+    Failed(String),
     Unknown,
 }
 
@@ -84,13 +85,17 @@ pub fn recovery_decision(
         OperationPhaseV1::IntentPersisted => match observation {
             EffectObservationV1::Pending(_) => RecoveryDecisionV1::ResumePending,
             EffectObservationV1::NotStarted => RecoveryDecisionV1::ExecuteWithSameId,
-            EffectObservationV1::Confirmed(_) => RecoveryDecisionV1::SettleObservedEffect,
+            EffectObservationV1::Confirmed(_) | EffectObservationV1::Failed(_) => {
+                RecoveryDecisionV1::SettleObservedEffect
+            }
             EffectObservationV1::Unknown => RecoveryDecisionV1::PauseUnknownOutcome,
         },
         OperationPhaseV1::EffectStarted | OperationPhaseV1::EffectCompleted { .. } => {
             match observation {
                 EffectObservationV1::Pending(_) => RecoveryDecisionV1::ResumePending,
-                EffectObservationV1::Confirmed(_) => RecoveryDecisionV1::SettleObservedEffect,
+                EffectObservationV1::Confirmed(_) | EffectObservationV1::Failed(_) => {
+                    RecoveryDecisionV1::SettleObservedEffect
+                }
                 EffectObservationV1::NotStarted
                     if matches!(operation.replay_policy, ReplayPolicyV1::Safe) =>
                 {

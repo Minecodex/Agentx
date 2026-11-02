@@ -1,5 +1,90 @@
 {
   "$defs": {
+    "ApplicationUiBuilderTargetV1": {
+      "additionalProperties": false,
+      "properties": {
+        "applicationId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "bundleId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "contractHash": {
+          "type": "string"
+        },
+        "runId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "sessionId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "tenantId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "uiDraftId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "userId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenantId",
+        "applicationId",
+        "uiDraftId",
+        "bundleId",
+        "contractHash",
+        "sessionId",
+        "runId",
+        "userId"
+      ],
+      "type": "object"
+    },
+    "DesignModelTargetV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "workflow_builder",
+              "type": "string"
+            },
+            "target": {
+              "$ref": "#/$defs/StudioBuilderTargetV1"
+            }
+          },
+          "required": [
+            "kind",
+            "target"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "application_ui_builder",
+              "type": "string"
+            },
+            "target": {
+              "$ref": "#/$defs/ApplicationUiBuilderTargetV1"
+            }
+          },
+          "required": [
+            "kind",
+            "target"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "StudioBuilderTargetV1": {
       "additionalProperties": false,
       "properties": {
@@ -52,7 +137,7 @@
       "type": "string"
     },
     "target": {
-      "$ref": "#/$defs/StudioBuilderTargetV1"
+      "$ref": "#/$defs/DesignModelTargetV1"
     }
   },
   "required": [

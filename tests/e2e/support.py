@@ -167,9 +167,22 @@ def redact(value: str) -> str:
     value = re.sub(r"(?m)^([A-Za-z_]\w* = )[\[{].*$", r"\1<redacted-fixture>", value)
     value = re.sub(r"\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b", "<redacted>", value)
     value = re.sub(r"\baxk_[a-zA-Z0-9_-]{32,}\b", "<redacted>", value)
+    value = re.sub(r"\bory_(?:at|rt)_[a-zA-Z0-9_.~-]+\b", "<redacted>", value)
+    value = re.sub(
+        r"(?i)([?&](?:code|code_verifier|client_secret|access_token|refresh_token)=)[^&\s\"'<>\\]+",
+        r"\1<redacted>",
+        value,
+    )
+    value = re.sub(r"\bsk-[a-zA-Z0-9_-]{16,}\b", "<redacted-provider-key>", value)
     # Start only at a scheme boundary. Otherwise a long minified identifier or
     # large tool result retries this unbounded scheme match at every character.
-    value = re.sub(r"(?i)(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*://)[^/@:\s]+:[^/@\s]+@", r"\1<redacted>@", value)
+    # A later Playwright GUID can contain @. Never cross a JSON/string boundary
+    # while looking for URL userinfo, including an escaped quote in JSONL.
+    value = re.sub(
+        r"""(?i)(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*://)[^/@:\s"'<>\\]+:[^/@\s"'<>\\]+@""",
+        r"\1<redacted>@",
+        value,
+    )
     value = re.sub(
         r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----.*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
         "<redacted-private-key>",
@@ -180,10 +193,22 @@ def redact(value: str) -> str:
     def scalar(match: re.Match[str]) -> str:
         label, content = match.group(1), match.group(2)
         quote = content[0] if content.startswith(('"', "'")) else ""
-        return f"{label}{quote}<redacted>{quote}"
+        if not quote:
+            quoted_key = re.search(r"([\"'])[ \t]*:[ \t]*$", label)
+            if quoted_key:
+                quote = quoted_key[1]
+        # An unquoted header inside a serialized DOM/code example ends just
+        # before an escaped quote. Its trailing backslashes escape that quote;
+        # removing them corrupts the surrounding Trace JSON string.
+        escaped_quote = ""
+        if not quote and match.end() < len(value) and value[match.end()] in ('"', "'"):
+            trailing = re.search(r"\\+$", content)
+            if trailing:
+                escaped_quote = trailing[0]
+        return f"{label}{quote}<redacted>{quote}{escaped_quote}"
 
     return re.sub(
-        r"(?i)((?:password|secret|(?<!automountserviceaccount)token|private[_-]?key|unseal[ _-]?key|api[ _-]?key|authorization)[\"']?[ \t]*[=:][ \t]*)"
+        r"(?i)((?:password|secret|(?<!automountserviceaccount)(?<!fencing)token|private[_-]?key|unseal[ _-]?key|api[ _-]?key|authorization)[\"']?[ \t]*[=:][ \t]*)"
         r"""("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:(?:Bearer|Basic)[ \t]+)?[^\"'\s,;{}\[\]]+)""",
         scalar,
         value,

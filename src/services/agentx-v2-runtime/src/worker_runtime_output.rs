@@ -79,23 +79,24 @@ pub(super) fn openai_chat_request_streaming(
         "messages":messages,
         "stream":stream,
     });
-    if let Some(parameters) = claim
-        .node_parameters
-        .get("platformEvaluationParameters")
-        .and_then(Value::as_object)
+    if let Some((parameters, ceiling)) =
+        claim
+            .resources
+            .iter()
+            .find_map(|binding| match &binding.configuration {
+                RuntimeResourceConfigurationV1::Model {
+                    parameters,
+                    max_output_tokens,
+                    ..
+                } => Some((parameters, *max_output_tokens)),
+                _ => None,
+            })
     {
-        for name in [
-            "temperature",
-            "top_p",
-            "max_tokens",
-            "max_completion_tokens",
-            "thinking",
-            "reasoning_effort",
-        ] {
-            if let Some(value) = parameters.get(name) {
-                request[name] = value.clone();
-            }
-        }
+        let parameters = claim
+            .node_parameters
+            .get("platformEvaluationParameters")
+            .unwrap_or(parameters);
+        crate::agent_model_protocol::apply_parameters(&mut request, parameters, ceiling);
     }
     if stream {
         request["stream_options"] = json!({"include_usage":true});

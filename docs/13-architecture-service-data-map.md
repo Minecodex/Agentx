@@ -14,6 +14,7 @@
 | `sandbox-manager` | Runtime / manager,reaper | Runtime MySQL、只读 Vault、OpenSandbox | Control 数据和普通 Worker 的 Provider 权限并集 |
 | `agentx-egress-gateway` | Dependencies / security infrastructure | DNS、Profile 允许端口上的公共 HTTPS；角色绑定的 Runtime/Sandbox 当前与轮换公钥 | MySQL、Redis、Vault、OSS、Provider Credential 与任意私网目标 |
 | `observability` | Observability / trace-consumer,query | 受限 Runtime Redis Trace/JTI ACL、ClickHouse、Observability OSS | 任意 MySQL Credential、Runtime OSS 和 Control 数据 |
+| Ory Hydra | Dependencies / OAuth infrastructure | 独立 OAuth MySQL、账号与系统密钥；Control 受限管理、Runtime 公共协议代理与 introspection | Control/Runtime 业务数据库与 Provider 凭据 |
 
 Migration 使用三个独立一次性目标：`control-migrate`、`runtime-migrate` 和 `clickhouse-migrate`。它们只持有所属 Schema 凭据，不持有应用、Redis、OSS、Vault 或 Provider Credential。
 
@@ -23,7 +24,7 @@ Migration 使用三个独立一次性目标：`control-migrate`、`runtime-migra
 |---|---|
 | `agentx-control` | Control：`web-console`、`platform-control`、Control MySQL 与 Migration |
 | `agentx-runtime` | Runtime + Observability：四类 Runtime 服务、`observability`、Runtime MySQL、Runtime Redis、ClickHouse 与两域 Migration |
-| `agentx-deps` | Dependencies + Ingress：`agentx-egress-gateway`、Vault、MinIO、专用 ingress-nginx，以及可选 OpenSandbox/Addon |
+| `agentx-deps` | Dependencies + Ingress：`agentx-egress-gateway`、Vault、MinIO、Hydra 与独立 OAuth MySQL、专用 ingress-nginx，以及可选 OpenSandbox/Addon |
 
 Observability 与 Runtime 只共享 Namespace，不共享数据权限：Observability 仍使用独立 ServiceAccount、Secret、Redis ACL 和 ClickHouse 账号，NetworkPolicy 只允许它访问 Runtime Redis Trace/JTI 通道和 ClickHouse，禁止 Runtime MySQL。部署输入是四个 Chart 共享的 YAML Values 契约，顶层固定为 `global`、`control`、`runtime`、`observability`、`dependencies`；旧 deployment Profile 已删除且不做兼容转换。
 
@@ -60,8 +61,8 @@ Runtime 不主动调用 Control。Runtime 当前状态只来自 Runtime MySQL；
 
 | 数据域 | Migration 目录 | 当前 `CREATE TABLE` 数 | 权威内容 |
 |---|---|---:|---|
-| Control MySQL | `deploy/migrations/control` | 113 | IAM、Workflow 草稿/版本/Deployment、画布插件包/导入/版本/对象清理队列、资源元数据/授权、Application 管理、治理投影和 Control Outbox |
-| Runtime MySQL | `deploy/migrations/runtime` | 111 | Route、Session/Message/Invocation、Execution/Snapshot/Attempt、Wait/Approval、Checkpoint/Fork、Runtime Call、Quota、Retention、Event/Trace Outbox |
+| Control MySQL | `deploy/migrations/control` | 123 | IAM、Workflow 草稿/版本/Deployment、画布插件包/导入/版本/对象清理队列、资源元数据/授权、Application 页面/MCP 管理、共用设计态会话、治理投影和 Control Outbox |
+| Runtime MySQL | `deploy/migrations/runtime` | 120 | Route、Session/Message/Invocation、成对页面与 MCP 发布副本、Execution/Snapshot/Attempt、Wait/Approval/Agent Tool Effect、Checkpoint/Fork、Runtime Call、Quota、Retention、Event/Trace Outbox |
 | ClickHouse | `deploy/migrations/observability` | 4 | Trace 明细、去重冲突和 Consumer Health；不是 Runtime 当前状态权威 |
 | Runtime Redis | 无业务 Migration | 不适用 | Capability/Trace Stream、Consumer Group、SSE 唤醒和快速配额；可从 MySQL 权威事实重建 |
 | 三域 OSS | 独立 Bucket/Prefix/IAM | 不适用 | Control 源对象、Runtime Bundle/Artifact/Checkpoint、Observability 内容分别隔离 |
@@ -89,7 +90,9 @@ Run `20260818-final4` 已验证三域空库部署、151/151 公共 API、产品�
 
 ## Studio Builder 的服务映射
 
-Control 的 studio_builder_* 模块注入同一个 agentx-agent-core，拥有设计会话、编辑回执、租户模型授权和对象权限。Runtime Gateway 仅接受绑定来源的设计模型 Effect，复用 Vault/Egress/价格与 Quota；Sandbox Manager 使用 sandbox_design_leases 承载无资源、无网络的契约解析，同一 Workflow 静态解析批次可复用短期容器，每个节点使用新进程；批次关闭或租约超时立即清理。Workflow Worker 继续消费不可变业务快照，不读 Control 草稿、不承担 Builder 编辑任务。
+Control 的 `design_agent_*` 共用 Host 注入同一个 `agentx-agent-core`，拥有两种创作的设计会话、编辑回执、租户模型授权和对象权限；`studio_builder_*` 与 `application_ui_*` 只承载各自领域工具/上下文。Runtime Gateway 仅接受绑定来源的设计模型 Effect，复用 Vault/Egress/价格与 Quota；Sandbox Manager 使用 sandbox_design_leases 承载无资源、无网络的契约解析，同一 Workflow 静态解析批次可复用短期容器，每个节点使用新进程；批次关闭或租约超时立即清理。Workflow Worker 继续消费不可变业务快照，不读 Control 草稿、不承担 Builder 编辑任务。
+
+Control Publisher 把页面、精确 SDK/样式、完整交互契约和业务 Bundle 成对复制到 Runtime，再原子激活。Web/API/MCP 形成相同 Invocation；TaskView 只投影既有状态与归属。Runtime 直接读取本域页面与历史任务，不回读 Control；Agent 工具批准恢复原 Effect，原成功 Receipt 或未知结果优先决定是否还能派发。外部 AI 只看到整个应用工具和三个任务辅助工具。Hydra 协议与数据边界见 [plan9 MCP](plan9/02-application-mcp.md)，当前功能验收进展仍见 [实施记录](plan9/08-implementation-evidence.md)。
 
 ## 外部知识服务边界
 

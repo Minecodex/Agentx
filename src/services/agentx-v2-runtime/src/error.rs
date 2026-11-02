@@ -12,6 +12,12 @@ pub enum RuntimeError {
     Deterministic { code: &'static str, message: String },
     #[error("{1}")]
     InvalidRequest(&'static str, String),
+    #[error("{message}")]
+    Validation {
+        code: &'static str,
+        message: String,
+        field_errors: Vec<agentx_runtime_contracts::GatewayFieldErrorV1>,
+    },
     #[error("{1}")]
     BadRequest(RuntimePublishErrorCodeV1, String),
     #[error("{1}")]
@@ -45,6 +51,8 @@ pub enum RuntimeError {
 struct ErrorBody {
     code: Value,
     message: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    field_errors: Vec<agentx_runtime_contracts::GatewayFieldErrorV1>,
 }
 
 impl IntoResponse for RuntimeError {
@@ -55,7 +63,16 @@ impl IntoResponse for RuntimeError {
             } => Some(*retry_after_seconds),
             _ => None,
         };
+        let mut field_errors = Vec::new();
         let (status, code, message) = match self {
+            Self::Validation {
+                code,
+                message,
+                field_errors: errors,
+            } => {
+                field_errors = errors;
+                (StatusCode::UNPROCESSABLE_ENTITY, json!(code), message)
+            }
             Self::Deterministic { code, message } => {
                 (StatusCode::UNPROCESSABLE_ENTITY, json!(code), message)
             }
@@ -126,7 +143,15 @@ impl IntoResponse for RuntimeError {
                 )
             }
         };
-        let mut response = (status, Json(ErrorBody { code, message })).into_response();
+        let mut response = (
+            status,
+            Json(ErrorBody {
+                code,
+                message,
+                field_errors,
+            }),
+        )
+            .into_response();
         if let Some(seconds) = retry_after
             && let Ok(value) = seconds.to_string().parse()
         {

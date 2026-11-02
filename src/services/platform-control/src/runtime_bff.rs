@@ -1849,16 +1849,16 @@ async fn search_deliveries(
     Query(query): Query<DeliveryListQuery>,
 ) -> ApiResult<Json<Value>> {
     actor.require("application:view")?;
-    if let Some(status) = query.status.as_deref() {
-        if !matches!(
+    if let Some(status) = query.status.as_deref()
+        && !matches!(
             status,
             "pending" | "delivering" | "delivered" | "failed" | "dead" | "cancelled"
-        ) {
-            return Err(ApiError::bad_request(
-                "INVALID_DELIVERY_STATUS",
-                "status must be pending, delivering, delivered, failed, dead, or cancelled",
-            ));
-        }
+        )
+    {
+        return Err(ApiError::bad_request(
+            "INVALID_DELIVERY_STATUS",
+            "status must be pending, delivering, delivered, failed, dead, or cancelled",
+        ));
     }
     let (tenant_wide, application_ids, workflow_ids) =
         execution_query_scope(&state, &actor).await?;

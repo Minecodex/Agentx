@@ -57,6 +57,7 @@ fn mcp_binding(resource_id: Uuid, tool_name: &str) -> RuntimeResourceBindingV1 {
             side_effect: "read_only".into(),
             timeout_seconds: 30,
             credential: None,
+            tool_policy: None,
         },
         object_ids: Vec::new(),
     }
@@ -521,7 +522,7 @@ fn every_studio_manifest_parameter_has_an_explicit_runtime_consumer() {
             ],
         ),
         ("sub_workflow", &["workflowVersionId", "inputs"]),
-        ("await_input", &["timeoutMs", "hookUrl"]),
+        ("await_input", &["timeoutMs", "hookUrl", "responseSchema"]),
         ("knowledge_retrieval", &["query", "topK"]),
         (
             "declarative_http",

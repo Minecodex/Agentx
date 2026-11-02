@@ -15,6 +15,11 @@ const translations = {
     "unpublished": "未发布"
   },
   "builder": {
+    "guidance": "追加指导",
+    "guidancePlaceholder": "补充本次创作的要求…",
+    "outputLimit": "模型达到输出上限，未完成创作。请调整模型参数后重新生成。",
+    "modelFailed": "模型未完成当前创作，请检查调用失败原因。",
+
     "recoveryUnavailable": "本地恢复记录未能保存。请手动保存当前编辑后再继续创作。",
     "scope": "编辑范围",
     "canvasScope": "当前画布",

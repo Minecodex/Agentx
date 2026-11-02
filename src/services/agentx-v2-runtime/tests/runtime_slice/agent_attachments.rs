@@ -107,6 +107,7 @@ async fn agent_attachment_revocation_is_tool_scoped(fixture: &Fixture) {
         side_effect: "read_only".into(),
         timeout_seconds: 10,
         credential: None,
+        tool_policy: None,
     };
     let server_configuration = mcp_configuration("__server__");
     let tool_a_configuration = mcp_configuration("tool_a");
@@ -198,6 +199,8 @@ async fn agent_attachment_revocation_is_tool_scoped(fixture: &Fixture) {
         endpoint: "https://provider.example.test/model".into(),
         model: "authorization-fixture".into(),
         context_window: 128_000,
+        max_output_tokens: 4096,
+        parameters: serde_json::json!({}),
         price: agentx_runtime_contracts::RuntimeModelPriceV1 {
             version_id: "price:authorization".into(),
             currency: "USD".into(),
@@ -279,6 +282,7 @@ async fn agent_attachment_revocation_is_tool_scoped(fixture: &Fixture) {
         tool_to_call: "tool_b".into(),
         model_calls: std::sync::atomic::AtomicUsize::new(0),
         visible_tools: Mutex::new(Vec::new()),
+        mcp_writes: std::sync::atomic::AtomicUsize::new(0),
     });
     let worker = test_worker(
         fixture,
@@ -308,6 +312,7 @@ async fn agent_attachment_revocation_is_tool_scoped(fixture: &Fixture) {
     .unwrap();
     assert_eq!(settled_calls, 3, "two Model Effects and one MCP Effect settle once");
 
+    protected_agent_tool_pending_and_resume(fixture, &claim, tool_b_id, tool_a_grant_id).await;
     sqlx::query(
         "UPDATE execution_snapshots SET authorization_snapshot_json=? WHERE tenant_id=? AND execution_id=?",
     )

@@ -11,6 +11,7 @@ import yaml
 
 from tests.e2e.product.live_text_support import Secret, post
 from tests.e2e.product.user_auth import UserTokenAuth
+from tests.e2e.runtime.test_agent_attachments import ADMIN_PASSWORD, ADMIN_USERNAME
 from tests.e2e.support import ROOT, redact, run
 
 
@@ -174,7 +175,11 @@ def live_providers(
         import httpx
 
         with httpx.Client(
-            base_url=service_urls["web"], auth=UserTokenAuth(service_urls["web"], app["token"]), timeout=60
+            base_url=service_urls["web"],
+            auth=UserTokenAuth(
+                service_urls["web"], app["token"], username=ADMIN_USERNAME, password=Secret(ADMIN_PASSWORD)
+            ),
+            timeout=60,
         ) as control:
             rag_credential = post(
                 control,

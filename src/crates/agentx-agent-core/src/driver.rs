@@ -161,6 +161,27 @@ impl AgentCore {
                 ));
             }
         }
+        // A Host can accept guidance just before it observes Core completion.
+        // Continue only a successful terminal with unseen inputs; stopped or
+        // unknown effects retain their original terminal and replay policy.
+        let resume_completed = input.continue_completed
+            && state.terminal == Some(TerminalReasonV1::Completed)
+            && state
+                .messages
+                .iter()
+                .any(|message| message.message_id == input.prompt_message_id)
+            && state
+                .steering_queue
+                .iter()
+                .chain(state.follow_up_queue.iter())
+                .chain(input.steering_inputs.iter())
+                .chain(input.follow_up_inputs.iter())
+                .any(|queued| {
+                    !state
+                        .messages
+                        .iter()
+                        .any(|message| message.message_id == queued.message_id)
+                });
         // A retry of the same invocation is a reconciliation pass. Once the
         // prompt has already produced a terminal state, return that state
         // without replaying the model effect. A subsequent invocation uses a
@@ -170,7 +191,7 @@ impl AgentCore {
             .iter()
             .any(|message| message.message_id == input.prompt_message_id)
         {
-            if let Some(reason) = state.terminal.clone() {
+            if let Some(reason) = state.terminal.clone().filter(|_| !resume_completed) {
                 events.publish(CoreEventV1::AgentStarted {
                     run_id: input.run_id.clone(),
                 })?;
@@ -256,6 +277,13 @@ impl AgentCore {
         }
         for message in &input.follow_up_inputs {
             append_once(&mut state.follow_up_queue, message.clone());
+        }
+        if resume_completed {
+            if state.steering_queue.is_empty() {
+                drain_queue(&mut state.follow_up_queue, &mut state.messages);
+            } else {
+                drain_queue(&mut state.steering_queue, &mut state.messages);
+            }
         }
         commit(state_port, &mut state, input.fencing_token)?;
         events.publish(CoreEventV1::AgentStarted {
@@ -603,30 +631,26 @@ fn project_for_input(input: &AgentRunInputV1, state: &AgentSessionStateV1) -> Ve
     if !projected
         .iter()
         .any(|message| message.message_id == input.prompt_message_id)
-    {
-        if let Some((current_index, current)) = state
+        && let Some((current_index, current)) = state
             .messages
             .iter()
             .enumerate()
             .find(|(_, message)| message.message_id == input.prompt_message_id)
-        {
-            if ContextProjector::estimated_tokens(&projected)
-                .saturating_add(estimate_message_tokens(current))
-                <= CompactionStrategy::new(input.model_context_window).threshold_tokens()
-            {
-                let position = projected
+        && ContextProjector::estimated_tokens(&projected)
+            .saturating_add(estimate_message_tokens(current))
+            <= CompactionStrategy::new(input.model_context_window).threshold_tokens()
+    {
+        let position = projected
+            .iter()
+            .position(|message| {
+                state
+                    .messages
                     .iter()
-                    .position(|message| {
-                        state
-                            .messages
-                            .iter()
-                            .position(|original| original.message_id == message.message_id)
-                            .is_some_and(|index| index > current_index)
-                    })
-                    .unwrap_or(projected.len());
-                projected.insert(position, current.clone());
-            }
-        }
+                    .position(|original| original.message_id == message.message_id)
+                    .is_some_and(|index| index > current_index)
+            })
+            .unwrap_or(projected.len());
+        projected.insert(position, current.clone());
     }
     projected
 }
@@ -744,6 +768,17 @@ where
                         return Err(ModelPortError::Pending(token));
                     }
                     crate::EffectObservationV1::NotStarted => {}
+                    crate::EffectObservationV1::Failed(reason) => {
+                        fail_operation(state, &reason, false, clock);
+                        commit_model_state(state_port, state, input.fencing_token)?;
+                        events
+                            .publish(CoreEventV1::ModelSettled {
+                                operation_id,
+                                is_error: true,
+                            })
+                            .map_err(|error| ModelPortError::Effect(error.to_string()))?;
+                        return Err(ModelPortError::Effect(reason));
+                    }
                     crate::EffectObservationV1::Unknown => {
                         return Err(ModelPortError::OutcomeUnknown(
                             "model effect was sent but settlement is not confirmed".into(),
@@ -898,6 +933,18 @@ where
                     }
                     crate::EffectObservationV1::NotStarted
                         if !matches!(definition.replay_policy, ReplayPolicyV1::Never) => {}
+                    crate::EffectObservationV1::Failed(reason) => {
+                        fail_operation(state, &reason, false, clock);
+                        commit_tool_state(state_port, state, input.fencing_token)?;
+                        events
+                            .publish(CoreEventV1::ToolSettled {
+                                operation_id,
+                                tool_name: call.name.clone(),
+                                is_error: true,
+                            })
+                            .map_err(|error| ToolPortError::Effect(error.to_string()))?;
+                        return Err(ToolPortError::Effect(reason));
+                    }
                     _ => {
                         return Err(ToolPortError::OutcomeUnknown(
                             "tool effect was sent but settlement is not confirmed".into(),
@@ -1057,6 +1104,17 @@ where
                         return Err(ModelPortError::Pending(token));
                     }
                     crate::EffectObservationV1::NotStarted => {}
+                    crate::EffectObservationV1::Failed(reason) => {
+                        fail_operation(state, &reason, false, clock);
+                        commit_model_state(state_port, state, input.fencing_token)?;
+                        events
+                            .publish(CoreEventV1::ModelSettled {
+                                operation_id,
+                                is_error: true,
+                            })
+                            .map_err(|error| ModelPortError::Effect(error.to_string()))?;
+                        return Err(ModelPortError::Effect(reason));
+                    }
                     crate::EffectObservationV1::Unknown => {
                         return Err(ModelPortError::OutcomeUnknown(
                             "compaction effect settlement is not confirmed".into(),
@@ -1440,6 +1498,7 @@ mod tests {
             external_contexts: Vec::new(),
             prompt_message_id: "prompt-1".into(),
             prompt: "hello".into(),
+            continue_completed: false,
             steering_inputs: Vec::new(),
             follow_up_inputs: Vec::new(),
             model_context_window: 200_000,

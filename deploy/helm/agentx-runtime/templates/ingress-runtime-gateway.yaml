@@ -9,7 +9,7 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     nginx.ingress.kubernetes.io/enable-cors: "true"
     nginx.ingress.kubernetes.io/cors-allow-origin: {{ printf "%s://%s" (ternary "https" "http" (ne .Values.global.ingress.controlTlsSecretName nil)) .Values.global.ingress.controlHost | quote }}
-    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization,Content-Type,Idempotency-Key,Last-Event-ID,X-Agentx-Timestamp,X-Agentx-Signature"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization,Content-Type,Idempotency-Key,Last-Event-ID,X-Agentx-Timestamp,X-Agentx-Signature,MCP-Protocol-Version,X-Agentx-Page-Publication,X-Agentx-Page-Revision"
 spec:
   ingressClassName: {{ .Values.global.ingress.className }}
   {{- with .Values.global.ingress.runtimeTlsSecretName }}
@@ -22,6 +22,14 @@ spec:
       http:
         paths:
           - path: /gateway/v1
+            pathType: Prefix
+            backend:
+              service: { name: runtime-gateway-public, port: { number: 8080 } }
+          - path: /oauth2
+            pathType: Prefix
+            backend:
+              service: { name: runtime-gateway-public, port: { number: 8080 } }
+          - path: /.well-known
             pathType: Prefix
             backend:
               service: { name: runtime-gateway-public, port: { number: 8080 } }

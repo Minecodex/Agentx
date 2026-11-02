@@ -33,9 +33,9 @@ struct ListQuery {
     status: Option<String>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
-struct ApplicationResponse {
+pub(crate) struct ApplicationResponse {
     id: Uuid,
     workflow_id: Uuid,
     workflow_name: String,
@@ -47,10 +47,12 @@ struct ApplicationResponse {
     owner_department_id: Uuid,
     active_deployment_id: Option<Uuid>,
     active_version_number: Option<u64>,
+    published_page_slug: Option<String>,
     runtime_config_revision: u64,
     published_runtime_config_revision: u64,
     version: u64,
     #[serde(with = "time::serde::rfc3339")]
+    #[schemars(with = "String")]
     updated_at: OffsetDateTime,
 }
 
@@ -75,14 +77,15 @@ async fn list_applications(
     let search = format!("%{}%", query.search.unwrap_or_default().trim());
     let status = query.status.unwrap_or_default();
     let administrator = actor.roles.iter().any(|role| role == "company_admin");
+    // A new suffix is reserved before activation; advertise only the active publication.
     let (rows, total) = if administrator {
-        let rows = sqlx::query("SELECT a.id,a.workflow_id,w.name workflow_name,a.name,a.slug,a.description,a.visibility,a.status,a.owner_department_id,h.deployment_id active_deployment_id,wv.version_number active_version_number,a.runtime_config_revision,a.published_runtime_config_revision,a.version,a.updated_at FROM applications a JOIN workflows w ON w.tenant_id=a.tenant_id AND w.id=a.workflow_id LEFT JOIN application_deployment_heads h ON h.tenant_id=a.tenant_id AND h.application_id=a.id LEFT JOIN application_deployments ad ON ad.tenant_id=a.tenant_id AND ad.id=h.deployment_id LEFT JOIN workflow_versions wv ON wv.tenant_id=a.tenant_id AND wv.id=ad.workflow_version_id WHERE a.tenant_id=? AND (?='' OR a.status=?) AND (?='%%' OR a.name LIKE ?) ORDER BY a.updated_at DESC,a.id DESC LIMIT ? OFFSET ?")
+        let rows = sqlx::query("SELECT a.id,a.workflow_id,w.name workflow_name,a.name,a.slug,a.description,a.visibility,a.status,a.owner_department_id,h.deployment_id active_deployment_id,wv.version_number active_version_number,(SELECT up.slug FROM application_web_heads wh JOIN application_ui_publications up ON up.tenant_id=wh.tenant_id AND up.id=wh.publication_id AND up.status='active' WHERE wh.tenant_id=a.tenant_id AND wh.application_id=a.id AND wh.enabled=TRUE AND a.status='active') published_page_slug,a.runtime_config_revision,a.published_runtime_config_revision,a.version,a.updated_at FROM applications a JOIN workflows w ON w.tenant_id=a.tenant_id AND w.id=a.workflow_id LEFT JOIN application_deployment_heads h ON h.tenant_id=a.tenant_id AND h.application_id=a.id LEFT JOIN application_deployments ad ON ad.tenant_id=a.tenant_id AND ad.id=h.deployment_id LEFT JOIN workflow_versions wv ON wv.tenant_id=a.tenant_id AND wv.id=ad.workflow_version_id WHERE a.tenant_id=? AND (?='' OR a.status=?) AND (?='%%' OR a.name LIKE ?) ORDER BY a.updated_at DESC,a.id DESC LIMIT ? OFFSET ?")
             .bind(actor.tenant_id).bind(&status).bind(&status).bind(&search).bind(&search).bind(page_size).bind(u64::from((page-1)*page_size)).fetch_all(&state.pool).await?;
         let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM applications a WHERE a.tenant_id=? AND (?='' OR a.status=?) AND (?='%%' OR a.name LIKE ?)")
             .bind(actor.tenant_id).bind(&status).bind(&status).bind(&search).bind(&search).fetch_one(&state.pool).await?;
         (rows, total)
     } else {
-        let rows = sqlx::query("SELECT a.id,a.workflow_id,w.name workflow_name,a.name,a.slug,a.description,a.visibility,a.status,a.owner_department_id,h.deployment_id active_deployment_id,wv.version_number active_version_number,a.runtime_config_revision,a.published_runtime_config_revision,a.version,a.updated_at FROM applications a JOIN workflows w ON w.tenant_id=a.tenant_id AND w.id=a.workflow_id LEFT JOIN application_deployment_heads h ON h.tenant_id=a.tenant_id AND h.application_id=a.id LEFT JOIN application_deployments ad ON ad.tenant_id=a.tenant_id AND ad.id=h.deployment_id LEFT JOIN workflow_versions wv ON wv.tenant_id=a.tenant_id AND wv.id=ad.workflow_version_id WHERE a.tenant_id=? AND (a.visibility='company' OR a.owner_user_id=? OR (a.visibility='department' AND EXISTS(SELECT 1 FROM department_closure dc WHERE dc.tenant_id=a.tenant_id AND dc.ancestor_id=a.owner_department_id AND dc.descendant_id=?))) AND (?='' OR a.status=?) AND (?='%%' OR a.name LIKE ?) ORDER BY a.updated_at DESC,a.id DESC LIMIT ? OFFSET ?")
+        let rows = sqlx::query("SELECT a.id,a.workflow_id,w.name workflow_name,a.name,a.slug,a.description,a.visibility,a.status,a.owner_department_id,h.deployment_id active_deployment_id,wv.version_number active_version_number,(SELECT up.slug FROM application_web_heads wh JOIN application_ui_publications up ON up.tenant_id=wh.tenant_id AND up.id=wh.publication_id AND up.status='active' WHERE wh.tenant_id=a.tenant_id AND wh.application_id=a.id AND wh.enabled=TRUE AND a.status='active') published_page_slug,a.runtime_config_revision,a.published_runtime_config_revision,a.version,a.updated_at FROM applications a JOIN workflows w ON w.tenant_id=a.tenant_id AND w.id=a.workflow_id LEFT JOIN application_deployment_heads h ON h.tenant_id=a.tenant_id AND h.application_id=a.id LEFT JOIN application_deployments ad ON ad.tenant_id=a.tenant_id AND ad.id=h.deployment_id LEFT JOIN workflow_versions wv ON wv.tenant_id=a.tenant_id AND wv.id=ad.workflow_version_id WHERE a.tenant_id=? AND (a.visibility='company' OR a.owner_user_id=? OR (a.visibility='department' AND EXISTS(SELECT 1 FROM department_closure dc WHERE dc.tenant_id=a.tenant_id AND dc.ancestor_id=a.owner_department_id AND dc.descendant_id=?))) AND (?='' OR a.status=?) AND (?='%%' OR a.name LIKE ?) ORDER BY a.updated_at DESC,a.id DESC LIMIT ? OFFSET ?")
             .bind(actor.tenant_id).bind(actor.user_id).bind(actor.department_id).bind(&status).bind(&status).bind(&search).bind(&search).bind(page_size).bind(u64::from((page-1)*page_size)).fetch_all(&state.pool).await?;
         let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM applications a WHERE a.tenant_id=? AND (a.visibility='company' OR a.owner_user_id=? OR (a.visibility='department' AND EXISTS(SELECT 1 FROM department_closure dc WHERE dc.tenant_id=a.tenant_id AND dc.ancestor_id=a.owner_department_id AND dc.descendant_id=?))) AND (?='' OR a.status=?) AND (?='%%' OR a.name LIKE ?)")
             .bind(actor.tenant_id).bind(actor.user_id).bind(actor.department_id).bind(&status).bind(&status).bind(&search).bind(&search).fetch_one(&state.pool).await?;
@@ -146,7 +149,7 @@ async fn create_application(
 }
 
 async fn load(state: &ControlApiState, tenant: Uuid, id: Uuid) -> ApiResult<ApplicationResponse> {
-    let row=sqlx::query("SELECT a.id,a.workflow_id,w.name workflow_name,a.name,a.slug,a.description,a.visibility,a.status,a.owner_department_id,h.deployment_id active_deployment_id,wv.version_number active_version_number,a.runtime_config_revision,a.published_runtime_config_revision,a.version,a.updated_at FROM applications a JOIN workflows w ON w.tenant_id=a.tenant_id AND w.id=a.workflow_id LEFT JOIN application_deployment_heads h ON h.tenant_id=a.tenant_id AND h.application_id=a.id LEFT JOIN application_deployments ad ON ad.tenant_id=a.tenant_id AND ad.id=h.deployment_id LEFT JOIN workflow_versions wv ON wv.tenant_id=a.tenant_id AND wv.id=ad.workflow_version_id WHERE a.tenant_id=? AND a.id=?").bind(tenant).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Application"))?;
+    let row=sqlx::query("SELECT a.id,a.workflow_id,w.name workflow_name,a.name,a.slug,a.description,a.visibility,a.status,a.owner_department_id,h.deployment_id active_deployment_id,wv.version_number active_version_number,(SELECT up.slug FROM application_web_heads wh JOIN application_ui_publications up ON up.tenant_id=wh.tenant_id AND up.id=wh.publication_id AND up.status='active' WHERE wh.tenant_id=a.tenant_id AND wh.application_id=a.id AND wh.enabled=TRUE AND a.status='active') published_page_slug,a.runtime_config_revision,a.published_runtime_config_revision,a.version,a.updated_at FROM applications a JOIN workflows w ON w.tenant_id=a.tenant_id AND w.id=a.workflow_id LEFT JOIN application_deployment_heads h ON h.tenant_id=a.tenant_id AND h.application_id=a.id LEFT JOIN application_deployments ad ON ad.tenant_id=a.tenant_id AND ad.id=h.deployment_id LEFT JOIN workflow_versions wv ON wv.tenant_id=a.tenant_id AND wv.id=ad.workflow_version_id WHERE a.tenant_id=? AND a.id=?").bind(tenant).bind(id).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::not_found("Application"))?;
     Ok(from_row(row)?)
 }
 
@@ -163,6 +166,7 @@ fn from_row(row: MySqlRow) -> Result<ApplicationResponse, sqlx::Error> {
         owner_department_id: row.try_get("owner_department_id")?,
         active_deployment_id: row.try_get("active_deployment_id")?,
         active_version_number: row.try_get("active_version_number")?,
+        published_page_slug: row.try_get("published_page_slug")?,
         runtime_config_revision: row.try_get("runtime_config_revision")?,
         published_runtime_config_revision: row.try_get("published_runtime_config_revision")?,
         version: row.try_get("version")?,

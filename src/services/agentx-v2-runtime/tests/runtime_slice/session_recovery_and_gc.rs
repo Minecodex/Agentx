@@ -63,6 +63,23 @@ async fn session_message_appends_one_assistant_response(fixture: &Fixture) {
         String::from_utf8_lossy(&message_body)
     );
     let invocation: InvocationResponseV1 = serde_json::from_slice(&message_body).unwrap();
+    let task_response = router.clone().oneshot(Request::builder().uri(format!("/tasks/{}",invocation.id)).header(AUTHORIZATION,format!("Bearer {}",fixture.api_key)).body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(task_response.status(), axum::http::StatusCode::OK);
+    let task:agentx_runtime_contracts::TaskViewV1=serde_json::from_slice(&to_bytes(task_response.into_body(),usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(task.task_id,invocation.id);
+    assert_eq!(task.bundle_id,invocation.bundle_id);
+    assert!(task.allowed_actions.can_cancel);
+    let own_history=router.clone().oneshot(Request::builder().uri("/applications/runtime-slice/my-tasks?limit=1").header(AUTHORIZATION,format!("Bearer {}",fixture.api_key)).body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(own_history.status(),axum::http::StatusCode::OK);
+    let history:agentx_runtime_contracts::MyTasksPageV1=serde_json::from_slice(&to_bytes(own_history.into_body(),usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(history.items[0].task_id,invocation.id);
+    // Another service identity using the same application cannot read or mutate this caller's task.
+    sqlx::query("UPDATE application_invocations SET caller_id=? WHERE tenant_id=? AND id=?").bind(Uuid::now_v7()).bind(fixture.tenant_id).bind(invocation.id).execute(&fixture.state.pool).await.unwrap();
+    for (method,path) in [("GET",format!("/tasks/{}",invocation.id)),("GET",format!("/invocations/{}",invocation.id)),("POST",format!("/invocations/{}/cancel",invocation.id))] {
+        let denied=router.clone().oneshot(Request::builder().method(method).uri(path).header(AUTHORIZATION,format!("Bearer {}",fixture.api_key)).header("idempotency-key","foreign-task").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(denied.status(),axum::http::StatusCode::NOT_FOUND);
+    }
+    sqlx::query("UPDATE application_invocations SET caller_id=? WHERE tenant_id=? AND id=?").bind(fixture.key_id).bind(fixture.tenant_id).bind(invocation.id).execute(&fixture.state.pool).await.unwrap();
     assert_eq!(invocation.session_id, Some(session.id));
     let inferred_title: Option<String> =
         sqlx::query_scalar("SELECT title FROM application_sessions WHERE tenant_id=? AND id=?")
@@ -383,12 +400,19 @@ async fn invocation_and_dispatch_recovery_are_fenced(
     execution_id: Uuid,
 ) -> WorkerResultV1 {
     let owner = Uuid::now_v7();
-    let command = claim_commands(&fixture.state.pool, owner, 10)
-        .await
-        .unwrap()
-        .into_iter()
-        .find(|claim| claim.execution_id == execution_id)
-        .unwrap();
+    // Acceptance and available_at need not be the same instant. Exercise the real
+    // claimant until this command is due, including when other commands precede it.
+    let mut selected = None;
+    for _ in 0..100 {
+        selected = claim_commands(&fixture.state.pool, owner, 100)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|claim| claim.execution_id == execution_id);
+        if selected.is_some() { break; }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let command = selected.expect("Accepted Invocation command must become claimable");
     process_command(&fixture.state.pool, &command)
         .await
         .unwrap();

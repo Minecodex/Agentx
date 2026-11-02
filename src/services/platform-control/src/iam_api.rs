@@ -929,10 +929,10 @@ fn map_unique(
     code: &'static str,
     message: &'static str,
 ) -> ApiError {
-    if let sqlx::Error::Database(db) = &error {
-        if db.is_unique_violation() {
-            return ApiError::conflict(code, message).with_field_error(field, code, message);
-        }
+    if let sqlx::Error::Database(db) = &error
+        && db.is_unique_violation()
+    {
+        return ApiError::conflict(code, message).with_field_error(field, code, message);
     }
     ApiError::from(error)
 }

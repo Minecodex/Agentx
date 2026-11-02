@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import json
+import time
 from pathlib import Path
+from uuid import UUID
 
 import httpx
 import pytest
 import yaml
 
 from tests.e2e.draft_fixtures import idempotent_headers
-from tests.e2e.runtime.test_agent_attachments import _access_token
+from tests.e2e.runtime.test_agent_attachments import _access_token, _control_mysql, _runtime_mysql
 from tests.e2e.support import ROOT, run
 
 
@@ -38,8 +41,8 @@ def studio_provider(installed_agentx: dict[str, str]) -> str:
             )
     run(("kubectl", "-n", namespace, "apply", "-f", "-"), input_text=yaml.safe_dump_all(documents))
     run(("kubectl", "-n", namespace, "rollout", "status", "deployment/echo-mcp", "--timeout=300s"), timeout=330)
-    # Catalog discovery and retrieval tests run in Control. Only this isolated
-    # fixture needs its nonstandard 8090 port on that direct provider path.
+    # Control reads the fixture catalog; the shared design Host executes model
+    # and MCP resource operations in Runtime. Allow only those owned callers.
     peer = {
         "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": namespace}},
         "podSelector": {"matchLabels": {"app.kubernetes.io/name": "echo-mcp"}},
@@ -47,6 +50,14 @@ def studio_provider(installed_agentx: dict[str, str]) -> str:
     control_peer = {
         "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": installed_agentx["control_namespace"]}},
         "podSelector": {"matchLabels": {"app.kubernetes.io/name": "platform-control"}},
+    }
+    runtime_peer = {
+        "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": installed_agentx["runtime_namespace"]}},
+        "podSelector": {
+            "matchExpressions": [
+                {"key": "app.kubernetes.io/name", "operator": "In", "values": ["runtime-gateway", "workflow-worker"]}
+            ]
+        },
     }
     for target, name, selector, direction, rules in (
         (
@@ -56,7 +67,13 @@ def studio_provider(installed_agentx: dict[str, str]) -> str:
             "Egress",
             {"to": [peer]},
         ),
-        (namespace, "knowledge-fixture-ingress", peer["podSelector"], "Ingress", {"from": [control_peer]}),
+        (
+            namespace,
+            "knowledge-fixture-ingress",
+            peer["podSelector"],
+            "Ingress",
+            {"from": [control_peer, runtime_peer]},
+        ),
     ):
         rules["ports"] = [{"protocol": "TCP", "port": 8090}]
         policy = {
@@ -99,11 +116,50 @@ def _model(client, department_id, run_id, mode, secret, endpoint, name, price, p
     return {"id": model["id"], "alias": alias, "credentialId": credential["id"]}
 
 
+def _wait_admin_admission(context, client, me):
+    """Bootstrap precedes the asynchronous Runtime user projection, not its acknowledgement."""
+    tenant, user = UUID(me["companyId"]), UUID(me["id"])
+    assert "execution:view" in me["permissions"]
+    version = int(
+        _control_mysql(
+            context,
+            f"SELECT token_version FROM users WHERE tenant_id=UUID_TO_BIN('{tenant}') AND id=UUID_TO_BIN('{user}')",  # noqa: S608 -- parsed UUIDs only.
+        )
+    )
+    started = time.monotonic()
+    while time.monotonic() - started < 120:
+        projected = _runtime_mysql(
+            context,
+            "SELECT COUNT(*) FROM runtime_user_admission "  # noqa: S608 -- parsed UUIDs and integer only.
+            f"WHERE tenant_id=UUID_TO_BIN('{tenant}') AND user_id=UUID_TO_BIN('{user}') "
+            f"AND token_version={version} AND status='active' AND tenant_query_enabled=TRUE",
+        )
+        if projected == "1":
+            response = client.get("/api/v1/executions", params={"limit": 1})
+            assert response.status_code == 200, response.text
+            (Path(context["artifact_dir"]) / "studio-admin-admission.json").write_text(
+                json.dumps(
+                    {
+                        "userId": str(user),
+                        "tokenVersion": version,
+                        "waitedSeconds": time.monotonic() - started,
+                        "runtimeProjectionConfirmed": True,
+                        "delegatedExecutionQueryStatus": response.status_code,
+                    },
+                    indent=2,
+                )
+            )
+            return
+        time.sleep(0.5)
+    raise AssertionError("Bootstrap admin admission was not acknowledged by Runtime within 120 seconds")
+
+
 @pytest.fixture(scope="session")
-def studio_models(service_urls, run_id, studio_provider):
+def studio_models(installed_agentx, service_urls, run_id, studio_provider):
     with httpx.Client(base_url=service_urls["web"], timeout=60, trust_env=False) as client:
         token, me = _access_token(client)
         client.headers.update({"Authorization": f"Bearer {token}"})
+        _wait_admin_admission(installed_agentx, client, me)
         return {
             mode: _model(
                 client,

@@ -27,6 +27,10 @@ pub fn invalid_credentials() -> ApiError {
 }
 
 impl ApiError {
+    pub(crate) fn status(&self) -> StatusCode {
+        self.status
+    }
+
     pub(crate) fn design_feedback(&self) -> serde_json::Value {
         serde_json::json!({"code":self.code,"message":self.message,"fieldErrors":self.field_errors})
     }

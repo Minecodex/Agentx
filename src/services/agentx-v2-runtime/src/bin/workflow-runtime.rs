@@ -828,6 +828,7 @@ async fn recovery_loop(
         }
         let started = std::time::Instant::now();
         agentx_v2_runtime::enqueue_due_approval_timeouts(&pool, owner, 100).await?;
+        agentx_v2_runtime::agent_tool_approvals::wake_decided(&pool, 100).await?;
         agentx_v2_runtime::composite_execution::enqueue_overdue(&pool, 100).await?;
         let woken =
             agentx_v2_runtime::agent_session_queue::wake_pending_sessions(&pool, 100).await?;

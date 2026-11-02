@@ -39,6 +39,8 @@ use crate::{
 
 #[path = "engine_agent_projection.rs"]
 mod agent_projection;
+#[path = "engine_agent_resume.rs"]
+mod agent_resume;
 #[path = "engine_context_writes.rs"]
 mod context_writes;
 #[path = "engine_parameter_resolution.rs"]
@@ -331,6 +333,9 @@ async fn start_execution_resolved(
 }
 
 pub async fn resume_execution(pool: &MySqlPool, claim: &RuntimeCommandClaim) -> RuntimeResult<()> {
+    if claim.payload.get("agentToolEffectId").is_some() {
+        return agent_resume::resume(pool, claim).await;
+    }
     let mut tx = pool.begin().await?;
     let command = sqlx::query(
         "SELECT status,locked_by,fencing_token,COALESCE(locked_until>UTC_TIMESTAMP(6),FALSE) lease_active FROM runtime_commands WHERE id=? FOR UPDATE",
@@ -468,37 +473,9 @@ pub async fn resume_execution(pool: &MySqlPool, claim: &RuntimeCommandClaim) -> 
             context_version = context_version.saturating_add(1);
         }
     }
-    schedule_ready(
-        &mut tx,
-        ReadySchedule {
-            tenant_id: claim.tenant_id,
-            execution_id: claim.execution_id,
-            bundle_id,
-            work_package_id,
-            policy: &policy,
-            compatibility: &compatibility,
-            resources: &resources,
-            context: &context,
-            machine: &mut machine,
-            state_version: next_version,
-        },
-    )
-    .await?;
-    persist_machine(
-        &mut tx,
-        PersistMachineRequest {
-            tenant_id: claim.tenant_id,
-            execution_id: claim.execution_id,
-            bundle_id,
-            work_package_id,
-            state_version: next_version,
-            context_version,
-            context: &context,
-            machine: &machine,
-            checkpoint_type: "node_completed",
-        },
-    )
-    .await?;
+    // A following suspend node resolves its expressions in this transaction.
+    // Materialize the resumed output before scheduling it, including when the
+    // next node immediately creates an approval or another input wait.
     let resume_output = single_port_output(output_port, payload.clone());
     let resumed_status =
         if agent_session_wakeup || composite_status.is_some_and(|status| status != "succeeded") {
@@ -529,6 +506,37 @@ pub async fn resume_execution(pool: &MySqlPool, claim: &RuntimeCommandClaim) -> 
     .bind(claim.execution_id)
     .bind(node_execution_id)
     .execute(&mut *tx)
+    .await?;
+    schedule_ready(
+        &mut tx,
+        ReadySchedule {
+            tenant_id: claim.tenant_id,
+            execution_id: claim.execution_id,
+            bundle_id,
+            work_package_id,
+            policy: &policy,
+            compatibility: &compatibility,
+            resources: &resources,
+            context: &context,
+            machine: &mut machine,
+            state_version: next_version,
+        },
+    )
+    .await?;
+    persist_machine(
+        &mut tx,
+        PersistMachineRequest {
+            tenant_id: claim.tenant_id,
+            execution_id: claim.execution_id,
+            bundle_id,
+            work_package_id,
+            state_version: next_version,
+            context_version,
+            context: &context,
+            machine: &machine,
+            checkpoint_type: "node_completed",
+        },
+    )
     .await?;
     if let Some(wait_id) = claim
         .payload
@@ -911,9 +919,10 @@ pub async fn claim_worker_attempt(
     // lock the Workflow row while resolving parameters, blocking Trace or
     // other independent claims for the same Execution.
     let row = sqlx::query(
-        "SELECT a.id,a.tenant_id,a.execution_id,a.node_execution_id,a.capability,a.worker_protocol_version,a.input_json,a.fencing_token,a.deadline_at,n.node_id,n.node_type,n.node_version,n.run_index,n.iteration_index,e.input_json execution_input_json,e.invocation_id,n.loop_frame_json,s.compiled_ir_json,s.resource_snapshot_json,s.execution_context_json,s.runtime_settings_json,r.context_json FROM node_attempts a JOIN node_executions n ON n.id=a.node_execution_id JOIN workflow_executions e ON e.id=a.execution_id JOIN execution_snapshots s ON s.execution_id=a.execution_id JOIN execution_runtime_state r ON r.execution_id=a.execution_id WHERE a.id=? AND a.status='queued' AND (a.locked_until IS NULL OR a.locked_until<=UTC_TIMESTAMP(6)) AND (a.deadline_at IS NULL OR a.deadline_at>UTC_TIMESTAMP(6)) FOR UPDATE OF a",
+        "SELECT a.id,a.tenant_id,a.execution_id,a.node_execution_id,a.capability,a.worker_protocol_version,a.input_json,a.fencing_token,a.deadline_at,n.node_id,n.node_type,n.node_version,n.run_index,n.iteration_index,e.input_json execution_input_json,e.invocation_id,n.loop_frame_json,s.compiled_ir_json,s.resource_snapshot_json,s.execution_context_json,s.runtime_settings_json,r.context_json FROM node_attempts a JOIN node_executions n ON n.id=a.node_execution_id JOIN workflow_executions e ON e.id=a.execution_id JOIN execution_snapshots s ON s.execution_id=a.execution_id JOIN execution_runtime_state r ON r.execution_id=a.execution_id WHERE a.id=? AND a.dispatch_task_id=? AND a.status='queued' AND (a.locked_until IS NULL OR a.locked_until<=UTC_TIMESTAMP(6)) AND (a.deadline_at IS NULL OR a.deadline_at>UTC_TIMESTAMP(6)) FOR UPDATE OF a",
     )
     .bind(task.attempt_id)
+    .bind(task.task_id)
     .fetch_optional(&mut *tx)
     .await?;
     let Some(row) = row else {
@@ -936,7 +945,20 @@ pub async fn claim_worker_attempt(
         Err(error) => return Err(error),
     };
     if platform_denial.is_none() {
-        authorize_resources(&mut tx, task.tenant_id, &resources).await?;
+        // Agent attachments are filtered and reauthorized per concrete operation.
+        // Revoking an unrelated attachment must not prevent a pending decision from being consumed.
+        let required = if row.try_get::<String, _>("node_type")? == "agent" {
+            resources
+                .iter()
+                .filter(|binding| {
+                    binding.resource_kind == agentx_runtime_contracts::RuntimeResourceKindV1::Model
+                })
+                .cloned()
+                .collect::<Vec<_>>()
+        } else {
+            resources.clone()
+        };
+        authorize_resources(&mut tx, task.tenant_id, &required).await?;
     }
     let changed = sqlx::query(
         "UPDATE node_attempts SET status='running',lease_token=?,locked_until=DATE_ADD(UTC_TIMESTAMP(6),INTERVAL 30 SECOND),heartbeat_at=UTC_TIMESTAMP(6),fencing_token=fencing_token+1,worker_instance_id=?,started_at=COALESCE(started_at,UTC_TIMESTAMP(6)) WHERE id=? AND status='queued' AND (locked_until IS NULL OR locked_until<=UTC_TIMESTAMP(6))",
@@ -1184,8 +1206,9 @@ async fn submit_worker_result_resolved(
 ) -> RuntimeResult<bool> {
     let mut tx = pool.begin().await?;
     if let Some(row) =
-        sqlx::query("SELECT result_hash,status FROM worker_result_receipts WHERE attempt_id=?")
+        sqlx::query("SELECT result_hash,status FROM worker_result_receipts WHERE attempt_id=? AND fencing_token=?")
             .bind(result.attempt_id)
+            .bind(result.fencing_token)
             .fetch_optional(&mut *tx)
             .await?
     {
@@ -1428,10 +1451,21 @@ async fn submit_worker_result_resolved(
     .bind(result.fencing_token)
     .execute(&mut *tx)
     .await?;
-    crate::quota::settle_attempt_usage(&mut tx, tenant_id, result.attempt_id, &effective_outputs)
+    if effective_status == WorkerResultStatusV1::Suspended
+        && crate::agent_tool_approvals::pause_budget(&mut tx, tenant_id, result.attempt_id).await?
+    {
+        // The same Attempt will settle cumulative usage after its original Effect resumes.
+    } else {
+        crate::quota::settle_attempt_usage(
+            &mut tx,
+            tenant_id,
+            result.attempt_id,
+            &effective_outputs,
+        )
         .await?;
-    crate::quota::release_attempt(&mut tx, tenant_id, result.attempt_id, "attempt_terminal")
-        .await?;
+        crate::quota::release_attempt(&mut tx, tenant_id, result.attempt_id, "attempt_terminal")
+            .await?;
+    }
     sqlx::query(
         "UPDATE node_executions SET status=?,output_json=?,error_code=?,error_message=?,ended_at=IF(?='ready',NULL,UTC_TIMESTAMP(6)) WHERE id=?",
     )
@@ -1836,6 +1870,12 @@ async fn schedule_ready(
             compatibility_hash,
             deadline_at,
         };
+        sqlx::query("UPDATE node_attempts SET dispatch_task_id=? WHERE tenant_id=? AND id=?")
+            .bind(task.task_id)
+            .bind(ready.tenant_id)
+            .bind(attempt_id.as_uuid())
+            .execute(&mut **tx)
+            .await?;
         crate::quota::reserve(
             tx,
             ready.tenant_id,

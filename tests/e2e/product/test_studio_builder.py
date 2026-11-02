@@ -8,6 +8,7 @@ import pytest
 
 from tests.e2e.product import studio_builder_security as security
 from tests.e2e.product.studio_builder_faults import studio_faults as studio_faults
+from tests.e2e.product.studio_builder_faults import verify_gateway_unknown_after_deadline
 from tests.e2e.runtime.test_agent_attachments import _control_mysql, _runtime_mysql
 from tests.e2e.support import run_playwright
 
@@ -64,6 +65,7 @@ def test_plan8_layout_protocol(installed_agentx, service_urls, studio_models, st
                 "AGENTX_E2E_STUDIO_FIXTURE_ALIAS": studio_models["fixture"]["alias"],
             },
         )
+        verify_gateway_unknown_after_deadline(installed_agentx, studio_faults)
     finally:
         capture_builder_evidence(installed_agentx)
 
@@ -116,6 +118,7 @@ def test_plan8_studio_builder_matrix(installed_agentx, service_urls, studio_mode
             ),
             environment,
         )
+        verify_gateway_unknown_after_deadline(installed_agentx, studio_faults)
     finally:
         capture_builder_evidence(installed_agentx)
 
@@ -125,15 +128,15 @@ def capture_builder_evidence(context):
     queries = {
         "runs": (
             _control_mysql,
-            "SELECT JSON_OBJECT('id',LOWER(HEX(r.id)),'status',r.status,'modelAliasId',LOWER(HEX(r.model_alias_id)),'settingVersion',r.setting_version,'draftId',LOWER(HEX(s.draft_id))) FROM studio_builder_runs r JOIN studio_builder_sessions s ON s.id=r.session_id",
+            "SELECT JSON_OBJECT('id',LOWER(HEX(r.id)),'status',r.status,'modelAliasId',LOWER(HEX(r.model_alias_id)),'settingVersion',r.setting_version,'draftId',LOWER(HEX(s.draft_id))) FROM design_agent_runs r JOIN design_agent_sessions s ON s.id=r.session_id",
         ),
         "effects": (
             _control_mysql,
-            "SELECT JSON_OBJECT('id',LOWER(HEX(id)),'runId',LOWER(HEX(run_id)),'tool',tool_name,'status',status,'arguments',input_json,'result',result_json) FROM studio_builder_effects",
+            "SELECT JSON_OBJECT('id',LOWER(HEX(id)),'runId',LOWER(HEX(run_id)),'tool',tool_name,'status',status,'arguments',input_json,'result',result_json) FROM design_agent_effects",
         ),
         "model-ledger": (
             _runtime_mysql,
-            "SELECT JSON_OBJECT('id',LOWER(HEX(id)),'source',source_kind,'target',studio_target_json,'status',status,'kind',call_kind,'error',error_code,'input',input_tokens,'output',output_tokens,'costMicros',cost_micros,'currency',cost_currency,'executionId',execution_id,'attemptId',attempt_id) FROM runtime_calls WHERE source_kind='studio_builder'",
+            "SELECT JSON_OBJECT('id',LOWER(HEX(id)),'source',source_kind,'target',design_target_json,'status',status,'kind',call_kind,'error',error_code,'input',input_tokens,'output',output_tokens,'costMicros',cost_micros,'currency',cost_currency,'executionId',execution_id,'attemptId',attempt_id) FROM runtime_calls WHERE source_kind='studio_builder'",
         ),
     }
     directory = Path(context["artifact_dir"]) / "studio-builder"

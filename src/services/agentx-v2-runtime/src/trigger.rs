@@ -157,6 +157,7 @@ pub async fn execute(pool: &sqlx::MySqlPool, claim: &TriggerClaim) -> RuntimeRes
             claim.tenant_id,
             claim.application_id,
             InvocationCaller {
+                access: None,
                 wait_inputs: match &claim.configuration.configuration {
                     RuntimeTriggerConfigurationV1::Schedule { wait_inputs, .. } => {
                         Some(wait_inputs.clone())

@@ -174,7 +174,7 @@ CREATE TABLE worker_result_receipts (
     status ENUM('accepted','replayed','rejected') NOT NULL,
     response_json JSON NOT NULL,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    PRIMARY KEY (attempt_id),
+    PRIMARY KEY (attempt_id, fencing_token),
     UNIQUE KEY uq_worker_result_hash (tenant_id, attempt_id, result_hash)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 

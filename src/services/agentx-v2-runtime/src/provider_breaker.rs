@@ -82,13 +82,13 @@ impl ProviderBreaker {
                     until: now + COOLDOWN,
                 };
             }
-        } else if let BreakerState::Open { until } = entry.state {
-            if now >= until {
-                // Failed probe: re-open for another cooldown window.
-                entry.state = BreakerState::Open {
-                    until: now + COOLDOWN,
-                };
-            }
+        } else if let BreakerState::Open { until } = entry.state
+            && now >= until
+        {
+            // Failed probe: re-open for another cooldown window.
+            entry.state = BreakerState::Open {
+                until: now + COOLDOWN,
+            };
         }
     }
 

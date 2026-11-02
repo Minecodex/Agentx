@@ -19,7 +19,7 @@ pub struct StudioBuilderTargetV1 {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DesignModelEffectRequestV1 {
     pub protocol_version: u32,
-    pub target: StudioBuilderTargetV1,
+    pub target: crate::DesignModelTargetV1,
     pub binding: crate::RuntimeResourceBindingV1,
     pub parameters: Value,
     pub context: EffectContextV1,
@@ -29,7 +29,7 @@ pub struct DesignModelEffectRequestV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DesignModelReceiptRequestV1 {
-    pub target: StudioBuilderTargetV1,
+    pub target: crate::DesignModelTargetV1,
     pub effect_id: Uuid,
     pub after: u64,
 }

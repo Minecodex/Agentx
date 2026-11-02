@@ -1,0 +1,127 @@
+{
+  "$defs": {
+    "ApplicationUiBuilderTargetV1": {
+      "additionalProperties": false,
+      "properties": {
+        "applicationId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "bundleId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "contractHash": {
+          "type": "string"
+        },
+        "runId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "sessionId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "tenantId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "uiDraftId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "userId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenantId",
+        "applicationId",
+        "uiDraftId",
+        "bundleId",
+        "contractHash",
+        "sessionId",
+        "runId",
+        "userId"
+      ],
+      "type": "object"
+    },
+    "StudioBuilderTargetV1": {
+      "additionalProperties": false,
+      "properties": {
+        "draftId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "runId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "sessionId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "tenantId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "userId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "workflowId": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenantId",
+        "workflowId",
+        "draftId",
+        "sessionId",
+        "runId",
+        "userId"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "workflow_builder",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/StudioBuilderTargetV1"
+        }
+      },
+      "required": [
+        "kind",
+        "target"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "application_ui_builder",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/ApplicationUiBuilderTargetV1"
+        }
+      },
+      "required": [
+        "kind",
+        "target"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "DesignModelTargetV1"
+}

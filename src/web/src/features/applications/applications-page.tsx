@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
-import { AppWindow, Plus } from 'lucide-react'
+import { AppWindow, Copy, ExternalLink, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
@@ -38,6 +38,7 @@ export function ApplicationsPage() {
     { accessorKey: 'activeVersionNumber', header: t('applications.deployment'), cell: ({ row }) => row.original.activeVersionNumber ? `v${row.original.activeVersionNumber}` : '—' },
     { accessorKey: 'status', header: t('common.status'), cell: ({ row }) => <StatusBadge status={row.original.status === 'active' ? 'active' : row.original.status === 'draft' ? 'draft' : 'inactive'} /> },
     { accessorKey: 'updatedAt', header: t('common.updatedAt'), cell: ({ row }) => formatDateTime(row.original.updatedAt) },
+    { id: 'access', header: t('applicationUi.title'), cell: ({ row }) => row.original.publishedPageSlug ? <ApplicationAccess slug={row.original.publishedPageSlug} /> : '—' },
     { id: 'actions', header: '', cell: ({ row }) => <div className="flex gap-1"><Button asChild size="sm" variant="ghost"><Link to={`/applications/${row.original.id}`}>{t('applications.manage')}</Link></Button><EntityDeleteButton canDelete={auth.hasPermission('application:delete')} deletePath={`/applications/${row.original.id}`} entityId={row.original.id} entityName={row.original.name} entityType="application" onDeleted={async () => { await queryClient.invalidateQueries({ queryKey: ['applications'] }); showToast(t('applications.deleted')) }} /></div> },
   ], [auth, formatDateTime, queryClient, showToast, t])
   const fields: EntityFormField[] = [
@@ -52,4 +53,14 @@ export function ApplicationsPage() {
     {applications.error && <p className="fixed bottom-5 left-1/2 z-20 -translate-x-1/2 rounded-lg bg-danger px-4 py-2 text-xs text-white">{String(applications.error)}</p>}
     {open && <EntityFormDialog cancelLabel={t('common.cancel')} fields={fields} onClose={() => setOpen(false)} onSubmit={(values) => create.mutateAsync(values).then(() => undefined)} open submitLabel={t('common.save')} title={t('applications.create')} />}
   </>
+}
+
+function ApplicationAccess({slug}:{slug:string}){
+  const {t}=useTranslation(),{showToast}=useToast()
+  const href=`/a/${encodeURIComponent(slug)}`
+  const copy=async()=>{
+    try{await navigator.clipboard.writeText(new URL(href,window.location.origin).href);showToast(t('applicationUi.linkCopied'))}
+    catch{showToast(t('applicationUi.copyFailed'))}
+  }
+  return <div className="flex items-center gap-1"><Button asChild size="sm" variant="ghost"><Link to={href} target="_blank" rel="noopener noreferrer"><ExternalLink className="size-3.5"/>{t('applicationUi.openPage')}</Link></Button><Button size="sm" variant="ghost" aria-label={t('applicationUi.copyLink')} onClick={()=>void copy()}><Copy className="size-3.5"/></Button></div>
 }

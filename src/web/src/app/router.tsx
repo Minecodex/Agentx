@@ -13,6 +13,8 @@ import { ForbiddenPage } from '../features/auth/forbidden-page'
 import { RouteErrorPage } from './route-error-page'
 
 const ApplicationsPage = lazy(() => import('../features/applications/applications-page').then((module) => ({ default: module.ApplicationsPage })))
+const OAuthPage=lazy(()=>import('../features/oauth/oauth-page').then(module=>({default:module.OAuthPage})))
+const ApplicationBusinessPage = lazy(()=>import('../features/applications/ui/application-business-page').then(module=>({default:module.ApplicationBusinessPage})))
 const ApplicationDetailPage = lazy(() => import('../features/applications/application-detail-page').then((module) => ({ default: module.ApplicationDetailPage })))
 const ApprovalsPage = lazy(() => import('../features/approvals/approvals-page').then((module) => ({ default: module.ApprovalsPage })))
 const ApprovalDetailPage = lazy(() => import('../features/approvals/approval-detail-page').then((module) => ({ default: module.ApprovalDetailPage })))
@@ -53,6 +55,8 @@ function deferred(element: ReactNode) {
 }
 
 const routes: RouteObject[] = [
+  {path:'oauth/:kind',element:<Protected>{deferred(<OAuthPage/>)}</Protected>},
+  {path:'a/:slug',element:<Protected>{deferred(<RequirePermission permission="application:invoke"><ApplicationBusinessPage/></RequirePermission>)}</Protected>},
   { path: 'setup', element: <PublicRoute kind="setup"><SetupPage /></PublicRoute> },
   { path: 'login', element: <PublicRoute kind="login"><LoginPage /></PublicRoute> },
   { path: 'change-password', element: <PublicRoute kind="change-password"><ChangePasswordPage /></PublicRoute> },

@@ -20,6 +20,8 @@ export default {
   "replyHint": "Emit an intermediate message and continue. Channels deliver to the source conversation; API consumers use events or queries; testing interfaces display it live. End nodes produce final results.",
   "outputs": "Output content",
   "waitSettings": "Wait settings",
+  "responseSchema": "Reply contract",
+  "responseSchemaHint": "Optional JSON Schema. Web and MCP use the same frozen contract. Every entry validates the unchanged content before resuming the original task.",
   "timeoutHint": "Leave empty to wait until input arrives or the execution is cancelled. Unit: milliseconds.",
   "exits": "Execution exits",
   "received": "Input received; continue downstream",

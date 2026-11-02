@@ -38,6 +38,8 @@ import pytest
 
 from tests.e2e.product.user_auth import UserTokenAuth
 from tests.e2e.runtime.test_agent_attachments import (
+    ADMIN_PASSWORD,
+    ADMIN_USERNAME,
     _access_token,
     _run_fixture_job,
     _runtime_mysql,
@@ -243,7 +245,11 @@ def test_provider_long_term_memory_write_recall(
     from tests.e2e.product.live_text_support import Secret
 
     with httpx.Client(
-        base_url=service_urls["runtime"], auth=UserTokenAuth(service_urls["web"], Secret(token)), timeout=60
+        base_url=service_urls["runtime"],
+        auth=UserTokenAuth(
+            service_urls["web"], Secret(token), username=ADMIN_USERNAME, password=Secret(ADMIN_PASSWORD)
+        ),
+        timeout=60,
     ) as gateway:
         session_headers = {"Authorization": f"Bearer {token}"}
 

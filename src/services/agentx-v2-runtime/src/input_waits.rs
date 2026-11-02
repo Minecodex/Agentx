@@ -43,6 +43,11 @@ pub(crate) async fn create(
     node_id: &str,
     parameters: &Value,
 ) -> RuntimeResult<()> {
+    let response_schema = parameters.get("responseSchema");
+    if let Some(schema) = response_schema {
+        agentx_runtime::input_wait_validator(schema)
+            .map_err(|message| invalid("WAIT_RESPONSE_SCHEMA_INVALID", &message))?;
+    }
     let context = workflow_interaction::context(tx, tenant, execution, node_id).await?;
     // Serialize the root's per-path sequence, including parallel child executions.
     let root_status: String = sqlx::query_scalar(
@@ -82,6 +87,17 @@ pub(crate) async fn create(
     } else {
         None
     };
+    if let Some(content) = &reply {
+        validate_content(response_schema, content)?;
+        crate::artifact_access::require_wait_content(
+            tx,
+            tenant,
+            context.root_execution_id,
+            execution,
+            content,
+        )
+        .await?;
+    }
     let active_scope = if preset {
         None
     } else {
@@ -129,9 +145,9 @@ pub(crate) async fn create(
             "Hook notifications require an application invocation",
         ));
     }
-    let inserted = sqlx::query("INSERT INTO input_waits(id,tenant_id,root_execution_id,execution_id,invocation_id,application_id,node_execution_id,checkpoint_id,node_id,node_path,path_hash,occurrence,active_scope,status,deadline_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'waiting',?)")
+    let inserted = sqlx::query("INSERT INTO input_waits(id,tenant_id,root_execution_id,execution_id,invocation_id,application_id,node_execution_id,checkpoint_id,node_id,node_path,path_hash,occurrence,active_scope,status,deadline_at,response_schema_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'waiting',?,?)")
         .bind(wait_id).bind(tenant).bind(context.root_execution_id).bind(execution).bind(context.invocation_id).bind(context.application_id)
-        .bind(node_execution).bind(checkpoint).bind(node_id).bind(&context.node_path).bind(path_hash).bind(occurrence).bind(active_scope).bind(deadline).execute(&mut **tx).await;
+        .bind(node_execution).bind(checkpoint).bind(node_id).bind(&context.node_path).bind(path_hash).bind(occurrence).bind(active_scope).bind(deadline).bind(response_schema).execute(&mut **tx).await;
     if let Err(error) = inserted {
         if error
             .as_database_error()
@@ -146,7 +162,7 @@ pub(crate) async fn create(
     }
     let resume_url = resume_url(context.invocation_id, wait_id);
     let event_id = agentx_runtime_contracts::deterministic_uuid(wait_id, b"input-required");
-    let payload = json!({"eventId":event_id,"type":"workflow.input_required","invocationId":context.invocation_id,"executionId":execution,"nodeExecutionId":node_execution,"nodeId":node_id,"nodePath":context.node_path,"occurrence":occurrence,"waitId":wait_id,"resumeUrl":resume_url,"expiresAt":deadline.map(timestamp).transpose()?});
+    let payload = json!({"eventId":event_id,"type":"workflow.input_required","invocationId":context.invocation_id,"executionId":execution,"nodeExecutionId":node_execution,"nodeId":node_id,"nodePath":context.node_path,"occurrence":occurrence,"waitId":wait_id,"responseSchema":response_schema,"resumeUrl":resume_url,"expiresAt":deadline.map(timestamp).transpose()?});
     workflow_interaction::event(
         tx,
         tenant,
@@ -296,6 +312,19 @@ pub(crate) async fn submit_tx(
             "This input wait has expired".into(),
         ));
     }
+    validate_content(
+        row.try_get::<Option<Value>, _>("response_schema_json")?
+            .as_ref(),
+        content,
+    )?;
+    crate::artifact_access::require_wait_content(
+        tx,
+        tenant,
+        row.try_get("root_execution_id")?,
+        execution,
+        content,
+    )
+    .await?;
     let receipt_id = Uuid::now_v7();
     let now = OffsetDateTime::now_utc();
     sqlx::query("UPDATE input_waits SET status='received',resume_status='pending',active_scope=NULL,content_json=?,input_source=?,receipt_id=?,input_key=?,input_hash=?,received_at=? WHERE tenant_id=? AND id=? AND status='waiting'")
@@ -322,6 +351,20 @@ pub(crate) async fn submit_tx(
         execution_id: execution,
         receipt_id,
         status: "accepted".into(),
+    })
+}
+
+fn validate_content(schema: Option<&Value>, content: &Value) -> RuntimeResult<()> {
+    let Some(schema) = schema else { return Ok(()) };
+    let field_errors = agentx_runtime::validate_input_wait_content(schema, content)
+        .map_err(|message| invalid("WAIT_RESPONSE_SCHEMA_INVALID", &message))?;
+    if field_errors.is_empty() {
+        return Ok(());
+    }
+    Err(RuntimeError::Validation {
+        code: "WAIT_INPUT_SCHEMA_VALIDATION_FAILED",
+        message: "The supplied content does not match this input wait".into(),
+        field_errors,
     })
 }
 
@@ -452,7 +495,7 @@ pub(crate) async fn report(
         .bind(tenant).bind(root).fetch_all(&mut **tx).await?.into_iter().map(from_row).collect()
 }
 
-fn from_row(row: sqlx::mysql::MySqlRow) -> RuntimeResult<InputWaitV1> {
+pub(crate) fn from_row(row: sqlx::mysql::MySqlRow) -> RuntimeResult<InputWaitV1> {
     let wait_id = row.try_get("id")?;
     Ok(InputWaitV1 {
         wait_id,
@@ -462,6 +505,7 @@ fn from_row(row: sqlx::mysql::MySqlRow) -> RuntimeResult<InputWaitV1> {
         node_path: row.try_get("node_path")?,
         occurrence: row.try_get("occurrence")?,
         status: row.try_get("status")?,
+        response_schema: row.try_get("response_schema_json")?,
         resume_url: resume_url(row.try_get("invocation_id")?, wait_id),
         expires_at: row
             .try_get::<Option<OffsetDateTime>, _>("deadline_at")?

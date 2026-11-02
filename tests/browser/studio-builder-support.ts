@@ -1,8 +1,10 @@
-import { expect, test as base, type Page } from '@playwright/test'
+import { expect, test as base, type Page, type Response } from '@playwright/test'
+import { clickForResponse, trackAccessToken } from './browser-http'
 
 export type Created = { id: string; createdVersionId: string; documentId: string }
 export type Draft = { id: string; revision: number; definition: { nodes: Array<{ id: string; name: string; type: string }>; connections: unknown[] }; definitionHash: string }
 const activeRuns = new Map<Page,{id:string;session:string;authorization:string}>()
+const userTokens = new WeakMap<Page,{initial:string;current:()=>Promise<string>}>()
 
 // Failed assertions can leave an ask_user run waiting after its page is closed.
 // Cancel only runs created by this test, so they cannot consume the next test's slots.
@@ -14,7 +16,7 @@ export const test = base.extend<{ designRunCleanup: void }>({
       const runs = [...activeRuns.values()]
       activeRuns.clear()
       for (const run of runs) {
-        const response = await request.post(`/api/v1/studio-builder/sessions/${run.session}/runs/${run.id}/cancel`, {
+        const response = await request.post(`/api/v1/design-agent/sessions/${run.session}/runs/${run.id}/cancel`, {
           headers: { Authorization: run.authorization },
         })
         // Some security cases deliberately revoke access or delete the draft/session.
@@ -31,11 +33,15 @@ export async function login(page: Page) {
   const response = page.waitForResponse(value => value.url().endsWith('/api/v1/auth/login') && value.request().method() === 'POST')
   await page.getByRole('button', { name: '登录', exact: true }).click()
   await expect(page).toHaveURL(/\/$/)
-  return ((await (await response).json()) as { accessToken: string }).accessToken
+  const token=((await (await response).json()) as { accessToken: string }).accessToken
+  userTokens.set(page,{initial:token,current:trackAccessToken(page,token)})
+  return token
 }
 
 export async function read<T>(page: Page, token: string, path: string): Promise<T> {
-  const response = await page.request.get(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}` } })
+  const known=userTokens.get(page)
+  const current=known?.initial===token?await known.current():token
+  const response = await page.request.get(`/api/v1${path}`, { headers: { Authorization: `Bearer ${current}` } })
   expect(response.ok(), await response.text()).toBeTruthy()
   return response.json() as Promise<T>
 }
@@ -44,7 +50,7 @@ export async function allEntries<T>(page: Page, token: string, session: string) 
   const items: T[] = []
   let cursor = 0
   for (;;) {
-    const next = await read<{items:T[];nextCursor:number}>(page,token,`/studio-builder/sessions/${session}/entries?after=${cursor}`)
+    const next = await read<{items:T[];nextCursor:number}>(page,token,`/design-agent/sessions/${session}/entries?after=${cursor}`)
     items.push(...next.items)
     if (next.items.length < 200) return items
     expect(next.nextCursor).toBeGreaterThan(cursor)
@@ -65,7 +71,7 @@ export async function setModel(page: Page, alias: string) {
     await row.getByRole('button',{name:'重新设置',exact:true}).click()
     expect((await saved).status()).toBe(200)
   }
-  await expect(row.getByText('平台 AI 模型（画布与评测）', { exact: true })).toBeVisible()
+  await expect(row.getByText('平台 AI 模型（工作流、网页与评测）', { exact: true })).toBeVisible()
 }
 
 export async function create(page: Page, name: string) {
@@ -94,10 +100,21 @@ export async function count(page: Page, token: string, id: string) {
 
 export async function send(page: Page, prompt: string) {
   const panel = page.getByTestId('studio-builder-panel')
-  await panel.getByLabel('描述工作流需求').fill(prompt)
-  const started = page.waitForResponse(value => /\/studio-builder\/sessions\/.+\/runs$/.test(new URL(value.url()).pathname) && value.request().method() === 'POST')
-  await panel.getByRole('button', { name: '发送', exact: true }).click()
-  const response = await started
+  await expect(panel.getByRole('button', {name:'发送',exact:true})).toBeVisible()
+  const input=panel.getByLabel('描述工作流需求')
+  await expect(input).not.toHaveAttribute('maxlength','2048')
+  await input.fill(prompt)
+  await expect(input).toHaveValue(prompt)
+  const notification=page.getByRole('region',{name:'Notifications (F8)'}).getByRole('listitem')
+  // A saved notification can pause on hover above the composer. Dismiss it
+  // through its real close button before the actionability check resumes.
+  await page.addLocatorHandler(notification,async toast=>{await toast.getByRole('button').click()})
+  let response:Response
+  try {
+    response=await clickForResponse(page,panel.getByRole('button',{name:'发送',exact:true}),value=>/\/design-agent\/sessions\/.+\/runs$/.test(new URL(value.url()).pathname)&&value.request().method()==='POST')
+  } finally {
+    await page.removeLocatorHandler(notification)
+  }
   expect(response.status(), await response.text()).toBe(200)
   const run = await response.json() as { id: string }
   const session=new URL(response.url()).pathname.split('/').at(-2)!
@@ -105,13 +122,16 @@ export async function send(page: Page, prompt: string) {
   return run.id
 }
 
-export async function completed(page: Page, requireApplied = true, timeout = 180_000) {
+export async function completed(page: Page, requireApplied = true, timeout = 660_000) {
+  // Each Run already has a fixed ten-minute server deadline. Allow its receipt
+  // to settle before test cleanup cancels it, including tests with several Runs.
+  test.setTimeout(test.info().timeout + timeout)
   const panel = page.getByTestId('studio-builder-panel')
   const current=activeRuns.get(page)!
   let status:string|undefined
   try {
     await expect.poll(async()=>{
-      const response=await page.request.get(`/api/v1/studio-builder/sessions/${current.session}`,{headers:{Authorization:current.authorization}})
+      const response=await page.request.get(`/api/v1/design-agent/sessions/${current.session}`,{headers:{Authorization:current.authorization}})
       expect(response.ok(),await response.text()).toBeTruthy()
       const summary=await response.json() as {runs:Array<{id:string;status:string}>}
       status=summary.runs.find(run=>run.id===current.id)?.status
@@ -122,7 +142,7 @@ export async function completed(page: Page, requireApplied = true, timeout = 180
     const history: Entry[] = []
     let cursor = 0
     for (;;) {
-      const entries = await page.request.get(`/api/v1/studio-builder/sessions/${current.session}/entries?after=${cursor}`, { headers: { Authorization: current.authorization } })
+      const entries = await page.request.get(`/api/v1/design-agent/sessions/${current.session}/entries?after=${cursor}`, { headers: { Authorization: current.authorization } })
       expect(entries.ok(), await entries.text()).toBeTruthy()
       const batch = await entries.json() as { items: Entry[]; nextCursor: number }
       history.push(...batch.items.filter(entry => entry.runId === current.id && entry.payload.type !== 'model_delta'))
@@ -133,6 +153,7 @@ export async function completed(page: Page, requireApplied = true, timeout = 180
     await test.info().attach(`run-${current.id}.json`,{body:JSON.stringify(history),contentType:'application/json'})
   }
   expect(status, `Run ${current.id}; see its attached events`).toBe('completed')
+  await expect(panel.getByRole('button',{name:'停止',exact:true})).toBeDisabled()
   await expect(panel.getByText(/创作完成，请检查|创作停止，请检查|模型调用结果未知/).last()).toBeVisible({ timeout: 180_000 })
   await expect(panel.getByText(/创作完成，请检查|创作停止，请检查|模型调用结果未知/).last()).toHaveText('创作完成，请检查静态结果并手动测试。')
   if (requireApplied) await expect(panel.getByText('已应用一个编辑事务', { exact: true }).last()).toBeVisible()
@@ -148,7 +169,10 @@ export const editorPath = (created: Created) => `/workflows/${created.id}/versio
 
 export async function rename(page: Page, label: string, id = 'p8-decision', kind: 'node' | 'loop' = 'node') {
   const card = kind === 'loop' ? page.getByTestId(`studio-loop-${id}`).locator('header') : page.getByTestId(`studio-node-${id}`)
-  await card.dblclick()
+  // A single click opens the current inspector; a second click can hit a
+  // control that appears over the old canvas coordinates.
+  await card.click()
+  await expect(page.getByTestId('node-details-view')).toBeVisible()
   const basics = page.getByTestId('node-basics')
   if (await basics.getAttribute('open') === null) await basics.locator('summary').click()
   const name=basics.getByLabel('名称', {exact: false}).first()

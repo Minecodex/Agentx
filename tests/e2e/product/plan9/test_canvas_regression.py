@@ -1,0 +1,21 @@
+"""Reuse the existing canvas suite in its original order with explicitly injected model credentials."""
+
+import pytest
+
+from tests.e2e.product import test_studio_builder as canvas
+from tests.e2e.product.studio_builder_faults import studio_faults as studio_faults
+
+pytestmark = [pytest.mark.cluster, pytest.mark.product]
+
+test_plan8_node_inspectors = canvas.test_plan8_node_inspectors
+test_plan8_layout_protocol = canvas.test_plan8_layout_protocol
+test_plan8_studio_builder_desktop = canvas.test_plan8_studio_builder_desktop
+test_plan8_studio_builder_matrix = canvas.test_plan8_studio_builder_matrix
+test_plan8_studio_builder_resolve_only = canvas.test_plan8_studio_builder_resolve_only
+test_plan8_studio_builder_ledger_retention = canvas.test_plan8_studio_builder_ledger_retention
+test_plan8_studio_builder_control_offline = canvas.test_plan8_studio_builder_control_offline
+test_plan8_studio_builder_unsettled_delete_protection = canvas.test_plan8_studio_builder_unsettled_delete_protection
+test_plan8_studio_builder_package_history = canvas.test_plan8_studio_builder_package_history
+test_plan8_studio_builder_revision_delete_race = canvas.test_plan8_studio_builder_revision_delete_race
+test_plan8_studio_builder_resource_requests = canvas.test_plan8_studio_builder_resource_requests
+test_plan8_studio_builder_tenant_boundaries = canvas.test_plan8_studio_builder_tenant_boundaries

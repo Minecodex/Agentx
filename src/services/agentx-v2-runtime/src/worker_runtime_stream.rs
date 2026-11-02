@@ -13,11 +13,48 @@ const MAX_FRAME_BYTES: usize = 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_TOOL_CALLS: u64 = 256;
 
+/// Stable diagnostics without provider payloads, tool arguments or request URLs.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub(crate) enum ModelStreamError {
+    #[error("model stream interrupted")]
+    Interrupted,
+    #[error("model stream exceeds 16 MiB")]
+    ResponseLimit,
+    #[error("model stream frame exceeds 1 MiB")]
+    FrameLimit,
+    #[error("model stream is not UTF-8")]
+    InvalidUtf8,
+    #[error("model provider sent an error event")]
+    ProviderEvent,
+    #[error("model stream frame is not JSON")]
+    InvalidJson,
+    #[error("model provider sent an error frame")]
+    ProviderFrame,
+    #[error("model stream contains deltas after completion")]
+    LateDelta,
+    #[error("model stream has an invalid tool call index")]
+    ToolIndex,
+    #[error("model stream changed a tool call ID")]
+    ChangedToolId,
+    #[error("model stream changed its finish reason")]
+    ChangedFinishReason,
+    #[error("model stream ended before finish_reason and [DONE]")]
+    Incomplete,
+    #[error("model stream produced no content")]
+    Empty,
+    #[error("model stream has missing or duplicate tool call IDs/names")]
+    ToolIdentity,
+    #[error("model stream has incomplete tool arguments")]
+    ToolArguments,
+    #[error("model stream delta persistence failed")]
+    DeltaPersistence,
+}
+
 pub(crate) async fn aggregate_openai_sse_stream<F, Fut>(
     response: reqwest::Response,
     request: &Value,
     on_delta: &mut F,
-) -> Result<Value, String>
+) -> Result<Value, ModelStreamError>
 where
     F: FnMut(String, Option<String>) -> Fut + Send,
     Fut: Future<Output = Result<(), String>> + Send,
@@ -36,7 +73,7 @@ async fn aggregate_chunks<S, E, F, Fut>(
     stream: S,
     request: &Value,
     on_delta: &mut F,
-) -> Result<Value, String>
+) -> Result<Value, ModelStreamError>
 where
     S: Stream<Item = Result<Bytes, E>>,
     E: std::fmt::Display,
@@ -56,23 +93,23 @@ where
         let Some(chunk) = stream.next().await else {
             break;
         };
-        let chunk = chunk.map_err(|error| format!("model stream interrupted: {error}"))?;
+        let chunk = chunk.map_err(|_| ModelStreamError::Interrupted)?;
         received += chunk.len();
         if received > MAX_RESPONSE_BYTES {
-            return Err("model stream exceeds 16 MiB".into());
+            return Err(ModelStreamError::ResponseLimit);
         }
         buffer.extend_from_slice(&chunk);
         while let Some((position, separator)) = legacy_sse_boundary(&buffer) {
             if position > MAX_FRAME_BYTES {
-                return Err("model stream frame exceeds 1 MiB".into());
+                return Err(ModelStreamError::FrameLimit);
             }
             let raw = buffer.split_to(position + separator);
-            let raw = std::str::from_utf8(&raw[..position])
-                .map_err(|error| format!("model stream is not UTF-8: {error}"))?;
+            let raw =
+                std::str::from_utf8(&raw[..position]).map_err(|_| ModelStreamError::InvalidUtf8)?;
             let (kind, payload) = parse_legacy_sse_event(raw);
             let payload = payload.trim();
             if kind == "error" {
-                return Err("model provider sent an error event".into());
+                return Err(ModelStreamError::ProviderEvent);
             }
             if payload.is_empty() {
                 continue;
@@ -81,10 +118,10 @@ where
                 done = true;
                 break;
             }
-            let frame: Value = serde_json::from_str(payload)
-                .map_err(|error| format!("model stream frame is not JSON: {error}"))?;
+            let frame: Value =
+                serde_json::from_str(payload).map_err(|_| ModelStreamError::InvalidJson)?;
             if frame.get("error").is_some_and(|error| !error.is_null()) {
-                return Err("model provider sent an error frame".into());
+                return Err(ModelStreamError::ProviderFrame);
             }
             if let Some(value) = frame.get("usage").filter(|value| value.is_object()) {
                 usage = value.clone();
@@ -110,7 +147,7 @@ where
                         || !thought.is_empty()
                         || tool_deltas.is_some_and(|calls| !calls.is_empty()))
                 {
-                    return Err("model stream contains deltas after completion".into());
+                    return Err(ModelStreamError::LateDelta);
                 }
                 if !content.is_empty() || !thought.is_empty() {
                     text.push_str(content);
@@ -119,18 +156,19 @@ where
                         content.to_owned(),
                         (!thought.is_empty()).then(|| thought.to_owned()),
                     )
-                    .await?;
+                    .await
+                    .map_err(|_| ModelStreamError::DeltaPersistence)?;
                 }
                 for call in tool_deltas.into_iter().flatten() {
                     let index = call
                         .get("index")
                         .and_then(Value::as_u64)
                         .filter(|index| *index < MAX_TOOL_CALLS)
-                        .ok_or("model stream has an invalid tool call index")?;
+                        .ok_or(ModelStreamError::ToolIndex)?;
                     let fragment = calls.entry(index).or_default();
                     if let Some(id) = call.get("id").and_then(Value::as_str) {
                         if !fragment.id.is_empty() && fragment.id != id {
-                            return Err("model stream changed a tool call ID".into());
+                            return Err(ModelStreamError::ChangedToolId);
                         }
                         fragment.id = id.to_owned();
                     }
@@ -153,28 +191,28 @@ where
                     .as_deref()
                     .is_some_and(|previous| previous != reason)
                 {
-                    return Err("model stream changed its finish reason".into());
+                    return Err(ModelStreamError::ChangedFinishReason);
                 }
                 finish_reason = Some(reason.to_owned());
             }
         }
         if buffer.len() > MAX_FRAME_BYTES {
-            return Err("model stream frame exceeds 1 MiB".into());
+            return Err(ModelStreamError::FrameLimit);
         }
     }
     if !done || finish_reason.is_none() {
-        return Err("model stream ended before finish_reason and [DONE]".into());
+        return Err(ModelStreamError::Incomplete);
     }
     if text.is_empty() && reasoning.is_empty() && calls.is_empty() {
-        return Err("model stream produced no content".into());
+        return Err(ModelStreamError::Empty);
     }
     let mut ids = std::collections::BTreeSet::new();
     for call in calls.values() {
         if call.id.is_empty() || call.name.is_empty() || !ids.insert(call.id.clone()) {
-            return Err("model stream has missing or duplicate tool call IDs/names".into());
+            return Err(ModelStreamError::ToolIdentity);
         }
         serde_json::from_str::<Value>(&call.arguments)
-            .map_err(|_| "model stream has incomplete tool arguments")?;
+            .map_err(|_| ModelStreamError::ToolArguments)?;
     }
     let prompt_estimate = ["messages", "tools"]
         .iter()
@@ -225,7 +263,7 @@ where
 mod tests {
     use super::*;
 
-    async fn parse(value: &str) -> Result<Value, String> {
+    async fn parse(value: &str) -> Result<Value, ModelStreamError> {
         let chunks = value
             .as_bytes()
             .chunks(3)
@@ -237,6 +275,35 @@ mod tests {
             &mut |_, _| async { Ok(()) },
         )
         .await
+    }
+
+    #[tokio::test]
+    async fn transport_diagnostics_never_include_provider_urls_or_payloads() {
+        let stream = futures_util::stream::iter([Err::<Bytes, _>(
+            "https://provider.test/?api_key=synthetic-private-value",
+        )]);
+        let error = aggregate_chunks(stream, &json!({}), &mut |_, _| async { Ok(()) })
+            .await
+            .unwrap_err();
+        assert_eq!(error, ModelStreamError::Interrupted);
+        assert_eq!(error.to_string(), "model stream interrupted");
+    }
+
+    #[tokio::test]
+    async fn incomplete_frames_and_invalid_arguments_keep_distinct_diagnostics() {
+        let unfinished = "data: [DONE]\n\n";
+        assert_eq!(
+            parse(unfinished).await.unwrap_err(),
+            ModelStreamError::Incomplete
+        );
+        let invalid_arguments = concat!(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call\",\"function\":{\"name\":\"edit\",\"arguments\":\"{\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            "data: [DONE]\n\n"
+        );
+        assert_eq!(
+            parse(invalid_arguments).await.unwrap_err(),
+            ModelStreamError::ToolArguments
+        );
     }
 
     #[tokio::test]
@@ -286,6 +353,6 @@ mod tests {
         })
         .await
         .unwrap_err();
-        assert_eq!(error, "delta persistence failed");
+        assert_eq!(error, ModelStreamError::DeltaPersistence);
     }
 }

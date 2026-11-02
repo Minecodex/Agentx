@@ -20,6 +20,36 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[test]
+fn formal_gateway_wait_presets_preserve_omission_and_explicit_empty_plans() {
+    use agentx_runtime_contracts::{InvocationRequestV1, MessageRequestV1};
+    use serde_json::Value;
+    for (body, expected) in [
+        (json!({"input":{}}), Value::Null),
+        (json!({"input":{},"waitInputs":{}}), json!({})),
+        (
+            json!({"input":{},"waitInputs":{"/ask":["Reply"]}}),
+            json!({"/ask":["Reply"]}),
+        ),
+    ] {
+        let request: InvocationRequestV1 = serde_json::from_value(body).unwrap();
+        assert_eq!(
+            serde_json::to_value(request).unwrap()["waitInputs"],
+            expected
+        );
+    }
+    for (body, expected) in [
+        (json!({"parts":[]}), Value::Null),
+        (json!({"parts":[],"waitInputs":{}}), json!({})),
+    ] {
+        let request: MessageRequestV1 = serde_json::from_value(body).unwrap();
+        assert_eq!(
+            serde_json::to_value(request).unwrap()["waitInputs"],
+            expected
+        );
+    }
+}
+
+#[test]
 fn unknown_fields_and_unsupported_versions_are_rejected() {
     let mut value = serde_json::to_value(compiled_workflow()).unwrap();
     value["unknownField"] = json!(true);
@@ -722,6 +752,8 @@ fn evaluation_work_package_payload() -> RuntimeWorkPackagePayloadV1 {
         endpoint: "https://model.fixture/v1".into(),
         model: "evaluator-v1".into(),
         context_window: 128_000,
+        max_output_tokens: 4096,
+        parameters: serde_json::json!({}),
         price: agentx_runtime_contracts::RuntimeModelPriceV1 {
             version_id: "price:1".into(),
             currency: "USD".into(),

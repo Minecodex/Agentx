@@ -119,8 +119,10 @@ def test_shared_resource_auth_refreshes_only_live_test_identities(monkeypatch, s
         return values[name]
 
     class Auth:
-        def __init__(self, url, token):
+        def __init__(self, url, token, *, username, password):
             assert url == "http://control.invalid"
+            assert username == product.ADMIN_USERNAME
+            assert password.value == product.ADMIN_PASSWORD
             self.token = token
 
         def refresh_if_needed(self):

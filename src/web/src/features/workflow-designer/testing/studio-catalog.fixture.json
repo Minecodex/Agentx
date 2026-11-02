@@ -606,7 +606,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
+      "bundleDigest": "sha256:2f00c967c1d7d2e1ec9d69881c7240d3d0398e99a9d4733c764e6b7b10d7c50f",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -969,7 +969,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
+      "bundleDigest": "sha256:2f00c967c1d7d2e1ec9d69881c7240d3d0398e99a9d4733c764e6b7b10d7c50f",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -1021,7 +1021,11 @@
         },
         "parameterLabels": {
           "hookUrl": "Hook URL (optional)",
+          "responseSchema": "Input JSON Schema (optional)",
           "timeoutMs": "Wait timeout (ms)"
+        },
+        "parameterDescriptions": {
+          "responseSchema": "A frozen JSON Schema for the reply. Dates and formats are validated on every entry. Values are never converted or filled in."
         }
       },
       "zh-CN": {
@@ -1043,7 +1047,11 @@
         },
         "parameterLabels": {
           "hookUrl": "Hook URL（可选）",
+          "responseSchema": "输入 JSON Schema（可选）",
           "timeoutMs": "等待超时（毫秒）"
+        },
+        "parameterDescriptions": {
+          "responseSchema": "固定本次等待的回复结构，所有入口统一校验日期与格式，不转换类型或补默认值。"
         }
       }
     },
@@ -1109,6 +1117,12 @@
             ],
             "recursive": false
           }
+        },
+        "responseSchema": {
+          "type": [
+            "object",
+            "boolean"
+          ]
         },
         "timeoutMs": {
           "maximum": 31536000000,
@@ -1259,6 +1273,9 @@
         "hookUrl": {
           "control": "template"
         },
+        "responseSchema": {
+          "control": "schema_editor"
+        },
         "timeoutMs": {
           "control": "number"
         }
@@ -1270,7 +1287,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
+      "bundleDigest": "sha256:2f00c967c1d7d2e1ec9d69881c7240d3d0398e99a9d4733c764e6b7b10d7c50f",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -1698,7 +1715,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
+      "bundleDigest": "sha256:2f00c967c1d7d2e1ec9d69881c7240d3d0398e99a9d4733c764e6b7b10d7c50f",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -2597,7 +2614,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
+      "bundleDigest": "sha256:2f00c967c1d7d2e1ec9d69881c7240d3d0398e99a9d4733c764e6b7b10d7c50f",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -3217,7 +3234,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
+      "bundleDigest": "sha256:2f00c967c1d7d2e1ec9d69881c7240d3d0398e99a9d4733c764e6b7b10d7c50f",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4012,7 +4029,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
+      "bundleDigest": "sha256:2f00c967c1d7d2e1ec9d69881c7240d3d0398e99a9d4733c764e6b7b10d7c50f",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4289,7 +4306,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
+      "bundleDigest": "sha256:2f00c967c1d7d2e1ec9d69881c7240d3d0398e99a9d4733c764e6b7b10d7c50f",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4711,7 +4728,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
+      "bundleDigest": "sha256:2f00c967c1d7d2e1ec9d69881c7240d3d0398e99a9d4733c764e6b7b10d7c50f",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -4943,7 +4960,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
+      "bundleDigest": "sha256:2f00c967c1d7d2e1ec9d69881c7240d3d0398e99a9d4733c764e6b7b10d7c50f",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -5211,7 +5228,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
+      "bundleDigest": "sha256:2f00c967c1d7d2e1ec9d69881c7240d3d0398e99a9d4733c764e6b7b10d7c50f",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },
@@ -5655,7 +5672,7 @@
     "plugin": {
       "packageId": "agentx/core",
       "packageVersion": "1.0.0",
-      "bundleDigest": "sha256:18cf97627eb2ac223b586c295b2df9afb12c9f7f1edcba9266bdac54d1dca667",
+      "bundleDigest": "sha256:2f00c967c1d7d2e1ec9d69881c7240d3d0398e99a9d4733c764e6b7b10d7c50f",
       "runtimeEntry": "native",
       "runtimeSource": ""
     },

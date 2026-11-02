@@ -34,6 +34,21 @@ def test_large_scheme_like_tool_results_do_not_trigger_quadratic_redaction() -> 
     assert redact(content) == content
 
 
+def test_oauth_tokens_and_callback_codes_are_removed_but_business_error_codes_remain():
+    value = json.dumps(
+        {
+            "url": "http://127.0.0.1:32100/callback?code=private-code&state=public-state",
+            "access": "ory_at_fixture-private",
+            "refresh": "ory_rt_fixture-private",
+            "code": "TASK_NOT_FOUND",
+        }
+    )
+    sanitized = json.loads(redact(value))
+    assert "private" not in json.dumps(sanitized)
+    assert "state=public-state" in sanitized["url"]
+    assert sanitized["code"] == "TASK_NOT_FOUND"
+
+
 def test_redaction_preserves_kubernetes_secret_references_and_yaml_structure() -> None:
     document = """automountServiceAccountToken: false
 volumes:
@@ -58,6 +73,64 @@ def test_redaction_preserves_json_with_escaped_credentials_and_object_values() -
     document = {"secret": {"secretName": "mysql-secrets"}, "password": 'isolated-"password\\value}', "token": "abc"}
     sanitized = redact(json.dumps(document))
     assert json.loads(sanitized) == {"secret": document["secret"], "password": "<redacted>", "token": "<redacted>"}
+
+
+def test_redaction_preserves_public_fencing_counters_and_json_scalar_syntax() -> None:
+    document = {
+        "fencingToken": 3,
+        "automountServiceAccountToken": False,
+        "token": 123456,
+        "password": False,
+        "secret": None,
+        "apiKey": 987654,
+    }
+    sanitized = json.loads(redact(json.dumps(document)))
+    assert sanitized["fencingToken"] == 3
+    assert sanitized["automountServiceAccountToken"] is False
+    for field in ("token", "password", "secret", "apiKey"):
+        assert sanitized[field] == "<redacted>"
+
+
+def test_redacted_browser_json_resources_remain_parseable(tmp_path) -> None:
+    document = {"run": {"fencingToken": 9}, "token": 123456}
+    archive = tmp_path / "trace.zip"
+    with zipfile.ZipFile(archive, "w") as trace:
+        trace.writestr("resources/run.json", json.dumps(document))
+    (tmp_path / "run.json").write_text(json.dumps(document))
+    redact_browser_artifacts(tmp_path)
+    with zipfile.ZipFile(archive) as trace:
+        archived = json.loads(trace.read("resources/run.json"))
+    assert archived == json.loads((tmp_path / "run.json").read_text())
+    assert archived == {"run": {"fencingToken": 9}, "token": "<redacted>"}
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        {"baseURL": "http://127.0.0.1:54591", "pageId": "page@fixture"},
+        {"expression": 'mount({baseUrl:"http://127.0.0.1:54591"})', "guid": "locator@fixture"},
+        {"url": "http://localhost:54591", "title": "Canvas @ revision", "line": 98},
+    ],
+)
+def test_url_redaction_cannot_consume_later_json_fields(document) -> None:
+    encoded = json.dumps(document, separators=(",", ":"))
+    assert json.loads(redact(encoded)) == document
+
+
+def test_trace_jsonl_redaction_preserves_urls_and_removes_only_actual_userinfo(tmp_path) -> None:
+    rows = [
+        {"type": "context-options", "baseURL": "http://localhost:54591", "pageId": "page@fixture"},
+        {"type": "before", "expression": 'open("http://localhost:54591")', "guid": "locator@fixture"},
+        {"type": "request", "url": "https://user:private:password@host.invalid/path"},
+    ]
+    archive = tmp_path / "trace.zip"
+    with zipfile.ZipFile(archive, "w") as trace:
+        trace.writestr("0-trace.trace", "\n".join(json.dumps(row, separators=(",", ":")) for row in rows))
+    redact_browser_artifacts(tmp_path)
+    with zipfile.ZipFile(archive) as trace:
+        sanitized = [json.loads(line) for line in trace.read("0-trace.trace").splitlines()]
+    assert sanitized[:2] == rows[:2]
+    assert sanitized[2]["url"] == "https://<redacted>@host.invalid/path"
 
 
 def test_failed_junit_and_diagnostics_are_redacted_without_hiding_failure(tmp_path) -> None:
@@ -113,3 +186,25 @@ def test_browser_trace_tokens_are_redacted_and_binary_resources_are_preserved(tm
     failure = report.find("testcase/failure")
     assert failure is not None and failure.attrib["message"] == "<redacted>"
     assert failure.text == "Authorization: <redacted>"
+
+
+@pytest.mark.parametrize("encoding_depth", [1, 2, 3])
+def test_serialized_curl_headers_preserve_quote_escapes_and_remove_credentials(encoding_depth):
+    credential = "fixture-bearer-private"
+    curl = (
+        'curl -X POST "$AGENTX_BASE_URL$RESUME_URL" -H "Authorization: Bearer '
+        + credential
+        + '" -H "Idempotency-Key: reply-001" -d \'{"content":"确认"}\''
+    )
+    value = {"type": "frame-snapshot", "dom": ["CODE", {}, curl], "publicId": "page@fixture"}
+    for _ in range(encoding_depth):
+        value = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    sanitized = redact(value)
+    assert credential not in sanitized
+    # Repeated artifact passes must retain every JSON layer and the rest of
+    # the executable example, while never recovering the credential.
+    assert redact(sanitized) == sanitized
+    for _ in range(encoding_depth):
+        sanitized = json.loads(sanitized)
+    assert sanitized["publicId"] == "page@fixture"
+    assert sanitized["dom"][2] == curl.replace("Bearer " + credential, "<redacted>")

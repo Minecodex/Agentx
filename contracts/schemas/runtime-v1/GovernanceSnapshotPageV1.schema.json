@@ -1,5 +1,80 @@
 {
   "$defs": {
+    "ApprovalSubjectV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "workflow_node",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "agentRunId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "argumentsHash": {
+              "type": "string"
+            },
+            "effectId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "kind": {
+              "const": "agent_tool_effect",
+              "type": "string"
+            },
+            "operationId": {
+              "type": "string"
+            },
+            "policyHash": {
+              "type": "string"
+            },
+            "policyRevision": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "toolCallId": {
+              "type": "string"
+            },
+            "toolId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "toolName": {
+              "type": "string"
+            },
+            "toolVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "effectId",
+            "agentRunId",
+            "operationId",
+            "toolCallId",
+            "toolId",
+            "toolVersion",
+            "toolName",
+            "argumentsHash",
+            "policyRevision",
+            "policyHash"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "InputWaitV1": {
       "additionalProperties": false,
       "properties": {
@@ -29,6 +104,7 @@
           "minimum": 0,
           "type": "integer"
         },
+        "responseSchema": true,
         "resumeUrl": {
           "type": [
             "string",
@@ -424,6 +500,9 @@
             "status": {
               "type": "string"
             },
+            "subject": {
+              "$ref": "#/$defs/ApprovalSubjectV1"
+            },
             "title": {
               "type": "string"
             },
@@ -437,6 +516,7 @@
             "executionId",
             "workflowId",
             "nodeId",
+            "subject",
             "title",
             "buttons",
             "status",

@@ -222,6 +222,8 @@ impl<'a> ProviderModelPort<'a> {
             endpoint,
             model,
             credential,
+            parameters,
+            max_output_tokens,
             ..
         } = &self.binding.configuration
         else {
@@ -255,7 +257,23 @@ impl<'a> ProviderModelPort<'a> {
             agentx_agent_core::ModelPurposeV1::AgentTurn => "model",
             agentx_agent_core::ModelPurposeV1::Compaction => "compaction",
         };
-        let body = crate::agent_model_protocol::request(&authorized_request, model, streaming);
+        let budget = super::agent_state::effective_agent_budget(&self.claim.node_parameters);
+        let remaining = budget["maxTokens"].as_u64().unwrap_or(0).saturating_sub(
+            self.counters
+                .input_tokens
+                .load(Ordering::Relaxed)
+                .saturating_add(self.counters.output_tokens.load(Ordering::Relaxed)),
+        );
+        let ceiling = (*max_output_tokens)
+            .min(budget["maxOutputTokens"].as_u64().unwrap_or(0))
+            .min(remaining);
+        if ceiling == 0 {
+            return Err(ModelPortError::Effect(
+                "AGENT_BUDGET_EXHAUSTED: No output tokens remain".into(),
+            ));
+        }
+        let mut body = crate::agent_model_protocol::request(&authorized_request, model, streaming);
+        crate::agent_model_protocol::apply_parameters(&mut body, parameters, ceiling);
         let call_index = self.call_index;
         self.call_index = self.call_index.saturating_add(1);
         let endpoint = openai_chat_completions_endpoint(endpoint);

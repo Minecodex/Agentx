@@ -1,5 +1,7 @@
 import { expect, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { STUDIO_BOUNDARY_WIDTH } from '../../../src/web/src/features/workflow-designer/nodes/node-appearance'
+import { LAYOUT_LAYER_GAP } from '../../../src/web/src/features/workflow-designer/utils/layout-constants'
 import type { components } from '../../../src/web/src/shared/api/generated'
 import { test, completed, count, create, createVersion, login, read, rename, saved, send, setModel, type Created } from '../studio-builder-support'
 
@@ -84,7 +86,7 @@ for (const type of types) {
     const document = await fixtureDocument(page, token, type, created)
     await page.getByRole('button', { name: 'AI 创作', exact: true }).click()
     let drop = type === 'model'
-    await page.route('**/studio-builder/sessions/*/acknowledgements', async route => {
+    await page.route('**/design-agent/sessions/*/acknowledgements', async route => {
       if (drop) { drop = false; await route.abort('connectionreset') } else await route.continue()
     })
     await send(page, `P8FIX: inspector=${JSON.stringify(document)}`)
@@ -96,10 +98,10 @@ for (const type of types) {
     const after = await saved(page, token, created) as unknown as DetailedDraft
     const start = after.editorDocument.boundaryLayouts!.find(item => item.boundary === 'start')!
     const target = after.editorDocument.nodeLayouts!.find(item => item.nodeId === 'inspect_node')!
-    expect(target.x - start.x - 240).toBeGreaterThanOrEqual(159)
+    expect(target.x - start.x - STUDIO_BOUNDARY_WIDTH).toBeGreaterThanOrEqual(LAYOUT_LAYER_GAP - 1)
     if (type === 'loop_over_items') {
       const exit = after.editorDocument.nodeLayouts!.find(item => item.nodeId === 'exit')!
-      expect(exit.x - target.x - target.width!).toBeCloseTo(160)
+      expect(exit.x - target.x - target.width!).toBeCloseTo(LAYOUT_LAYER_GAP)
     }
     await page.getByRole('button', { name: /^(适应画布|Fit view)$/ }).click()
     await markdown.scrollIntoViewIfNeeded()

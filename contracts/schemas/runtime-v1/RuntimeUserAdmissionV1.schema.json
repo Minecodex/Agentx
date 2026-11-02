@@ -56,6 +56,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "canApprove": {
+      "type": "boolean"
+    },
     "departmentId": {
       "format": "uuid",
       "type": "string"
@@ -101,6 +104,7 @@
     "tokenVersion",
     "enabled",
     "tenantQueryEnabled",
+    "canApprove",
     "roleAssignments"
   ],
   "title": "RuntimeUserAdmissionV1",

@@ -1206,6 +1206,204 @@
         "title": "AgentSubjectMemorySearchRequestV1",
         "type": "object"
       },
+      "ApplicationPageDraftV1": {
+        "$defs": {
+          "ApplicationApprovalKindV1": {
+            "enum": [
+              "workflow_node",
+              "agent_tool_effect"
+            ],
+            "type": "string"
+          },
+          "ApplicationApprovalStageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "$ref": "#/$defs/ApplicationApprovalKindV1"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "nodeId",
+              "title",
+              "kind"
+            ],
+            "type": "object"
+          },
+          "ApplicationPageContractV1": {
+            "additionalProperties": false,
+            "properties": {
+              "applicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "applicationName": {
+                "type": "string"
+              },
+              "approvalStages": {
+                "items": {
+                  "$ref": "#/$defs/ApplicationApprovalStageV1"
+                },
+                "type": "array"
+              },
+              "bundleId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "chatMapping": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ChatMappingV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "deploymentId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "inputSchema": true,
+              "maxUploadBytes": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "outputSchema": true,
+              "sdkVersion": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "waitInputNodes": {
+                "items": {
+                  "$ref": "#/$defs/WaitInputNodeV1"
+                },
+                "type": "array"
+              },
+              "workflowVersionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "applicationId",
+              "applicationName",
+              "deploymentId",
+              "workflowVersionId",
+              "bundleId",
+              "inputSchema",
+              "outputSchema",
+              "waitInputNodes",
+              "approvalStages",
+              "sdkVersion",
+              "maxUploadBytes"
+            ],
+            "type": "object"
+          },
+          "ChatMappingV1": {
+            "additionalProperties": false,
+            "properties": {
+              "answerFilesOutput": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "answerOutput": {
+                "type": "string"
+              },
+              "fileInput": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "questionInput": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "questionInput",
+              "answerOutput"
+            ],
+            "type": "object"
+          },
+          "WaitInputNodeV1": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "responseSchema": true
+            },
+            "required": [
+              "path",
+              "nodeId",
+              "name"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "contract": {
+            "$ref": "#/$defs/ApplicationPageContractV1"
+          },
+          "contractHash": {
+            "type": "string"
+          },
+          "html": {
+            "type": "string"
+          },
+          "htmlHash": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "applicationId",
+          "contract",
+          "contractHash",
+          "html",
+          "htmlHash",
+          "revision"
+        ],
+        "title": "ApplicationPageDraftV1",
+        "type": "object"
+      },
       "ApplyChatMappingReceiptV1": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -1623,6 +1821,91 @@
             ],
             "type": "object"
           },
+          "ApplicationUiBuilderTargetV1": {
+            "additionalProperties": false,
+            "properties": {
+              "applicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "bundleId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "contractHash": {
+                "type": "string"
+              },
+              "runId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "sessionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "tenantId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "uiDraftId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "userId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenantId",
+              "applicationId",
+              "uiDraftId",
+              "bundleId",
+              "contractHash",
+              "sessionId",
+              "runId",
+              "userId"
+            ],
+            "type": "object"
+          },
+          "DesignModelTargetV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "workflow_builder",
+                    "type": "string"
+                  },
+                  "target": {
+                    "$ref": "#/$defs/StudioBuilderTargetV1"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "target"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "application_ui_builder",
+                    "type": "string"
+                  },
+                  "target": {
+                    "$ref": "#/$defs/ApplicationUiBuilderTargetV1"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "target"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "EffectContextV1": {
             "additionalProperties": false,
             "properties": {
@@ -1950,6 +2233,34 @@
             ],
             "type": "object"
           },
+          "RuntimeMcpToolPolicyV1": {
+            "additionalProperties": false,
+            "properties": {
+              "approval": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ToolApprovalRuleV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "contentHash": {
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "revision",
+              "contentHash"
+            ],
+            "type": "object"
+          },
           "RuntimeMcpTransportV2": {
             "oneOf": [
               {
@@ -2125,9 +2436,15 @@
                     "const": "model",
                     "type": "string"
                   },
+                  "maxOutputTokens": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "model": {
                     "type": "string"
                   },
+                  "parameters": true,
                   "price": {
                     "$ref": "#/$defs/RuntimeModelPriceV1"
                   },
@@ -2141,6 +2458,8 @@
                   "endpoint",
                   "model",
                   "contextWindow",
+                  "maxOutputTokens",
+                  "parameters",
                   "price"
                 ],
                 "type": "object"
@@ -2185,6 +2504,16 @@
                   },
                   "toolName": {
                     "type": "string"
+                  },
+                  "toolPolicy": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/RuntimeMcpToolPolicyV1"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "toolVersion": {
                     "type": "string"
@@ -2530,6 +2859,36 @@
             ],
             "type": "object"
           },
+          "ToolApprovalRuleV1": {
+            "additionalProperties": false,
+            "properties": {
+              "roleIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "timeoutSeconds": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "userIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "userIds",
+              "roleIds",
+              "timeoutSeconds"
+            ],
+            "type": "object"
+          },
           "ToolCallV1": {
             "additionalProperties": false,
             "properties": {
@@ -2688,7 +3047,7 @@
             "$ref": "#/$defs/ModelRequestV1"
           },
           "target": {
-            "$ref": "#/$defs/StudioBuilderTargetV1"
+            "$ref": "#/$defs/DesignModelTargetV1"
           }
         },
         "required": [
@@ -2704,6 +3063,91 @@
       },
       "DesignModelReceiptRequestV1": {
         "$defs": {
+          "ApplicationUiBuilderTargetV1": {
+            "additionalProperties": false,
+            "properties": {
+              "applicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "bundleId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "contractHash": {
+                "type": "string"
+              },
+              "runId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "sessionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "tenantId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "uiDraftId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "userId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenantId",
+              "applicationId",
+              "uiDraftId",
+              "bundleId",
+              "contractHash",
+              "sessionId",
+              "runId",
+              "userId"
+            ],
+            "type": "object"
+          },
+          "DesignModelTargetV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "workflow_builder",
+                    "type": "string"
+                  },
+                  "target": {
+                    "$ref": "#/$defs/StudioBuilderTargetV1"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "target"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "application_ui_builder",
+                    "type": "string"
+                  },
+                  "target": {
+                    "$ref": "#/$defs/ApplicationUiBuilderTargetV1"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "target"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "StudioBuilderTargetV1": {
             "additionalProperties": false,
             "properties": {
@@ -2756,7 +3200,7 @@
             "type": "string"
           },
           "target": {
-            "$ref": "#/$defs/StudioBuilderTargetV1"
+            "$ref": "#/$defs/DesignModelTargetV1"
           }
         },
         "required": [
@@ -2901,6 +3345,133 @@
         ],
         "title": "DesignModelReceiptV1",
         "type": "object"
+      },
+      "DesignModelTargetV1": {
+        "$defs": {
+          "ApplicationUiBuilderTargetV1": {
+            "additionalProperties": false,
+            "properties": {
+              "applicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "bundleId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "contractHash": {
+                "type": "string"
+              },
+              "runId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "sessionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "tenantId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "uiDraftId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "userId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenantId",
+              "applicationId",
+              "uiDraftId",
+              "bundleId",
+              "contractHash",
+              "sessionId",
+              "runId",
+              "userId"
+            ],
+            "type": "object"
+          },
+          "StudioBuilderTargetV1": {
+            "additionalProperties": false,
+            "properties": {
+              "draftId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "runId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "sessionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "tenantId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "userId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "workflowId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenantId",
+              "workflowId",
+              "draftId",
+              "sessionId",
+              "runId",
+              "userId"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "workflow_builder",
+                "type": "string"
+              },
+              "target": {
+                "$ref": "#/$defs/StudioBuilderTargetV1"
+              }
+            },
+            "required": [
+              "kind",
+              "target"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "application_ui_builder",
+                "type": "string"
+              },
+              "target": {
+                "$ref": "#/$defs/ApplicationUiBuilderTargetV1"
+              }
+            },
+            "required": [
+              "kind",
+              "target"
+            ],
+            "type": "object"
+          }
+        ],
+        "title": "DesignModelTargetV1"
       },
       "DisableDeploymentRequestV1": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3069,6 +3640,81 @@
       },
       "EventEnvelopeV1": {
         "$defs": {
+          "ApprovalSubjectV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "workflow_node",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "agentRunId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "argumentsHash": {
+                    "type": "string"
+                  },
+                  "effectId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "agent_tool_effect",
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "policyHash": {
+                    "type": "string"
+                  },
+                  "policyRevision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "toolCallId": {
+                    "type": "string"
+                  },
+                  "toolId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "toolName": {
+                    "type": "string"
+                  },
+                  "toolVersion": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "effectId",
+                  "agentRunId",
+                  "operationId",
+                  "toolCallId",
+                  "toolId",
+                  "toolVersion",
+                  "toolName",
+                  "argumentsHash",
+                  "policyRevision",
+                  "policyHash"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "InputWaitV1": {
             "additionalProperties": false,
             "properties": {
@@ -3098,6 +3744,7 @@
                 "minimum": 0,
                 "type": "integer"
               },
+              "responseSchema": true,
               "resumeUrl": {
                 "type": [
                   "string",
@@ -3584,6 +4231,9 @@
                   "status": {
                     "type": "string"
                   },
+                  "subject": {
+                    "$ref": "#/$defs/ApprovalSubjectV1"
+                  },
                   "taskId": {
                     "format": "uuid",
                     "type": "string"
@@ -3608,6 +4258,7 @@
                   "executionId",
                   "workflowId",
                   "nodeId",
+                  "subject",
                   "title",
                   "buttons",
                   "status",
@@ -4093,6 +4744,81 @@
       },
       "EventExportPageV1": {
         "$defs": {
+          "ApprovalSubjectV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "workflow_node",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "agentRunId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "argumentsHash": {
+                    "type": "string"
+                  },
+                  "effectId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "agent_tool_effect",
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "policyHash": {
+                    "type": "string"
+                  },
+                  "policyRevision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "toolCallId": {
+                    "type": "string"
+                  },
+                  "toolId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "toolName": {
+                    "type": "string"
+                  },
+                  "toolVersion": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "effectId",
+                  "agentRunId",
+                  "operationId",
+                  "toolCallId",
+                  "toolId",
+                  "toolVersion",
+                  "toolName",
+                  "argumentsHash",
+                  "policyRevision",
+                  "policyHash"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "InputWaitV1": {
             "additionalProperties": false,
             "properties": {
@@ -4122,6 +4848,7 @@
                 "minimum": 0,
                 "type": "integer"
               },
+              "responseSchema": true,
               "resumeUrl": {
                 "type": [
                   "string",
@@ -4600,6 +5327,9 @@
                   "status": {
                     "type": "string"
                   },
+                  "subject": {
+                    "$ref": "#/$defs/ApprovalSubjectV1"
+                  },
                   "taskId": {
                     "format": "uuid",
                     "type": "string"
@@ -4624,6 +5354,7 @@
                   "executionId",
                   "workflowId",
                   "nodeId",
+                  "subject",
                   "title",
                   "buttons",
                   "status",
@@ -6497,6 +7228,7 @@
                 "minimum": 0,
                 "type": "integer"
               },
+              "responseSchema": true,
               "resumeUrl": {
                 "type": [
                   "string",
@@ -9170,6 +9902,34 @@
             ],
             "type": "object"
           },
+          "RuntimeMcpToolPolicyV1": {
+            "additionalProperties": false,
+            "properties": {
+              "approval": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ToolApprovalRuleV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "contentHash": {
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "revision",
+              "contentHash"
+            ],
+            "type": "object"
+          },
           "RuntimeMcpTransportV2": {
             "oneOf": [
               {
@@ -9463,9 +10223,15 @@
                     "const": "model",
                     "type": "string"
                   },
+                  "maxOutputTokens": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "model": {
                     "type": "string"
                   },
+                  "parameters": true,
                   "price": {
                     "$ref": "#/$defs/RuntimeModelPriceV1"
                   },
@@ -9479,6 +10245,8 @@
                   "endpoint",
                   "model",
                   "contextWindow",
+                  "maxOutputTokens",
+                  "parameters",
                   "price"
                 ],
                 "type": "object"
@@ -9523,6 +10291,16 @@
                   },
                   "toolName": {
                     "type": "string"
+                  },
+                  "toolPolicy": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/RuntimeMcpToolPolicyV1"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "toolVersion": {
                     "type": "string"
@@ -10036,6 +10814,36 @@
               "observability"
             ],
             "type": "string"
+          },
+          "ToolApprovalRuleV1": {
+            "additionalProperties": false,
+            "properties": {
+              "roleIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "timeoutSeconds": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "userIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "userIds",
+              "roleIds",
+              "timeoutSeconds"
+            ],
+            "type": "object"
           },
           "ValueNamespace": {
             "enum": [
@@ -10724,6 +11532,81 @@
       },
       "GovernanceSnapshotPageV1": {
         "$defs": {
+          "ApprovalSubjectV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "workflow_node",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "agentRunId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "argumentsHash": {
+                    "type": "string"
+                  },
+                  "effectId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "agent_tool_effect",
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "policyHash": {
+                    "type": "string"
+                  },
+                  "policyRevision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "toolCallId": {
+                    "type": "string"
+                  },
+                  "toolId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "toolName": {
+                    "type": "string"
+                  },
+                  "toolVersion": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "effectId",
+                  "agentRunId",
+                  "operationId",
+                  "toolCallId",
+                  "toolId",
+                  "toolVersion",
+                  "toolName",
+                  "argumentsHash",
+                  "policyRevision",
+                  "policyHash"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "InputWaitV1": {
             "additionalProperties": false,
             "properties": {
@@ -10753,6 +11636,7 @@
                 "minimum": 0,
                 "type": "integer"
               },
+              "responseSchema": true,
               "resumeUrl": {
                 "type": [
                   "string",
@@ -11148,6 +12032,9 @@
                   "status": {
                     "type": "string"
                   },
+                  "subject": {
+                    "$ref": "#/$defs/ApprovalSubjectV1"
+                  },
                   "title": {
                     "type": "string"
                   },
@@ -11161,6 +12048,7 @@
                   "executionId",
                   "workflowId",
                   "nodeId",
+                  "subject",
                   "title",
                   "buttons",
                   "status",
@@ -11535,6 +12423,7 @@
             "minimum": 0,
             "type": "integer"
           },
+          "responseSchema": true,
           "resumeUrl": {
             "type": [
               "string",
@@ -11918,6 +12807,818 @@
         "title": "InvocationSearchRequestV1",
         "type": "object"
       },
+      "McpTaskViewV1": {
+        "$defs": {
+          "ApplicationAccessBindingV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "web",
+                    "type": "string"
+                  },
+                  "publicationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "publicationId",
+                  "revision"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "mcp",
+                    "type": "string"
+                  },
+                  "publicationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "publicationId",
+                  "revision"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "ArtifactUploadResponseV1": {
+            "additionalProperties": false,
+            "properties": {
+              "artifactId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "sizeBytes": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "artifactId",
+              "contentType",
+              "sizeBytes",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "InputWaitV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {},
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "nodePath": {
+                "type": "string"
+              },
+              "occurrence": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "responseSchema": {},
+              "resumeUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "waitId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "waitId",
+              "executionId",
+              "nodeExecutionId",
+              "nodeId",
+              "nodePath",
+              "occurrence",
+              "status"
+            ],
+            "type": "object"
+          },
+          "TaskActionsV1": {
+            "additionalProperties": false,
+            "properties": {
+              "canCancel": {
+                "type": "boolean"
+              },
+              "downloadableArtifactIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "inputWaitIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "canCancel",
+              "inputWaitIds",
+              "downloadableArtifactIds"
+            ],
+            "type": "object"
+          },
+          "TaskApprovalV1": {
+            "additionalProperties": false,
+            "properties": {
+              "approvalId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "version": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "approvalId",
+              "title",
+              "status",
+              "version"
+            ],
+            "type": "object"
+          },
+          "TaskStageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "nodeExecutionId",
+              "title",
+              "status"
+            ],
+            "type": "object"
+          },
+          "TaskStateV1": {
+            "enum": [
+              "accepted",
+              "running",
+              "waiting_input",
+              "waiting_approval",
+              "completed",
+              "failed",
+              "cancelled",
+              "outcome_unknown"
+            ],
+            "type": "string"
+          },
+          "WorkflowMessageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "executionId",
+              "nodeExecutionId",
+              "content",
+              "createdAt"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "accessBinding": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ApplicationAccessBindingV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "allowedActions": {
+            "$ref": "#/$defs/TaskActionsV1"
+          },
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "bundleId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "callerType": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "deploymentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "error": {},
+          "eventCursor": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/$defs/ArtifactUploadResponseV1"
+            },
+            "type": "array"
+          },
+          "invocationStatus": {
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/$defs/WorkflowMessageV1"
+            },
+            "type": "array"
+          },
+          "outputs": {},
+          "pendingApprovals": {
+            "items": {
+              "$ref": "#/$defs/TaskApprovalV1"
+            },
+            "type": "array"
+          },
+          "pendingInputs": {
+            "items": {
+              "$ref": "#/$defs/InputWaitV1"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sessionId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/$defs/TaskStageV1"
+            },
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/$defs/TaskStateV1"
+          },
+          "taskId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "taskUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId",
+          "applicationId",
+          "deploymentId",
+          "workflowVersionId",
+          "bundleId",
+          "callerType",
+          "state",
+          "invocationStatus",
+          "stages",
+          "pendingInputs",
+          "pendingApprovals",
+          "messages",
+          "files",
+          "allowedActions",
+          "revision",
+          "eventCursor",
+          "createdAt"
+        ],
+        "title": "TaskViewV1",
+        "type": "object"
+      },
+      "MyTasksPageV1": {
+        "$defs": {
+          "ApplicationAccessBindingV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "web",
+                    "type": "string"
+                  },
+                  "publicationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "publicationId",
+                  "revision"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "mcp",
+                    "type": "string"
+                  },
+                  "publicationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "publicationId",
+                  "revision"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "ArtifactUploadResponseV1": {
+            "additionalProperties": false,
+            "properties": {
+              "artifactId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "sizeBytes": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "artifactId",
+              "contentType",
+              "sizeBytes",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "InputWaitV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": true,
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "nodePath": {
+                "type": "string"
+              },
+              "occurrence": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "responseSchema": true,
+              "resumeUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "waitId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "waitId",
+              "executionId",
+              "nodeExecutionId",
+              "nodeId",
+              "nodePath",
+              "occurrence",
+              "status"
+            ],
+            "type": "object"
+          },
+          "TaskActionsV1": {
+            "additionalProperties": false,
+            "properties": {
+              "canCancel": {
+                "type": "boolean"
+              },
+              "downloadableArtifactIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "inputWaitIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "canCancel",
+              "inputWaitIds",
+              "downloadableArtifactIds"
+            ],
+            "type": "object"
+          },
+          "TaskApprovalV1": {
+            "additionalProperties": false,
+            "properties": {
+              "approvalId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "version": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "approvalId",
+              "title",
+              "status",
+              "version"
+            ],
+            "type": "object"
+          },
+          "TaskStageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "nodeExecutionId",
+              "title",
+              "status"
+            ],
+            "type": "object"
+          },
+          "TaskStateV1": {
+            "enum": [
+              "accepted",
+              "running",
+              "waiting_input",
+              "waiting_approval",
+              "completed",
+              "failed",
+              "cancelled",
+              "outcome_unknown"
+            ],
+            "type": "string"
+          },
+          "TaskViewV1": {
+            "additionalProperties": false,
+            "properties": {
+              "accessBinding": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ApplicationAccessBindingV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "allowedActions": {
+                "$ref": "#/$defs/TaskActionsV1"
+              },
+              "applicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "bundleId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "callerType": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "deploymentId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "error": true,
+              "eventCursor": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "files": {
+                "items": {
+                  "$ref": "#/$defs/ArtifactUploadResponseV1"
+                },
+                "type": "array"
+              },
+              "invocationStatus": {
+                "type": "string"
+              },
+              "messages": {
+                "items": {
+                  "$ref": "#/$defs/WorkflowMessageV1"
+                },
+                "type": "array"
+              },
+              "outputs": true,
+              "pendingApprovals": {
+                "items": {
+                  "$ref": "#/$defs/TaskApprovalV1"
+                },
+                "type": "array"
+              },
+              "pendingInputs": {
+                "items": {
+                  "$ref": "#/$defs/InputWaitV1"
+                },
+                "type": "array"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sessionId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "stages": {
+                "items": {
+                  "$ref": "#/$defs/TaskStageV1"
+                },
+                "type": "array"
+              },
+              "state": {
+                "$ref": "#/$defs/TaskStateV1"
+              },
+              "taskId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "taskUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "workflowVersionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "taskId",
+              "applicationId",
+              "deploymentId",
+              "workflowVersionId",
+              "bundleId",
+              "callerType",
+              "state",
+              "invocationStatus",
+              "stages",
+              "pendingInputs",
+              "pendingApprovals",
+              "messages",
+              "files",
+              "allowedActions",
+              "revision",
+              "eventCursor",
+              "createdAt"
+            ],
+            "type": "object"
+          },
+          "WorkflowMessageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "executionId",
+              "nodeExecutionId",
+              "content",
+              "createdAt"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/TaskViewV1"
+            },
+            "type": "array"
+          },
+          "next": {
+            "description": "Opaque page boundary scoped to the same authenticated application and caller.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MyTasksPageV1",
+        "type": "object"
+      },
       "ObservabilityAggregatePageV1": {
         "$defs": {
           "ObservabilityAggregateRowV1": {
@@ -12060,6 +13761,217 @@
           "limit"
         ],
         "title": "ObservabilityAggregateRequestV1",
+        "type": "object"
+      },
+      "PageBuilderSessionV1": {
+        "$defs": {
+          "PageEditorSnapshotV1": {
+            "additionalProperties": false,
+            "properties": {
+              "editorInstanceId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "html": {
+                "type": "string"
+              },
+              "htmlHash": {
+                "type": "string"
+              },
+              "localRevision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "saveStatus": {
+                "$ref": "#/$defs/StudioSaveStatusV1"
+              },
+              "serverRevision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "editorInstanceId",
+              "localRevision",
+              "serverRevision",
+              "html",
+              "htmlHash",
+              "saveStatus"
+            ],
+            "type": "object"
+          },
+          "StudioBuilderRunSummaryV1": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "modelAliasId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "settingVersion": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "status",
+              "modelAliasId",
+              "settingVersion"
+            ],
+            "type": "object"
+          },
+          "StudioSaveStatusV1": {
+            "enum": [
+              "saved",
+              "unsaved"
+            ],
+            "type": "string"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/$defs/StudioBuilderRunSummaryV1"
+            },
+            "type": "array"
+          },
+          "snapshot": {
+            "$ref": "#/$defs/PageEditorSnapshotV1"
+          },
+          "uiDraftId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "uiDraftId",
+          "snapshot",
+          "runs"
+        ],
+        "title": "PageBuilderSessionV1",
+        "type": "object"
+      },
+      "PageEditCommandV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "baseHtmlHash": {
+            "type": "string"
+          },
+          "baseLocalRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "baseServerRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "commandId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "editorInstanceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "html": {
+            "type": "string"
+          },
+          "htmlHash": {
+            "type": "string"
+          },
+          "runId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "uiDraftId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "commandId",
+          "runId",
+          "uiDraftId",
+          "editorInstanceId",
+          "baseLocalRevision",
+          "baseServerRevision",
+          "baseHtmlHash",
+          "html",
+          "htmlHash",
+          "summary"
+        ],
+        "title": "PageEditCommandV1",
+        "type": "object"
+      },
+      "PageEditorSnapshotV1": {
+        "$defs": {
+          "StudioSaveStatusV1": {
+            "enum": [
+              "saved",
+              "unsaved"
+            ],
+            "type": "string"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "editorInstanceId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "html": {
+            "type": "string"
+          },
+          "htmlHash": {
+            "type": "string"
+          },
+          "localRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "saveStatus": {
+            "$ref": "#/$defs/StudioSaveStatusV1"
+          },
+          "serverRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "editorInstanceId",
+          "localRevision",
+          "serverRevision",
+          "html",
+          "htmlHash",
+          "saveStatus"
+        ],
+        "title": "PageEditorSnapshotV1",
         "type": "object"
       },
       "PluginDesignOperationRequestV1": {
@@ -12322,6 +14234,34 @@
             ],
             "type": "object"
           },
+          "RuntimeMcpToolPolicyV1": {
+            "additionalProperties": false,
+            "properties": {
+              "approval": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ToolApprovalRuleV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "contentHash": {
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "revision",
+              "contentHash"
+            ],
+            "type": "object"
+          },
           "RuntimeMcpTransportV2": {
             "oneOf": [
               {
@@ -12497,9 +14437,15 @@
                     "const": "model",
                     "type": "string"
                   },
+                  "maxOutputTokens": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "model": {
                     "type": "string"
                   },
+                  "parameters": true,
                   "price": {
                     "$ref": "#/$defs/RuntimeModelPriceV1"
                   },
@@ -12513,6 +14459,8 @@
                   "endpoint",
                   "model",
                   "contextWindow",
+                  "maxOutputTokens",
+                  "parameters",
                   "price"
                 ],
                 "type": "object"
@@ -12557,6 +14505,16 @@
                   },
                   "toolName": {
                     "type": "string"
+                  },
+                  "toolPolicy": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/RuntimeMcpToolPolicyV1"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "toolVersion": {
                     "type": "string"
@@ -12863,6 +14821,36 @@
               "tcp_proxy"
             ],
             "type": "string"
+          },
+          "ToolApprovalRuleV1": {
+            "additionalProperties": false,
+            "properties": {
+              "roleIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "timeoutSeconds": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "userIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "userIds",
+              "roleIds",
+              "timeoutSeconds"
+            ],
+            "type": "object"
           },
           "VaultSecretReferenceV1": {
             "additionalProperties": false,
@@ -15022,6 +17010,34 @@
             ],
             "type": "object"
           },
+          "RuntimeMcpToolPolicyV1": {
+            "additionalProperties": false,
+            "properties": {
+              "approval": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ToolApprovalRuleV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "contentHash": {
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "revision",
+              "contentHash"
+            ],
+            "type": "object"
+          },
           "RuntimeMcpTransportV2": {
             "oneOf": [
               {
@@ -15315,9 +17331,15 @@
                     "const": "model",
                     "type": "string"
                   },
+                  "maxOutputTokens": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "model": {
                     "type": "string"
                   },
+                  "parameters": true,
                   "price": {
                     "$ref": "#/$defs/RuntimeModelPriceV1"
                   },
@@ -15331,6 +17353,8 @@
                   "endpoint",
                   "model",
                   "contextWindow",
+                  "maxOutputTokens",
+                  "parameters",
                   "price"
                 ],
                 "type": "object"
@@ -15375,6 +17399,16 @@
                   },
                   "toolName": {
                     "type": "string"
+                  },
+                  "toolPolicy": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/RuntimeMcpToolPolicyV1"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "toolVersion": {
                     "type": "string"
@@ -15888,6 +17922,36 @@
               "observability"
             ],
             "type": "string"
+          },
+          "ToolApprovalRuleV1": {
+            "additionalProperties": false,
+            "properties": {
+              "roleIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "timeoutSeconds": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "userIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "userIds",
+              "roleIds",
+              "timeoutSeconds"
+            ],
+            "type": "object"
           },
           "ValueNamespace": {
             "enum": [
@@ -18439,6 +20503,34 @@
             ],
             "type": "object"
           },
+          "RuntimeMcpToolPolicyV1": {
+            "additionalProperties": false,
+            "properties": {
+              "approval": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ToolApprovalRuleV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "contentHash": {
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "revision",
+              "contentHash"
+            ],
+            "type": "object"
+          },
           "RuntimeMcpTransportV2": {
             "oneOf": [
               {
@@ -18832,9 +20924,15 @@
                     "const": "model",
                     "type": "string"
                   },
+                  "maxOutputTokens": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "model": {
                     "type": "string"
                   },
+                  "parameters": true,
                   "price": {
                     "$ref": "#/$defs/RuntimeModelPriceV1"
                   },
@@ -18848,6 +20946,8 @@
                   "endpoint",
                   "model",
                   "contextWindow",
+                  "maxOutputTokens",
+                  "parameters",
                   "price"
                 ],
                 "type": "object"
@@ -18892,6 +20992,16 @@
                   },
                   "toolName": {
                     "type": "string"
+                  },
+                  "toolPolicy": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/RuntimeMcpToolPolicyV1"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "toolVersion": {
                     "type": "string"
@@ -19483,6 +21593,36 @@
               "observability"
             ],
             "type": "string"
+          },
+          "ToolApprovalRuleV1": {
+            "additionalProperties": false,
+            "properties": {
+              "roleIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "timeoutSeconds": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "userIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "userIds",
+              "roleIds",
+              "timeoutSeconds"
+            ],
+            "type": "object"
           },
           "ValueNamespace": {
             "enum": [
@@ -20361,6 +22501,34 @@
             ],
             "type": "object"
           },
+          "RuntimeMcpToolPolicyV1": {
+            "additionalProperties": false,
+            "properties": {
+              "approval": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ToolApprovalRuleV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "contentHash": {
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "revision",
+              "contentHash"
+            ],
+            "type": "object"
+          },
           "RuntimeMcpTransportV2": {
             "oneOf": [
               {
@@ -20536,9 +22704,15 @@
                     "const": "model",
                     "type": "string"
                   },
+                  "maxOutputTokens": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "model": {
                     "type": "string"
                   },
+                  "parameters": true,
                   "price": {
                     "$ref": "#/$defs/RuntimeModelPriceV1"
                   },
@@ -20552,6 +22726,8 @@
                   "endpoint",
                   "model",
                   "contextWindow",
+                  "maxOutputTokens",
+                  "parameters",
                   "price"
                 ],
                 "type": "object"
@@ -20596,6 +22772,16 @@
                   },
                   "toolName": {
                     "type": "string"
+                  },
+                  "toolPolicy": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/RuntimeMcpToolPolicyV1"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "toolVersion": {
                     "type": "string"
@@ -20902,6 +23088,36 @@
               "tcp_proxy"
             ],
             "type": "string"
+          },
+          "ToolApprovalRuleV1": {
+            "additionalProperties": false,
+            "properties": {
+              "roleIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "timeoutSeconds": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "userIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "userIds",
+              "roleIds",
+              "timeoutSeconds"
+            ],
+            "type": "object"
           },
           "VaultSecretReferenceV1": {
             "additionalProperties": false,
@@ -21782,6 +23998,57 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "kind": {
+                    "const": "application_mcp",
+                    "type": "string"
+                  },
+                  "state": {
+                    "$ref": "#/$defs/ApplicationMcpPublicationV1"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "state"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "application_mcp_removed",
+                    "type": "string"
+                  },
+                  "state": {
+                    "$ref": "#/$defs/ApplicationMcpRemovalV1"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "state"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "mcp_tool_policy",
+                    "type": "string"
+                  },
+                  "state": {
+                    "$ref": "#/$defs/McpToolPolicyAdmissionV1"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "state"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
                   "enabled": {
                     "type": "boolean"
                   },
@@ -22064,6 +24331,118 @@
             ],
             "type": "object"
           },
+          "ApplicationMcpPublicationV1": {
+            "additionalProperties": false,
+            "properties": {
+              "applicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "bundleId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "chatMapping": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ChatMappingV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "contractHash": {
+                "type": "string"
+              },
+              "deploymentId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "expectedRevision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "inputSchema": true,
+              "outputSchema": true,
+              "protocolVersion": {
+                "type": "string"
+              },
+              "publicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "slug": {
+                "type": "string"
+              },
+              "tenantId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "waitInputSchema": true
+            },
+            "required": [
+              "tenantId",
+              "applicationId",
+              "publicationId",
+              "deploymentId",
+              "bundleId",
+              "revision",
+              "expectedRevision",
+              "slug",
+              "toolName",
+              "title",
+              "description",
+              "inputSchema",
+              "outputSchema",
+              "waitInputSchema",
+              "contractHash",
+              "enabled",
+              "protocolVersion"
+            ],
+            "type": "object"
+          },
+          "ApplicationMcpRemovalV1": {
+            "additionalProperties": false,
+            "properties": {
+              "applicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "publicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "tenantId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenantId",
+              "applicationId",
+              "publicationId"
+            ],
+            "type": "object"
+          },
           "ApplicationRouteAdmissionV1": {
             "additionalProperties": false,
             "properties": {
@@ -22124,6 +24503,34 @@
                 "type": "object"
               }
             ]
+          },
+          "ChatMappingV1": {
+            "additionalProperties": false,
+            "properties": {
+              "answerFilesOutput": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "answerOutput": {
+                "type": "string"
+              },
+              "fileInput": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "questionInput": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "questionInput",
+              "answerOutput"
+            ],
+            "type": "object"
           },
           "CommandEnvelopeV1": {
             "additionalProperties": false,
@@ -22242,6 +24649,38 @@
               "code",
               "name",
               "dataScope"
+            ],
+            "type": "object"
+          },
+          "McpToolPolicyAdmissionV1": {
+            "additionalProperties": false,
+            "properties": {
+              "contentHash": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "tenantId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "toolId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenantId",
+              "toolId",
+              "revision",
+              "contentHash",
+              "enabled"
             ],
             "type": "object"
           },
@@ -22621,6 +25060,9 @@
           "RuntimeUserAdmissionV1": {
             "additionalProperties": false,
             "properties": {
+              "canApprove": {
+                "type": "boolean"
+              },
               "departmentId": {
                 "format": "uuid",
                 "type": "string"
@@ -22666,6 +25108,7 @@
               "tokenVersion",
               "enabled",
               "tenantQueryEnabled",
+              "canApprove",
               "roleAssignments"
             ],
             "type": "object"
@@ -23409,6 +25852,81 @@
       },
       "RuntimeIntegrationEventEnvelopeV1": {
         "$defs": {
+          "ApprovalSubjectV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "workflow_node",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "agentRunId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "argumentsHash": {
+                    "type": "string"
+                  },
+                  "effectId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "agent_tool_effect",
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "policyHash": {
+                    "type": "string"
+                  },
+                  "policyRevision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "toolCallId": {
+                    "type": "string"
+                  },
+                  "toolId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "toolName": {
+                    "type": "string"
+                  },
+                  "toolVersion": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "effectId",
+                  "agentRunId",
+                  "operationId",
+                  "toolCallId",
+                  "toolId",
+                  "toolVersion",
+                  "toolName",
+                  "argumentsHash",
+                  "policyRevision",
+                  "policyHash"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "InputWaitV1": {
             "additionalProperties": false,
             "properties": {
@@ -23438,6 +25956,7 @@
                 "minimum": 0,
                 "type": "integer"
               },
+              "responseSchema": true,
               "resumeUrl": {
                 "type": [
                   "string",
@@ -23916,6 +26435,9 @@
                   "status": {
                     "type": "string"
                   },
+                  "subject": {
+                    "$ref": "#/$defs/ApprovalSubjectV1"
+                  },
                   "taskId": {
                     "format": "uuid",
                     "type": "string"
@@ -23940,6 +26462,7 @@
                   "executionId",
                   "workflowId",
                   "nodeId",
+                  "subject",
                   "title",
                   "buttons",
                   "status",
@@ -24863,6 +27386,34 @@
             ],
             "type": "object"
           },
+          "RuntimeMcpToolPolicyV1": {
+            "additionalProperties": false,
+            "properties": {
+              "approval": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ToolApprovalRuleV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "contentHash": {
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "revision",
+              "contentHash"
+            ],
+            "type": "object"
+          },
           "RuntimeMcpTransportV2": {
             "oneOf": [
               {
@@ -24995,9 +27546,15 @@
                     "const": "model",
                     "type": "string"
                   },
+                  "maxOutputTokens": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "model": {
                     "type": "string"
                   },
+                  "parameters": true,
                   "price": {
                     "$ref": "#/$defs/RuntimeModelPriceV1"
                   },
@@ -25011,6 +27568,8 @@
                   "endpoint",
                   "model",
                   "contextWindow",
+                  "maxOutputTokens",
+                  "parameters",
                   "price"
                 ],
                 "type": "object"
@@ -25055,6 +27614,16 @@
                   },
                   "toolName": {
                     "type": "string"
+                  },
+                  "toolPolicy": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/RuntimeMcpToolPolicyV1"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "toolVersion": {
                     "type": "string"
@@ -25361,6 +27930,36 @@
               "tcp_proxy"
             ],
             "type": "string"
+          },
+          "ToolApprovalRuleV1": {
+            "additionalProperties": false,
+            "properties": {
+              "roleIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "timeoutSeconds": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "userIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "userIds",
+              "roleIds",
+              "timeoutSeconds"
+            ],
+            "type": "object"
           },
           "VaultSecretReferenceV1": {
             "additionalProperties": false,
@@ -25791,6 +28390,34 @@
             ],
             "type": "object"
           },
+          "RuntimeMcpToolPolicyV1": {
+            "additionalProperties": false,
+            "properties": {
+              "approval": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ToolApprovalRuleV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "contentHash": {
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "revision",
+              "contentHash"
+            ],
+            "type": "object"
+          },
           "RuntimeMcpTransportV2": {
             "oneOf": [
               {
@@ -25966,9 +28593,15 @@
                     "const": "model",
                     "type": "string"
                   },
+                  "maxOutputTokens": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "model": {
                     "type": "string"
                   },
+                  "parameters": true,
                   "price": {
                     "$ref": "#/$defs/RuntimeModelPriceV1"
                   },
@@ -25982,6 +28615,8 @@
                   "endpoint",
                   "model",
                   "contextWindow",
+                  "maxOutputTokens",
+                  "parameters",
                   "price"
                 ],
                 "type": "object"
@@ -26026,6 +28661,16 @@
                   },
                   "toolName": {
                     "type": "string"
+                  },
+                  "toolPolicy": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/RuntimeMcpToolPolicyV1"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "toolVersion": {
                     "type": "string"
@@ -26381,6 +29026,36 @@
               "tcp_proxy"
             ],
             "type": "string"
+          },
+          "ToolApprovalRuleV1": {
+            "additionalProperties": false,
+            "properties": {
+              "roleIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "timeoutSeconds": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "userIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "userIds",
+              "roleIds",
+              "timeoutSeconds"
+            ],
+            "type": "object"
           },
           "VaultSecretReferenceV1": {
             "additionalProperties": false,
@@ -26961,6 +29636,9 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "canApprove": {
+            "type": "boolean"
+          },
           "departmentId": {
             "format": "uuid",
             "type": "string"
@@ -27006,6 +29684,7 @@
           "tokenVersion",
           "enabled",
           "tenantQueryEnabled",
+          "canApprove",
           "roleAssignments"
         ],
         "title": "RuntimeUserAdmissionV1",
@@ -29199,6 +31878,34 @@
             ],
             "type": "object"
           },
+          "RuntimeMcpToolPolicyV1": {
+            "additionalProperties": false,
+            "properties": {
+              "approval": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ToolApprovalRuleV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "contentHash": {
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "revision",
+              "contentHash"
+            ],
+            "type": "object"
+          },
           "RuntimeMcpTransportV2": {
             "oneOf": [
               {
@@ -29592,9 +32299,15 @@
                     "const": "model",
                     "type": "string"
                   },
+                  "maxOutputTokens": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "model": {
                     "type": "string"
                   },
+                  "parameters": true,
                   "price": {
                     "$ref": "#/$defs/RuntimeModelPriceV1"
                   },
@@ -29608,6 +32321,8 @@
                   "endpoint",
                   "model",
                   "contextWindow",
+                  "maxOutputTokens",
+                  "parameters",
                   "price"
                 ],
                 "type": "object"
@@ -29652,6 +32367,16 @@
                   },
                   "toolName": {
                     "type": "string"
+                  },
+                  "toolPolicy": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/RuntimeMcpToolPolicyV1"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "toolVersion": {
                     "type": "string"
@@ -30223,6 +32948,36 @@
               "observability"
             ],
             "type": "string"
+          },
+          "ToolApprovalRuleV1": {
+            "additionalProperties": false,
+            "properties": {
+              "roleIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "timeoutSeconds": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "userIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "userIds",
+              "roleIds",
+              "timeoutSeconds"
+            ],
+            "type": "object"
           },
           "ValueNamespace": {
             "enum": [
@@ -35714,6 +38469,401 @@
         "title": "SubmitWaitInputV1",
         "type": "object"
       },
+      "TaskViewV1": {
+        "$defs": {
+          "ApplicationAccessBindingV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "web",
+                    "type": "string"
+                  },
+                  "publicationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "publicationId",
+                  "revision"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "mcp",
+                    "type": "string"
+                  },
+                  "publicationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "publicationId",
+                  "revision"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "ArtifactUploadResponseV1": {
+            "additionalProperties": false,
+            "properties": {
+              "artifactId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "sizeBytes": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "artifactId",
+              "contentType",
+              "sizeBytes",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "InputWaitV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": true,
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "nodePath": {
+                "type": "string"
+              },
+              "occurrence": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "responseSchema": true,
+              "resumeUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "waitId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "waitId",
+              "executionId",
+              "nodeExecutionId",
+              "nodeId",
+              "nodePath",
+              "occurrence",
+              "status"
+            ],
+            "type": "object"
+          },
+          "TaskActionsV1": {
+            "additionalProperties": false,
+            "properties": {
+              "canCancel": {
+                "type": "boolean"
+              },
+              "downloadableArtifactIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "inputWaitIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "canCancel",
+              "inputWaitIds",
+              "downloadableArtifactIds"
+            ],
+            "type": "object"
+          },
+          "TaskApprovalV1": {
+            "additionalProperties": false,
+            "properties": {
+              "approvalId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "version": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "approvalId",
+              "title",
+              "status",
+              "version"
+            ],
+            "type": "object"
+          },
+          "TaskStageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "nodeExecutionId",
+              "title",
+              "status"
+            ],
+            "type": "object"
+          },
+          "TaskStateV1": {
+            "enum": [
+              "accepted",
+              "running",
+              "waiting_input",
+              "waiting_approval",
+              "completed",
+              "failed",
+              "cancelled",
+              "outcome_unknown"
+            ],
+            "type": "string"
+          },
+          "WorkflowMessageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "executionId",
+              "nodeExecutionId",
+              "content",
+              "createdAt"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "accessBinding": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ApplicationAccessBindingV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "allowedActions": {
+            "$ref": "#/$defs/TaskActionsV1"
+          },
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "bundleId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "callerType": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "deploymentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "error": true,
+          "eventCursor": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/$defs/ArtifactUploadResponseV1"
+            },
+            "type": "array"
+          },
+          "invocationStatus": {
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/$defs/WorkflowMessageV1"
+            },
+            "type": "array"
+          },
+          "outputs": true,
+          "pendingApprovals": {
+            "items": {
+              "$ref": "#/$defs/TaskApprovalV1"
+            },
+            "type": "array"
+          },
+          "pendingInputs": {
+            "items": {
+              "$ref": "#/$defs/InputWaitV1"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sessionId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/$defs/TaskStageV1"
+            },
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/$defs/TaskStateV1"
+          },
+          "taskId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "taskUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId",
+          "applicationId",
+          "deploymentId",
+          "workflowVersionId",
+          "bundleId",
+          "callerType",
+          "state",
+          "invocationStatus",
+          "stages",
+          "pendingInputs",
+          "pendingApprovals",
+          "messages",
+          "files",
+          "allowedActions",
+          "revision",
+          "eventCursor",
+          "createdAt"
+        ],
+        "title": "TaskViewV1",
+        "type": "object"
+      },
       "TestArtifactCheckV1": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -37115,7 +40265,8 @@
           },
           "path": {
             "type": "string"
-          }
+          },
+          "responseSchema": true
         },
         "required": [
           "path",

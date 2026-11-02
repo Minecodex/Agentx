@@ -5,7 +5,7 @@ test('P8-E2E-26: removed resources remain protected by immutable revisions and a
   const {token, created} = await fixtureCanvas(page, 'P8 historical references')
   const model = process.env.AGENTX_E2E_STUDIO_ALTERNATE_ID!
   let session = ''
-  page.on('request', request => { const match = request.url().match(/\/studio-builder\/sessions\/([^/]+)\/runs$/); if (match) session = match[1]! })
+  page.on('request', request => { const match = request.url().match(/\/design-agent\/sessions\/([^/]+)\/runs$/); if (match) session = match[1]! })
   await send(page, `P8FIX: resource_queries resource_ref=${model} label=HistoricalModel`)
   await completed(page)
   const entries = await allEntries<{payload:{type:string;tool_name?:string;message?:{role:string;content:string}}}>(page,token,session)

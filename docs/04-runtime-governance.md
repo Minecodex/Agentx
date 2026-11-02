@@ -337,10 +337,12 @@ Approval Node 是 waitAndResume 节点。
 3. 按 Approved、Rejected 或 TimedOut 端口继续。
 4. 将 Execution 重新加入调度队列。
 
-待办中心只解决 Workflow 审批，不扩展成通用 OA。
+既有审批中心同时承载 Workflow 审批节点和 Agent 的具体 MCP Tool 操作，不扩展成通用 OA。节点审批只沿 `decision:approved` / `decision:rejected` 等实际端口继续，不接受无结果的泛用 `decision` 连线。
+
+Agent 工具审批固定原 Operation/Effect、工具版本、规范化参数 Hash、策略版本和审批候选人。审批前不向 Provider 派发写入；批准后仍检查当前授权、策略、取消和审批资格。拒绝意见回到原 Agent，修改参数必须形成新提案。原成功 Receipt 优先复用；已发送但结果未知时保留 `outcome_unknown`，不能因重启或撤权而重放写操作。详见 [具体工具审批](plan9/04-agent-tool-approval.md)。
 
 ## 设计态模型治理
 
-Builder 模型调用通过 Runtime Gateway 的受限 `studio-model:submit/inspect/cancel` 执行。JWT 绑定 tenant/run 和完整请求摘要；模型、凭据及价格在 Run 创建时冻结。runtime_calls 使用 `source_kind=studio_builder`，业务 Execution/Node/Attempt/Agent ID 必须为空，配额使用 `studio_builder_model` 作用域。Sent 后进程丢失记录 unknown，不重新向 Provider 发送。
+工作流和网页创作共用设计态 Host，通过 Runtime Gateway 的受限设计模型 Effect 接口执行。JWT 绑定 tenant、严格目标联合、Run 和完整请求摘要；模型、凭据、参数及价格在 Run 创建时冻结。`runtime_calls` 分别使用 `source_kind=studio_builder` 和 `application_ui_builder`，业务 Execution/Node/Attempt/Agent ID 必须为空；配额按来源记录并共用租户创作并发限制。Sent 后结果未知不重新向 Provider 发送，已确认的失败也通过原 Effect 恢复并结算一次。
 
 设计历史及模型载荷使用现有 Trace 保存期限；已结算原文可回收，unknown 和 pending 保留。模型身份、价格版本及费用账本不随大载荷回收。

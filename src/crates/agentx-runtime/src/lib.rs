@@ -1,6 +1,7 @@
 mod compiler;
 mod expression;
 mod input;
+mod input_wait_contract;
 mod registry;
 mod schema_contract;
 mod state;
@@ -16,6 +17,7 @@ pub use expression::{
     ExpressionContext, ExpressionEngine, ExpressionError, StringConversionRecord,
 };
 pub use input::{StartInputError, materialize_and_validate_start_input};
+pub use input_wait_contract::{input_wait_validator, validate_input_wait_content};
 pub use registry::{NodeRegistry, RegistryError};
 pub use state::{
     ActivationStatus, AttemptStatus, DeliveryKind, EdgeDelivery, EndDelivery, ExecutionMachine,

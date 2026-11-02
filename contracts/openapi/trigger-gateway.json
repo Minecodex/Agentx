@@ -1,6 +1,326 @@
 {
   "components": {
     "schemas": {
+      "ApplicationPageView": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "historical": {
+            "type": "boolean"
+          },
+          "html": {
+            "type": "string"
+          },
+          "publication": {
+            "$ref": "#/components/schemas/ApplicationPageView_ApplicationPagePublicationV1"
+          },
+          "routeKey": {
+            "type": "string"
+          },
+          "sdkScript": {
+            "type": "string"
+          },
+          "stylesheet": {
+            "type": "string"
+          },
+          "taskId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "publication",
+          "html",
+          "sdkScript",
+          "stylesheet",
+          "routeKey",
+          "historical"
+        ],
+        "title": "ApplicationPageViewV1",
+        "type": "object"
+      },
+      "ApplicationPageView_ApplicationApprovalKindV1": {
+        "enum": [
+          "workflow_node",
+          "agent_tool_effect"
+        ],
+        "type": "string"
+      },
+      "ApplicationPageView_ApplicationApprovalStageV1": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ApplicationPageView_ApplicationApprovalKindV1"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodeId",
+          "title",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "ApplicationPageView_ApplicationPageContractV1": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "applicationName": {
+            "type": "string"
+          },
+          "approvalStages": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationPageView_ApplicationApprovalStageV1"
+            },
+            "type": "array"
+          },
+          "bundleId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "chatMapping": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApplicationPageView_ChatMappingV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deploymentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inputSchema": true,
+          "maxUploadBytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "outputSchema": true,
+          "sdkVersion": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "waitInputNodes": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationPageView_WaitInputNodeV1"
+            },
+            "type": "array"
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationId",
+          "applicationName",
+          "deploymentId",
+          "workflowVersionId",
+          "bundleId",
+          "inputSchema",
+          "outputSchema",
+          "waitInputNodes",
+          "approvalStages",
+          "sdkVersion",
+          "maxUploadBytes"
+        ],
+        "type": "object"
+      },
+      "ApplicationPageView_ApplicationPagePublicationV1": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "contract": {
+            "$ref": "#/components/schemas/ApplicationPageView_ApplicationPageContractV1"
+          },
+          "contractHash": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expectedRevision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "html": {
+            "$ref": "#/components/schemas/ApplicationPageView_RuntimeObjectReferenceV1"
+          },
+          "htmlHash": {
+            "type": "string"
+          },
+          "publicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sdk": {
+            "$ref": "#/components/schemas/ApplicationPageView_RuntimeObjectReferenceV1"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "styleVersion": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stylesheet": {
+            "$ref": "#/components/schemas/ApplicationPageView_RuntimeObjectReferenceV1"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "uiVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "applicationId",
+          "publicationId",
+          "uiVersionId",
+          "revision",
+          "expectedRevision",
+          "slug",
+          "enabled",
+          "contract",
+          "contractHash",
+          "html",
+          "htmlHash",
+          "styleVersion",
+          "sdk",
+          "stylesheet"
+        ],
+        "type": "object"
+      },
+      "ApplicationPageView_ChatMappingV1": {
+        "additionalProperties": false,
+        "properties": {
+          "answerFilesOutput": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "answerOutput": {
+            "type": "string"
+          },
+          "fileInput": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "questionInput": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "questionInput",
+          "answerOutput"
+        ],
+        "type": "object"
+      },
+      "ApplicationPageView_RuntimeObjectReferenceV1": {
+        "additionalProperties": false,
+        "properties": {
+          "contentHash": {
+            "type": "string"
+          },
+          "mediaType": {
+            "type": "string"
+          },
+          "objectId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "objectKey": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "storageDomain": {
+            "$ref": "#/components/schemas/ApplicationPageView_StorageDomain"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "storageDomain",
+          "objectId",
+          "objectKey",
+          "contentHash",
+          "sizeBytes",
+          "mediaType"
+        ],
+        "type": "object"
+      },
+      "ApplicationPageView_StorageDomain": {
+        "enum": [
+          "runtime",
+          "observability"
+        ],
+        "type": "string"
+      },
+      "ApplicationPageView_WaitInputNodeV1": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "responseSchema": true
+        },
+        "required": [
+          "path",
+          "nodeId",
+          "name"
+        ],
+        "type": "object"
+      },
       "ArtifactUploadResponse": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -74,6 +394,12 @@
           "code": {
             "type": "string"
           },
+          "fieldErrors": {
+            "items": {
+              "$ref": "#/components/schemas/GatewayError_GatewayFieldErrorV1"
+            },
+            "type": "array"
+          },
           "message": {
             "type": "string"
           }
@@ -83,6 +409,27 @@
           "message"
         ],
         "title": "GatewayErrorV1",
+        "type": "object"
+      },
+      "GatewayError_GatewayFieldErrorV1": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "field": {
+            "description": "Stable JSON Pointer, relative to the business input.",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "code",
+          "message"
+        ],
         "type": "object"
       },
       "InvocationRequest": {
@@ -108,9 +455,12 @@
               "items": true,
               "type": "array"
             },
-            "default": {},
-            "description": "Available only to authenticated platform testing users. API keys cannot select preset mode.",
-            "type": "object"
+            "default": null,
+            "description": "Omitted for formal external input. Explicit presets, including an empty plan, are available only to authenticated platform testing users.",
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "required": [
@@ -120,143 +470,12 @@
         "type": "object"
       },
       "InvocationResponse": {
-        "$defs": {
-          "ApplicationUserIdentityV1": {
-            "additionalProperties": false,
-            "description": "The end user a call acts for. API identities are declarations, not authentication.",
-            "properties": {
-              "externalUserId": {
-                "type": "string"
-              },
-              "source": {
-                "$ref": "#/components/schemas/InvocationResponse/$defs/ApplicationUserSourceV1"
-              },
-              "sourceId": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "source",
-              "sourceId",
-              "externalUserId"
-            ],
-            "type": "object"
-          },
-          "ApplicationUserSourceV1": {
-            "enum": [
-              "platform",
-              "channel",
-              "api_parameter"
-            ],
-            "type": "string"
-          },
-          "InputWaitV1": {
-            "additionalProperties": false,
-            "properties": {
-              "content": true,
-              "executionId": {
-                "format": "uuid",
-                "type": "string"
-              },
-              "expiresAt": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "nodeExecutionId": {
-                "format": "uuid",
-                "type": "string"
-              },
-              "nodeId": {
-                "type": "string"
-              },
-              "nodePath": {
-                "type": "string"
-              },
-              "occurrence": {
-                "format": "uint32",
-                "minimum": 0,
-                "type": "integer"
-              },
-              "resumeUrl": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "source": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "status": {
-                "type": "string"
-              },
-              "waitId": {
-                "format": "uuid",
-                "type": "string"
-              }
-            },
-            "required": [
-              "waitId",
-              "executionId",
-              "nodeExecutionId",
-              "nodeId",
-              "nodePath",
-              "occurrence",
-              "status"
-            ],
-            "type": "object"
-          },
-          "WebhookProviderV1": {
-            "enum": [
-              "agentx",
-              "dingtalk",
-              "wecom",
-              "feishu"
-            ],
-            "type": "string"
-          },
-          "WorkflowMessageV1": {
-            "additionalProperties": false,
-            "properties": {
-              "content": {
-                "type": "string"
-              },
-              "createdAt": {
-                "type": "string"
-              },
-              "executionId": {
-                "format": "uuid",
-                "type": "string"
-              },
-              "id": {
-                "format": "uuid",
-                "type": "string"
-              },
-              "nodeExecutionId": {
-                "format": "uuid",
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "executionId",
-              "nodeExecutionId",
-              "content",
-              "createdAt"
-            ],
-            "type": "object"
-          }
-        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
           "activeWaits": {
             "items": {
-              "$ref": "#/components/schemas/InvocationResponse/$defs/InputWaitV1"
+              "$ref": "#/components/schemas/InvocationResponse_InputWaitV1"
             },
             "type": "array"
           },
@@ -285,7 +504,7 @@
           "endUser": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/InvocationResponse/$defs/ApplicationUserIdentityV1"
+                "$ref": "#/components/schemas/InvocationResponse_ApplicationUserIdentityV1"
               },
               {
                 "type": "null"
@@ -306,7 +525,7 @@
           },
           "messages": {
             "items": {
-              "$ref": "#/components/schemas/InvocationResponse/$defs/WorkflowMessageV1"
+              "$ref": "#/components/schemas/InvocationResponse_WorkflowMessageV1"
             },
             "type": "array"
           },
@@ -314,7 +533,7 @@
           "provider": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/InvocationResponse/$defs/WebhookProviderV1"
+                "$ref": "#/components/schemas/InvocationResponse_WebhookProviderV1"
               },
               {
                 "type": "null"
@@ -358,6 +577,136 @@
         "title": "InvocationResponseV1",
         "type": "object"
       },
+      "InvocationResponse_ApplicationUserIdentityV1": {
+        "additionalProperties": false,
+        "description": "The end user a call acts for. API identities are declarations, not authentication.",
+        "properties": {
+          "externalUserId": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/InvocationResponse_ApplicationUserSourceV1"
+          },
+          "sourceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "sourceId",
+          "externalUserId"
+        ],
+        "type": "object"
+      },
+      "InvocationResponse_ApplicationUserSourceV1": {
+        "enum": [
+          "platform",
+          "channel",
+          "api_parameter"
+        ],
+        "type": "string"
+      },
+      "InvocationResponse_InputWaitV1": {
+        "additionalProperties": false,
+        "properties": {
+          "content": true,
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nodeExecutionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "nodePath": {
+            "type": "string"
+          },
+          "occurrence": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "responseSchema": true,
+          "resumeUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "waitId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "waitId",
+          "executionId",
+          "nodeExecutionId",
+          "nodeId",
+          "nodePath",
+          "occurrence",
+          "status"
+        ],
+        "type": "object"
+      },
+      "InvocationResponse_WebhookProviderV1": {
+        "enum": [
+          "agentx",
+          "dingtalk",
+          "wecom",
+          "feishu"
+        ],
+        "type": "string"
+      },
+      "InvocationResponse_WorkflowMessageV1": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nodeExecutionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "executionId",
+          "nodeExecutionId",
+          "content",
+          "createdAt"
+        ],
+        "type": "object"
+      },
       "MessagePartInput": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -381,34 +730,12 @@
         "type": "object"
       },
       "MessageRequest": {
-        "$defs": {
-          "MessagePartInputV1": {
-            "additionalProperties": false,
-            "properties": {
-              "artifactId": {
-                "format": "uuid",
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "content": true,
-              "partType": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "partType"
-            ],
-            "type": "object"
-          }
-        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
           "parts": {
             "items": {
-              "$ref": "#/components/schemas/MessageRequest/$defs/MessagePartInputV1"
+              "$ref": "#/components/schemas/MessageRequest_MessagePartInputV1"
             },
             "type": "array"
           },
@@ -417,8 +744,11 @@
               "items": true,
               "type": "array"
             },
-            "default": {},
-            "type": "object"
+            "default": null,
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "required": [
@@ -427,29 +757,27 @@
         "title": "MessageRequestV1",
         "type": "object"
       },
-      "MessageResponse": {
-        "$defs": {
-          "MessagePartInputV1": {
-            "additionalProperties": false,
-            "properties": {
-              "artifactId": {
-                "format": "uuid",
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "content": true,
-              "partType": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "partType"
-            ],
-            "type": "object"
+      "MessageRequest_MessagePartInputV1": {
+        "additionalProperties": false,
+        "properties": {
+          "artifactId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content": true,
+          "partType": {
+            "type": "string"
           }
         },
+        "required": [
+          "partType"
+        ],
+        "type": "object"
+      },
+      "MessageResponse": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
@@ -469,7 +797,7 @@
           },
           "parts": {
             "items": {
-              "$ref": "#/components/schemas/MessageResponse/$defs/MessagePartInputV1"
+              "$ref": "#/components/schemas/MessageResponse_MessagePartInputV1"
             },
             "type": "array"
           },
@@ -492,46 +820,442 @@
         "title": "MessageResponseV1",
         "type": "object"
       },
-      "SessionResponse": {
-        "$defs": {
-          "ApplicationUserIdentityV1": {
-            "additionalProperties": false,
-            "description": "The end user a call acts for. API identities are declarations, not authentication.",
-            "properties": {
-              "externalUserId": {
-                "type": "string"
-              },
-              "source": {
-                "$ref": "#/components/schemas/SessionResponse/$defs/ApplicationUserSourceV1"
-              },
-              "sourceId": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "source",
-              "sourceId",
-              "externalUserId"
-            ],
-            "type": "object"
+      "MessageResponse_MessagePartInputV1": {
+        "additionalProperties": false,
+        "properties": {
+          "artifactId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          "ApplicationUserSourceV1": {
-            "enum": [
-              "platform",
-              "channel",
-              "api_parameter"
-            ],
-            "type": "string"
-          },
-          "SessionVersionPolicyV1": {
-            "enum": [
-              "pinned",
-              "follow_deployment",
-              "manual_upgrade"
-            ],
+          "content": true,
+          "partType": {
             "type": "string"
           }
         },
+        "required": [
+          "partType"
+        ],
+        "type": "object"
+      },
+      "MyTasksPage": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MyTasksPage_TaskViewV1"
+            },
+            "type": "array"
+          },
+          "next": {
+            "description": "Opaque page boundary scoped to the same authenticated application and caller.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MyTasksPageV1",
+        "type": "object"
+      },
+      "MyTasksPage_ApplicationAccessBindingV1": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "web",
+                "type": "string"
+              },
+              "publicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "publicationId",
+              "revision"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "mcp",
+                "type": "string"
+              },
+              "publicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "publicationId",
+              "revision"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "MyTasksPage_ArtifactUploadResponseV1": {
+        "additionalProperties": false,
+        "properties": {
+          "artifactId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifactId",
+          "contentType",
+          "sizeBytes",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "MyTasksPage_InputWaitV1": {
+        "additionalProperties": false,
+        "properties": {
+          "content": true,
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nodeExecutionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "nodePath": {
+            "type": "string"
+          },
+          "occurrence": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "responseSchema": true,
+          "resumeUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "waitId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "waitId",
+          "executionId",
+          "nodeExecutionId",
+          "nodeId",
+          "nodePath",
+          "occurrence",
+          "status"
+        ],
+        "type": "object"
+      },
+      "MyTasksPage_TaskActionsV1": {
+        "additionalProperties": false,
+        "properties": {
+          "canCancel": {
+            "type": "boolean"
+          },
+          "downloadableArtifactIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "inputWaitIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "canCancel",
+          "inputWaitIds",
+          "downloadableArtifactIds"
+        ],
+        "type": "object"
+      },
+      "MyTasksPage_TaskApprovalV1": {
+        "additionalProperties": false,
+        "properties": {
+          "approvalId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "approvalId",
+          "title",
+          "status",
+          "version"
+        ],
+        "type": "object"
+      },
+      "MyTasksPage_TaskStageV1": {
+        "additionalProperties": false,
+        "properties": {
+          "nodeExecutionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodeExecutionId",
+          "title",
+          "status"
+        ],
+        "type": "object"
+      },
+      "MyTasksPage_TaskStateV1": {
+        "enum": [
+          "accepted",
+          "running",
+          "waiting_input",
+          "waiting_approval",
+          "completed",
+          "failed",
+          "cancelled",
+          "outcome_unknown"
+        ],
+        "type": "string"
+      },
+      "MyTasksPage_TaskViewV1": {
+        "additionalProperties": false,
+        "properties": {
+          "accessBinding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MyTasksPage_ApplicationAccessBindingV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "allowedActions": {
+            "$ref": "#/components/schemas/MyTasksPage_TaskActionsV1"
+          },
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "bundleId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "callerType": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "deploymentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "error": true,
+          "eventCursor": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/MyTasksPage_ArtifactUploadResponseV1"
+            },
+            "type": "array"
+          },
+          "invocationStatus": {
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MyTasksPage_WorkflowMessageV1"
+            },
+            "type": "array"
+          },
+          "outputs": true,
+          "pendingApprovals": {
+            "items": {
+              "$ref": "#/components/schemas/MyTasksPage_TaskApprovalV1"
+            },
+            "type": "array"
+          },
+          "pendingInputs": {
+            "items": {
+              "$ref": "#/components/schemas/MyTasksPage_InputWaitV1"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sessionId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/MyTasksPage_TaskStageV1"
+            },
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/MyTasksPage_TaskStateV1"
+          },
+          "taskId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "taskUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId",
+          "applicationId",
+          "deploymentId",
+          "workflowVersionId",
+          "bundleId",
+          "callerType",
+          "state",
+          "invocationStatus",
+          "stages",
+          "pendingInputs",
+          "pendingApprovals",
+          "messages",
+          "files",
+          "allowedActions",
+          "revision",
+          "eventCursor",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "MyTasksPage_WorkflowMessageV1": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nodeExecutionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "executionId",
+          "nodeExecutionId",
+          "content",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "SessionResponse": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
@@ -553,7 +1277,7 @@
           "endUser": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/SessionResponse/$defs/ApplicationUserIdentityV1"
+                "$ref": "#/components/schemas/SessionResponse_ApplicationUserIdentityV1"
               },
               {
                 "type": "null"
@@ -588,7 +1312,7 @@
             "type": "integer"
           },
           "versionPolicy": {
-            "$ref": "#/components/schemas/SessionResponse/$defs/SessionVersionPolicyV1"
+            "$ref": "#/components/schemas/SessionResponse_SessionVersionPolicyV1"
           },
           "workflowVersionId": {
             "format": "uuid",
@@ -610,6 +1334,66 @@
         "title": "SessionResponseV1",
         "type": "object"
       },
+      "SessionResponse_ApplicationUserIdentityV1": {
+        "additionalProperties": false,
+        "description": "The end user a call acts for. API identities are declarations, not authentication.",
+        "properties": {
+          "externalUserId": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SessionResponse_ApplicationUserSourceV1"
+          },
+          "sourceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "sourceId",
+          "externalUserId"
+        ],
+        "type": "object"
+      },
+      "SessionResponse_ApplicationUserSourceV1": {
+        "enum": [
+          "platform",
+          "channel",
+          "api_parameter"
+        ],
+        "type": "string"
+      },
+      "SessionResponse_SessionVersionPolicyV1": {
+        "enum": [
+          "pinned",
+          "follow_deployment",
+          "manual_upgrade"
+        ],
+        "type": "string"
+      },
+      "SubmitPage": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "input": true,
+          "publicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "publicationId",
+          "revision",
+          "input"
+        ],
+        "title": "SubmitPage",
+        "type": "object"
+      },
       "SubmitWaitInput": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -620,6 +1404,399 @@
           "content"
         ],
         "title": "SubmitWaitInputV1",
+        "type": "object"
+      },
+      "TaskView": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "accessBinding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskView_ApplicationAccessBindingV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "allowedActions": {
+            "$ref": "#/components/schemas/TaskView_TaskActionsV1"
+          },
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "bundleId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "callerType": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "deploymentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "error": true,
+          "eventCursor": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/TaskView_ArtifactUploadResponseV1"
+            },
+            "type": "array"
+          },
+          "invocationStatus": {
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/TaskView_WorkflowMessageV1"
+            },
+            "type": "array"
+          },
+          "outputs": true,
+          "pendingApprovals": {
+            "items": {
+              "$ref": "#/components/schemas/TaskView_TaskApprovalV1"
+            },
+            "type": "array"
+          },
+          "pendingInputs": {
+            "items": {
+              "$ref": "#/components/schemas/TaskView_InputWaitV1"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sessionId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/TaskView_TaskStageV1"
+            },
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TaskView_TaskStateV1"
+          },
+          "taskId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "taskUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId",
+          "applicationId",
+          "deploymentId",
+          "workflowVersionId",
+          "bundleId",
+          "callerType",
+          "state",
+          "invocationStatus",
+          "stages",
+          "pendingInputs",
+          "pendingApprovals",
+          "messages",
+          "files",
+          "allowedActions",
+          "revision",
+          "eventCursor",
+          "createdAt"
+        ],
+        "title": "TaskViewV1",
+        "type": "object"
+      },
+      "TaskView_ApplicationAccessBindingV1": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "web",
+                "type": "string"
+              },
+              "publicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "publicationId",
+              "revision"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "mcp",
+                "type": "string"
+              },
+              "publicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "publicationId",
+              "revision"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "TaskView_ArtifactUploadResponseV1": {
+        "additionalProperties": false,
+        "properties": {
+          "artifactId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifactId",
+          "contentType",
+          "sizeBytes",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "TaskView_InputWaitV1": {
+        "additionalProperties": false,
+        "properties": {
+          "content": true,
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nodeExecutionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "nodePath": {
+            "type": "string"
+          },
+          "occurrence": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "responseSchema": true,
+          "resumeUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "waitId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "waitId",
+          "executionId",
+          "nodeExecutionId",
+          "nodeId",
+          "nodePath",
+          "occurrence",
+          "status"
+        ],
+        "type": "object"
+      },
+      "TaskView_TaskActionsV1": {
+        "additionalProperties": false,
+        "properties": {
+          "canCancel": {
+            "type": "boolean"
+          },
+          "downloadableArtifactIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "inputWaitIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "canCancel",
+          "inputWaitIds",
+          "downloadableArtifactIds"
+        ],
+        "type": "object"
+      },
+      "TaskView_TaskApprovalV1": {
+        "additionalProperties": false,
+        "properties": {
+          "approvalId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "approvalId",
+          "title",
+          "status",
+          "version"
+        ],
+        "type": "object"
+      },
+      "TaskView_TaskStageV1": {
+        "additionalProperties": false,
+        "properties": {
+          "nodeExecutionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodeExecutionId",
+          "title",
+          "status"
+        ],
+        "type": "object"
+      },
+      "TaskView_TaskStateV1": {
+        "enum": [
+          "accepted",
+          "running",
+          "waiting_input",
+          "waiting_approval",
+          "completed",
+          "failed",
+          "cancelled",
+          "outcome_unknown"
+        ],
+        "type": "string"
+      },
+      "TaskView_WorkflowMessageV1": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nodeExecutionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "executionId",
+          "nodeExecutionId",
+          "content",
+          "createdAt"
+        ],
         "type": "object"
       },
       "WaitInputReceipt": {
@@ -698,6 +1875,124 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/InvocationResponse"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
+    "/gateway/v1/applications/{slug}/my-tasks": {
+      "get": {
+        "operationId": "listMyTasks",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 50,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "activeOnly",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyTasksPage"
                 }
               }
             },
@@ -1413,6 +2708,192 @@
         ]
       }
     },
+    "/gateway/v1/pages/{slug}": {
+      "get": {
+        "operationId": "getApplicationPage",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationPageView"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
+    "/gateway/v1/pages/{slug}/invocations": {
+      "post": {
+        "operationId": "invokeApplicationPage",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 192,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitPage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskView"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
     "/gateway/v1/sessions/{id}": {
       "get": {
         "operationId": "getSession",
@@ -1609,6 +3090,88 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/InvocationResponse"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
+    "/gateway/v1/tasks/{id}": {
+      "get": {
+        "operationId": "getTask",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskView"
                 }
               }
             },

@@ -61,7 +61,7 @@ import { boundaryGeometry, studioNodeGeometry } from "./nodes/canvas-node-geomet
 import { createDefinitionSelector } from "./store/definition-selector";
 import { useStudioShortcuts } from "./utils/use-studio-shortcuts";
 import { configurationIssues } from "./utils/configuration";
-import { definitionIssues } from "./utils/definition-validation";
+import { definitionIssues, definitionIssueMessages } from "./utils/definition-validation";
 import { includedActionNodeIds } from "./utils/debug-plan";
 import { iterationEndId } from "./utils/connections";
 import { manifestForNode } from "./utils/manifest-lookup";
@@ -1151,7 +1151,7 @@ export function WorkflowCanvasEditor({ viewOnly = false, documentId = "" }: { vi
             referenceCatalog={exitMainCatalog}
           />
         )}
-        {aiOpen && !readOnly && <BuilderPanel manifests={manifestMap} workflowId={workflowId} draftId={draftId} serverRevision={revision} executionId={executionId} onClose={() => setAiOpen(false)} persistRecovery={() => writeRecovery(documentKey, revision, studioDocument(storeApi.getState()), storeApi.getState())} onLocate={locateIssue} checkDocument={document => definitionIssues(document).map(issue => issue.message)} />}
+        {aiOpen && !readOnly && <BuilderPanel manifests={manifestMap} workflowId={workflowId} draftId={draftId} serverRevision={revision} executionId={executionId} onClose={() => setAiOpen(false)} persistRecovery={() => writeRecovery(documentKey, revision, studioDocument(storeApi.getState()), storeApi.getState())} onLocate={locateIssue} checkDocument={definitionIssueMessages} />}
       </main>
       <ConflictDialog
         onClose={() => setConflictOpen(false)}

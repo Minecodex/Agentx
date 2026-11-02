@@ -18,7 +18,7 @@ test('P8-E2E-20/25: four concurrent model calls are bounded and waiting designs 
     const fifth=canvases[4]!
     const panel=fifth.page.getByTestId('studio-builder-panel')
     await panel.getByLabel('描述工作流需求').fill('P8FIX: question label=MustBeRejected')
-    const pending=fifth.page.waitForResponse(response=>/\/studio-builder\/sessions\/.+\/runs$/.test(response.url())&&response.request().method()==='POST')
+    const pending=fifth.page.waitForResponse(response=>/\/design-agent\/sessions\/.+\/runs$/.test(response.url())&&response.request().method()==='POST')
     await panel.getByRole('button',{name:'发送',exact:true}).click()
     const busy=await pending
     expect(busy.status(),await busy.text()).toBe(409)

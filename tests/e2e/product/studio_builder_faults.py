@@ -91,7 +91,7 @@ def studio_faults(installed_agentx, service_urls, request):
                 capacity_peak = max(capacity_peak, active_models)
                 rows = _control_mysql(
                     installed_agentx,
-                    "SELECT CONCAT(HEX(r.id),':',IF(r.prompt LIKE '%host_restart%','host','gateway')) FROM studio_builder_runs r JOIN studio_builder_sessions s ON s.id=r.session_id WHERE r.status='waiting' AND (r.prompt LIKE '%host_restart%' OR r.prompt LIKE '%gateway_restart%')",
+                    "SELECT CONCAT(HEX(r.id),':',IF(r.prompt LIKE '%host_restart%','host','gateway')) FROM design_agent_runs r JOIN design_agent_sessions s ON s.id=r.session_id WHERE r.status='waiting' AND (r.prompt LIKE '%host_restart%' OR r.prompt LIKE '%gateway_restart%')",
                 )
                 for row in rows.splitlines():
                     identity, kind = row.split(":")
@@ -101,7 +101,7 @@ def studio_faults(installed_agentx, service_urls, request):
                     if kind == "gateway":
                         ready = _runtime_mysql(
                             installed_agentx,
-                            f"SELECT COUNT(*) FROM runtime_calls WHERE source_kind='studio_builder' AND status='sent' AND JSON_UNQUOTE(JSON_EXTRACT(studio_target_json,'$.runId'))='{checked_id}'",  # noqa: S608 -- UUID parsed from the isolated database.
+                            f"SELECT COUNT(*) FROM runtime_calls WHERE source_kind='studio_builder' AND status='sent' AND JSON_UNQUOTE(JSON_EXTRACT(design_target_json,'$.target.runId'))='{checked_id}'",  # noqa: S608 -- UUID parsed from the isolated database.
                         )
                         if ready != "1":
                             continue
@@ -171,3 +171,30 @@ def studio_faults(installed_agentx, service_urls, request):
             assert capacity_peak == expected_peak, (
                 f"Expected {expected_peak} concurrent model calls, observed {capacity_peak}"
             )
+
+
+def verify_gateway_unknown_after_deadline(context, events):
+    """A cancelled creation Run must never disguise or replay its sent model."""
+    selected = [event for event in events if event["kind"] == "gateway"]
+    assert len(selected) == 1, selected
+    identifier = uuid.UUID(hex=selected[0]["runId"])
+    control_rows = _control_mysql(
+        context,
+        f"SELECT HEX(CAST(JSON_OBJECT('id',LOWER(HEX(id)),'status',status,'expiredAtCompletion',completed_at>=deadline_at,'deadlineAtMillis',CAST(FLOOR(UNIX_TIMESTAMP(deadline_at)*1000) AS UNSIGNED)) AS BINARY)) FROM design_agent_runs WHERE id=UNHEX('{identifier.hex}')",  # noqa: S608 -- parsed UUID from this test's persisted fault event.
+    ).splitlines()
+    assert len(control_rows) == 1, control_rows
+    creation = json.loads(bytes.fromhex(control_rows[0]))
+    assert creation["status"] == "cancelled" and creation["expiredAtCompletion"], creation
+    model_rows = _runtime_mysql(
+        context,
+        f"SELECT HEX(CAST(JSON_OBJECT('id',LOWER(HEX(id)),'status',status,'requestFingerprint',request_fingerprint,'deadlineAtMillis',JSON_EXTRACT(request_json,'$.context.deadlineAtMillis'),'responseMissing',response_json IS NULL) AS BINARY)) FROM runtime_calls WHERE source_kind='studio_builder' AND JSON_UNQUOTE(JSON_EXTRACT(design_target_json,'$.target.runId'))='{identifier}'",  # noqa: S608 -- parsed UUID from this test's persisted fault event.
+    ).splitlines()
+    assert len(model_rows) == 1, "The original unknown model must not be dispatched again"
+    effect = json.loads(bytes.fromhex(model_rows[0]))
+    assert effect["status"] == "outcome_unknown" and effect["responseMissing"], effect
+    assert effect["deadlineAtMillis"] == creation["deadlineAtMillis"], (creation, effect)
+    directory = Path(context["artifact_dir"]) / "studio-builder"
+    directory.mkdir(exist_ok=True)
+    (directory / f"gateway-unknown-deadline-{identifier.hex}.json").write_text(
+        json.dumps({"creation": creation, "modelEffect": effect, "dispatchCount": 1, "passed": True}, indent=2)
+    )

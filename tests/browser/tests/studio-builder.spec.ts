@@ -18,7 +18,7 @@ test('P8-E2E-01/02/11 Fixture: UI model setting, creation, atomic Undo, ACK loss
   const initial = await saved(page, token, created)
   expect(initial.definition.nodes.some(node => node.id === 'p8-decision' && node.name === 'Initial')).toBeTruthy()
   let dropped = false
-  await page.route('**/studio-builder/sessions/*/acknowledgements', async route => {
+  await page.route('**/design-agent/sessions/*/acknowledgements', async route => {
     if (!dropped) { dropped = true; await route.abort('connectionreset') } else await route.continue()
   })
   await send(page, 'P8FIX: label=Changed')
@@ -69,7 +69,7 @@ test('P8-E2E-01/02/14 Real glm-5.3-flash: create, local edit, save/reopen, Undo 
   await page.getByRole('button', { name: 'AI 创作', exact: true }).click()
   let session = ''
   page.on('request', request => {
-    const match = request.url().match(/\/studio-builder\/sessions\/([^/]+)\/runs$/)
+    const match = request.url().match(/\/design-agent\/sessions\/([^/]+)\/runs$/)
     if (match) session = match[1]!
   })
   for (let index = 0; index < 4; index += 1) {
@@ -82,7 +82,7 @@ test('P8-E2E-01/02/14 Real glm-5.3-flash: create, local edit, save/reopen, Undo 
   let cursor = 0
   let compacted = false
   for (;;) {
-    const entries = await read<{items: Array<{sequence: number; payload: {type: string}}>; nextCursor: number}>(page, token, `/studio-builder/sessions/${session}/entries?after=${cursor}`)
+    const entries = await read<{items: Array<{sequence: number; payload: {type: string}}>; nextCursor: number}>(page, token, `/design-agent/sessions/${session}/entries?after=${cursor}`)
     compacted ||= entries.items.some(entry => entry.payload.type === 'compaction_completed')
     if (entries.items.length < 200) break
     cursor = entries.nextCursor

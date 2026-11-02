@@ -21,6 +21,15 @@ impl RuntimeWorker {
         secret: Option<&VaultSecretReferenceV1>,
         binding: &RuntimeResourceBindingV1,
     ) -> WorkerExecution {
+        if matches!(&binding.configuration,agentx_runtime_contracts::RuntimeResourceConfigurationV1::Mcp{tool_policy:Some(policy),..} if policy.approval.is_some())
+        {
+            return WorkerExecution::failed(
+                "TOOL_APPROVAL_AGENT_REQUIRED",
+                "This protected tool must run as a concrete Agent Effect; direct MCP node calls are not permitted",
+                false,
+            );
+        }
+
         let (legacy_sse, legacy_sse_session_key) = match &binding.configuration {
             agentx_runtime_contracts::RuntimeResourceConfigurationV1::Mcp {
                 server_version_id,
@@ -137,17 +146,6 @@ impl RuntimeWorker {
         } else {
             None
         };
-        if let Err(error) =
-            sqlx::query("UPDATE runtime_calls SET status='sent' WHERE id=? AND status='reserved'")
-                .bind(call_id)
-                .execute(&self.pool)
-                .await
-        {
-            return (
-                WorkerExecution::failed("RUNTIME_CALL_STATE_UNAVAILABLE", error.to_string(), false),
-                existing_session.map(str::to_owned),
-            );
-        }
         let mut session = existing_session.map(str::to_owned);
         if session.is_none() {
             let initialized = self
@@ -198,6 +196,21 @@ impl RuntimeWorker {
                     session,
                 );
             }
+        }
+        if let Err(error) =
+            crate::agent_tool_approvals::mark_sent(&self.pool, claim, binding, call_index, call_id)
+                .await
+        {
+            return (
+                self.fail_call(
+                    call_id,
+                    "TOOL_EFFECT_AUTHORIZATION_DENIED",
+                    error.to_string(),
+                    false,
+                )
+                .await,
+                session,
+            );
         }
         let (mut payload, next_session) = match self
             .mcp_rpc(

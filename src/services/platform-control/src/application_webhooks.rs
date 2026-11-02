@@ -167,22 +167,22 @@ pub(crate) async fn validate(
             "Fixed inputs must be an object",
         ));
     }
-    if let Some(reply) = reply {
-        if reply.enabled {
-            if reply.output_field.trim().is_empty() {
-                return Err(ApiError::bad_request(
-                    "INVALID_WEBHOOK_REPLY_OUTPUT_FIELD",
-                    "Reply output field is required when the reply is enabled",
-                ));
-            }
-            if let Some(template) = reply.template.as_deref() {
-                if template.len() > 1000 {
-                    return Err(ApiError::bad_request(
-                        "INVALID_WEBHOOK_REPLY_TEMPLATE",
-                        "Reply template must be at most 1000 characters",
-                    ));
-                }
-            }
+    if let Some(reply) = reply
+        && reply.enabled
+    {
+        if reply.output_field.trim().is_empty() {
+            return Err(ApiError::bad_request(
+                "INVALID_WEBHOOK_REPLY_OUTPUT_FIELD",
+                "Reply output field is required when the reply is enabled",
+            ));
+        }
+        if let Some(template) = reply.template.as_deref()
+            && template.len() > 1000
+        {
+            return Err(ApiError::bad_request(
+                "INVALID_WEBHOOK_REPLY_TEMPLATE",
+                "Reply template must be at most 1000 characters",
+            ));
         }
     }
     let (input_schema, output_schema) =
@@ -264,22 +264,21 @@ fn validate_bindings(
             }
         }
     }
-    if let Some(reply) = reply.filter(|reply| reply.enabled) {
-        if !output_schema
+    if let Some(reply) = reply.filter(|reply| reply.enabled)
+        && !output_schema
             .get("properties")
             .and_then(Value::as_object)
             .is_some_and(|properties| properties.contains_key(&reply.output_field))
-        {
-            return Err(ApiError::unprocessable(
-                "WEBHOOK_REPLY_OUTPUT_FIELD_UNKNOWN",
-                "Reply output field is not in the Workflow output schema",
-            )
-            .with_field_error(
-                "reply.outputField",
-                "WEBHOOK_REPLY_OUTPUT_FIELD_UNKNOWN",
-                "Select an existing Workflow output field",
-            ));
-        }
+    {
+        return Err(ApiError::unprocessable(
+            "WEBHOOK_REPLY_OUTPUT_FIELD_UNKNOWN",
+            "Reply output field is not in the Workflow output schema",
+        )
+        .with_field_error(
+            "reply.outputField",
+            "WEBHOOK_REPLY_OUTPUT_FIELD_UNKNOWN",
+            "Select an existing Workflow output field",
+        ));
     }
     if let Some(fixed) = fixed_inputs.as_object() {
         for (target, value) in fixed {
@@ -311,20 +310,20 @@ fn validate_bindings(
             }
         }
     }
-    if provider_type != "agentx" {
-        if let Some(required) = input_schema.get("required").and_then(Value::as_array) {
-            for field in required.iter().filter_map(Value::as_str) {
-                if !targets.contains(field) {
-                    return Err(ApiError::unprocessable(
-                        "WEBHOOK_REQUIRED_INPUT_UNMAPPED",
-                        "Every required Workflow Start Input must be mapped or fixed",
-                    )
-                    .with_field_error(
-                        "inputMappings",
-                        "WEBHOOK_REQUIRED_INPUT_UNMAPPED",
-                        format!("Required Workflow input '{field}' must be mapped or fixed"),
-                    ));
-                }
+    if provider_type != "agentx"
+        && let Some(required) = input_schema.get("required").and_then(Value::as_array)
+    {
+        for field in required.iter().filter_map(Value::as_str) {
+            if !targets.contains(field) {
+                return Err(ApiError::unprocessable(
+                    "WEBHOOK_REQUIRED_INPUT_UNMAPPED",
+                    "Every required Workflow Start Input must be mapped or fixed",
+                )
+                .with_field_error(
+                    "inputMappings",
+                    "WEBHOOK_REQUIRED_INPUT_UNMAPPED",
+                    format!("Required Workflow input '{field}' must be mapped or fixed"),
+                ));
             }
         }
     }

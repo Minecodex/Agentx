@@ -31,7 +31,11 @@
       },
       "parameterLabels": {
         "timeoutMs": "Wait timeout (ms)",
+        "responseSchema": "Input JSON Schema (optional)",
         "hookUrl": "Hook URL (optional)"
+      },
+      "parameterDescriptions": {
+        "responseSchema": "A frozen JSON Schema for the reply. Dates and formats are validated on every entry. Values are never converted or filled in."
       }
     },
     "zh-CN": {
@@ -53,7 +57,11 @@
       },
       "parameterLabels": {
         "timeoutMs": "等待超时（毫秒）",
+        "responseSchema": "输入 JSON Schema（可选）",
         "hookUrl": "Hook URL（可选）"
+      },
+      "parameterDescriptions": {
+        "responseSchema": "固定本次等待的回复结构，所有入口统一校验日期与格式，不转换类型或补默认值。"
       }
     }
   },
@@ -94,6 +102,9 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
+      "responseSchema": {
+        "type": ["object", "boolean"]
+      },
       "timeoutMs": {
         "type": "integer",
         "minimum": 1,
@@ -266,6 +277,9 @@
   },
   "uiSchema": {
     "fields": {
+      "responseSchema": {
+        "control": "schema_editor"
+      },
       "timeoutMs": {
         "control": "number"
       },

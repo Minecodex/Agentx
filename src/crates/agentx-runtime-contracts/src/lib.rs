@@ -5,7 +5,10 @@
 //! at the edge of their owning plane.
 
 mod agent_session;
+mod application_publication;
+mod application_ui;
 mod canonical;
+mod design_agent;
 mod engine;
 mod envelope;
 mod gateway;
@@ -19,14 +22,19 @@ mod process_session;
 mod publish;
 mod query;
 mod service_auth;
+mod task;
+mod tool_approval;
 mod user_identity;
 mod workspace;
 
 pub use agent_session::*;
+pub use application_publication::*;
+pub use application_ui::*;
 pub use canonical::{
     ContentHash, ContractError, Ed25519Signature, SignatureAlgorithm, canonical_bytes,
     content_hash, deterministic_uuid, sign_canonical, verify_canonical,
 };
+pub use design_agent::*;
 pub use engine::*;
 pub use envelope::*;
 pub use gateway::*;
@@ -40,6 +48,8 @@ pub use process_session::*;
 pub use publish::*;
 pub use query::*;
 pub use service_auth::*;
+pub use task::*;
+pub use tool_approval::*;
 pub use user_identity::*;
 pub use workspace::*;
 
@@ -93,3 +103,6 @@ mod studio_builder;
 mod studio_editor;
 pub use studio_builder::*;
 pub use studio_editor::*;
+
+mod application_mcp;
+pub use application_mcp::*;

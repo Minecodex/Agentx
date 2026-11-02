@@ -22,6 +22,15 @@ use uuid::Uuid;
 
 use crate::control_api::{ControlApiState, router};
 
+#[path = "design_agent_input_tests.rs"]
+mod design_inputs;
+#[path = "design_agent_reference_tests.rs"]
+mod design_references;
+#[path = "application_page_editor_tests.rs"]
+mod page_editor;
+#[path = "studio_builder_save_validation_tests.rs"]
+mod save_validation;
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[serial_test::serial]
 async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
@@ -319,6 +328,15 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
         Uuid::parse_str(bootstrap["user"]["id"].as_str().unwrap()).unwrap(),
         Uuid::parse_str(workflow_id).unwrap(),
         Uuid::parse_str(editor_context["document"]["id"].as_str().unwrap()).unwrap(),
+    )
+    .await;
+    design_inputs::assert_running_input_protocol(
+        &app,
+        &state,
+        &token,
+        &editor_context["document"],
+        projection_tenant_id,
+        Uuid::parse_str(bootstrap["user"]["id"].as_str().unwrap()).unwrap(),
     )
     .await;
     let service_identity_id = workflow["serviceIdentityId"].as_str().unwrap();
@@ -650,6 +668,24 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
         None,
     )
     .await;
+    design_references::assert_cancelled_model_references(
+        &app,
+        &state,
+        &token,
+        projection_tenant_id,
+        &resource_editor_context["document"],
+        &model,
+    )
+    .await;
+    save_validation::assert_save_policy_is_checked_before_edit(
+        &app,
+        &state,
+        &token,
+        &mcp_server,
+        &resource_editor_context["document"],
+        &definition,
+    )
+    .await;
     let (status, model_options) = request(
         &app,
         "GET",
@@ -871,6 +907,14 @@ async fn api_first_control_closure_uses_empty_schema_and_public_routes() {
 
     let (status, testing_app)=request(&app,"POST","/api/v1/applications",Some(&token),Some(json!({"name":"API Testing","slug":"api-testing","workflowId":resource_workflow_id,"visibility":"company"}))).await;
     assert_eq!(status, 201, "{testing_app}");
+    page_editor::persistent_page_conversation(
+        &app,
+        &pool,
+        &token,
+        Uuid::parse_str(testing_app["id"].as_str().unwrap()).unwrap(),
+        Uuid::parse_str(bootstrap["user"]["id"].as_str().unwrap()).unwrap(),
+    )
+    .await;
     let path = format!(
         "/api/v1/applications/{}",
         testing_app["id"].as_str().unwrap()
@@ -1248,12 +1292,12 @@ async fn builder_journal_does_not_reverse_core_locks(
         session_id: Uuid::now_v7(),
         run_id: Uuid::now_v7(),
     };
-    sqlx::query("INSERT INTO studio_builder_sessions(id,tenant_id,workflow_id,draft_id,user_id,editor_instance_id,snapshot_json,state_json) VALUES(?,?,?,?,?,?,JSON_OBJECT(),JSON_OBJECT())")
+    sqlx::query("INSERT INTO design_agent_sessions(id,tenant_id,workflow_id,draft_id,user_id,editor_instance_id,snapshot_json,state_json) VALUES(?,?,?,?,?,?,JSON_OBJECT(),JSON_OBJECT())")
         .bind(target.session_id).bind(tenant_id).bind(workflow_id).bind(draft_id).bind(user_id).bind(Uuid::now_v7()).execute(&state.pool).await.unwrap();
-    sqlx::query("INSERT INTO studio_builder_runs(id,tenant_id,session_id,token_version,prompt,edit_scope_json,model_alias_id,model_alias_version,setting_version,model_binding_json,model_parameters_json,deadline_at,delta_cursors_json) VALUES(?,?,?,1,'lock regression',JSON_OBJECT(),?,1,1,JSON_OBJECT(),JSON_OBJECT(),UTC_TIMESTAMP(6)+INTERVAL 1 MINUTE,JSON_OBJECT())")
+    sqlx::query("INSERT INTO design_agent_runs(id,tenant_id,session_id,token_version,prompt,edit_scope_json,model_alias_id,model_alias_version,setting_version,model_binding_json,model_parameters_json,deadline_at,delta_cursors_json) VALUES(?,?,?,1,'lock regression',JSON_OBJECT(),?,1,1,JSON_OBJECT(),JSON_OBJECT(),UTC_TIMESTAMP(6)+INTERVAL 1 MINUTE,JSON_OBJECT())")
         .bind(target.run_id).bind(tenant_id).bind(target.session_id).bind(Uuid::now_v7()).execute(&state.pool).await.unwrap();
     let mut core = state.pool.begin().await.unwrap();
-    sqlx::query("SELECT id FROM studio_builder_runs WHERE id=? FOR UPDATE")
+    sqlx::query("SELECT id FROM design_agent_runs WHERE id=? FOR UPDATE")
         .bind(target.run_id)
         .fetch_one(&mut *core)
         .await
@@ -1261,7 +1305,7 @@ async fn builder_journal_does_not_reverse_core_locks(
     let writer_state = state.clone();
     let writer_target = target.clone();
     let journal = tokio::spawn(async move {
-        crate::studio_builder_runtime::append_entry(
+        crate::design_agent_runtime::append_entry(
             &writer_state,
             &writer_target,
             "ack:lock-regression",
@@ -1272,18 +1316,18 @@ async fn builder_journal_does_not_reverse_core_locks(
     // Wait for the real blocked Run lock, rather than relying on a sleep race.
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
-            let waiting: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM performance_schema.data_lock_waits w JOIN performance_schema.data_locks l ON l.ENGINE_LOCK_ID=w.REQUESTING_ENGINE_LOCK_ID WHERE l.OBJECT_NAME='studio_builder_runs'")
+            let waiting: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM performance_schema.data_lock_waits w JOIN performance_schema.data_locks l ON l.ENGINE_LOCK_ID=w.REQUESTING_ENGINE_LOCK_ID WHERE l.OBJECT_NAME='design_agent_runs'")
                 .fetch_one(observer).await.unwrap();
             if waiting > 0 { break; }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     }).await.expect("journal must wait for the Core Run lock");
-    tokio::time::timeout(Duration::from_secs(5), sqlx::query("UPDATE studio_builder_sessions SET state_json=JSON_OBJECT('version',1,'compaction',JSON_OBJECT('snapshotId','assistant:lock-regression','summary','中文摘要')),state_version=1 WHERE id=?")
+    tokio::time::timeout(Duration::from_secs(5), sqlx::query("UPDATE design_agent_sessions SET state_json=JSON_OBJECT('version',1,'compaction',JSON_OBJECT('snapshotId','assistant:lock-regression','summary','中文摘要')),state_version=1 WHERE id=?")
         .bind(target.session_id).execute(&mut *core)).await
         .expect("journal must not hold Session while waiting for Run").unwrap();
     core.commit().await.unwrap();
     journal.await.unwrap().unwrap();
-    crate::studio_builder_runtime::append_entry(
+    crate::design_agent_runtime::append_entry(
         state,
         &target,
         "ack:lock-regression",
@@ -1292,7 +1336,7 @@ async fn builder_journal_does_not_reverse_core_locks(
     .await
     .unwrap();
     let count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM studio_builder_entries WHERE session_id=?")
+        sqlx::query_scalar("SELECT COUNT(*) FROM design_agent_entries WHERE session_id=?")
             .bind(target.session_id)
             .fetch_one(&state.pool)
             .await
@@ -1302,7 +1346,7 @@ async fn builder_journal_does_not_reverse_core_locks(
         "repeated publication must retain one durable event"
     );
     assert_eq!(
-        crate::studio_builder_runtime::compaction_snapshot_id(state, &target)
+        crate::design_agent_runtime::compaction_snapshot_id(state, &target)
             .await
             .unwrap(),
         "assistant:lock-regression"
@@ -1315,25 +1359,25 @@ async fn builder_journal_does_not_reverse_core_locks(
             )
         })
         .collect::<Vec<_>>();
-    crate::studio_builder_runtime::append_entries(state, &target, deltas.clone())
+    crate::design_agent_runtime::append_entries(state, &target, deltas.clone())
         .await
         .unwrap();
-    crate::studio_builder_runtime::append_entries(state, &target, deltas)
+    crate::design_agent_runtime::append_entries(state, &target, deltas)
         .await
         .unwrap();
     let count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM studio_builder_entries WHERE session_id=?")
+        sqlx::query_scalar("SELECT COUNT(*) FROM design_agent_entries WHERE session_id=?")
             .bind(target.session_id)
             .fetch_one(&state.pool)
             .await
             .unwrap();
     assert_eq!(count, 513, "stream batches must be durable and replay once");
-    sqlx::query("DELETE FROM studio_builder_runs WHERE id=?")
+    sqlx::query("DELETE FROM design_agent_runs WHERE id=?")
         .bind(target.run_id)
         .execute(&state.pool)
         .await
         .unwrap();
-    sqlx::query("DELETE FROM studio_builder_sessions WHERE id=?")
+    sqlx::query("DELETE FROM design_agent_sessions WHERE id=?")
         .bind(target.session_id)
         .execute(&state.pool)
         .await

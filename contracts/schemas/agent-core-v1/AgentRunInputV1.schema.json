@@ -111,7 +111,8 @@
     "ExternalContextOriginV1": {
       "enum": [
         "skill",
-        "studio_document"
+        "studio_document",
+        "application_document"
       ],
       "type": "string"
     },
@@ -367,6 +368,10 @@
       },
       "type": "array"
     },
+    "continueCompleted": {
+      "description": "Host admission permits already accepted inputs to continue this same\nsuccessfully completed Run. Business Hosts keep this false: queued\nWorkflow Executions retain their own prompt and result ownership.",
+      "type": "boolean"
+    },
     "deadlineAtMillis": {
       "format": "uint64",
       "minimum": 0,
@@ -453,6 +458,7 @@
     "modelReference",
     "promptMessageId",
     "prompt",
+    "continueCompleted",
     "modelContextWindow"
   ],
   "title": "AgentRunInputV1",

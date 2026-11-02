@@ -13,6 +13,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@cfworker/json-schema": "4.1.4",
     "@lexical/clipboard": "0.48.0",
     "@lexical/history": "0.48.0",
     "@lexical/plain-text": "0.48.0",

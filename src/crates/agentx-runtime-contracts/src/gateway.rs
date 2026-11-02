@@ -197,6 +197,7 @@ pub struct RuntimeUserAdmissionV1 {
     pub token_version: u64,
     pub enabled: bool,
     pub tenant_query_enabled: bool,
+    pub can_approve: bool,
     pub role_assignments: Vec<crate::ExecutionRoleAssignmentV1>,
 }
 
@@ -329,9 +330,9 @@ pub struct SessionResponseV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct InvocationRequestV1 {
-    /// Available only to authenticated platform testing users. API keys cannot select preset mode.
+    /// Omitted for formal external input. Explicit presets, including an empty plan, are available only to authenticated platform testing users.
     #[serde(default)]
-    pub wait_inputs: crate::WaitInputsV1,
+    pub wait_inputs: Option<crate::WaitInputsV1>,
     pub input: Value,
     pub session_id: Option<Uuid>,
     pub response_mode: Option<String>,
@@ -409,7 +410,7 @@ pub struct MessagePartInputV1 {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MessageRequestV1 {
     #[serde(default)]
-    pub wait_inputs: crate::WaitInputsV1,
+    pub wait_inputs: Option<crate::WaitInputsV1>,
     pub parts: Vec<MessagePartInputV1>,
 }
 
@@ -445,6 +446,17 @@ pub struct CommandAcceptedV1 {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GatewayErrorV1 {
+    pub code: String,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub field_errors: Vec<GatewayFieldErrorV1>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GatewayFieldErrorV1 {
+    /// Stable JSON Pointer, relative to the business input.
+    pub field: String,
     pub code: String,
     pub message: String,
 }

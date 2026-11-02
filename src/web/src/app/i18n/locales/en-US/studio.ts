@@ -15,6 +15,11 @@ const translations = {
     "unpublished": "Unpublished"
   },
   "builder": {
+    "guidance": "Add guidance",
+    "guidancePlaceholder": "Add instructions for this creation…",
+    "outputLimit": "The model reached its output limit before completing. Adjust the model parameters and generate again.",
+    "modelFailed": "The model did not complete this authoring request. Check the failure details.",
+
     "recoveryUnavailable": "Local recovery could not be saved. Save the current edits before continuing AI creation.",
     "scope": "Edit scope",
     "canvasScope": "Current canvas",

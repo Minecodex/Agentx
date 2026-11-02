@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { StudioDocument } from "../model/types";
-import { definitionIssues, isInputBindingEmpty, isReferenceKey } from "./definition-validation";
+import { definitionIssues, definitionIssueMessages, isInputBindingEmpty, isReferenceKey } from "./definition-validation";
 
 const document = (): StudioDocument => ({
   start: { inputs: { type: "object" }, contexts: {} },
@@ -16,6 +16,28 @@ const document = (): StudioDocument => ({
 });
 
 describe("workflow definition validation", () => {
+  it("preserves the exact rejected Exit field in AI feedback without exposing values", () => {
+    const value = document();
+    value.end.outputs.request_id = { schema: { type: "string" }, required: true, sensitive: false };
+    value.nodes = [{ id: "exit-error", type: "exit", position: { x: 0, y: 0 }, data: { editorKind: "exit", key: "exit_error", label: "Error", protected: false, parameters: { outputs: { request_id: { kind: "literal", value: "" }, private_note: { kind: "literal", value: "PRIVATE_BUSINESS_VALUE" } }, errorOutputs: {} } } }];
+    const before = JSON.stringify(value);
+    const messages = definitionIssueMessages(value);
+    expect(messages).toEqual(expect.arrayContaining([expect.stringMatching(/END_OUTPUT_BINDING_REQUIRED.*exit-error.*parameters\.outputs\.request_id/)]));
+    expect(messages.join(" ")).not.toContain("PRIVATE_BUSINESS_VALUE");
+    expect(JSON.stringify(value)).toBe(before);
+  });
+
+  it("bounds a large rejected document's feedback without changing validation", () => {
+    const value = document();
+    value.end.outputs.request_id = { schema: { type: "string" }, required: true, sensitive: false };
+    value.nodes = Array.from({ length: 40 }, (_, index) => ({ id: `exit-${index}`, type: "exit", position: { x: 0, y: 0 }, data: { editorKind: "exit", key: `exit_${index}`, label: "End", protected: false, parameters: { outputs: { request_id: { kind: "literal", value: "" } }, errorOutputs: {} } } }));
+    expect(definitionIssues(value)).toHaveLength(40);
+    const messages = definitionIssueMessages(value);
+    expect(messages).toHaveLength(11);
+    expect(messages.at(-1)).toContain("30 additional validation issues");
+    expect(messages.every(message => message.length <= 800)).toBe(true);
+  });
+
   it("matches the backend reference-key contract", () => {
     expect(isReferenceKey("answer_2")).toBe(true);
     expect(isReferenceKey("_answer")).toBe(true);
