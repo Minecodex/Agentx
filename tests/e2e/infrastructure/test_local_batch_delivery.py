@@ -67,11 +67,15 @@ def test_retained_batch_contract_parser_and_atomic_rejection():
             assert response.status_code in (401, 403, 404) and time.monotonic() < deadline
             time.sleep(0.5)
         before = checked(response)
-        csv_text = '单号,申请人,类型,金额\nBX-PARSE-001,"示例甲,分部",差旅费,268.50\nBX-PARSE-002,示例乙,办公采购,135.75\n'
-        table = checked(runtime.post(
-            f"/gateway/v1/applications/{case['slug']}/batch-imports/parse",
-            json={"text": csv_text, "delimiter": ","},
-        ))
+        csv_text = (
+            '单号,申请人,类型,金额\nBX-PARSE-001,"示例甲,分部",差旅费,268.50\nBX-PARSE-002,示例乙,办公采购,135.75\n'
+        )
+        table = checked(
+            runtime.post(
+                f"/gateway/v1/applications/{case['slug']}/batch-imports/parse",
+                json={"text": csv_text, "delimiter": ","},
+            )
+        )
         assert table["headers"] == ["单号", "申请人", "类型", "金额"]
         assert table["lines"] == [2, 3]
         assert table["rows"] == [
@@ -83,10 +87,14 @@ def test_retained_batch_contract_parser_and_atomic_rejection():
             {"request_id": "BX-ATOMIC-002", "applicant": "示例乙", "expense_type": "办公采购", "amount": 135.75},
             {"request_id": "BX-ATOMIC-003", "applicant": "示例丙", "expense_type": "客户招待", "amount": -1},
         ]
-        invalid = runtime.post(path, headers={"Idempotency-Key": str(uuid.uuid4())}, json={
-            "name": "Atomic validation; no business work is accepted",
-            "items": [{"clientItemId": str(index), "input": value} for index, value in enumerate(inputs)],
-        })
+        invalid = runtime.post(
+            path,
+            headers={"Idempotency-Key": str(uuid.uuid4())},
+            json={
+                "name": "Atomic validation; no business work is accepted",
+                "items": [{"clientItemId": str(index), "input": value} for index, value in enumerate(inputs)],
+            },
+        )
         assert invalid.status_code == 422, invalid.text
         assert any(error["field"].startswith("/items/2/input/amount") for error in invalid.json()["fieldErrors"])
         after = checked(runtime.get(path))
@@ -94,13 +102,18 @@ def test_retained_batch_contract_parser_and_atomic_rejection():
         managed = checked(control.get(f"/api/v1/applications/{case['applicationId']}/batches"))
         assert {row["batchId"] for row in managed["items"]} >= {row["batchId"] for row in after["items"]}
         report = {
-            "passed": True, "sameWorkflowVersionAndBusinessContract": True,
-            "sdkVersion": 2, "csv": table, "atomicRejection": invalid.json(),
+            "passed": True,
+            "sameWorkflowVersionAndBusinessContract": True,
+            "sdkVersion": 2,
+            "csv": table,
+            "atomicRejection": invalid.json(),
             "batchIdsBefore": [row["batchId"] for row in before["items"]],
             "batchIdsAfter": [row["batchId"] for row in after["items"]],
             "formalSubmissions": 0,
         }
-        (directory / "batch-backend-verification.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+        (directory / "batch-backend-verification.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+        )
 
 
 @pytest.mark.skipif(
@@ -110,15 +123,27 @@ def test_retained_batch_contract_parser_and_atomic_rejection():
 def test_retained_batch_page_publish_and_real_business():
     config, directory, _ = configuration()
     try:
-        run_playwright(ROOT, "local-batch-demo", ("tests/local-batch-delivery.spec.ts",), {
-            **os.environ, "AGENTX_E2E_BASE_URL": config["baseUrl"],
-            "AGENTX_E2E_RUNTIME_URL": config["runtimeUrl"],
-            "AGENTX_E2E_STAGE": "local-batch", "AGENTX_E2E_RUN_ID": config["runId"],
-            "NODE_EXTRA_CA_CERTS": config["caFile"],
-        })
+        run_playwright(
+            ROOT,
+            "local-batch-demo",
+            ("tests/local-batch-delivery.spec.ts",),
+            {
+                **os.environ,
+                "AGENTX_E2E_BASE_URL": config["baseUrl"],
+                "AGENTX_E2E_RUNTIME_URL": config["runtimeUrl"],
+                "AGENTX_E2E_STAGE": "local-batch",
+                "AGENTX_E2E_RUN_ID": config["runId"],
+                "NODE_EXTRA_CA_CERTS": config["caFile"],
+            },
+        )
     finally:
         output = ROOT / ".local/artifacts/playwright/local-batch" / config["runId"] / "local-batch-demo"
-        for filename in ("expense-batch-entry.jpg", "expense-batch-completed.jpg", "expense-batch-waiting.jpg", "expense-batch-list.jpg"):
+        for filename in (
+            "expense-batch-entry.jpg",
+            "expense-batch-completed.jpg",
+            "expense-batch-waiting.jpg",
+            "expense-batch-list.jpg",
+        ):
             matches = list(output.rglob(filename)) if output.exists() else []
             if matches:
                 shutil.copyfile(max(matches, key=lambda path: path.stat().st_mtime_ns), directory / filename)
