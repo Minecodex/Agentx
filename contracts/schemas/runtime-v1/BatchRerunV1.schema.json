@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "itemIds": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "itemIds"
+  ],
+  "title": "BatchRerunV1",
+  "type": "object"
+}

@@ -101,6 +101,7 @@ impl ContextProjector {
                     })
                     .cloned(),
             );
+            Self::bound_images(&mut projected);
             return projected;
         };
         let mut projected = Vec::with_capacity(
@@ -145,14 +146,56 @@ impl ContextProjector {
                 .filter(|message| !message.message_id.starts_with("external-context:"))
                 .cloned(),
         );
+        Self::bound_images(&mut projected);
         projected
+    }
+
+    // Retain recent visual observations in the model window, while full history stays intact.
+    fn bound_images(projected: &mut [AgentMessageV1]) {
+        let mut images = 0;
+        for message in projected.iter_mut().rev() {
+            if message.role != MessageRole::ToolObservation {
+                continue;
+            }
+            if let crate::ModelContentV1::Parts(parts) = &mut message.content {
+                for part in parts.iter_mut().rev() {
+                    if matches!(part, crate::ModelContentPartV1::ImageUrl { .. }) {
+                        images += 1;
+                        if images > 4 {
+                            *part = crate::ModelContentPartV1::Text { text: "An older screenshot is omitted from this model window. Request a fresh observation if needed.".into() };
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub fn estimated_tokens(messages: &[AgentMessageV1]) -> u64 {
         messages
             .iter()
             .map(|message| {
-                (message.content.as_text().map(str::len).unwrap_or(0) as u64).div_ceil(4) + 4
+                let content = match &message.content {
+                    crate::ModelContentV1::Text(text) => (text.len() as u64).div_ceil(4),
+                    crate::ModelContentV1::Parts(parts) => parts
+                        .iter()
+                        .map(|part| match part {
+                            crate::ModelContentPartV1::Text { text } => {
+                                (text.len() as u64).div_ceil(4)
+                            }
+                            // Bounded preview images reserve context conservatively; base64 is not text.
+                            crate::ModelContentPartV1::ImageUrl { .. } => 8192,
+                            crate::ModelContentPartV1::InputAudio { input_audio } => {
+                                (input_audio.data.len() as u64).div_ceil(4)
+                            }
+                        })
+                        .sum(),
+                };
+                let arguments = message
+                    .tool_calls
+                    .iter()
+                    .map(|call| (call.arguments.to_string().len() as u64).div_ceil(4))
+                    .sum::<u64>();
+                content + arguments + 4
             })
             .sum()
     }
@@ -161,6 +204,76 @@ impl ContextProjector {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn screenshot_retention_does_not_remove_user_image_inputs() {
+        let parts = (0..6)
+            .map(|index| crate::ModelContentPartV1::ImageUrl {
+                image_url: crate::ImageUrlV1 {
+                    url: format!("data:image/webp;base64,user-{index}"),
+                },
+            })
+            .collect::<Vec<_>>();
+        let state = AgentSessionStateV1 {
+            messages: vec![AgentMessageV1 {
+                message_id: "user-images".into(),
+                role: MessageRole::User,
+                content: ModelContentV1::Parts(parts.clone()),
+                tool_calls: vec![],
+                tool_call_id: None,
+                is_error: false,
+            }],
+            ..Default::default()
+        };
+        assert_eq!(
+            ContextProjector::project(&state)[0].content,
+            ModelContentV1::Parts(parts)
+        );
+    }
+
+    #[test]
+    fn visual_window_is_bounded_before_and_after_compaction_without_losing_history() {
+        let images = (0..7)
+            .map(|index| AgentMessageV1 {
+                message_id: format!("visual-{index}"),
+                role: MessageRole::ToolObservation,
+                content: ModelContentV1::Parts(vec![crate::ModelContentPartV1::ImageUrl {
+                    image_url: crate::ImageUrlV1 {
+                        url: format!("agentx-artifact:{index}"),
+                    },
+                }]),
+                tool_calls: vec![],
+                tool_call_id: Some(format!("call-{index}")),
+                is_error: false,
+            })
+            .collect::<Vec<_>>();
+        for compacted in [false, true] {
+            let state = AgentSessionStateV1 {
+                messages: images.clone(),
+                compaction: compacted.then(|| CompactionSnapshotV1 {
+                    snapshot_id: "c".into(),
+                    kind: CompactionKindV1::Threshold,
+                    summary: "Earlier observations".into(),
+                    through_message_index: 0,
+                    retained_tail: images.iter().skip(1).cloned().collect(),
+                    tokens_before: 60000,
+                }),
+                ..Default::default()
+            };
+            let projected = ContextProjector::project(&state);
+            let visible = projected
+                .iter()
+                .flat_map(|message| match &message.content {
+                    ModelContentV1::Parts(parts) => parts.as_slice(),
+                    _ => &[],
+                })
+                .filter(|part| matches!(part, crate::ModelContentPartV1::ImageUrl { .. }))
+                .count();
+            assert_eq!(visible, 4);
+            assert_eq!(state.messages, images);
+            assert!(ContextProjector::estimated_tokens(&projected) >= 4 * 8192);
+        }
+    }
 
     #[test]
     fn external_context_is_first_and_never_accumulates_on_projection() {

@@ -84,18 +84,7 @@ def plan9_public_origins(installed_agentx, service_urls):
     # correctly return 503 for draining. Wait for those exact Pods to leave.
     for namespace, pod in old_pods:
         run(("kubectl", "-n", namespace, "wait", "--for=delete", f"pod/{pod}", "--timeout=120s"), timeout=140)
-    until = time.monotonic() + 90
-    with httpx.Client(timeout=5, trust_env=False) as client:
-        while True:
-            try:
-                ready = client.get(control + "/api/v1/bootstrap/status").status_code == 200
-                ready = ready and client.get(runtime + "/.well-known/oauth-authorization-server").status_code == 200
-                if ready:
-                    break
-            except httpx.HTTPError:
-                pass
-            assert time.monotonic() < until, "Temporary public entrypoints did not become ready after rollout"
-            time.sleep(0.5)
+    wait_public_entrypoints(control, runtime)
     (Path(installed_agentx["artifact_dir"]) / "public-origins.json").write_text(
         json.dumps(
             {
@@ -110,3 +99,19 @@ def plan9_public_origins(installed_agentx, service_urls):
         )
     )
     return service_urls
+
+
+def wait_public_entrypoints(control: str, runtime: str) -> None:
+    """Wait for supervised read-only tunnels after all temporary Pod rollouts."""
+    until = time.monotonic() + 90
+    with httpx.Client(timeout=5, trust_env=False) as client:
+        while True:
+            try:
+                ready = client.get(control + "/api/v1/bootstrap/status").status_code == 200
+                ready = ready and client.get(runtime + "/.well-known/oauth-authorization-server").status_code == 200
+                if ready:
+                    break
+            except httpx.HTTPError:
+                pass
+            assert time.monotonic() < until, "Temporary public entrypoints did not become ready after rollout"
+            time.sleep(0.5)

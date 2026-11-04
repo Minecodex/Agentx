@@ -130,6 +130,198 @@ struct FakeModel {
 }
 
 #[test]
+fn confirmed_generation_errors_feed_back_into_the_same_task_without_running_tools() {
+    let mut model = FakeModel {
+        requests: vec![],
+        responses: VecDeque::from([
+            Err(ModelPortError::Recoverable("Output limit".into())),
+            Err(ModelPortError::Recoverable("Invalid JSON".into())),
+            response("corrected", "Completed after concise correction", vec![]),
+        ]),
+    };
+    let mut state = MemoryState::default();
+    let mut tools = FakeTools::default();
+    let result = AgentCore::run(
+        &input(false),
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut Events::default(),
+        &FixedClock,
+        &mut budget(BudgetDecision::Continue),
+    )
+    .unwrap();
+    assert_eq!(result.terminal_reason, TerminalReasonV1::Completed);
+    assert_eq!(model.requests.len(), 3);
+    assert!(tools.calls.is_empty());
+    assert!(model.requests[1].messages.iter().any(|m| {
+        m.content
+            .as_text()
+            .is_some_and(|text| text.contains("Output limit"))
+    }));
+    assert!(model.requests[2].messages.iter().any(|m| {
+        m.content
+            .as_text()
+            .is_some_and(|text| text.contains("Invalid JSON"))
+    }));
+}
+
+#[test]
+fn generation_retry_budget_survives_suspension_and_stops_after_two_corrections() {
+    let mut model = FakeModel {
+        requests: vec![],
+        responses: VecDeque::from([
+            Err(ModelPortError::Recoverable("Temporary rejection".into())),
+            Err(ModelPortError::Pending("receipt".into())),
+            Err(ModelPortError::Recoverable("Output limit".into())),
+            Err(ModelPortError::Recoverable("Invalid JSON".into())),
+            response("must-not-run", "unexpected", vec![]),
+        ]),
+    };
+    let mut state = MemoryState::default();
+    let mut tools = FakeTools::default();
+    let first = AgentCore::run(
+        &input(false),
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut Events::default(),
+        &FixedClock,
+        &mut budget(BudgetDecision::Continue),
+    )
+    .unwrap();
+    assert_eq!(first.terminal_reason, TerminalReasonV1::Suspended);
+    let mut resumed = input(false);
+    resumed.fencing_token += 1;
+    let result = AgentCore::run(
+        &resumed,
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut Events::default(),
+        &FixedClock,
+        &mut budget(BudgetDecision::Continue),
+    )
+    .unwrap();
+    assert_eq!(result.terminal_reason, TerminalReasonV1::ModelError);
+    assert_eq!(model.responses.len(), 1);
+    assert!(tools.calls.is_empty());
+    assert_eq!(
+        result
+            .state
+            .messages
+            .iter()
+            .filter(|m| m.message_id.starts_with("model-retry:run-1:"))
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn uncertain_model_dispatch_never_enters_generation_retry() {
+    let mut model = FakeModel {
+        requests: vec![],
+        responses: VecDeque::from([
+            Err(ModelPortError::OutcomeUnknown(
+                "Connection lost after sending".into(),
+            )),
+            response("must-not-run", "unexpected", vec![]),
+        ]),
+    };
+    let result = AgentCore::run(
+        &input(false),
+        &mut model,
+        &mut FakeTools::default(),
+        &mut MemoryState::default(),
+        &mut Events::default(),
+        &FixedClock,
+        &mut budget(BudgetDecision::Continue),
+    )
+    .unwrap();
+    assert_eq!(result.terminal_reason, TerminalReasonV1::OutcomeUnknown);
+    assert_eq!(model.requests.len(), 1);
+}
+
+#[test]
+fn tool_image_is_committed_with_its_result_and_reaches_the_next_model_turn() {
+    let mut input = input(false);
+    input.attachment_tools = vec![ToolDefinitionV1 {
+        name: "workflow_browser".into(),
+        description: "Observe".into(),
+        input_schema: json!({"type":"object"}),
+        origin: ToolOriginV1::Platform,
+        replay_policy: ReplayPolicyV1::IdempotencyRequired,
+    }];
+    let image = ModelContentPartV1::ImageUrl {
+        image_url: ImageUrlV1 {
+            url: "agentx-artifact:image-1".into(),
+        },
+    };
+    let mut tools = FakeTools {
+        calls: vec![],
+        result: Some(Ok(ToolResultV1 {
+            content: "Observed current draft".into(),
+            structured_result: None,
+            observations: vec![image.clone()],
+            artifact_refs: vec!["image-1".into()],
+            truncated: false,
+            is_error: false,
+            terminate: false,
+        })),
+    };
+    let mut model = FakeModel {
+        responses: VecDeque::from([
+            response(
+                "a1",
+                "",
+                vec![ToolCallV1 {
+                    call_id: "view-1".into(),
+                    name: "workflow_browser".into(),
+                    arguments: json!({}),
+                }],
+            ),
+            response("a2", "Inspected", vec![]),
+        ]),
+        requests: vec![],
+    };
+    let mut state = MemoryState::default();
+    let result = AgentCore::run(
+        &input,
+        &mut model,
+        &mut tools,
+        &mut state,
+        &mut Events::default(),
+        &FixedClock,
+        &mut budget(BudgetDecision::Continue),
+    )
+    .unwrap();
+    assert_eq!(result.terminal_reason, TerminalReasonV1::Completed);
+    assert_eq!(model.requests.len(), 2);
+    let messages = &model.requests[1].messages;
+    let position = messages
+        .iter()
+        .position(|message| message.role == MessageRole::ToolResult)
+        .unwrap();
+    assert_eq!(messages[position + 1].role, MessageRole::ToolObservation);
+    assert_eq!(
+        messages[position + 1].tool_call_id,
+        messages[position].tool_call_id
+    );
+    assert_eq!(
+        messages[position + 1].content,
+        ModelContentV1::Parts(vec![image])
+    );
+    assert_eq!(tools.calls.len(), 1);
+    assert!(
+        state
+            .state
+            .unwrap()
+            .messages
+            .contains(&messages[position + 1])
+    );
+}
+
+#[test]
 fn confirmed_model_failure_after_host_loss_is_settled_without_another_provider_call() {
     struct FailedReceipt;
     impl ModelPort for FailedReceipt {
@@ -202,6 +394,7 @@ fn terminating_tool_failure_stops_model_turns_and_survives_settlement_crashes() 
         let mut tools = FakeTools {
             calls: vec![],
             result: Some(Ok(ToolResultV1 {
+                observations: Vec::new(),
                 content: details.to_string(),
                 structured_result: Some(details.clone()),
                 artifact_refs: vec![],
@@ -302,6 +495,7 @@ impl ToolPort for FakeTools {
         self.calls.push(call.clone());
         self.result.take().unwrap_or_else(|| {
             Ok(ToolResultV1 {
+                observations: Vec::new(),
                 content: "tool-ok".into(),
                 structured_result: None,
                 artifact_refs: Vec::new(),
@@ -1013,6 +1207,7 @@ fn settled_tool_effect_is_recovered_without_second_tool_call() {
         replay_policy: ReplayPolicyV1::Never,
         phase: OperationPhaseV1::SettledSuccess {
             result: json!(ToolResultV1 {
+                observations: Vec::new(),
                 content: "tool-ok".into(),
                 structured_result: None,
                 artifact_refs: Vec::<String>::new(),

@@ -88,6 +88,7 @@ pub(crate) fn write(path: &Path) -> Result<()> {
     add_schema::<crate::application_page_api::PageCheckReport>(&mut contract, "PageCheckReport")?;
     add_schema::<crate::application_page_api::PageCheckReceipt>(&mut contract, "PageCheckReceipt")?;
     crate::application_page_api::apply_openapi(&mut contract);
+    crate::runtime_bff::application_batches_openapi(&mut contract)?;
     add_schema::<crate::application_mcp_api::PublishMcp>(&mut contract, "PublishApplicationMcp")?;
     add_schema::<crate::application_mcp_api::McpRevision>(&mut contract, "ApplicationMcpRevision")?;
     add_schema::<crate::application_mcp_diagnostics::McpDiagnostic>(
@@ -206,9 +207,13 @@ pub(crate) fn write(path: &Path) -> Result<()> {
         &mut contract,
         "UpdateMemoryConnectionRequest",
     )?;
-    add_schema::<agentx_runtime_contracts::ApplicationUserIdentityV1>(
+    add_schema::<crate::runtime_bff::end_user_view::EndUserResponse>(
         &mut contract,
         "ApplicationUserIdentity",
+    )?;
+    add_schema::<crate::canvas_plugin_api::PluginAuditItem>(
+        &mut contract,
+        "CanvasPluginAuditItem",
     )?;
     add_schema::<crate::runtime_bff::AgentSubjectMemoryInput>(
         &mut contract,
@@ -228,6 +233,8 @@ pub(crate) fn write(path: &Path) -> Result<()> {
         &mut contract,
         "ApplicationInvocationPageResponse",
     )?;
+    contract["components"]["schemas"]["ApplicationInvocationPageResponse_ApplicationUserIdentityV1"] =
+        contract["components"]["schemas"]["ApplicationUserIdentity"].clone();
     contract["paths"]["/api/v1/applications/{id}/invocations"] = serde_json::json!({"get": {
         "security":[{"bearerAuth":[]}],
         "parameters":[
@@ -261,7 +268,7 @@ pub(crate) fn write(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn add_schema<T: schemars::JsonSchema>(contract: &mut Value, name: &str) -> Result<()> {
+pub(crate) fn add_schema<T: schemars::JsonSchema>(contract: &mut Value, name: &str) -> Result<()> {
     let mut schema = serde_json::to_value(schemars::schema_for!(T))?;
     let definitions = schema
         .as_object_mut()

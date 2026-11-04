@@ -47,6 +47,9 @@ pub struct StudioEditorSnapshotV1 {
 )]
 pub enum StudioEditIntentV1 {
     AutoLayout,
+    MoveNodes {
+        positions: Vec<StudioNodePositionV1>,
+    },
     ReplaceDocument {
         document: StudioDocumentV1,
     },
@@ -68,6 +71,14 @@ pub enum StudioEditIntentV1 {
     SetEditorDocument {
         editor_document: EditorDocument,
     },
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StudioNodePositionV1 {
+    pub node_id: String,
+    pub x: f64,
+    pub y: f64,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]

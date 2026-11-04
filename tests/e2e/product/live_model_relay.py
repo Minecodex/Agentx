@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import hashlib
 import hmac
 import ipaddress
 import json
@@ -100,7 +101,36 @@ class Relay:
         self.relay_key = relay_key
         self.ledger = ledger
         self.slots = threading.BoundedSemaphore(2)
+        self.audit_lock = threading.Lock()
         self.client = httpx.Client(timeout=httpx.Timeout(300, connect=15), trust_env=False, follow_redirects=False)
+
+    def audit_parameters(self, identifier: str, payload: dict) -> None:
+        effort = payload.get("reasoning_effort")
+        images = [
+            part.get("image_url", {}).get("url", "")
+            for message in payload.get("messages", [])
+            if isinstance(message.get("content"), list)
+            for part in message["content"]
+            if part.get("type") == "image_url"
+        ]
+        record = {
+            "requestId": identifier,
+            "stage": "forward_attempt",
+            "at": datetime.now(UTC).isoformat(),
+            "model": payload.get("model"),
+            "reasoningEffort": effort
+            if effort in (None, "none", "minimal", "low", "medium", "high", "xhigh", "max")
+            else "unrecognized",
+            "maxOutputTokens": payload.get("max_tokens", payload.get("max_completion_tokens")),
+            "imageCount": len(images),
+            "imageMimeTypes": sorted({url.split(";", 1)[0].removeprefix("data:") for url in images}),
+            "imagesAreBase64": all(url.startswith("data:image/") and ";base64," in url for url in images),
+            "canonicalPayloadSha256": hashlib.sha256(
+                json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
+            ).hexdigest(),
+        }
+        with self.audit_lock, self.ledger.report.with_suffix(".requests.jsonl").open("a") as handle:
+            handle.write(json.dumps(record) + "\n")
 
     def handler(self):
         context = self
@@ -163,6 +193,7 @@ class Relay:
                 began_response = False
                 usage = None
                 try:
+                    context.audit_parameters(identifier, payload)
                     with context.client.stream(
                         "POST",
                         "https://api.apimart.ai/v1/chat/completions",
@@ -234,6 +265,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--listen", default="127.0.0.1")
     parser.add_argument("--limit-usd", type=Decimal, default=Decimal("30"))
+    parser.add_argument("--max-requests", type=int, default=None)
     parser.add_argument("--input-price", type=Decimal, required=True)
     parser.add_argument("--output-price", type=Decimal, required=True)
     args = parser.parse_args()
@@ -247,7 +279,11 @@ def main() -> None:
     if key_file.stat().st_mode & 0o077:
         parser.error("The relay credential file must be private")
     ledger = ModelBudget(
-        args.report, limit=args.limit_usd, input_price=args.input_price, output_price=args.output_price
+        args.report,
+        limit=args.limit_usd,
+        input_price=args.input_price,
+        output_price=args.output_price,
+        max_requests=args.max_requests,
     )
     ca, cert, key = certificates(args.private_directory)
     upstream_key = getpass.getpass("APIMart test credential (not echoed): ").strip()

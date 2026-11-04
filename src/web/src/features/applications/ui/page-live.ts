@@ -2,12 +2,13 @@ import { applicationPageClient, ApiClientError, jsonBody } from '../../../shared
 import { consumeServerSentEvents } from '../../../shared/lib/server-sent-events'
 import type { PageDispatcher } from './page-bridge'
 import type { PublishedPage, TaskView } from './page-types'
+import { createBatchPageHost } from './page-batch-live'
 
 const terminal=new Set(['completed','failed','cancelled','outcome_unknown'])
 const denied=(message:string)=>Object.assign(new Error(message),{code:'PAGE_CAPABILITY_DENIED'})
 
 /** Only this trusted host knows the account and application binding. No URLs or credentials enter the frame. */
-export function createLivePage(view:PublishedPage,session:number,locale:string,theme:string,displayName:string,navigate:(path:string)=>void,created:(taskId:string)=>void,onError:(error:Error)=>void){
+export function createLivePage(view:PublishedPage,session:number,locale:string,theme:string,displayName:string,navigate:(path:string)=>void,created:(taskId:string)=>void,onError:(error:Error)=>void,actorId='',batchCreated:(id:string)=>void=()=>{}){
   const client=applicationPageClient(session)
   const controller=new AbortController()
   const subscriptions=new Map<string,AbortController>()
@@ -44,10 +45,12 @@ export function createLivePage(view:PublishedPage,session:number,locale:string,t
     if(value.applicationId!==application||value.bundleId!==publication.contract.bundleId)throw denied('The conversation belongs to another application or business version')
     return value
   }
+  const batches=createBatchPageHost(view,actorId,client,signal,requireOpen,navigate,batchCreated,task=>{for(const approval of task.pendingApprovals)approvals.add(approval.approvalId)})
   const dispatch:PageDispatcher=async(method,args,id,notify)=>{
     requireOpen()
+    if(batches.handles(method))return batches.dispatch(method,args,id)
     switch(method){
-      case 'getContext':return{mode:view.historical?'history':'live',contract:publication.contract,contractHash:publication.contractHash,locale,theme,user:{displayName},taskId:view.taskId}
+      case 'getContext':return{mode:view.historical?'history':'live',contract:publication.contract,contractHash:publication.contractHash,locale,theme,user:{displayName},taskId:view.taskId,batchId:view.batchId,capabilities:{batch:true,maxBatchItems:100,maxBatchBytes:1024*1024,batchPageLimit:50}}
       case 'invoke':{
         newOperation()
         const task=await write<TaskView>(`/pages/${publication.slug}/invocations`,{publicationId:publication.publicationId,revision:publication.revision,input:args.input},id)
@@ -124,5 +127,5 @@ export function createLivePage(view:PublishedPage,session:number,locale:string,t
       }
     }
   }
-  return{dispatch,close(){closed=true;controller.abort();for(const watcher of subscriptions.values())watcher.abort();subscriptions.clear();for(const url of downloads)URL.revokeObjectURL(url);downloads.clear()}}
+  return{dispatch,close(){closed=true;controller.abort();batches.close();for(const watcher of subscriptions.values())watcher.abort();subscriptions.clear();for(const url of downloads)URL.revokeObjectURL(url);downloads.clear()}}
 }

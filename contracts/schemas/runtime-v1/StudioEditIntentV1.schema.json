@@ -644,6 +644,28 @@
       ],
       "type": "object"
     },
+    "StudioNodePositionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "nodeId": {
+          "type": "string"
+        },
+        "x": {
+          "format": "double",
+          "type": "number"
+        },
+        "y": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "nodeId",
+        "x",
+        "y"
+      ],
+      "type": "object"
+    },
     "ValueNamespace": {
       "enum": [
         "inputs",
@@ -1062,6 +1084,26 @@
       },
       "required": [
         "action"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "const": "move_nodes",
+          "type": "string"
+        },
+        "positions": {
+          "items": {
+            "$ref": "#/$defs/StudioNodePositionV1"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "action",
+        "positions"
       ],
       "type": "object"
     },

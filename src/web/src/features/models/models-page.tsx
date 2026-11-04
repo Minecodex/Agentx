@@ -17,6 +17,7 @@ import { localizedValue } from '../../shared/lib/localized-value'
 import { useLocaleFormat } from '../../shared/lib/locale-format'
 import { Button } from '../../shared/ui/button'
 import { useToast } from '../../shared/ui/toast'
+import { ModelParametersField } from './model-parameters-field'
 
 export function ModelsPage() {
   const { t } = useTranslation()
@@ -82,7 +83,7 @@ export function ModelsPage() {
     { name: 'input', label: t('models.inputPrice'), type: 'number', min: 0, required: true, step: 'any' },
     { name: 'output', label: t('models.outputPrice'), type: 'number', min: 0, required: true, step: 'any' },
     { name: 'department', apiName: 'ownerDepartmentId', label: t('models.department'), type: 'select', required: true, options: (departments.data ?? []).map((item) => ({ value: item.id, label: item.name })) },
-    { name: 'parameters', label: t('models.defaultParameters'), type: 'textarea', defaultValue: '{}' },
+    { name: 'parameters', label: t('models.generationParameters'), defaultValue: '{}', render: ({ value, update, error }) => <ModelParametersField error={error} onChange={update} value={value} /> },
     { name: 'capabilities', label: t('models.capabilities'), placeholder: 'vision, audio' },
   ]
   return <>

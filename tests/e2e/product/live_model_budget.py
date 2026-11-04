@@ -16,9 +16,20 @@ class BudgetError(ValueError):
 
 
 class ModelBudget:
-    def __init__(self, report: Path, *, limit: Decimal, input_price: Decimal, output_price: Decimal):
+    def __init__(
+        self,
+        report: Path,
+        *,
+        limit: Decimal,
+        input_price: Decimal,
+        output_price: Decimal,
+        max_requests: int | None = None,
+    ):
         if not all(value.is_finite() and value > 0 for value in (limit, input_price, output_price)):
             raise BudgetError("Budget and USD token prices must be finite and positive")
+        if max_requests is not None and (type(max_requests) is not int or max_requests <= 0):
+            raise BudgetError("A positive request limit is required")
+        self.max_requests = max_requests
         self.report = report
         self.limit = limit
         self.input_price = input_price
@@ -33,7 +44,8 @@ class ModelBudget:
             data = json.loads(report.read_text())
             identity = (str(limit), str(input_price), str(output_price))
             if (
-                data.get("version") != 1
+                data.get("version") != 2
+                or data["maxRequests"] != max_requests
                 or tuple(data[key] for key in ("limitUsd", "inputPerMillion", "outputPerMillion")) != identity
             ):
                 raise BudgetError("Existing budget identity differs; a new run cannot reset this ledger")
@@ -53,7 +65,8 @@ class ModelBudget:
     def _snapshot(self) -> dict:
         held = sum((Decimal(value["reservedUsd"]) for value in self.pending.values()), Decimal(0))
         return {
-            "version": 1,
+            "version": 2,
+            "maxRequests": self.max_requests,
             "limitUsd": str(self.limit),
             "inputPerMillion": str(self.input_price),
             "outputPerMillion": str(self.output_price),
@@ -113,7 +126,11 @@ class ModelBudget:
         reserved = self._cost(input_limit, output_limit)
         with self.lock:
             available = Decimal(self._snapshot()["availableUsd"])
-            if self.halted or reserved > available:
+            if (
+                self.halted
+                or reserved > available
+                or (self.max_requests is not None and self.requests >= self.max_requests)
+            ):
                 raise BudgetError("REAL_MODEL_BUDGET_EXHAUSTED")
             identifier = str(uuid.uuid4())
             self.pending[identifier] = {

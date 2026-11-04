@@ -1,0 +1,260 @@
+{
+  "$defs": {
+    "ApplicationAccessBindingV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "web",
+              "type": "string"
+            },
+            "publicationId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "revision": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "publicationId",
+            "revision"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "mcp",
+              "type": "string"
+            },
+            "publicationId": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "revision": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "publicationId",
+            "revision"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "BatchCountsV1": {
+      "additionalProperties": false,
+      "properties": {
+        "cancelled": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "completed": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ended": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failed": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "outcomeUnknown": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "queued": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "running": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "waitingApproval": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "waitingInput": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "queued",
+        "running",
+        "waitingInput",
+        "waitingApproval",
+        "completed",
+        "failed",
+        "cancelled",
+        "outcomeUnknown",
+        "ended"
+      ],
+      "type": "object"
+    },
+    "BatchViewV1": {
+      "additionalProperties": false,
+      "properties": {
+        "accessBinding": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApplicationAccessBindingV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "applicationId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "batchId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "bundleId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "callerId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "callerName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "callerType": {
+          "type": "string"
+        },
+        "canCancel": {
+          "type": "boolean"
+        },
+        "canRerun": {
+          "type": "boolean"
+        },
+        "canStop": {
+          "type": "boolean"
+        },
+        "counts": {
+          "$ref": "#/$defs/BatchCountsV1"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "dispatchState": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pagePublicationId": {
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source": {
+          "type": "string"
+        },
+        "sourceBatchId": {
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "type": "string"
+        },
+        "workflowVersionId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "workflowVersionNumber": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "batchId",
+        "applicationId",
+        "name",
+        "source",
+        "callerType",
+        "callerId",
+        "bundleId",
+        "workflowVersionId",
+        "workflowVersionNumber",
+        "dispatchState",
+        "state",
+        "revision",
+        "counts",
+        "createdAt",
+        "canStop",
+        "canCancel",
+        "canRerun"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "items": {
+        "$ref": "#/$defs/BatchViewV1"
+      },
+      "type": "array"
+    },
+    "next": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "items"
+  ],
+  "title": "BatchesPageV1",
+  "type": "object"
+}

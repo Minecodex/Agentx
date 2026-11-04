@@ -61,8 +61,8 @@ Runtime 不主动调用 Control。Runtime 当前状态只来自 Runtime MySQL；
 
 | 数据域 | Migration 目录 | 当前 `CREATE TABLE` 数 | 权威内容 |
 |---|---|---:|---|
-| Control MySQL | `deploy/migrations/control` | 123 | IAM、Workflow 草稿/版本/Deployment、画布插件包/导入/版本/对象清理队列、资源元数据/授权、Application 页面/MCP 管理、共用设计态会话、治理投影和 Control Outbox |
-| Runtime MySQL | `deploy/migrations/runtime` | 120 | Route、Session/Message/Invocation、成对页面与 MCP 发布副本、Execution/Snapshot/Attempt、Wait/Approval/Agent Tool Effect、Checkpoint/Fork、Runtime Call、Quota、Retention、Event/Trace Outbox |
+| Control MySQL | `deploy/migrations/control` | 124 | IAM、Workflow 草稿/版本/Deployment、画布插件包/导入/版本/对象清理队列、资源元数据/授权、Application 页面/MCP 管理、共用设计态会话、治理投影和 Control Outbox |
+| Runtime MySQL | `deploy/migrations/runtime` | 123 | Route、Session/Message/Invocation/Batch、成对页面与 MCP 发布副本、Execution/Snapshot/Attempt、Wait/Approval/Agent Tool Effect、Checkpoint/Fork、Runtime Call、Quota、Retention、Event/Trace Outbox |
 | ClickHouse | `deploy/migrations/observability` | 4 | Trace 明细、去重冲突和 Consumer Health；不是 Runtime 当前状态权威 |
 | Runtime Redis | 无业务 Migration | 不适用 | Capability/Trace Stream、Consumer Group、SSE 唤醒和快速配额；可从 MySQL 权威事实重建 |
 | 三域 OSS | 独立 Bucket/Prefix/IAM | 不适用 | Control 源对象、Runtime Bundle/Artifact/Checkpoint、Observability 内容分别隔离 |
@@ -107,3 +107,20 @@ Runtime 的 platform_evaluation_authorizations 保存按租户、应用和批次
 ## 工作流输入交互
 
 中间回复和输入等待统一归入 `agentx/core`，持久化与恢复由 Runtime 承担。`input_waits`、`workflow_messages` 和 `channel_input_receipts` 分别保存等待、消息和渠道幂等凭据；Hook 复用 delivery outbox。平台入口共享等待节点发现及回复序列编辑器，定时和测试用例版本冻结 `waitInputs`，评测投影保存实际等待和消息。详见 [工作流交互协议](14-workflow-interactions.md)。
+
+## 应用批次所有权与关系
+
+Runtime 新增 `application_batches`、`application_batch_items`，初始化与 [所有权目录](planv2/contracts/v2-schema-table-ownership.json) 同步。Batch 持有冻结业务包、可空的原页面、真实调用人及来源；Item 以唯一 `invocation_id` 关联原调用。每批最多四个非人工等待活跃项目，恢复人工等待及复合子执行也经同一事务许可。
+
+```mermaid
+erDiagram
+    application_batches ||--|{ application_batch_items : contains
+    application_batch_items o|--o| application_invocations : admits
+    application_batches }o--|| deployment_bundles : freezes
+    application_batches }o--o| application_page_publications : original_page
+    application_batches ||--o{ runtime_commands : dispatch_cancel_export
+    application_batch_items ||--o{ artifact_references : pending_inputs
+    application_invocations ||--o| workflow_executions : executes
+```
+
+`runtime_commands` 使用 Batch 聚合复用租约与恢复，导出也是同一命令模型生成的普通 Artifact。Runtime 负责对象权限、文件引用与保留；Control 通过签名内部委托提供管理入口，Observability 不生成批次权威状态。公开 API 无任意历史 Bundle 参数，也没有新增 MCP 批次工具。实际验收状态见 [plan10 实施记录](plan10/evidence/implementation.md)。

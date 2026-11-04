@@ -15,6 +15,8 @@ import { localizedValue } from '../../shared/lib/localized-value'
 import { Button } from '../../shared/ui/button'
 import { Card } from '../../shared/ui/card'
 import { useToast } from '../../shared/ui/toast'
+import { ModelParametersField } from './model-parameters-field'
+import { reasoningLabel } from './model-reasoning'
 
 export function ModelDetailPage() {
   const { id = '' } = useParams()
@@ -96,7 +98,7 @@ export function ModelDetailPage() {
     { name: 'input', label: t('models.inputPrice'), type: 'number', defaultValue: currentPrice?.inputPerMillion ?? '', min: 0, required: true, step: 'any' },
     { name: 'output', label: t('models.outputPrice'), type: 'number', defaultValue: currentPrice?.outputPerMillion ?? '', min: 0, required: true, step: 'any' },
     { name: 'department', apiName: 'ownerDepartmentId', label: t('models.department'), type: 'select', defaultValue: value.ownerDepartmentId, required: true, options: (departments.data ?? []).map((item) => ({ value: item.id, label: item.name })) },
-    { name: 'parameters', label: t('models.defaultParameters'), type: 'textarea', defaultValue: JSON.stringify(value.defaultParameters, null, 2) },
+    { name: 'parameters', label: t('models.generationParameters'), defaultValue: JSON.stringify(value.defaultParameters, null, 2), render: ({ value, update, error }) => <ModelParametersField error={error} onChange={update} value={value} /> },
   ] : []
   const actions = auth.hasPermission('model:manage') ? <div className="flex gap-2">
     <Button disabled={!value || prices.isLoading} onClick={() => setEditOpen(true)} variant="secondary"><Pencil className="size-4" />{t('models.editModel')}</Button>
@@ -109,6 +111,7 @@ export function ModelDetailPage() {
       { label: t('models.fields.upstreamModelId'), value: value.modelName }, { label: t('models.maxInputTokens'), value: value.maxInputTokens },
       { label: t('models.maxOutputTokens'), value: value.maxOutputTokens }, { label: t('models.deploymentRevision'), value: `r${value.revisionNumber}` },
       { label: t('models.department'), value: value.ownerDepartmentId },
+      { label: t('models.reasoningEffort'), value: reasoningLabel(value.defaultParameters, t) },
     ] : []} error={model.error} loading={model.isLoading} name={value?.alias} status={value?.status}>
       {value && <Card className="p-4 text-xs"><div className="flex flex-wrap items-center gap-3"><Activity className="size-4 text-primary" /><span className="font-medium">{t('models.connectionStatus')}</span><StatusBadge label={localizedValue(t, 'models', health?.status ?? value.connectionStatus)} status={connectionStatus(health?.status ?? value.connectionStatus)} />{health?.latencyMs != null && <span className="text-muted-foreground">{health.latencyMs} ms</span>}{(health?.checkedAt ?? value.connectionCheckedAt) && <span className="text-muted-foreground">{t('models.checkedAt', { time: formatDateTime(health?.checkedAt ?? value.connectionCheckedAt ?? '') })}</span>}</div>{health?.errorMessage && <p className="mt-3 break-words rounded-md border border-danger/25 bg-danger/5 px-3 py-2 text-danger" role="alert">{health.errorCode && <strong className="mr-2">{health.errorCode}</strong>}{health.errorMessage}</p>}</Card>}
       <Card className="p-5"><div className="flex items-center"><h2 className="text-sm font-semibold">{t('models.priceVersions')}</h2><div className="flex-1" />{auth.hasPermission('model:manage') && <Button onClick={() => setPriceOpen(true)} size="sm" variant="secondary"><Plus className="size-3.5" />{t('models.addPrice')}</Button>}</div><div className="mt-3 divide-y divide-border">{prices.data?.map((price) => <div className="grid grid-cols-3 gap-3 py-3 text-xs" key={price.id}><span>v{price.versionNumber} · {price.currency}</span><span>{t('models.inputPrice')}: {price.inputPerMillion}</span><span>{t('models.outputPrice')}: {price.outputPerMillion}</span></div>)}{prices.data?.length === 0 && <p className="py-3 text-xs text-muted-foreground">{t('models.noData')}</p>}</div></Card>

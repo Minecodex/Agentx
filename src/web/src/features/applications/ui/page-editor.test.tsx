@@ -19,6 +19,8 @@ vi.mock('./page-frame',()=>({PageFrame:forwardRef<PageFrameHandle,{dispatch:Page
   useImperativeHandle(ref,()=>({
     restart:async()=>{frameScenario.screen='form';frameScenario.restarts+=1},
     inspect:async(_input,submit)=>{
+      expect(screen.getByRole('tab',{name:'Synthetic preview'})).toHaveAttribute('aria-selected','true')
+      expect(screen.getByRole('tab',{name:'Check results'})).toBeDisabled()
       frameScenario.inFlight+=1;frameScenario.maxInFlight=Math.max(frameScenario.maxInFlight,frameScenario.inFlight)
       try{
       const hasForm=frameScenario.screen==='form'
@@ -118,13 +120,13 @@ it('rechecks a page that switches to a task view using a fresh isolated form eac
   try{
     await waitFor(()=>expect(vi.mocked(apiRequest).mock.calls.some(([path])=>path.endsWith('/snapshot'))).toBe(true))
     fireEvent.mouseDown(screen.getByRole('tab',{name:'Check results'}),{button:0,ctrlKey:false})
-    const check=await screen.findByRole('button',{name:'Check again'})
-    fireEvent.click(check)
+    fireEvent.click(await screen.findByRole('button',{name:'Check again'}))
     await waitFor(()=>expect(reports()).toHaveLength(2),{timeout:5000})
     expect(reports().every(report=>report.errors.length===0)).toBe(true)
-    fireEvent.click(check)
+    fireEvent.click(await screen.findByRole('button',{name:'Check again'}))
     await waitFor(()=>expect(reports()).toHaveLength(4),{timeout:10000})
     expect(reports().every(report=>report.errors.length===0)).toBe(true)
+    const check=await screen.findByRole('button',{name:'Check again'})
     fireEvent.click(check);fireEvent.click(check)
     await waitFor(()=>expect(reports()).toHaveLength(8),{timeout:10000})
     expect(reports().every(report=>report.errors.length===0)).toBe(true)
@@ -132,4 +134,4 @@ it('rechecks a page that switches to a task view using a fresh isolated form eac
     expect(frameScenario.restarts).toBe(8)
     expect(reports().every(report=>report.formalRequests===0&&report.synthetic)).toBe(true)
   }finally{rendered.unmount();query.clear()}
-})
+},15_000)

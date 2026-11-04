@@ -183,6 +183,7 @@ pub(super) fn tool_result_from_execution(
         payload
     };
     Ok(agentx_agent_core::ToolResultV1 {
+        observations: Vec::new(),
         content: serde_json::to_string(&structured_result).unwrap_or_default(),
         structured_result: Some(structured_result),
         artifact_refs,
@@ -210,6 +211,7 @@ pub(super) fn knowledge_result_from_execution(
             "sources": sources,
         });
         return Ok(agentx_agent_core::ToolResultV1 {
+            observations: Vec::new(),
             content: failure.to_string(),
             structured_result: Some(failure),
             artifact_refs: vec![],
@@ -294,6 +296,7 @@ pub(super) fn knowledge_result_from_execution(
         truncated = true;
     };
     Ok(agentx_agent_core::ToolResultV1 {
+        observations: Vec::new(),
         content: serde_json::to_string(&structured).unwrap_or_default(),
         structured_result: Some(structured),
         artifact_refs: vec![],
@@ -588,6 +591,7 @@ pub(super) fn read_skill_resource(
             "truncated": true,
         });
         return Ok(agentx_agent_core::ToolResultV1 {
+            observations: Vec::new(),
             content: structured.to_string(),
             structured_result: Some(structured),
             artifact_refs: vec![asset.object_id.to_string()],
@@ -613,6 +617,7 @@ pub(super) fn read_skill_resource(
         "truncated": truncated,
     });
     Ok(agentx_agent_core::ToolResultV1 {
+        observations: Vec::new(),
         content: structured.to_string(),
         structured_result: Some(structured),
         artifact_refs: Vec::new(),

@@ -94,6 +94,8 @@ Workflow 推荐引用 Model Alias，而不是将真实 Endpoint 和 Credential �
 
 API 格式描述供应商接受的模型调用协议，不等同于内部 Provider Adapter 类型。当前 Runtime 只支持 OpenAI Chat Completions，因此控制面只允许选择该格式；连接测试使用当前上游模型 ID 发送最小 `POST /chat/completions` 请求，与 Workflow 运行路径一致。实现 Responses Runtime 后再增加 OpenAI Responses 选项。
 
+新建、编辑模型提供“思考深度”，详情显示当前值。它直接编辑现有 `defaultParameters.reasoning_effort`，与高级 JSON 同步，不增加独立配置或改变资源授权边界；选择“供应商默认”移除该字段。档位由上游模型决定，不支持的值不自动降档。配置变化沿用不可变 Deployment Revision；新创作 Run 冻结新参数，已开始的 Run 不变。思考与回答共同服从模型输出 Token 上限。
+
 模型推理请求显式指定 `stream`。价格版本和 Agent 调用用途属于 Agentx 内部运行数据，保留在 Runtime Call Ledger 与 Trace 中，不附加到上游 `metadata`；这样使用严格校验请求字段的 OpenAI-compatible 服务时，也能沿用相同的模型与 Agent 调用路径。
 
 新建 Model Alias 的连接状态固定为 `untested`。只有用户手动发起 Alias 级连接测试后，状态才更新为 `healthy` 或 `unhealthy`；Alias 或当前 Deployment Revision 的有效配置发生变化后，旧健康结果立即失效并重新显示 `untested`。
@@ -324,3 +326,11 @@ Dataset 导入先检查文件内重复，再在事务中检查现有 Case，并�
 ## 工作流输入交互
 
 中间回复和输入等待统一归入 `agentx/core`，持久化与恢复由 Runtime 承担。`input_waits`、`workflow_messages` 和 `channel_input_receipts` 分别保存等待、消息和渠道幂等凭据；Hook 复用 delivery outbox。平台入口共享等待节点发现及回复序列编辑器，定时和测试用例版本冻结 `waitInputs`，评测投影保存实际等待和消息。详见 [工作流交互协议](14-workflow-interactions.md)。
+
+## plan10 应用批量调用
+
+[plan10](plan10/README.md) 提供网页与正式应用 API 的批量参数调用：一个批次绑定一个应用与业务版本，每个项目仍是独立 Invocation，等待、审批、文件和费用继续使用原任务能力。它区别于一次调用内的数组明细，也区别于测试评测批次。后台保存输入并派发，提供本人/管理查询、停止、取消、安全失败项的派生重做和结果导出。
+
+派生重做绑定当前业务发布。网页当前发布物仍绑定其他业务版本时，拒绝重做并要求先发布与当前业务版本对应的页面；不能把旧页面绑定隐式用于新批次。页面绑定的业务包不可用时按对象不可用拒绝，不能误报数据库故障或部分创建批次。
+
+页面创作位于原「访问界面」，批次管理位于「调用记录」子页，员工使用原 `/a/{slug}`；不增加全局批处理菜单或业务页审批权。新增 MCP 批次工具不在本期范围。[Demo](plan10/demo.html) 解释入口布局；代码与临时环境验收状态见 [实施记录](plan10/evidence/implementation.md)，常驻环境保持原版本。

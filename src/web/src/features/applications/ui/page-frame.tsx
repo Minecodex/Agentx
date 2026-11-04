@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import { useTranslation } from 'react-i18next'
 
 import { connectPageBridge, type PageDispatcher } from './page-bridge'
+import { pageSourceIssues } from './page-diagnostics'
 import { createPageController } from './page-isolation'
 import { pageSdkBootstrap } from './page-sdk'
 import { pageStyles } from './page-styles'
@@ -27,6 +28,7 @@ export const PageFrame = forwardRef<PageFrameHandle,{html:string;sdkScript:strin
   useEffect(()=>()=>{restartWaiter.current?.reject(new Error('PAGE_DISCONNECTED'));restartWaiter.current=undefined},[])
   useEffect(()=>{
     const bindingId=crypto.randomUUID().replaceAll('-','_')
+    const bootstrap=pageSdkBootstrap(bindingId,sdkScript),styles=pageStyles(stylesheet)
     const sourceHash=hashPageHtml(html)
     const channel=new MessageChannel()
     let bound=false,closed=false
@@ -59,7 +61,7 @@ export const PageFrame = forwardRef<PageFrameHandle,{html:string;sdkScript:strin
       pending.delete(event.data.id);clearTimeout(item.timer)
       const report=event.data.report
       if(!report||!Array.isArray(report.errors)||!Array.isArray(report.fields)||!Array.isArray(report.actions)||typeof report.visibleText!=='string'||report.visibleText.length>8000){item.reject(new Error('PAGE_INSPECTION_INVALID'));return}
-      void sourceHash.then(hash=>{if(closed)item.reject(new Error('PAGE_DISCONNECTED'));else item.resolve({...report,sourceHash:hash} as PageInspection)})
+      void sourceHash.then(hash=>{if(closed)item.reject(new Error('PAGE_DISCONNECTED'));else item.resolve({...report,errors:pageSourceIssues(report.errors,bootstrap,styles),sourceHash:hash} as PageInspection)})
     }
     inspector.current=async(input,submit,waitId,options)=>{
       await ready
@@ -71,7 +73,7 @@ export const PageFrame = forwardRef<PageFrameHandle,{html:string;sdkScript:strin
       })
     }
     addEventListener('message',receive)
-    setError('');setSource({bindingId,document:createPageController(html,bindingId,pageSdkBootstrap(bindingId,sdkScript),pageStyles(stylesheet))})
+    setError('');setSource({bindingId,document:createPageController(html,bindingId,bootstrap,styles)})
     return ()=>{clearTimeout(timer);removeEventListener('message',receive);close(false)}
   },[html,sdkScript,stylesheet,identity,dispatch,onDisconnect,generation])
   return <div className={`relative h-full bg-background ${fit?'min-h-0':'min-h-[600px]'}`} data-testid="application-page-frame">

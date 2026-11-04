@@ -2,7 +2,7 @@ use bytes::Bytes;
 use object_store::path::Path as ObjectPath;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use sqlx::Row;
+use sqlx::{MySql, Row, Transaction};
 use uuid::Uuid;
 
 use agentx_runtime_contracts::{ContentHash, RuntimeObjectReferenceV1};
@@ -351,4 +351,98 @@ fn invalid(code: &str) -> RuntimeError {
         agentx_runtime_contracts::RuntimePublishErrorCodeV1::ObjectHashMismatch,
         code.into(),
     )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn commit_upload(
+    state: &RuntimeState,
+    tenant_id: Uuid,
+    artifact_id: Uuid,
+    content_type: &str,
+    size_bytes: u64,
+    hash: &str,
+    final_key: &str,
+    scope: &str,
+    idempotency_key: &str,
+    request_hash: &str,
+) -> RuntimeResult<()> {
+    let mut tx = state.pool.begin().await?;
+    commit_upload_tx(
+        &mut tx,
+        tenant_id,
+        artifact_id,
+        content_type,
+        size_bytes,
+        hash,
+        final_key,
+        scope,
+        idempotency_key,
+        request_hash,
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn commit_upload_tx(
+    tx: &mut Transaction<'_, MySql>,
+    tenant_id: Uuid,
+    artifact_id: Uuid,
+    content_type: &str,
+    size_bytes: u64,
+    hash: &str,
+    final_key: &str,
+    scope: &str,
+    idempotency_key: &str,
+    request_hash: &str,
+) -> RuntimeResult<()> {
+    crate::quota::reserve(
+        tx,
+        tenant_id,
+        "artifact_bytes",
+        "artifact",
+        &artifact_id.to_string(),
+        &format!("artifact:{artifact_id}:bytes"),
+        size_bytes,
+        300,
+    )
+    .await?;
+    sqlx::query("INSERT INTO artifacts(id,tenant_id,content_type,size_bytes,sha256,storage_key,idempotency_scope,idempotency_key,request_hash) VALUES(?,?,?,?,?,?,?,?,?)")
+        .bind(artifact_id)
+        .bind(tenant_id)
+        .bind(content_type)
+        .bind(size_bytes)
+        .bind(hash)
+        .bind(final_key)
+        .bind(scope)
+        .bind(idempotency_key)
+        .bind(request_hash)
+        .execute(&mut **tx)
+        .await?;
+    // plan7 P7-B B5: the multimodal resolver reads artifacts through
+    // runtime_objects, so chat-uploaded artifacts must register the ready
+    // object row alongside the artifacts row.
+    sqlx::query("INSERT INTO runtime_objects(object_id,tenant_id,object_key,content_hash,size_bytes,media_type,status,idempotency_key,request_hash,temporary_expires_at,ready_at) VALUES(?,?,?,?,?,?,'ready',?,?,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6))")
+        .bind(artifact_id)
+        .bind(tenant_id)
+        .bind(final_key)
+        .bind(format!("sha256:{hash}"))
+        .bind(size_bytes)
+        .bind(content_type)
+        .bind(idempotency_key)
+        .bind(request_hash)
+        .execute(&mut **tx)
+        .await?;
+    crate::quota::settle(
+        tx,
+        tenant_id,
+        "artifact_bytes",
+        "artifact",
+        &artifact_id.to_string(),
+        size_bytes,
+        &format!("artifact:{artifact_id}:usage:artifact_bytes"),
+    )
+    .await?;
+    Ok(())
 }

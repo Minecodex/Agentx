@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { createPageController } from '../../../src/web/src/features/applications/ui/page-isolation'
 import { sampleValue } from '../../../src/web/src/features/applications/ui/page-preview'
 import { readFileSync } from 'node:fs'
-const sdkSource=readFileSync(new URL('../../../contracts/sdk/application-page-v1.js',import.meta.url),'utf8')
+const sdkSource=readFileSync(new URL('../../../contracts/sdk/application-page-v2.js',import.meta.url),'utf8')
 const pageStyleSource=readFileSync(new URL('../../../contracts/sdk/application-page-v1.css',import.meta.url),'utf8')
 
 const policy = "default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data: blob:; media-src blob:; font-src 'none'; frame-src blob:; form-action 'none'; worker-src 'none'"

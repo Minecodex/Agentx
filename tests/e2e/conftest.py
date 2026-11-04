@@ -46,6 +46,24 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
     parser.addoption("--values", action="store", default=os.getenv("AGENTX_E2E_VALUES"))
     parser.addoption("--keep-on-failure", action="store_true", default=False)
+    parser.addoption(
+        "--keep-on-success",
+        action="store_true",
+        default=False,
+        help="retain the owned successful test environment for evidence review; explicitly purge after review",
+    )
+    parser.addoption(
+        "--reuse-kept-environment",
+        action="store_true",
+        default=False,
+        help="resume plan10 management/page/history gates in the same retained, unchanged candidate environment",
+    )
+    parser.addoption(
+        "--upgrade-kept-environment",
+        action="store_true",
+        default=False,
+        help="upgrade the verified owned plan10 environment before resuming its page/history gates",
+    )
     parser.addoption("--scale-down-development", action="store_true", default=False)
     parser.addoption(
         "--capacity-smoke", action="store_true", default=False, help="short capacity validation; never release evidence"
@@ -336,6 +354,10 @@ def _installed_environment(
     *,
     scale_development: bool,
 ) -> Iterator[dict[str, str]]:
+    if pytestconfig.getoption("--upgrade-kept-environment") and not pytestconfig.getoption("--reuse-kept-environment"):
+        raise ValueError("A kept-environment upgrade requires explicit retained-environment reuse")
+    if pytestconfig.getoption("--reuse-kept-environment") and scale_development:
+        raise ValueError("A retained-environment retry cannot change development replicas")
     timeline: list[str] = []
     failures_before = request.session.testsfailed
     config = deployment_config(deployment_values, run_id=run_id)
@@ -369,11 +391,19 @@ def _installed_environment(
 
             namespaces = [context[f"{plane}_namespace"] for plane in ("dependencies", "control", "runtime")]
             with installation_diagnostics(namespaces, artifact_dir):
-                installed = run(install_command, timeout=3600)
+                if pytestconfig.getoption("--reuse-kept-environment"):
+                    from tests.e2e.product.plan10.resume import retain_candidate
+
+                    upgrade = pytestconfig.getoption("--upgrade-kept-environment")
+                    retain_candidate(context, request.session.items, upgrade=upgrade)
+                    installed = run(install_command, timeout=3600) if upgrade else None
+                else:
+                    installed = run(install_command, timeout=3600)
         except Exception as error:
             (artifact_dir / "install-error.txt").write_text(redact(str(error)), encoding="utf-8")
             raise
-        (artifact_dir / "install.json").write_text(redact(installed.stdout), encoding="utf-8")
+        if installed is not None:
+            (artifact_dir / "install.json").write_text(redact(installed.stdout), encoding="utf-8")
         _timeline(timeline, "install and Helm Doctor completed")
         rendered = run(
             (agentxctl(), "render", "--values", deployment_values, "--run-id", run_id, "--target", "all"), timeout=300
@@ -390,6 +420,9 @@ def _installed_environment(
         if not pytestconfig._agentx_evidence_properties:
             pytestconfig._agentx_evidence_properties.update(identity)
         with _local_sandbox_proxy(deployment_values, rendered, context):
+            from tests.e2e.external_sandbox import configure_external_sandbox
+
+            configure_external_sandbox(context)
             installation_ready = True
             yield context
     finally:
@@ -399,7 +432,9 @@ def _installed_environment(
             try:
                 _collect_artifacts(context, artifact_dir, timeline)
             finally:
-                keep = failed and pytestconfig.getoption("--keep-on-failure")
+                keep = (failed and pytestconfig.getoption("--keep-on-failure")) or (
+                    not failed and pytestconfig.getoption("--keep-on-success")
+                )
                 if not keep:
                     _timeline(timeline, "purge started")
                     result = run(

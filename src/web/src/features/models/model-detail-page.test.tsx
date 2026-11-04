@@ -73,6 +73,49 @@ describe('model edit form', () => {
     expect(screen.getByText('42 ms')).toBeInTheDocument()
   })
 
+  it('loads the saved effort and persists max without changing other defaults', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><ToastProvider><MemoryRouter initialEntries={['/models/model-1']}><Routes><Route element={<ModelDetailPage />} path="/models/:id" /></Routes></MemoryRouter></ToastProvider></QueryClientProvider>)
+    const button = await screen.findByRole('button', { name: '编辑模型' })
+    await waitFor(() => expect(button).toBeEnabled())
+    fireEvent.click(button)
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('combobox', { name: '思考深度' })).toHaveTextContent('低（low）')
+    fireEvent.click(within(dialog).getByRole('combobox', { name: '思考深度' }))
+    fireEvent.click(await screen.findByRole('option', { name: '最大（max）' }))
+    expect(JSON.parse(String((within(dialog).getByLabelText('默认参数 JSON') as HTMLTextAreaElement).value))).toEqual({ temperature: 0.2, reasoning_effort: 'max' })
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(requests.some((request) => request.init?.method === 'PATCH')).toBe(true))
+    const request = requests.find((item) => item.init?.method === 'PATCH')
+    expect(JSON.parse(String(request?.init?.body))).toMatchObject({ expectedAliasVersion: 1, defaultParameters: { temperature: 0.2, reasoning_effort: 'max' } })
+  })
+
+  it('keeps advanced JSON and the selector synchronized, and removes explicit effort for provider default', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><ToastProvider><MemoryRouter initialEntries={['/models/model-1']}><Routes><Route element={<ModelDetailPage />} path="/models/:id" /></Routes></MemoryRouter></ToastProvider></QueryClientProvider>)
+    const button = await screen.findByRole('button', { name: '编辑模型' })
+    await waitFor(() => expect(button).toBeEnabled())
+    fireEvent.click(button)
+    const dialog = await screen.findByRole('dialog')
+    const json = within(dialog).getByLabelText('默认参数 JSON')
+    fireEvent.change(json, { target: { value: '{"top_p":0.95,"reasoning_effort":"high"}' } })
+    expect(within(dialog).getByRole('combobox', { name: '思考深度' })).toHaveTextContent('高（high）')
+    fireEvent.click(within(dialog).getByRole('combobox', { name: '思考深度' }))
+    fireEvent.click(await screen.findByRole('option', { name: '供应商默认' }))
+    expect(JSON.parse((json as HTMLTextAreaElement).value)).toEqual({ top_p: 0.95 })
+    fireEvent.change(json, { target: { value: '{"top_p":0.95,"reasoning_effort":""}' } })
+    expect(within(dialog).getByRole('combobox', { name: '思考深度' })).toHaveTextContent('自定义（高级 JSON）')
+    expect(JSON.parse((json as HTMLTextAreaElement).value)).toEqual({ top_p: 0.95, reasoning_effort: '' })
+    fireEvent.click(within(dialog).getByRole('combobox', { name: '思考深度' }))
+    fireEvent.click(await screen.findByRole('option', { name: '供应商默认' }))
+    expect(JSON.parse((json as HTMLTextAreaElement).value)).toEqual({ top_p: 0.95 })
+    fireEvent.change(json, { target: { value: '{' } })
+    expect(within(dialog).getByRole('combobox', { name: '思考深度' })).toBeDisabled()
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
+    expect(await within(dialog).findByText('JSON 格式无效')).toBeInTheDocument()
+    expect(requests.some((request) => request.init?.method === 'PATCH')).toBe(false)
+  })
+
   it('clears a stale connection result after the deployment configuration changes', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={queryClient}><ToastProvider><MemoryRouter initialEntries={['/models/model-1']}><Routes><Route element={<ModelDetailPage />} path="/models/:id" /></Routes></MemoryRouter></ToastProvider></QueryClientProvider>)
@@ -97,7 +140,7 @@ const modelResponse = {
   deploymentId: 'deployment-1', connectionName: 'test-connection', providerType: 'openai_compatible',
   endpoint: 'https://example.com/v1', credentialId: null, ownerDepartmentId: 'department-1',
   modelName: 'gpt-test-upstream', maxInputTokens: 128_000, maxOutputTokens: 8_192,
-  defaultParameters: {}, revisionNumber: 1, connectionStatus: 'untested', connectionCheckedAt: null,
+  defaultParameters: { temperature: 0.2, reasoning_effort: 'low' }, revisionNumber: 1, connectionStatus: 'untested', connectionCheckedAt: null,
   updatedAt: '2026-08-11T00:00:00Z',
 }
 

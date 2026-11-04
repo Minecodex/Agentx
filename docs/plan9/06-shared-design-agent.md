@@ -2,6 +2,8 @@
 
 状态：complete。共用 Core/Host、模型冻结、两种 Profile、运行中指导、故障恢复及受影响画布回归均通过，完整证据和知识检索模型流专项复测见 [最终报告](evidence/2026-11-02-acceptance.md)。网页生成使用现有工作流生成选中的平台模型，复用同一 pi 行为底座，通过提示词、工具和目标上下文区分任务。
 
+2026-11-03 执行方案调整：截图、多模态工具观察、浏览器与画布复核遵循 [统一自主 Agent 执行方案](../plan3/01-target-architecture.md#13-统一自主-agent-执行方案2026-11-03-调整)。模型通过同一工具循环自主选择读取、编辑、检查与修复，平台提供 Prompt、工具及执行边界，不编排固定业务步骤；Run 结束与当前版本检查结果分别展示。新增视觉和浏览器能力已实施，Workflow 与业务页各一次创建、一次修改通过真实模型验收，证据见 [外层创作验收](../plan3/02-design-browser-agent.md#验收与费用)。以下五工具与静态/模拟预览保留为原实现基线。
+
 ## 1. 共用范围与现有事实
 
 这里的“pi Agent 底座”指 [plan3](../plan3/01-target-architecture.md) 已采用的 Rust `agentx-agent-core`，不是新增 TypeScript pi SDK 运行时。plan8 的 Studio Builder 已在 Control 内驱动同一个 Core，模型调用经 Runtime 设计态 API 完成。

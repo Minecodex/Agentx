@@ -1567,6 +1567,1541 @@
         "title": "ApplyReceiptV1",
         "type": "object"
       },
+      "BatchExportV1": {
+        "$defs": {
+          "ArtifactUploadResponseV1": {
+            "additionalProperties": false,
+            "properties": {
+              "artifactId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "sizeBytes": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "artifactId",
+              "contentType",
+              "sizeBytes",
+              "sha256"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "batchId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exportId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "file": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ArtifactUploadResponseV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "exportId",
+          "batchId",
+          "status"
+        ],
+        "title": "BatchExportV1",
+        "type": "object"
+      },
+      "BatchItemViewV1": {
+        "$defs": {
+          "ApplicationAccessBindingV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "web",
+                    "type": "string"
+                  },
+                  "publicationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "publicationId",
+                  "revision"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "mcp",
+                    "type": "string"
+                  },
+                  "publicationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "publicationId",
+                  "revision"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "ArtifactUploadResponseV1": {
+            "additionalProperties": false,
+            "properties": {
+              "artifactId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "sizeBytes": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "artifactId",
+              "contentType",
+              "sizeBytes",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "InputWaitV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": true,
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "nodePath": {
+                "type": "string"
+              },
+              "occurrence": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "responseSchema": true,
+              "resumeUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "waitId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "waitId",
+              "executionId",
+              "nodeExecutionId",
+              "nodeId",
+              "nodePath",
+              "occurrence",
+              "status"
+            ],
+            "type": "object"
+          },
+          "TaskActionsV1": {
+            "additionalProperties": false,
+            "properties": {
+              "canCancel": {
+                "type": "boolean"
+              },
+              "downloadableArtifactIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "inputWaitIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "canCancel",
+              "inputWaitIds",
+              "downloadableArtifactIds"
+            ],
+            "type": "object"
+          },
+          "TaskApprovalV1": {
+            "additionalProperties": false,
+            "properties": {
+              "approvalId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "version": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "approvalId",
+              "title",
+              "status",
+              "version"
+            ],
+            "type": "object"
+          },
+          "TaskStageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "nodeExecutionId",
+              "title",
+              "status"
+            ],
+            "type": "object"
+          },
+          "TaskStateV1": {
+            "enum": [
+              "accepted",
+              "running",
+              "waiting_input",
+              "waiting_approval",
+              "completed",
+              "failed",
+              "cancelled",
+              "outcome_unknown"
+            ],
+            "type": "string"
+          },
+          "TaskViewV1": {
+            "additionalProperties": false,
+            "properties": {
+              "accessBinding": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ApplicationAccessBindingV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "allowedActions": {
+                "$ref": "#/$defs/TaskActionsV1"
+              },
+              "applicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "bundleId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "callerType": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "deploymentId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "error": true,
+              "eventCursor": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "files": {
+                "items": {
+                  "$ref": "#/$defs/ArtifactUploadResponseV1"
+                },
+                "type": "array"
+              },
+              "invocationStatus": {
+                "type": "string"
+              },
+              "messages": {
+                "items": {
+                  "$ref": "#/$defs/WorkflowMessageV1"
+                },
+                "type": "array"
+              },
+              "outputs": true,
+              "pendingApprovals": {
+                "items": {
+                  "$ref": "#/$defs/TaskApprovalV1"
+                },
+                "type": "array"
+              },
+              "pendingInputs": {
+                "items": {
+                  "$ref": "#/$defs/InputWaitV1"
+                },
+                "type": "array"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sessionId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "stages": {
+                "items": {
+                  "$ref": "#/$defs/TaskStageV1"
+                },
+                "type": "array"
+              },
+              "state": {
+                "$ref": "#/$defs/TaskStateV1"
+              },
+              "taskId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "taskUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "workflowVersionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "taskId",
+              "applicationId",
+              "deploymentId",
+              "workflowVersionId",
+              "bundleId",
+              "callerType",
+              "state",
+              "invocationStatus",
+              "stages",
+              "pendingInputs",
+              "pendingApprovals",
+              "messages",
+              "files",
+              "allowedActions",
+              "revision",
+              "eventCursor",
+              "createdAt"
+            ],
+            "type": "object"
+          },
+          "WorkflowMessageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "executionId",
+              "nodeExecutionId",
+              "content",
+              "createdAt"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "canRerun": {
+            "type": "boolean"
+          },
+          "clientItemId": {
+            "type": "string"
+          },
+          "dispatchState": {
+            "type": "string"
+          },
+          "error": true,
+          "executionId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "input": true,
+          "itemId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "ordinal": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sourceInvocationId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceItemId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TaskViewV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "itemId",
+          "clientItemId",
+          "ordinal",
+          "input",
+          "dispatchState",
+          "state",
+          "canRerun"
+        ],
+        "title": "BatchItemViewV1",
+        "type": "object"
+      },
+      "BatchItemsPageV1": {
+        "$defs": {
+          "ApplicationAccessBindingV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "web",
+                    "type": "string"
+                  },
+                  "publicationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "publicationId",
+                  "revision"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "mcp",
+                    "type": "string"
+                  },
+                  "publicationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "publicationId",
+                  "revision"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "ArtifactUploadResponseV1": {
+            "additionalProperties": false,
+            "properties": {
+              "artifactId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "sizeBytes": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "artifactId",
+              "contentType",
+              "sizeBytes",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "BatchItemViewV1": {
+            "additionalProperties": false,
+            "properties": {
+              "canRerun": {
+                "type": "boolean"
+              },
+              "clientItemId": {
+                "type": "string"
+              },
+              "dispatchState": {
+                "type": "string"
+              },
+              "error": true,
+              "executionId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "input": true,
+              "itemId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "ordinal": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sourceInvocationId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sourceItemId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "state": {
+                "type": "string"
+              },
+              "task": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/TaskViewV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "itemId",
+              "clientItemId",
+              "ordinal",
+              "input",
+              "dispatchState",
+              "state",
+              "canRerun"
+            ],
+            "type": "object"
+          },
+          "InputWaitV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": true,
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "nodePath": {
+                "type": "string"
+              },
+              "occurrence": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "responseSchema": true,
+              "resumeUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "waitId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "waitId",
+              "executionId",
+              "nodeExecutionId",
+              "nodeId",
+              "nodePath",
+              "occurrence",
+              "status"
+            ],
+            "type": "object"
+          },
+          "TaskActionsV1": {
+            "additionalProperties": false,
+            "properties": {
+              "canCancel": {
+                "type": "boolean"
+              },
+              "downloadableArtifactIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "inputWaitIds": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "canCancel",
+              "inputWaitIds",
+              "downloadableArtifactIds"
+            ],
+            "type": "object"
+          },
+          "TaskApprovalV1": {
+            "additionalProperties": false,
+            "properties": {
+              "approvalId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "version": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "approvalId",
+              "title",
+              "status",
+              "version"
+            ],
+            "type": "object"
+          },
+          "TaskStageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "nodeExecutionId",
+              "title",
+              "status"
+            ],
+            "type": "object"
+          },
+          "TaskStateV1": {
+            "enum": [
+              "accepted",
+              "running",
+              "waiting_input",
+              "waiting_approval",
+              "completed",
+              "failed",
+              "cancelled",
+              "outcome_unknown"
+            ],
+            "type": "string"
+          },
+          "TaskViewV1": {
+            "additionalProperties": false,
+            "properties": {
+              "accessBinding": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ApplicationAccessBindingV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "allowedActions": {
+                "$ref": "#/$defs/TaskActionsV1"
+              },
+              "applicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "bundleId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "callerType": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "deploymentId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "error": true,
+              "eventCursor": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "files": {
+                "items": {
+                  "$ref": "#/$defs/ArtifactUploadResponseV1"
+                },
+                "type": "array"
+              },
+              "invocationStatus": {
+                "type": "string"
+              },
+              "messages": {
+                "items": {
+                  "$ref": "#/$defs/WorkflowMessageV1"
+                },
+                "type": "array"
+              },
+              "outputs": true,
+              "pendingApprovals": {
+                "items": {
+                  "$ref": "#/$defs/TaskApprovalV1"
+                },
+                "type": "array"
+              },
+              "pendingInputs": {
+                "items": {
+                  "$ref": "#/$defs/InputWaitV1"
+                },
+                "type": "array"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sessionId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "stages": {
+                "items": {
+                  "$ref": "#/$defs/TaskStageV1"
+                },
+                "type": "array"
+              },
+              "state": {
+                "$ref": "#/$defs/TaskStateV1"
+              },
+              "taskId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "taskUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "workflowVersionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "taskId",
+              "applicationId",
+              "deploymentId",
+              "workflowVersionId",
+              "bundleId",
+              "callerType",
+              "state",
+              "invocationStatus",
+              "stages",
+              "pendingInputs",
+              "pendingApprovals",
+              "messages",
+              "files",
+              "allowedActions",
+              "revision",
+              "eventCursor",
+              "createdAt"
+            ],
+            "type": "object"
+          },
+          "WorkflowMessageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "executionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "nodeExecutionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "executionId",
+              "nodeExecutionId",
+              "content",
+              "createdAt"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/BatchItemViewV1"
+            },
+            "type": "array"
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "BatchItemsPageV1",
+        "type": "object"
+      },
+      "BatchRerunV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "itemIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "itemIds"
+        ],
+        "title": "BatchRerunV1",
+        "type": "object"
+      },
+      "BatchViewV1": {
+        "$defs": {
+          "ApplicationAccessBindingV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "web",
+                    "type": "string"
+                  },
+                  "publicationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "publicationId",
+                  "revision"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "mcp",
+                    "type": "string"
+                  },
+                  "publicationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "publicationId",
+                  "revision"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "BatchCountsV1": {
+            "additionalProperties": false,
+            "properties": {
+              "cancelled": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "completed": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "ended": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "failed": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "outcomeUnknown": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "queued": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "running": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "total": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "waitingApproval": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "waitingInput": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "total",
+              "queued",
+              "running",
+              "waitingInput",
+              "waitingApproval",
+              "completed",
+              "failed",
+              "cancelled",
+              "outcomeUnknown",
+              "ended"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "accessBinding": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ApplicationAccessBindingV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "batchId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "bundleId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "callerId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "callerName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "callerType": {
+            "type": "string"
+          },
+          "canCancel": {
+            "type": "boolean"
+          },
+          "canRerun": {
+            "type": "boolean"
+          },
+          "canStop": {
+            "type": "boolean"
+          },
+          "counts": {
+            "$ref": "#/$defs/BatchCountsV1"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "dispatchState": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pagePublicationId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          },
+          "sourceBatchId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "workflowVersionNumber": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "batchId",
+          "applicationId",
+          "name",
+          "source",
+          "callerType",
+          "callerId",
+          "bundleId",
+          "workflowVersionId",
+          "workflowVersionNumber",
+          "dispatchState",
+          "state",
+          "revision",
+          "counts",
+          "createdAt",
+          "canStop",
+          "canCancel",
+          "canRerun"
+        ],
+        "title": "BatchViewV1",
+        "type": "object"
+      },
+      "BatchesPageV1": {
+        "$defs": {
+          "ApplicationAccessBindingV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "web",
+                    "type": "string"
+                  },
+                  "publicationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "publicationId",
+                  "revision"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "mcp",
+                    "type": "string"
+                  },
+                  "publicationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "revision": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "publicationId",
+                  "revision"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "BatchCountsV1": {
+            "additionalProperties": false,
+            "properties": {
+              "cancelled": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "completed": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "ended": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "failed": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "outcomeUnknown": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "queued": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "running": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "total": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "waitingApproval": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "waitingInput": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "total",
+              "queued",
+              "running",
+              "waitingInput",
+              "waitingApproval",
+              "completed",
+              "failed",
+              "cancelled",
+              "outcomeUnknown",
+              "ended"
+            ],
+            "type": "object"
+          },
+          "BatchViewV1": {
+            "additionalProperties": false,
+            "properties": {
+              "accessBinding": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ApplicationAccessBindingV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "applicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "batchId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "bundleId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "callerId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "callerName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "callerType": {
+                "type": "string"
+              },
+              "canCancel": {
+                "type": "boolean"
+              },
+              "canRerun": {
+                "type": "boolean"
+              },
+              "canStop": {
+                "type": "boolean"
+              },
+              "counts": {
+                "$ref": "#/$defs/BatchCountsV1"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "dispatchState": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "pagePublicationId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "source": {
+                "type": "string"
+              },
+              "sourceBatchId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "state": {
+                "type": "string"
+              },
+              "workflowVersionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "workflowVersionNumber": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "batchId",
+              "applicationId",
+              "name",
+              "source",
+              "callerType",
+              "callerId",
+              "bundleId",
+              "workflowVersionId",
+              "workflowVersionNumber",
+              "dispatchState",
+              "state",
+              "revision",
+              "counts",
+              "createdAt",
+              "canStop",
+              "canCancel",
+              "canRerun"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/BatchViewV1"
+            },
+            "type": "array"
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "BatchesPageV1",
+        "type": "object"
+      },
       "CancelWorkPackageRequestV1": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -1713,6 +3248,43 @@
         "title": "CommandEnvelopeV1",
         "type": "object"
       },
+      "CreateBatchV1": {
+        "$defs": {
+          "BatchInputV1": {
+            "additionalProperties": false,
+            "properties": {
+              "clientItemId": {
+                "type": "string"
+              },
+              "input": true
+            },
+            "required": [
+              "clientItemId",
+              "input"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/BatchInputV1"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "items"
+        ],
+        "title": "CreateBatchV1",
+        "type": "object"
+      },
       "DelegationScopeV1": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -1780,6 +3352,1690 @@
           "sessionIds"
         ],
         "title": "DelegationScopeV1",
+        "type": "object"
+      },
+      "DesignBrowserReportV1": {
+        "$defs": {
+          "DesignBrowserImageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "artifactId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "height": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "sizeBytes": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "width": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "artifactId",
+              "sha256",
+              "contentType",
+              "width",
+              "height",
+              "sizeBytes"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "documentHash": {
+            "type": "string"
+          },
+          "effectId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/DesignBrowserImageV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "report": true
+        },
+        "required": [
+          "effectId",
+          "documentHash",
+          "report"
+        ],
+        "title": "DesignBrowserReportV1",
+        "type": "object"
+      },
+      "DesignBrowserRequestV1": {
+        "$defs": {
+          "ApplicationApprovalKindV1": {
+            "enum": [
+              "workflow_node",
+              "agent_tool_effect"
+            ],
+            "type": "string"
+          },
+          "ApplicationApprovalStageV1": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "$ref": "#/$defs/ApplicationApprovalKindV1"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "nodeId",
+              "title",
+              "kind"
+            ],
+            "type": "object"
+          },
+          "ApplicationPageContractV1": {
+            "additionalProperties": false,
+            "properties": {
+              "applicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "applicationName": {
+                "type": "string"
+              },
+              "approvalStages": {
+                "items": {
+                  "$ref": "#/$defs/ApplicationApprovalStageV1"
+                },
+                "type": "array"
+              },
+              "bundleId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "chatMapping": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ChatMappingV1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "deploymentId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "inputSchema": true,
+              "maxUploadBytes": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "outputSchema": true,
+              "sdkVersion": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "waitInputNodes": {
+                "items": {
+                  "$ref": "#/$defs/WaitInputNodeV1"
+                },
+                "type": "array"
+              },
+              "workflowVersionId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "applicationId",
+              "applicationName",
+              "deploymentId",
+              "workflowVersionId",
+              "bundleId",
+              "inputSchema",
+              "outputSchema",
+              "waitInputNodes",
+              "approvalStages",
+              "sdkVersion",
+              "maxUploadBytes"
+            ],
+            "type": "object"
+          },
+          "ApplicationUiBuilderTargetV1": {
+            "additionalProperties": false,
+            "properties": {
+              "applicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "bundleId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "contractHash": {
+                "type": "string"
+              },
+              "runId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "sessionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "tenantId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "uiDraftId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "userId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenantId",
+              "applicationId",
+              "uiDraftId",
+              "bundleId",
+              "contractHash",
+              "sessionId",
+              "runId",
+              "userId"
+            ],
+            "type": "object"
+          },
+          "BoundaryLayout": {
+            "additionalProperties": false,
+            "properties": {
+              "boundary": {
+                "$ref": "#/$defs/WorkflowBoundary"
+              },
+              "x": {
+                "format": "double",
+                "type": "number"
+              },
+              "y": {
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "boundary",
+              "x",
+              "y"
+            ],
+            "type": "object"
+          },
+          "ChatMappingV1": {
+            "additionalProperties": false,
+            "properties": {
+              "answerFilesOutput": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "answerOutput": {
+                "type": "string"
+              },
+              "fileInput": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "questionInput": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "questionInput",
+              "answerOutput"
+            ],
+            "type": "object"
+          },
+          "ContextDefinition": {
+            "additionalProperties": false,
+            "properties": {
+              "clientWritable": {
+                "default": false,
+                "type": "boolean"
+              },
+              "default": {
+                "default": null
+              },
+              "description": {
+                "default": null,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "maxSize": {
+                "default": null,
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "mergePolicy": {
+                "$ref": "#/$defs/ContextMergePolicy",
+                "default": "replace"
+              },
+              "mutable": {
+                "default": false,
+                "type": "boolean"
+              },
+              "schema": {
+                "default": null
+              },
+              "scope": {
+                "$ref": "#/$defs/ContextScope",
+                "default": "execution_tree"
+              },
+              "sensitive": {
+                "default": false,
+                "type": "boolean"
+              },
+              "title": {
+                "default": null,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "ContextMergePolicy": {
+            "enum": [
+              "replace",
+              "append",
+              "merge_object",
+              "increment",
+              "reject_conflict"
+            ],
+            "type": "string"
+          },
+          "ContextScope": {
+            "enum": [
+              "execution_tree",
+              "session"
+            ],
+            "type": "string"
+          },
+          "ContextWrite": {
+            "additionalProperties": false,
+            "properties": {
+              "operation": {
+                "$ref": "#/$defs/ContextWriteOperation"
+              },
+              "path": {
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/InputBinding"
+              }
+            },
+            "required": [
+              "operation",
+              "path",
+              "value"
+            ],
+            "type": "object"
+          },
+          "ContextWriteOperation": {
+            "enum": [
+              "set",
+              "set_if_absent",
+              "delete",
+              "append",
+              "merge_object",
+              "increment",
+              "min",
+              "max",
+              "compare_and_set"
+            ],
+            "type": "string"
+          },
+          "DesignBrowserDocumentV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "document": {
+                    "$ref": "#/$defs/StudioDocumentV1"
+                  },
+                  "kind": {
+                    "const": "workflow",
+                    "type": "string"
+                  },
+                  "manifests": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "document",
+                  "manifests"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "contract": {
+                    "$ref": "#/$defs/ApplicationPageContractV1"
+                  },
+                  "contractHash": {
+                    "type": "string"
+                  },
+                  "html": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "application_page",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "html",
+                  "contract",
+                  "contractHash"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "DesignModelTargetV1": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "workflow_builder",
+                    "type": "string"
+                  },
+                  "target": {
+                    "$ref": "#/$defs/StudioBuilderTargetV1"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "target"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "application_ui_builder",
+                    "type": "string"
+                  },
+                  "target": {
+                    "$ref": "#/$defs/ApplicationUiBuilderTargetV1"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "target"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "EditorAnnotation": {
+            "additionalProperties": false,
+            "properties": {
+              "color": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "height": {
+                "default": 160.0,
+                "format": "double",
+                "type": "number"
+              },
+              "id": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "width": {
+                "default": 240.0,
+                "format": "double",
+                "type": "number"
+              },
+              "x": {
+                "format": "double",
+                "type": "number"
+              },
+              "y": {
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "id",
+              "text",
+              "x",
+              "y"
+            ],
+            "type": "object"
+          },
+          "EditorDocument": {
+            "additionalProperties": false,
+            "properties": {
+              "annotations": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/EditorAnnotation"
+                },
+                "type": "array"
+              },
+              "boundaryLayouts": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/BoundaryLayout"
+                },
+                "type": "array"
+              },
+              "edges": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/EditorEdge"
+                },
+                "type": "array"
+              },
+              "groups": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/EditorGroup"
+                },
+                "type": "array"
+              },
+              "nodeLayouts": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/NodeLayout"
+                },
+                "type": "array"
+              },
+              "viewport": {
+                "$ref": "#/$defs/EditorViewport",
+                "default": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "zoom": 1.0
+                }
+              }
+            },
+            "type": "object"
+          },
+          "EditorEdge": {
+            "additionalProperties": false,
+            "properties": {
+              "edgeId": {
+                "type": "string"
+              },
+              "labelPosition": {
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "edgeId"
+            ],
+            "type": "object"
+          },
+          "EditorGroup": {
+            "additionalProperties": false,
+            "properties": {
+              "collapsed": {
+                "default": false,
+                "type": "boolean"
+              },
+              "color": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "nodeIds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "nodeIds"
+            ],
+            "type": "object"
+          },
+          "EditorViewport": {
+            "additionalProperties": false,
+            "properties": {
+              "x": {
+                "format": "double",
+                "type": "number"
+              },
+              "y": {
+                "format": "double",
+                "type": "number"
+              },
+              "zoom": {
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "zoom"
+            ],
+            "type": "object"
+          },
+          "ExecutionOrder": {
+            "enum": [
+              "deterministic",
+              "parallel"
+            ],
+            "type": "string"
+          },
+          "InputBinding": {
+            "description": "The only public value language accepted by Workflow Definition 8.0.\n\nInput bindings deliberately contain no calculation node. Arrays and objects\nare recursive so structured JSON may embed stable references and text\ntemplates without falling back to a second expression protocol.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "literal",
+                    "type": "string"
+                  },
+                  "value": true
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "reference",
+                    "type": "string"
+                  },
+                  "missingPolicy": {
+                    "$ref": "#/$defs/MissingValuePolicy",
+                    "default": {
+                      "kind": "error"
+                    }
+                  },
+                  "selector": {
+                    "$ref": "#/$defs/ValueSelector"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "selector"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "template",
+                    "type": "string"
+                  },
+                  "segments": {
+                    "items": {
+                      "$ref": "#/$defs/InputTemplateSegment"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "segments"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "items": {
+                    "items": {
+                      "$ref": "#/$defs/InputBinding"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "const": "array",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "items"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "fields": {
+                    "additionalProperties": {
+                      "$ref": "#/$defs/InputBinding"
+                    },
+                    "type": "object"
+                  },
+                  "kind": {
+                    "const": "object",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "fields"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "InputTemplateSegment": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "text"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "reference",
+                    "type": "string"
+                  },
+                  "missingPolicy": {
+                    "$ref": "#/$defs/MissingValuePolicy",
+                    "default": {
+                      "kind": "error"
+                    }
+                  },
+                  "selector": {
+                    "$ref": "#/$defs/ValueSelector"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "selector"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "MissingValuePolicy": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "error",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "null",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "omit",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "NodeLayout": {
+            "additionalProperties": false,
+            "properties": {
+              "collapsed": {
+                "default": false,
+                "type": "boolean"
+              },
+              "height": {
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "width": {
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "x": {
+                "format": "double",
+                "type": "number"
+              },
+              "y": {
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "nodeId",
+              "x",
+              "y"
+            ],
+            "type": "object"
+          },
+          "NodeSettings": {
+            "additionalProperties": false,
+            "properties": {
+              "alwaysOutputData": {
+                "default": false,
+                "type": "boolean"
+              },
+              "executeOnce": {
+                "default": false,
+                "type": "boolean"
+              },
+              "maxTries": {
+                "default": 1,
+                "format": "uint16",
+                "maximum": 65535,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "retryOnFail": {
+                "default": false,
+                "type": "boolean"
+              },
+              "timeoutMs": {
+                "default": null,
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "waitBetweenTriesMs": {
+                "default": 0,
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "ResourceOperation": {
+            "enum": [
+              "view",
+              "use",
+              "read",
+              "write",
+              "manage"
+            ],
+            "type": "string"
+          },
+          "ResourceReference": {
+            "additionalProperties": false,
+            "properties": {
+              "bindingRole": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "operation": {
+                "$ref": "#/$defs/ResourceOperation"
+              },
+              "resourceId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "resourceType": {
+                "$ref": "#/$defs/ResourceType"
+              },
+              "resourceVersionId": {
+                "format": "uuid",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "resourceType",
+              "resourceId",
+              "operation"
+            ],
+            "type": "object"
+          },
+          "ResourceType": {
+            "enum": [
+              "credential",
+              "model",
+              "mcp_server",
+              "mcp_tool",
+              "skill",
+              "rag",
+              "memory",
+              "sandbox_profile"
+            ],
+            "type": "string"
+          },
+          "StudioBuilderTargetV1": {
+            "additionalProperties": false,
+            "properties": {
+              "draftId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "runId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "sessionId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "tenantId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "userId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "workflowId": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenantId",
+              "workflowId",
+              "draftId",
+              "sessionId",
+              "runId",
+              "userId"
+            ],
+            "type": "object"
+          },
+          "StudioDocumentV1": {
+            "additionalProperties": false,
+            "properties": {
+              "definition": {
+                "$ref": "#/$defs/WorkflowDefinition"
+              },
+              "editorDocument": {
+                "$ref": "#/$defs/EditorDocument"
+              }
+            },
+            "required": [
+              "definition",
+              "editorDocument"
+            ],
+            "type": "object"
+          },
+          "ValueNamespace": {
+            "enum": [
+              "inputs",
+              "outputs",
+              "contexts",
+              "execution",
+              "item",
+              "loop"
+            ],
+            "type": "string"
+          },
+          "ValuePathSegment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            ]
+          },
+          "ValueSelection": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "current",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "first",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "last",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "all",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "index": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "index",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "index"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "ValueSelector": {
+            "additionalProperties": false,
+            "properties": {
+              "item": {
+                "$ref": "#/$defs/ValueSelection",
+                "default": {
+                  "kind": "current"
+                }
+              },
+              "namespace": {
+                "$ref": "#/$defs/ValueNamespace"
+              },
+              "path": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/ValuePathSegment"
+                },
+                "type": "array"
+              },
+              "port": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "run": {
+                "$ref": "#/$defs/ValueSelection",
+                "default": {
+                  "kind": "current"
+                }
+              },
+              "sourceNodeId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "namespace"
+            ],
+            "type": "object"
+          },
+          "WaitInputNodeV1": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "responseSchema": true
+            },
+            "required": [
+              "path",
+              "nodeId",
+              "name"
+            ],
+            "type": "object"
+          },
+          "WorkflowBoundary": {
+            "enum": [
+              "start"
+            ],
+            "type": "string"
+          },
+          "WorkflowCompletion": {
+            "description": "How the engine finalizes an execution whose branches reach exit nodes.\n\n- `FirstReturn` (default): the first delivery to reach an exit (main or\n  error port, symmetric) finalizes the execution immediately and cancels\n  every other in-flight activation.\n- `AllComplete`: the execution waits for quiescence; every reached exit is\n  evaluated against the shared `end.outputs` contract and each output field\n  is returned as an array with one element per reached exit (definition\n  order; unreached exits and unbound fields are omitted).",
+            "enum": [
+              "first_return",
+              "all_complete"
+            ],
+            "type": "string"
+          },
+          "WorkflowConnection": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "order": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sourceHandle": {
+                "type": "string"
+              },
+              "sourceNodeId": {
+                "type": "string"
+              },
+              "targetHandle": {
+                "type": "string"
+              },
+              "targetNodeId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "sourceNodeId",
+              "sourceHandle",
+              "targetNodeId",
+              "targetHandle",
+              "order"
+            ],
+            "type": "object"
+          },
+          "WorkflowDefinition": {
+            "additionalProperties": false,
+            "properties": {
+              "connections": {
+                "items": {
+                  "$ref": "#/$defs/WorkflowConnection"
+                },
+                "type": "array"
+              },
+              "end": {
+                "$ref": "#/$defs/WorkflowEnd"
+              },
+              "nodes": {
+                "items": {
+                  "$ref": "#/$defs/WorkflowNode"
+                },
+                "type": "array"
+              },
+              "schemaVersion": {
+                "$ref": "#/$defs/WorkflowSchemaVersion"
+              },
+              "settings": {
+                "$ref": "#/$defs/WorkflowSettings",
+                "default": {
+                  "activationBudget": 10000,
+                  "executionOrder": "deterministic",
+                  "timeoutMs": null
+                }
+              },
+              "start": {
+                "$ref": "#/$defs/WorkflowStart"
+              }
+            },
+            "required": [
+              "schemaVersion",
+              "start",
+              "nodes",
+              "connections",
+              "end"
+            ],
+            "type": "object"
+          },
+          "WorkflowEnd": {
+            "additionalProperties": false,
+            "properties": {
+              "completion": {
+                "$ref": "#/$defs/WorkflowCompletion",
+                "default": "first_return"
+              },
+              "error": {
+                "$ref": "#/$defs/WorkflowErrorEnd",
+                "default": {
+                  "outputs": {}
+                }
+              },
+              "outputs": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/WorkflowOutput"
+                },
+                "default": {},
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "WorkflowErrorEnd": {
+            "additionalProperties": false,
+            "properties": {
+              "outputs": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/WorkflowOutput"
+                },
+                "default": {},
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "WorkflowNode": {
+            "additionalProperties": false,
+            "properties": {
+              "contextWrites": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/ContextWrite"
+                },
+                "type": "array"
+              },
+              "disabled": {
+                "default": false,
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "key": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "parameters": {
+                "default": null
+              },
+              "parentId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "protected": {
+                "default": false,
+                "description": "Protected exit nodes cannot be removed from the canvas; the initial\nexit created with the workflow is protected.",
+                "type": "boolean"
+              },
+              "resourceReferences": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/ResourceReference"
+                },
+                "type": "array"
+              },
+              "settings": {
+                "$ref": "#/$defs/NodeSettings",
+                "default": {
+                  "alwaysOutputData": false,
+                  "executeOnce": false,
+                  "maxTries": 1,
+                  "retryOnFail": false,
+                  "timeoutMs": null,
+                  "waitBetweenTriesMs": 0
+                }
+              },
+              "type": {
+                "type": "string"
+              },
+              "typeVersion": {
+                "format": "uint32",
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "key",
+              "type",
+              "typeVersion",
+              "name"
+            ],
+            "type": "object"
+          },
+          "WorkflowOutput": {
+            "additionalProperties": false,
+            "description": "The global output contract shared by every exit node. Field values are\nmapped per exit in [`ExitParameters`], never here.",
+            "properties": {
+              "required": {
+                "default": false,
+                "type": "boolean"
+              },
+              "schema": {
+                "default": null
+              },
+              "sensitive": {
+                "default": false,
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "WorkflowSchemaVersion": {
+            "enum": [
+              "8.0"
+            ],
+            "type": "string"
+          },
+          "WorkflowSettings": {
+            "additionalProperties": false,
+            "properties": {
+              "activationBudget": {
+                "default": 10000,
+                "format": "uint32",
+                "minimum": 1,
+                "type": "integer"
+              },
+              "executionOrder": {
+                "$ref": "#/$defs/ExecutionOrder",
+                "default": "deterministic"
+              },
+              "timeoutMs": {
+                "default": null,
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "WorkflowStart": {
+            "additionalProperties": false,
+            "properties": {
+              "contexts": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/ContextDefinition"
+                },
+                "default": {},
+                "type": "object"
+              },
+              "inputs": {
+                "default": null
+              }
+            },
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "document": {
+            "$ref": "#/$defs/DesignBrowserDocumentV1"
+          },
+          "documentHash": {
+            "type": "string"
+          },
+          "effectId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "options": {
+            "additionalProperties": false,
+            "properties": {
+              "actions": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "const": "click",
+                          "type": "string"
+                        },
+                        "selector": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "selector"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "const": "fill",
+                          "type": "string"
+                        },
+                        "selector": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "selector",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "const": "select",
+                          "type": "string"
+                        },
+                        "selector": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "selector",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "const": "press",
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        },
+                        "selector": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "selector",
+                        "key"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "const": "upload",
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "selector": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "selector",
+                        "name",
+                        "content"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "const": "wait",
+                          "type": "string"
+                        },
+                        "milliseconds": {
+                          "format": "uint32",
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "milliseconds"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "const": "reload",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "action"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "const": "check",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "action"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "const": "focus_nodes",
+                          "type": "string"
+                        },
+                        "nodeIds": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "nodeIds"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "locale": {
+                "type": "string"
+              },
+              "region": {
+                "description": "Optional CSS region in the isolated preview, not a URL or executable script.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "screenshot": {
+                "type": "boolean"
+              },
+              "theme": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "actions",
+              "screenshot",
+              "locale",
+              "theme"
+            ],
+            "type": "object"
+          },
+          "target": {
+            "$ref": "#/$defs/DesignModelTargetV1"
+          }
+        },
+        "required": [
+          "target",
+          "effectId",
+          "documentHash",
+          "document",
+          "options"
+        ],
+        "title": "DesignBrowserRequestV1",
         "type": "object"
       },
       "DesignModelEffectRequestV1": {
@@ -2038,6 +5294,7 @@
               "user",
               "assistant",
               "tool_result",
+              "tool_observation",
               "external_context"
             ],
             "type": "string"
@@ -12805,6 +16062,110 @@
           "limit"
         ],
         "title": "InvocationSearchRequestV1",
+        "type": "object"
+      },
+      "ManageBatchRequestV1": {
+        "$defs": {
+          "BatchQueryV1": {
+            "additionalProperties": false,
+            "properties": {
+              "cursor": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "limit": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "requestKey": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "state": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "batchId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exportId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "itemIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "operation": {
+            "type": "string"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/BatchQueryV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requestKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "applicationId",
+          "operation"
+        ],
+        "title": "ManageBatchRequestV1",
         "type": "object"
       },
       "McpTaskViewV1": {
@@ -23705,6 +27066,33 @@
         "title": "PublishReceiptV1",
         "type": "object"
       },
+      "ReadTableV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "artifactId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "delimiter": {
+            "type": "string"
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "delimiter"
+        ],
+        "title": "ReadTableV1",
+        "type": "object"
+      },
       "ReferenceCheckReceiptV1": {
         "$defs": {
           "RuntimeReferenceBlockV1": {
@@ -34483,6 +37871,28 @@
             ],
             "type": "object"
           },
+          "StudioNodePositionV1": {
+            "additionalProperties": false,
+            "properties": {
+              "nodeId": {
+                "type": "string"
+              },
+              "x": {
+                "format": "double",
+                "type": "number"
+              },
+              "y": {
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "nodeId",
+              "x",
+              "y"
+            ],
+            "type": "object"
+          },
           "ValueNamespace": {
             "enum": [
               "inputs",
@@ -34901,6 +38311,26 @@
             },
             "required": [
               "action"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "const": "move_nodes",
+                "type": "string"
+              },
+              "positions": {
+                "items": {
+                  "$ref": "#/$defs/StudioNodePositionV1"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "action",
+              "positions"
             ],
             "type": "object"
           },
@@ -38467,6 +41897,42 @@
           "content"
         ],
         "title": "SubmitWaitInputV1",
+        "type": "object"
+      },
+      "TableDataV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "headers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "lines": {
+            "items": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "headers",
+          "rows",
+          "lines"
+        ],
+        "title": "TableDataV1",
         "type": "object"
       },
       "TaskViewV1": {

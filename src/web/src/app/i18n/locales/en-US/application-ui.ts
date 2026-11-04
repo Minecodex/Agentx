@@ -17,7 +17,7 @@ export default {
   signOut:"Sign out",
   loading:"Loading application…",
   reload:"Reload",
-  historyMode:"Viewing a historical task page. You can provide input, view results or cancel the task.",
+  historyMode:"Viewing the original business page. Continue its tasks, inspect batch results or cancel unfinished work.",
   openPage:"Open application",
   slug:"Access suffix",
   publish:'Publish',publishing:'Checking and publishing…',publishAddress:'Set the access address',addressHint:'Choose the address suffix employees will visit. Later publications use the same address.',

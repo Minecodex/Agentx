@@ -569,6 +569,7 @@ fn message_entry_kind(message: &AgentMessageV1) -> &'static str {
         MessageRole::Assistant if !message.tool_calls.is_empty() => "message.tool_call",
         MessageRole::Assistant => "message.assistant",
         MessageRole::ToolResult => "message.tool_result",
+        MessageRole::ToolObservation => "message.tool_observation",
         MessageRole::ExternalContext => "custom.external_context",
     }
 }

@@ -592,6 +592,7 @@ async fn acknowledge(
     }
     let outcome = json!({"commandId":input.command_id,"status":input.status,"documentHash":input.snapshot.document_hash,"localDocumentRevision":input.snapshot.local_document_revision,"changedNodeIds":command.changed_node_ids,"issues":input.issues,"saveStatus":input.snapshot.save_status});
     let result = ToolResultV1 {
+        observations: Vec::new(),
         content: outcome.to_string(),
         structured_result: Some(outcome),
         artifact_refs: Vec::new(),
@@ -632,6 +633,7 @@ async fn answer(
         ));
     }
     let result = ToolResultV1 {
+        observations: Vec::new(),
         content: json!({"answer":input.answer,"scope":"design_only"}).to_string(),
         structured_result: None,
         artifact_refs: vec![],

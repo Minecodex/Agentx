@@ -31,6 +31,34 @@ pub async fn respond(request: &Value) -> Response {
         .get(index)
         .and_then(|message| message["content"].as_str())
         .unwrap_or("");
+    if prompt.contains("P8FIX: browser") && prompt.contains("recover_generation") {
+        let feedback = messages
+            .iter()
+            .filter(|message| {
+                message["role"] == "system"
+                    && message["content"]
+                        .as_str()
+                        .is_some_and(|text| text.contains("A confirmed model generation failed;"))
+            })
+            .count();
+        if feedback == 0 {
+            return Response::builder()
+                .status(StatusCode::SERVICE_UNAVAILABLE)
+                .body(Body::from("temporary synthetic rejection"))
+                .unwrap();
+        }
+        if feedback == 1 {
+            let body = format!(
+                "data: {}\n\ndata: {}\n\ndata: [DONE]\n\n",
+                json!({"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"truncated-edit","function":{"name":"workflow_edit","arguments":"{"}}]},"finish_reason":"length"}]}),
+                json!({"choices":[],"usage":{"prompt_tokens":32,"completion_tokens":48}})
+            );
+            return Response::builder()
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from(body))
+                .unwrap();
+        }
+    }
     if request.get("tools").is_some()
         && prompt.contains("P8FIX: overflow")
         && OVERFLOW_PROMPTS
@@ -87,6 +115,87 @@ pub async fn respond(request: &Value) -> Response {
             .to_owned();
     if request.get("tools").is_none() {
         text="Design-only summary: preserve current Draft target, user constraints and confirmed ACKs; use workflow_read to refresh facts. Never execute, save, publish, grant or deploy. Past effects are already settled; do not replay them.".into();
+    } else if prompt.contains("P8FIX: page browser") {
+        if let Some((_, read)) = results.iter().find(|(name, _)| name == "page_read") {
+            if results.iter().any(|(name, _)| name == "page_browser") {
+                let images = messages
+                    .iter()
+                    .filter(|message| message["role"] == "user")
+                    .flat_map(|message| message["content"].as_array().into_iter().flatten())
+                    .filter(|part| part["type"] == "image_url")
+                    .count();
+                text = format!("P8 page browser evidence: images={images}");
+            } else {
+                tool = Some(call(
+                    "page_browser",
+                    json!({"expectedDocumentHash":read["metadata"]["htmlHash"],"options":{"actions":[],"screenshot":true,"locale":"en-US","theme":"dark","region":null}}),
+                ));
+            }
+        } else {
+            tool = Some(call("page_read", json!({})));
+        }
+    } else if prompt.contains("P8FIX: browser") {
+        let image_requested = prompt.contains("vision");
+        let observations = results
+            .iter()
+            .filter(|(name, _)| name == "workflow_browser")
+            .collect::<Vec<_>>();
+        let read = results
+            .iter()
+            .find(|(name, _)| name == "workflow_read")
+            .map(|(_, value)| value);
+        let edited = results
+            .iter()
+            .find(|(name, _)| name == "workflow_edit")
+            .map(|(_, value)| value);
+        if let Some(read) = read {
+            if observations.is_empty() || (edited.is_some() && observations.len() == 1) {
+                let hash = edited
+                    .map(|value| &value["documentHash"])
+                    .unwrap_or(&read["metadata"]["documentHash"]);
+                tool = Some(call(
+                    "workflow_browser",
+                    json!({"expectedDocumentHash":hash,"options":{"actions":[{"action":"focus_nodes","nodeIds":[]}],"screenshot":image_requested,"locale":"zh-CN","theme":"light","region":null}}),
+                ));
+            } else if prompt.contains("move")
+                && edited.is_none()
+                && observations[0].1["source"] == "isolated_browser"
+            {
+                let layout = &read["editorDocument"]["nodeLayouts"][0];
+                tool = Some(call(
+                    "workflow_edit",
+                    json!({"action":"batch","expectedLocalDocumentRevision":read["metadata"]["localDocumentRevision"],"expectedDocumentHash":read["metadata"]["documentHash"],"intents":[{"action":"move_nodes","positions":[{"nodeId":layout["nodeId"],"x":600,"y":240}]}]}),
+                ));
+            } else {
+                let images = messages
+                    .iter()
+                    .filter(|message| message["role"] == "user")
+                    .flat_map(|message| message["content"].as_array().into_iter().flatten())
+                    .filter(|part| {
+                        part["type"] == "image_url"
+                            && part["image_url"]["url"]
+                                .as_str()
+                                .is_some_and(|url| url.starts_with("data:image/webp;base64,"))
+                    })
+                    .count();
+                text = format!(
+                    "P8 browser evidence: images={images}; observations={}; moved={}",
+                    observations.len(),
+                    edited.is_some()
+                );
+                if observations.iter().any(|(_, value)| {
+                    value.pointer("/detail/code").and_then(Value::as_str)
+                        == Some("DESIGN_MODEL_VISION_REQUIRED")
+                }) {
+                    text.push_str("; vision_denied");
+                }
+            }
+        } else {
+            tool = Some(call(
+                "workflow_read",
+                json!({"action":"document","cursor":0,"limit":100}),
+            ));
+        }
     } else if let Some(document) = prompt.strip_prefix("P8FIX: inspector=") {
         text = "## 编辑完成\n\n- **节点**已创建，可点击编辑。\n- 使用 `InputBinding`，只做静态校验。\n\n```json\n{\"executed\":false}\n```".into();
         if results.is_empty() {

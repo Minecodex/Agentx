@@ -27,12 +27,17 @@ use crate::{
     control_api::{Actor, ControlApiState, execution_origin},
 };
 
+#[path = "application_batches_api.rs"]
+mod application_batches_api;
 #[path = "application_invocations.rs"]
 mod application_invocations;
+#[path = "end_user_view.rs"]
+pub(crate) mod end_user_view;
 pub(crate) use application_invocations::{test_artifacts, test_sample};
 
 pub fn routes() -> Router<ControlApiState> {
     Router::new()
+        .merge(application_batches_api::routes())
         .route(
             "/api/v1/applications/{id}/invocations",
             get(application_invocations::list),
@@ -241,7 +246,10 @@ async fn get_agent_session(
         .send()
         .await
         .map_err(runtime_unavailable)?;
-    runtime_json::<Value>(response).await.map(Json)
+    let response = runtime_json::<Value>(response).await?;
+    end_user_view::memory_target_names(&state, actor.tenant_id, response)
+        .await
+        .map(Json)
 }
 
 async fn clear_agent_session(
@@ -1456,6 +1464,14 @@ async fn summaries_json(
     if summaries.is_empty() {
         return Ok(Vec::new());
     }
+    let user_names = end_user_view::user_names(
+        state,
+        tenant_id,
+        summaries
+            .iter()
+            .filter_map(|summary| summary.end_user.as_ref()),
+    )
+    .await?;
     let mut workflow_versions = summaries
         .iter()
         .filter_map(|summary| summary.workflow_version_id)
@@ -1540,7 +1556,14 @@ async fn summaries_json(
             let application_name = summary
                 .application_id
                 .and_then(|id| application_metadata.get(&id).cloned());
-            execution_summary_json(summary, workflow_name, version, application_name)
+            let end_user = summary
+                .end_user
+                .clone()
+                .map(|user| end_user_view::user_response(user, &user_names));
+            let mut response =
+                execution_summary_json(summary, workflow_name, version, application_name);
+            response["endUser"] = json!(end_user);
+            response
         })
         .collect())
 }
@@ -1967,4 +1990,8 @@ async fn retry_delivery(
         .await
         .map_err(runtime_unavailable)?;
     runtime_json::<Value>(response).await.map(Json)
+}
+
+pub(crate) fn application_batches_openapi(contract: &mut Value) -> anyhow::Result<()> {
+    application_batches_api::apply_openapi(contract)
 }

@@ -36,7 +36,7 @@ const fixture: {contract:PageContract;html:string}=process.env.AGENTX_E2E_PREVIE
 type Preview=ReturnType<typeof createPagePreview>
 type Host=Window&{privatePort?:MessagePort;ready?:boolean;reports?:Record<string,(value:unknown)=>void>;inspectPage?:(input:unknown,waitId?:string)=>Promise<{errors:unknown[]}>;previewRequest?:(value:{method:Parameters<Preview['dispatch']>[0];args:Record<string,unknown>;id:string})=>Promise<unknown>}
 async function mountPreview(page:Page,selected:{contract:PageContract;html:string}){
-  const sdk=readFileSync(new URL('../../../contracts/sdk/application-page-v1.js',import.meta.url),'utf8')
+  const sdk=readFileSync(new URL('../../../contracts/sdk/application-page-v2.js',import.meta.url),'utf8')
   const preview=createPagePreview(selected.contract,'fixture-hash','zh-CN','light')
   await page.exposeBinding('previewRequest',async(_source,value:{method:Parameters<typeof preview.dispatch>[0];args:Record<string,unknown>;id:string})=>preview.dispatch(value.method,value.args,value.id,(subscriptionId,task)=>{void page.evaluate(({subscriptionId,task})=>(window as Host).privatePort?.postMessage({type:'task',subscriptionId,task}),{subscriptionId,task}).catch(()=>undefined)}))
   await page.route('https://preview.agentx.test/',route=>route.fulfill({contentType:'text/html',body:'<iframe id="controller" sandbox="allow-scripts allow-forms"></iframe>'}))

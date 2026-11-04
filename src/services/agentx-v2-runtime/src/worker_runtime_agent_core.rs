@@ -1199,6 +1199,7 @@ impl<'a> AgentToolRouter<'a> {
                 "sizeBytes":envelope.get("sizeBytes").cloned().unwrap_or(Value::Null),
             });
             return Ok(agentx_agent_core::ToolResultV1 {
+                observations: Vec::new(),
                 content: structured.to_string(),
                 structured_result: Some(structured),
                 artifact_refs,
@@ -1209,6 +1210,7 @@ impl<'a> AgentToolRouter<'a> {
         }
         let result = envelope.get("result").cloned().unwrap_or(Value::Null);
         Ok(agentx_agent_core::ToolResultV1 {
+            observations: Vec::new(),
             content: serde_json::to_string(&result).unwrap_or_default(),
             structured_result: Some(result),
             artifact_refs: Vec::new(),
@@ -1811,6 +1813,7 @@ impl ToolPort for AgentToolRouter<'_> {
             .and_then(Value::as_bool)
             .is_some_and(|ok| !ok);
         Ok(agentx_agent_core::ToolResultV1 {
+            observations: Vec::new(),
             content: serde_json::to_string(&structured).unwrap_or_default(),
             structured_result: Some(structured),
             artifact_refs: payload

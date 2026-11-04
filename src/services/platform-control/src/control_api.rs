@@ -973,7 +973,7 @@ struct UpgradeSessionRequest {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SessionResponse {
-    end_user: Option<agentx_runtime_contracts::ApplicationUserIdentityV1>,
+    end_user: Option<crate::runtime_bff::end_user_view::EndUserResponse>,
     id: Uuid,
     application_id: Uuid,
     application_deployment_id: Uuid,
@@ -1326,7 +1326,20 @@ async fn list_sessions(
         .await
         .map_err(runtime_query_unavailable)?;
     let page: SessionSearchPageV1 = runtime_json(response, "RUNTIME_QUERY_REJECTED").await?;
-    Ok(Json(page.items.into_iter().map(session_response).collect()))
+    let names = crate::runtime_bff::end_user_view::user_names(
+        &state,
+        actor.tenant_id,
+        page.items
+            .iter()
+            .filter_map(|session| session.end_user.as_ref()),
+    )
+    .await?;
+    Ok(Json(
+        page.items
+            .into_iter()
+            .map(|session| session_response(session, &names))
+            .collect(),
+    ))
 }
 
 async fn upgrade_session(
@@ -1377,11 +1390,16 @@ async fn upgrade_session(
         .map_err(runtime_query_unavailable)?;
     let _: agentx_runtime_contracts::SessionUpgradeReceiptV1 =
         runtime_json(response, "RUNTIME_SESSION_COMMAND_REJECTED").await?;
-    Ok(Json(session_response(
-        get_runtime_session(&state, &actor, session_id)
-            .await?
-            .summary,
-    )))
+    let summary = get_runtime_session(&state, &actor, session_id)
+        .await?
+        .summary;
+    let names = crate::runtime_bff::end_user_view::user_names(
+        &state,
+        actor.tenant_id,
+        summary.end_user.iter(),
+    )
+    .await?;
+    Ok(Json(session_response(summary, &names)))
 }
 
 async fn get_runtime_session(
@@ -1411,9 +1429,14 @@ async fn get_runtime_session(
     runtime_json(response, "RUNTIME_QUERY_REJECTED").await
 }
 
-fn session_response(value: agentx_runtime_contracts::SessionSummaryV1) -> SessionResponse {
+fn session_response(
+    value: agentx_runtime_contracts::SessionSummaryV1,
+    names: &crate::runtime_bff::end_user_view::UserNames,
+) -> SessionResponse {
     SessionResponse {
-        end_user: value.end_user,
+        end_user: value
+            .end_user
+            .map(|user| crate::runtime_bff::end_user_view::user_response(user, names)),
         id: value.session_id,
         application_id: value.application_id,
         application_deployment_id: value.application_deployment_id,

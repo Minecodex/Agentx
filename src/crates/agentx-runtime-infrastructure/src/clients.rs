@@ -1,7 +1,10 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
-use object_store::{Certificate, ClientOptions, ObjectStore, aws::AmazonS3Builder};
+use object_store::{
+    Certificate, ClientOptions, ObjectStore,
+    aws::{AmazonS3Builder, S3ConditionalPut},
+};
 use redis::{
     aio::{ConnectionManager, ConnectionManagerConfig},
     io::tcp::{TcpSettings, socket2::TcpKeepalive},
@@ -109,6 +112,7 @@ pub fn runtime_object_store(
         .with_access_key_id(settings.access_key.expose_secret())
         .with_secret_access_key(settings.secret_key.expose_secret())
         .with_virtual_hosted_style_request(!settings.path_style)
+        .with_conditional_put(S3ConditionalPut::ETagMatch)
         .with_client_options(client_options);
     if let Some(token) = &settings.session_token {
         builder = builder.with_token(token.expose_secret());

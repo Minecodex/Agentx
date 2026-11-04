@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import json
 import os
@@ -22,9 +23,6 @@ def plan9_metered_provider(installed_agentx, plan9_public_origins):
     namespace = installed_agentx["dependencies_namespace"]
     runtime = installed_agentx["runtime_namespace"]
     configured = model_configuration()
-    # This checkpoint always reasons. Use its supported low effort to leave room
-    # for HTML inside the explicitly bounded 16,000-token acceptance output.
-    configured["defaultParameters"].setdefault("reasoning_effort", "low")
     upstream = urlparse(configured["endpoint"])
     assert upstream.hostname in {"127.0.0.1", "localhost"}, "Plan9 requires the explicitly supplied local metered relay"
     upstream_ca = Path(os.environ["AGENTX_E2E_LLM_CA_FILE"]).read_text()
@@ -123,7 +121,12 @@ def plan9_metered_provider(installed_agentx, plan9_public_origins):
                     "replicas": 1,
                     "selector": {"matchLabels": {"app.kubernetes.io/name": "plan9-model-relay"}},
                     "template": {
-                        "metadata": {"labels": {"app.kubernetes.io/name": "plan9-model-relay"}},
+                        "metadata": {
+                            "labels": {"app.kubernetes.io/name": "plan9-model-relay"},
+                            "annotations": {
+                                "agentx.dev/test-provider-cert-sha256": hashlib.sha256(cert.read_bytes()).hexdigest()
+                            },
+                        },
                         "spec": {
                             "automountServiceAccountToken": False,
                             "containers": [
@@ -204,6 +207,11 @@ def plan9_metered_provider(installed_agentx, plan9_public_origins):
             patch = {
                 "spec": {
                     "template": {
+                        "metadata": {
+                            "annotations": {
+                                "agentx.dev/test-provider-ca-sha256": hashlib.sha256(ca.read_bytes()).hexdigest()
+                            }
+                        },
                         "spec": {
                             "volumes": [{"name": "plan9-provider-ca", "configMap": {"name": "plan9-provider-ca"}}],
                             "containers": [
@@ -225,7 +233,7 @@ def plan9_metered_provider(installed_agentx, plan9_public_origins):
                                     ],
                                 }
                             ],
-                        }
+                        },
                     }
                 }
             }
@@ -263,4 +271,22 @@ def plan9_metered_provider(installed_agentx, plan9_public_origins):
             },
         }
         run(("kubectl", "-n", runtime, "apply", "-f", "-"), input_text=yaml.safe_dump(policy))
+        # Probe TLS without sending a billable model request. Both sides must
+        # have loaded this fixture's CA after a retained-environment retry.
+        probe = "const https=require('node:https'),fs=require('node:fs');https.get(process.argv[1],{ca:fs.readFileSync('/etc/plan9-provider/ca.pem')},r=>{r.resume();r.on('end',()=>process.exit(r.statusCode===200?0:2))}).on('error',()=>process.exit(3))"
+        run(
+            (
+                "kubectl",
+                "-n",
+                runtime,
+                "exec",
+                "deployment/runtime-gateway",
+                "--",
+                "node",
+                "-e",
+                probe,
+                f"https://{host}:8443/health",
+            ),
+            timeout=30,
+        )
         yield {**configured, "endpoint": f"https://{host}:8443/v1"}

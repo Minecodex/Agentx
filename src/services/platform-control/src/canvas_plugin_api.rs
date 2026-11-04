@@ -148,13 +148,15 @@ struct PluginVersion {
     created_at: OffsetDateTime,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
-struct PluginAuditItem {
+pub(crate) struct PluginAuditItem {
     id: Uuid,
     actor_user_id: Uuid,
+    actor_name: Option<String>,
     action: String,
     detail: Value,
+    #[schemars(with = "String")]
     #[serde(with = "time::serde::rfc3339")]
     created_at: OffsetDateTime,
 }
@@ -1166,7 +1168,7 @@ async fn plugin_audit(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<PluginAuditItem>>> {
     actor.require("canvas_plugin:manage")?;
-    let rows = sqlx::query("SELECT id,actor_user_id,action,detail_json,created_at FROM audit_events WHERE tenant_id=? AND target_type='canvas_plugin' AND target_id=? ORDER BY created_at DESC,id DESC LIMIT 200")
+    let rows = sqlx::query("SELECT a.id,a.actor_user_id,u.display_name actor_name,a.action,a.detail_json,a.occurred_at created_at FROM audit_events a LEFT JOIN users u ON u.tenant_id=a.tenant_id AND u.id=a.actor_user_id WHERE a.tenant_id=? AND a.target_type='canvas_plugin' AND a.target_id=? ORDER BY a.occurred_at DESC,a.id DESC LIMIT 200")
         .bind(actor.tenant_id).bind(id.to_string()).fetch_all(&state.pool).await?;
     Ok(Json(
         rows.into_iter()
@@ -1174,6 +1176,7 @@ async fn plugin_audit(
                 Ok(PluginAuditItem {
                     id: row.try_get("id")?,
                     actor_user_id: row.try_get("actor_user_id")?,
+                    actor_name: row.try_get("actor_name")?,
                     action: row.try_get("action")?,
                     detail: row.try_get("detail_json")?,
                     created_at: row.try_get("created_at")?,

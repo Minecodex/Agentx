@@ -35,6 +35,8 @@ pub(super) async fn resume(pool: &MySqlPool, claim: &RuntimeCommandClaim) -> Run
         tx.commit().await?;
         return Ok(());
     }
+    crate::application_batches::capacity::acquire(&mut tx, claim.tenant_id, claim.execution_id)
+        .await?;
     let row=sqlx::query("SELECT f.attempt_id,f.node_execution_id,f.active_remaining_ms,f.resume_command_id,a.status,p.status approval_status FROM agent_tool_effects f JOIN node_attempts a ON a.tenant_id=f.tenant_id AND a.id=f.attempt_id JOIN approval_tasks p ON p.tenant_id=f.tenant_id AND p.id=f.approval_task_id WHERE f.tenant_id=? AND f.id=? AND f.execution_id=? FOR UPDATE")
         .bind(claim.tenant_id).bind(effect).bind(claim.execution_id).fetch_one(&mut *tx).await?;
     if row.try_get::<Option<Uuid>, _>("resume_command_id")? != Some(claim.command_id)

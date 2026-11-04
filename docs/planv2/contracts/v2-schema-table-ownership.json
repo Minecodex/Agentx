@@ -24,6 +24,34 @@
     "schema_file": "deploy/migrations/runtime/0001_initial.sql"
   },
   {
+    "table": "application_batch_items",
+    "plane": "runtime",
+    "authoritative_writer": "runtime-gateway batch acceptance / workflow-runtime batch commands",
+    "allowed_readers": [
+      "runtime-gateway employee/API batch queries",
+      "workflow-runtime batch coordinator",
+      "runtime internal delegated batch management"
+    ],
+    "cross_plane_contract": "BatchViewV1 / BatchItemViewV1 / ManageBatchRequestV1",
+    "retention_and_delete_rule": "Preserve accepted input, immutable Bundle/page binding and source lineage. Accepted input references transfer to the formal Invocation. Unadmitted input references survive stop or rejection until batch retention cleanup.",
+    "owning_task": "P10-01",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
+  },
+  {
+    "table": "application_batches",
+    "plane": "runtime",
+    "authoritative_writer": "runtime-gateway batch acceptance / workflow-runtime batch commands",
+    "allowed_readers": [
+      "runtime-gateway employee/API batch queries",
+      "workflow-runtime batch coordinator",
+      "runtime internal delegated batch management"
+    ],
+    "cross_plane_contract": "BatchViewV1 / BatchItemViewV1 / ManageBatchRequestV1",
+    "retention_and_delete_rule": "Preserve accepted input, immutable Bundle/page binding and source lineage. Accepted input references transfer to the formal Invocation. Unadmitted input references survive stop or rejection until batch retention cleanup.",
+    "owning_task": "P10-01",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
+  },
+  {
     "table": "application_chat_mappings",
     "plane": "runtime",
     "authoritative_writer": "runtime-gateway chat mapping command handler",
@@ -36,19 +64,6 @@
     "owning_task": "V2C-007"
   },
   {
-    "table": "application_mcp_routes",
-    "plane": "control",
-    "authoritative_writer": "platform-control MCP publisher",
-    "allowed_readers": [
-      "platform-control MCP API",
-      "platform-control publisher"
-    ],
-    "cross_plane_contract": "ApplicationMcpPublicationV1 / RuntimeAdmissionCommandV1",
-    "retention_and_delete_rule": "Globally reserve a suffix to one tenant/application while any retained publication uses it; share across same-application tools. Release after the final retraction is acknowledged.",
-    "owning_task": "P9-05",
-    "schema_file": "deploy/migrations/control/0001_initial.sql"
-  },
-  {
     "table": "application_mcp_heads",
     "plane": "control",
     "authoritative_writer": "platform-control MCP publisher",
@@ -60,19 +75,6 @@
     "retention_and_delete_rule": "Retain monotonic publication sequence and immutable manifests. Publications coexist until a precise removal; preserve task bindings and a deletion tombstone. Deletion releases only that publication Bundle reference.",
     "owning_task": "P9-05",
     "schema_file": "deploy/migrations/control/0001_initial.sql"
-  },
-  {
-    "table": "application_mcp_routes",
-    "plane": "runtime",
-    "authoritative_writer": "workflow-runtime admission handler",
-    "allowed_readers": [
-      "runtime-gateway MCP API",
-      "runtime-gateway OAuth authority"
-    ],
-    "cross_plane_contract": "ApplicationMcpPublicationV1 / RuntimeAdmissionCommandV1",
-    "retention_and_delete_rule": "Globally reserve a suffix to one tenant/application while any retained publication uses it; share across same-application tools. Release after the final retraction is acknowledged.",
-    "owning_task": "P9-05",
-    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
   },
   {
     "table": "application_mcp_heads",
@@ -110,6 +112,32 @@
     ],
     "cross_plane_contract": "ApplicationMcpPublicationV1 / RuntimeAdmissionCommandV1",
     "retention_and_delete_rule": "Retain monotonic publication sequence and immutable manifests. Publications coexist until a precise removal; preserve task bindings and a deletion tombstone. Deletion releases only that publication Bundle reference.",
+    "owning_task": "P9-05",
+    "schema_file": "deploy/migrations/runtime/0001_initial.sql"
+  },
+  {
+    "table": "application_mcp_routes",
+    "plane": "control",
+    "authoritative_writer": "platform-control MCP publisher",
+    "allowed_readers": [
+      "platform-control MCP API",
+      "platform-control publisher"
+    ],
+    "cross_plane_contract": "ApplicationMcpPublicationV1 / RuntimeAdmissionCommandV1",
+    "retention_and_delete_rule": "Globally reserve a suffix to one tenant/application while any retained publication uses it; share across same-application tools. Release after the final retraction is acknowledged.",
+    "owning_task": "P9-05",
+    "schema_file": "deploy/migrations/control/0001_initial.sql"
+  },
+  {
+    "table": "application_mcp_routes",
+    "plane": "runtime",
+    "authoritative_writer": "workflow-runtime admission handler",
+    "allowed_readers": [
+      "runtime-gateway MCP API",
+      "runtime-gateway OAuth authority"
+    ],
+    "cross_plane_contract": "ApplicationMcpPublicationV1 / RuntimeAdmissionCommandV1",
+    "retention_and_delete_rule": "Globally reserve a suffix to one tenant/application while any retained publication uses it; share across same-application tools. Release after the final retraction is acknowledged.",
     "owning_task": "P9-05",
     "schema_file": "deploy/migrations/runtime/0001_initial.sql"
   },

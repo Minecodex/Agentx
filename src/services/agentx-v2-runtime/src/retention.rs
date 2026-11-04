@@ -92,6 +92,19 @@ async fn mark_candidates(state: &RuntimeState, claim: &RetentionRunClaim) -> Run
     .fetch_all(&mut *tx)
     .await?;
     let mut marked = 0_u64;
+    if let Some(policy) = policies.iter().find(|p| {
+        p.try_get::<String, _>("data_type")
+            .is_ok_and(|s| s == "execution")
+    }) {
+        marked = crate::application_batches::retention::mark(
+            &mut tx,
+            claim.tenant_id,
+            claim.run_id,
+            policy.try_get("retention_days")?,
+            BATCH_SIZE,
+        )
+        .await?;
+    }
     for policy in policies {
         if marked >= u64::from(BATCH_SIZE) {
             break;
@@ -180,7 +193,7 @@ async fn mark_execution_rows(
     limit: u32,
 ) -> RuntimeResult<Vec<sqlx::mysql::MySqlRow>> {
     Ok(sqlx::query(
-        "SELECT e.id,EXISTS(SELECT 1 FROM checkpoints c WHERE c.tenant_id=e.tenant_id AND c.execution_id=e.id) OR EXISTS(SELECT 1 FROM execution_forks f WHERE f.tenant_id=e.tenant_id AND f.source_execution_id=e.id) OR EXISTS(SELECT 1 FROM runtime_retention_holds h WHERE h.tenant_id=e.tenant_id AND h.aggregate_type='execution' AND h.aggregate_id=e.id AND h.released_at IS NULL AND (h.expires_at IS NULL OR h.expires_at>UTC_TIMESTAMP(6))) AS protected FROM workflow_executions e WHERE e.tenant_id=? AND e.status IN ('succeeded','failed','cancelled','timed_out') AND e.ended_at<DATE_SUB(UTC_TIMESTAMP(6),INTERVAL ? DAY) AND e.retention_deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM retention_items i WHERE i.retention_run_id=? AND i.data_type='execution' AND i.target_id=CAST(BIN_TO_UUID(e.id) AS CHAR) COLLATE utf8mb4_0900_ai_ci) ORDER BY e.ended_at,e.id LIMIT ? FOR UPDATE SKIP LOCKED",
+        "SELECT e.id,EXISTS(SELECT 1 FROM application_batch_items bi JOIN application_batches b ON b.tenant_id=bi.tenant_id AND b.id=bi.batch_id WHERE bi.tenant_id=e.tenant_id AND bi.invocation_id=e.invocation_id AND b.retention_deleted_at IS NULL) OR EXISTS(SELECT 1 FROM checkpoints c WHERE c.tenant_id=e.tenant_id AND c.execution_id=e.id) OR EXISTS(SELECT 1 FROM execution_forks f WHERE f.tenant_id=e.tenant_id AND f.source_execution_id=e.id) OR EXISTS(SELECT 1 FROM runtime_retention_holds h WHERE h.tenant_id=e.tenant_id AND h.aggregate_type='execution' AND h.aggregate_id=e.id AND h.released_at IS NULL AND (h.expires_at IS NULL OR h.expires_at>UTC_TIMESTAMP(6))) AS protected FROM workflow_executions e WHERE e.tenant_id=? AND e.status IN ('succeeded','failed','cancelled','timed_out') AND e.ended_at<DATE_SUB(UTC_TIMESTAMP(6),INTERVAL ? DAY) AND e.retention_deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM retention_items i WHERE i.retention_run_id=? AND i.data_type='execution' AND i.target_id=CAST(BIN_TO_UUID(e.id) AS CHAR) COLLATE utf8mb4_0900_ai_ci) ORDER BY e.ended_at,e.id LIMIT ? FOR UPDATE SKIP LOCKED",
     )
     .bind(claim.tenant_id)
     .bind(retention_days)
@@ -326,7 +339,7 @@ async fn sweep_database_record(
     let mut tx = state.pool.begin().await?;
     ensure_run_lease(&mut tx, claim).await?;
     let row = sqlx::query(
-        "SELECT id,data_type,target_id FROM retention_items WHERE retention_run_id=? AND data_type IN ('execution','application_message','evaluation_report') AND status IN ('candidate','failed') AND (locked_until IS NULL OR locked_until<=UTC_TIMESTAMP(6)) ORDER BY created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED",
+        "SELECT id,data_type,target_id FROM retention_items WHERE retention_run_id=? AND data_type IN ('execution','application_message','evaluation_report','application_batch') AND status IN ('candidate','failed') AND (locked_until IS NULL OR locked_until<=UTC_TIMESTAMP(6)) ORDER BY created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED",
     )
     .bind(claim.run_id)
     .fetch_optional(&mut *tx)
@@ -357,9 +370,23 @@ async fn sweep_database_record(
         tx.commit().await?;
         return Ok(true);
     }
+    if data_type == "application_batch" {
+        let deleted =
+            crate::application_batches::retention::purge(&mut tx, claim.tenant_id, target_id)
+                .await?;
+        sqlx::query("UPDATE retention_items SET status=?,reason=?,deleted_at=IF(?=TRUE,UTC_TIMESTAMP(6),NULL) WHERE id=?").bind(if deleted{"deleted"}else{"blocked"}).bind(if deleted{None}else{Some("live_reference")}).bind(deleted).bind(item_id).execute(&mut *tx).await?;
+        if deleted {
+            sqlx::query("UPDATE retention_runs SET deleted_count=deleted_count+1 WHERE id=?")
+                .bind(claim.run_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
+        return Ok(true);
+    }
     let changed = match data_type.as_str() {
         "execution" => sqlx::query(
-            "UPDATE workflow_executions SET retention_deleted_at=UTC_TIMESTAMP(6) WHERE tenant_id=? AND id=? AND retention_deleted_at IS NULL AND status IN ('succeeded','failed','cancelled','timed_out') AND NOT EXISTS(SELECT 1 FROM checkpoints WHERE tenant_id=? AND execution_id=?) AND NOT EXISTS(SELECT 1 FROM execution_forks WHERE tenant_id=? AND source_execution_id=?)",
+            "UPDATE workflow_executions SET retention_deleted_at=UTC_TIMESTAMP(6) WHERE tenant_id=? AND id=? AND retention_deleted_at IS NULL AND status IN ('succeeded','failed','cancelled','timed_out') AND NOT EXISTS(SELECT 1 FROM application_batch_items bi JOIN application_batches b ON b.tenant_id=bi.tenant_id AND b.id=bi.batch_id WHERE bi.tenant_id=workflow_executions.tenant_id AND bi.invocation_id=workflow_executions.invocation_id AND b.retention_deleted_at IS NULL) AND NOT EXISTS(SELECT 1 FROM checkpoints WHERE tenant_id=? AND execution_id=?) AND NOT EXISTS(SELECT 1 FROM execution_forks WHERE tenant_id=? AND source_execution_id=?)",
         )
         .bind(claim.tenant_id)
         .bind(target_id)

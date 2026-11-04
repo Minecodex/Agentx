@@ -14,6 +14,13 @@ pub(crate) async fn require_input(
     caller_id: Uuid,
     artifact: Uuid,
 ) -> RuntimeResult<()> {
+    // Unadmitted input reuse follows a retained batch reference owned by this
+    // caller. Such references are created only after admission/source authorization.
+    let batch_input: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM artifact_references r JOIN application_batch_items i ON i.tenant_id=r.tenant_id AND r.owner_type='batch_item' AND r.owner_id=CAST(BIN_TO_UUID(i.id) AS CHAR) COLLATE utf8mb4_0900_ai_ci JOIN application_batches b ON b.tenant_id=i.tenant_id AND b.id=i.batch_id WHERE r.tenant_id=? AND r.artifact_id=? AND b.caller_type=? AND b.caller_id=? AND b.retention_deleted_at IS NULL AND EXISTS(SELECT 1 FROM artifacts a WHERE a.tenant_id=r.tenant_id AND a.id=r.artifact_id AND a.deleted_at IS NULL))")
+        .bind(tenant).bind(artifact).bind(caller_type).bind(caller_id).fetch_one(&mut **tx).await?;
+    if batch_input {
+        return Ok(());
+    }
     // Output reuse is permitted only through another Invocation owned by this caller.
     let allowed: bool = sqlx::query_scalar("WITH RECURSIVE owned_executions AS (SELECT e.id FROM workflow_executions e JOIN application_invocations i ON i.tenant_id=e.tenant_id AND i.execution_id=e.id WHERE i.tenant_id=? AND i.caller_type=? AND i.caller_id=? UNION ALL SELECT e.id FROM workflow_executions e JOIN owned_executions p ON e.parent_execution_id=p.id WHERE e.tenant_id=?) SELECT EXISTS(SELECT 1 FROM artifacts a WHERE a.tenant_id=? AND a.id=? AND a.deleted_at IS NULL AND (a.idempotency_scope=? OR EXISTS(SELECT 1 FROM artifact_references r WHERE r.tenant_id=a.tenant_id AND r.artifact_id=a.id AND ((r.owner_type='execution' AND r.owner_id IN (SELECT BIN_TO_UUID(id) FROM owned_executions)) OR (r.owner_type='node_execution' AND r.owner_id IN (SELECT BIN_TO_UUID(n.id) FROM node_executions n JOIN owned_executions e ON e.id=n.execution_id WHERE n.tenant_id=?))))))")
         .bind(tenant).bind(caller_type).bind(caller_id).bind(tenant).bind(tenant).bind(artifact)

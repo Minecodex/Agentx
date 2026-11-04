@@ -220,6 +220,16 @@ Message Part 支持：
 
 二进制内容保存到对象存储。
 
+### Runtime 应用批次
+
+`application_batches` 保存同一应用批量参数调用的真实主体、完整受理意图摘要、业务幂等键、冻结 Bundle/Workflow Version、冻结身份映射策略、网页 Access Binding、可空的原历史页面 ID、来源批次与派发修订。`application_batch_items` 保存稳定行 ID、原顺序、完整规范化输入、冻结用户身份、派发状态、四项目并发许可、原 Invocation 关联、错误与来源行。一个批次最多 100 项，创建请求最多 1 MiB；重复内容可对应不同业务行。
+
+整批输入、附件权限、引用和派发命令同事务受理；后台逐项 Invocation 受理与关联也同事务提交。`runtime_commands.aggregate_type=batch` 复用现有命令、租约、Fencing 与恢复，区别于 `execution`。业务幂等键和行 ID 使用二进制排序规则，大小写及重音不同的值不会被隐式合并。
+
+`bundle_references` 的 `application_batch`/`batch_page` 引用保护业务版本与历史页面；未派发附件由 `artifact_references(owner_type=batch_item)` 保留，正式受理时转交原 Invocation，停止及受理拒绝后仍保留到批次清理。导出使用 `export_batch` 命令冻结当前授权快照，生成正常 CSV Artifact，无伪 Invocation 或独立导出表。保留任务保护活跃等待和子执行，过期批次释放文件与 Bundle 引用并留下幂等墓碑。
+
+这两张表属于 Runtime；Control 管理 BFF 不直读其数据库。原单项状态、待输入、审批、副作用和费用仍来自原 Invocation/Execution。协议与验收见 [plan10](plan10/README.md)。
+
 ## 7. 审批和通知表
 
 - approval_tasks

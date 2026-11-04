@@ -57,6 +57,7 @@ mod control_api;
 mod control_helpers;
 mod credential_api;
 mod deletion_api;
+mod design_agent_browser;
 mod design_agent_host;
 mod design_agent_inputs;
 mod design_agent_runtime;

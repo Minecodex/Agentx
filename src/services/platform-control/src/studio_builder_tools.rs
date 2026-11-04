@@ -145,6 +145,10 @@ struct AskInput {
 
 pub(crate) fn registry() -> Vec<ToolDefinitionV1> {
     vec![
+        tool::<crate::design_agent_browser::BrowserInput>(
+            "workflow_browser",
+            "Observe the actual current canvas in a fresh isolated browser, including node geometry and optional WebP screenshot for vision models. Supply the latest document hash. This does not edit or execute the workflow. Use node IDs and workflow_edit move_nodes for refinements; a screenshot is an observation, not business validation.",
+        ),
         tool::<ReadInput>(
             "workflow_read",
             "Read the CURRENT local canvas. Read summary first. document returns start/end/settings and a page of nodes plus connections; nodes reads exact IDs. Hash and document sequence are authoritative. Never infer current state from old chat.",
@@ -183,9 +187,10 @@ pub(crate) struct BuilderTools {
 fn result(value: Value, error: bool) -> ToolResultV1 {
     let encoded = value.to_string();
     if encoded.len() > 128 * 1024 {
-        return ToolResultV1{content:json!({"metadata":value.get("metadata"),"hint":"The full result is stored as a design artifact. Use workflow_read artifact with its ID, offset and limit, or narrow nodes/document/field."}).to_string(),structured_result:Some(value),artifact_refs:vec![],truncated:true,is_error:error,terminate:false};
+        return ToolResultV1{ observations: Vec::new(),content:json!({"metadata":value.get("metadata"),"hint":"The full result is stored as a design artifact. Use workflow_read artifact with its ID, offset and limit, or narrow nodes/document/field."}).to_string(),structured_result:Some(value),artifact_refs:vec![],truncated:true,is_error:error,terminate:false};
     }
     ToolResultV1 {
+        observations: Vec::new(),
         content: encoded,
         structured_result: Some(value),
         artifact_refs: vec![],
@@ -203,7 +208,7 @@ fn parse<T: for<'de> Deserialize<'de> + JsonSchema>(call: &ToolCallV1) -> ApiRes
     )
 }
 
-fn parse_value<T: for<'de> Deserialize<'de> + JsonSchema>(
+pub(crate) fn parse_value<T: for<'de> Deserialize<'de> + JsonSchema>(
     value: &Value,
     code: &'static str,
     prefix: &str,
@@ -220,25 +225,48 @@ fn parse_value<T: for<'de> Deserialize<'de> + JsonSchema>(
         // authoritative; schema errors only locate a rejected value and never
         // echo that value into the diagnostic.
         let schema = tool::<T>("diagnostic", "").input_schema;
-        let mut paths = jsonschema::validator_for(&schema)
+        let mut issues = jsonschema::validator_for(&schema)
             .map(|validator| {
                 validator
                     .iter_errors(value)
-                    .map(|issue| issue.instance_path.to_string())
-                    .filter(|path| !path.is_empty())
+                    .map(|issue| {
+                        let message = match &issue.kind {
+                            jsonschema::error::ValidationErrorKind::Type { kind } => {
+                                let expected = match kind {
+                                    jsonschema::error::TypeKind::Single(kind) => kind.to_string(),
+                                    jsonschema::error::TypeKind::Multiple(kinds) => kinds
+                                        .iter()
+                                        .map(|kind| kind.to_string())
+                                        .collect::<Vec<_>>()
+                                        .join(" or "),
+                                };
+                                let received = match issue.instance.as_ref() {
+                                    Value::Null => "null",
+                                    Value::Bool(_) => "boolean",
+                                    Value::Number(_) => "number",
+                                    Value::String(_) => "string",
+                                    Value::Array(_) => "array",
+                                    Value::Object(_) => "object",
+                                };
+                                format!("Expected JSON {expected}; received JSON {received}. Use the native JSON type, not a serialized JSON string.")
+                            }
+                            _ => "Must match the registered schema".into(),
+                        };
+                        (issue.instance_path.to_string(), message)
+                    })
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        paths.sort_by(|left, right| {
+        issues.sort_by(|(left, _), (right, _)| {
             right
                 .matches('/')
                 .count()
                 .cmp(&left.matches('/').count())
                 .then_with(|| left.cmp(right))
         });
-        paths.dedup();
-        if paths.is_empty() {
-            paths.push(String::new());
+        issues.dedup();
+        if issues.is_empty() {
+            issues.push((String::new(), "Must match the registered schema".into()));
         }
         let mut error = ApiError::bad_request(
             code,
@@ -247,14 +275,14 @@ fn parse_value<T: for<'de> Deserialize<'de> + JsonSchema>(
                 .take(1600)
                 .collect::<String>(),
         );
-        for path in paths.into_iter().take(5) {
+        for (path, message) in issues.into_iter().take(5) {
             error = error.with_field_error(
                 format!("{prefix}{path}")
                     .chars()
                     .take(1000)
                     .collect::<String>(),
                 "INVALID_VALUE",
-                "Must match the registered schema",
+                message,
             );
         }
         error
@@ -404,6 +432,10 @@ impl BuilderTools {
         call: &ToolCallV1,
         context: &EffectContextV1,
     ) -> Result<ToolResultV1, ApiError> {
+        if call.name == "workflow_browser" {
+            return crate::design_agent_browser::observe(&self.context.design(), call, context)
+                .await;
+        }
         let snapshot = self.snapshot().await?;
         let actor = self.context.authorize().await?;
         let state = &self.context.state;
@@ -991,6 +1023,36 @@ fn apply_intent(
 ) -> ApiResult<()> {
     match intent {
         StudioEditIntentV1::AutoLayout => {}
+        StudioEditIntentV1::MoveNodes { positions } => {
+            if positions.is_empty() || positions.len() > 200 {
+                return Err(ApiError::bad_request(
+                    "BUILDER_LAYOUT_INVALID",
+                    "Move 1–200 existing nodes",
+                ));
+            }
+            let mut seen = std::collections::BTreeSet::new();
+            for position in positions {
+                if !position.x.is_finite()
+                    || !position.y.is_finite()
+                    || position.x.abs() > 1_000_000.0
+                    || position.y.abs() > 1_000_000.0
+                    || !seen.insert(position.node_id.clone())
+                {
+                    return Err(ApiError::bad_request(
+                        "BUILDER_LAYOUT_INVALID",
+                        "Supply unique node IDs and bounded finite coordinates",
+                    ));
+                }
+                let layout = document
+                    .editor_document
+                    .node_layouts
+                    .iter_mut()
+                    .find(|layout| layout.node_id == position.node_id)
+                    .ok_or_else(|| ApiError::not_found("Node layout"))?;
+                layout.x = position.x;
+                layout.y = position.y;
+            }
+        }
         StudioEditIntentV1::ReplaceDocument { document: mut next } => {
             normalize_exit_parameters(&mut next.definition.nodes)?;
             *document = next;
@@ -1110,6 +1172,39 @@ fn changed_nodes(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn browser_options_require_native_json_and_explain_type_errors() {
+        let options = json!({"actions":[{"action":"wait","milliseconds":200}],"screenshot":true,"locale":"zh-CN","theme":"light"});
+        let valid = json!({"expectedDocumentHash":"sha256:test","options":options});
+        assert!(
+            parse_value::<crate::design_agent_browser::BrowserInput>(
+                &valid,
+                "DESIGN_BROWSER_ARGUMENT_INVALID",
+                "/arguments",
+                "Use browser schema",
+            )
+            .is_ok()
+        );
+        let invalid = json!({"expectedDocumentHash":"sha256:test","options":"PRIVATE_INPUT_MUST_NOT_BE_ECHOED"});
+        let feedback = parse_value::<crate::design_agent_browser::BrowserInput>(
+            &invalid,
+            "DESIGN_BROWSER_ARGUMENT_INVALID",
+            "/arguments",
+            "Use browser schema",
+        )
+        .err()
+        .unwrap()
+        .design_feedback();
+        assert_eq!(feedback["fieldErrors"][0]["field"], "/arguments/options");
+        assert!(
+            feedback["fieldErrors"][0]["message"]
+                .as_str()
+                .unwrap()
+                .contains("Expected JSON object; received JSON string")
+        );
+        assert!(!feedback.to_string().contains("PRIVATE_INPUT"));
+    }
+
     #[test]
     fn invalid_tool_types_report_exact_fields_without_values() {
         let call = ToolCallV1 {
@@ -1237,6 +1332,55 @@ mod tests {
         assert_eq!(edges[1].source_handle, "else");
     }
     #[test]
+    fn moving_nodes_changes_geometry_without_rewriting_business_definition() {
+        let definition = agentx_domain::WorkflowDefinition::empty();
+        let id = definition.nodes[0].id.clone();
+        let mut document = agentx_runtime_contracts::StudioDocumentV1 {
+            definition,
+            editor_document: Default::default(),
+        };
+        document
+            .editor_document
+            .node_layouts
+            .push(agentx_domain::NodeLayout {
+                node_id: id.clone(),
+                x: 0.0,
+                y: 0.0,
+                width: Some(250.0),
+                height: None,
+                collapsed: false,
+            });
+        let before = serde_json::to_value(&document.definition).unwrap();
+        apply_intent(
+            &mut document,
+            StudioEditIntentV1::MoveNodes {
+                positions: vec![agentx_runtime_contracts::StudioNodePositionV1 {
+                    node_id: id.clone(),
+                    x: 420.0,
+                    y: 210.0,
+                }],
+            },
+        )
+        .unwrap();
+        assert_eq!(serde_json::to_value(&document.definition).unwrap(), before);
+        assert_eq!(document.editor_document.node_layouts[0].x, 420.0);
+        assert_eq!(document.editor_document.node_layouts[0].width, Some(250.0));
+        assert!(
+            apply_intent(
+                &mut document,
+                StudioEditIntentV1::MoveNodes {
+                    positions: vec![agentx_runtime_contracts::StudioNodePositionV1 {
+                        node_id: id,
+                        x: f64::INFINITY,
+                        y: 0.0
+                    }]
+                }
+            )
+            .is_err()
+        );
+        assert_eq!(document.editor_document.node_layouts[0].x, 420.0);
+    }
+    #[test]
     fn model_schemas_expose_actions_and_enforce_closed_branches() {
         let registry = registry();
         let describe = &registry
@@ -1258,7 +1402,21 @@ mod tests {
         assert!(!validator.is_valid(&json!({"action":"describe","node_type":"if","version":1})));
         assert!(!validator.is_valid(&json!({"action":"describe","nodeType":"if"})));
         assert!(!validator.is_valid(&json!({"action":"execute","nodeType":"if","version":1})));
-        assert_eq!(registry.len(), 7);
+        assert_eq!(registry.len(), 8);
+        let browser = registry
+            .iter()
+            .find(|tool| tool.name == "workflow_browser")
+            .unwrap();
+        let options = &browser.input_schema["properties"]["options"];
+        assert_eq!(options["type"], "object");
+        assert_eq!(options["properties"]["actions"]["type"], "array");
+        let action = &options["properties"]["actions"]["items"];
+        assert_eq!(action["type"], "object");
+        assert_eq!(action["properties"]["milliseconds"]["type"], "integer");
+        let validator = jsonschema::validator_for(&browser.input_schema).unwrap();
+        assert!(validator.is_valid(&json!({"expectedDocumentHash":"sha256:test","options":{"actions":[{"action":"reload"}],"screenshot":true,"locale":"zh-CN","theme":"dark","region":null}})));
+        assert!(!validator.is_valid(&json!({"expectedDocumentHash":"sha256:test","options":{"actions":[{"action":"navigate","url":"https://example.com"}],"screenshot":true,"locale":"zh-CN","theme":"dark","region":null}})));
+        assert!(!validator.is_valid(&json!({"expectedDocumentHash":"sha256:test","options":{"actions":[{"action":"reload","milliseconds":200}],"screenshot":true,"locale":"zh-CN","theme":"dark"}})));
         assert!(
             registry
                 .iter()

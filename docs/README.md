@@ -32,13 +32,14 @@ Agentx 是一个采用 n8n 式画布交互、但使用 Agentx 原生 Workflow/No
 | [planv2/contracts/table-disposition.json](planv2/contracts/table-disposition.json) | 历史 133 表迁往 Control/Runtime/Split/Delete 的机器可读处置输入 |
 | [plan/README.md](plan/README.md) | 全量实施顺序、阶段任务、依赖、验收门禁和功能追踪 |
 | [planv2/README.md](planv2/README.md) | 控制面、执行面与可观测面分离的破坏性重构计划；V2-08A 本地功能闭环与 V1 删除已完成，生产容量、安全、恢复和发布认证仍在 08B |
-| [plan3/README.md](plan3/README.md) | 参考 earendil-works/pi 行为实现的 Agentx 原生内核、内置模型、OpenSandbox 四工具、会话压缩与外挂能力重构计划 |
+| [plan3/README.md](plan3/README.md) | 参考 earendil-works/pi 行为实现的 Agentx 原生内核、内置模型、OpenSandbox 四工具、会话压缩与外挂能力重构计划；[统一自主执行方案与当前 Workflow 核对](plan3/01-target-architecture.md#13-统一自主-agent-执行方案2026-11-03-调整)，以及[外层创作浏览器与视觉编辑实现](plan3/02-design-browser-agent.md) |
 | [plan4/README.md](plan4/README.md) | Application 渠道入站与双模式接入的历史计划；当前出站回复契约与验收见 [plan7](plan7/01-channel-outbound-reply.md) |
 | [plan5/README.md](plan5/README.md) | 已完成的Workflow节点体系重构：Dify式配置与调试流程、Definition 8.0、原 13 类节点、Agent 附件（当前新增独立知识检索见 plan8）、Loop容器、Approval/Exit/集成执行闭环及完整Kubernetes门禁；[implementation-plan.md](plan5/implementation-plan.md) 保存M0–M6 + F1–F8完成清单与证据 |
 | [plan6/README.md](plan6/README.md) | 画布插件：动态 React UI、TypeScript/Node.js、权威动态契约、调用隔离、文件流和 Trace；SDK/RPC 2 的最新修复与验证范围见 [P6-11](plan6/evidence/p6-11-runtime-boundaries.md) |
 | [plan7/README.md](plan7/README.md) | 产品最后一公里与生产收口（对比 n8n/Dify 后立项）：IM 渠道出站回复闭环、LLM 流式与多模态透传、评测与 Insights 补全、P0 生产认证收口、知识库管理面 |
 | [plan8/README.md](plan8/README.md) | 画布 AI 编辑与历史验收；当前版本生命周期、版本列表和还原规则见 [版本与画布管理](plan8/09-version-canvases.md) |
 | [plan9/README.md](plan9/README.md) | AI 生成应用 HTML、应用 MCP 与工具审批已验收；64 份原始页面、128 次网页执行及 38 项门禁通过；随后完成[本地常驻升级与可用示例](plan9/evidence/2026-11-02-local-demo.md) |
+| [plan10/README.md](plan10/README.md) | 已完成的应用批量调用与 AI 页面创作：后台派发、批次记录、原业务页批量操作，31 项系统门禁及三类真实页面通过；[实施证据](plan10/evidence/implementation.md)及 [交互 Demo](plan10/demo.html) |
 | [plan8/12-application-evaluations.md](plan8/12-application-evaluations.md) | 应用内测试集、固定参数契约、平台 AI 评分与批次报告 |
 | [plan8/evidence/2026-10-18-application-evaluations.md](plan8/evidence/2026-10-18-application-evaluations.md) | 应用测试集重构、平台模型授权、桌面流程和真实模型分轮验收 |
 | [plan8/11-knowledge-connections.md](plan8/11-knowledge-connections.md) | 外部知识连接、查询配置、统一授权与多来源检索 |

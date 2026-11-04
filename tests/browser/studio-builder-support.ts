@@ -6,6 +6,10 @@ export type Draft = { id: string; revision: number; definition: { nodes: Array<{
 const activeRuns = new Map<Page,{id:string;session:string;authorization:string}>()
 const userTokens = new WeakMap<Page,{initial:string;current:()=>Promise<string>}>()
 
+export function trackDesignRun(page:Page,id:string,session:string,authorization:string){
+  activeRuns.set(page,{id,session,authorization})
+}
+
 // Failed assertions can leave an ask_user run waiting after its page is closed.
 // Cancel only runs created by this test, so they cannot consume the next test's slots.
 export const test = base.extend<{ designRunCleanup: void }>({
@@ -118,7 +122,7 @@ export async function send(page: Page, prompt: string) {
   expect(response.status(), await response.text()).toBe(200)
   const run = await response.json() as { id: string }
   const session=new URL(response.url()).pathname.split('/').at(-2)!
-  activeRuns.set(page,{id:run.id,session,authorization:response.request().headers()['authorization']!})
+  trackDesignRun(page,run.id,session,response.request().headers()['authorization']!)
   return run.id
 }
 

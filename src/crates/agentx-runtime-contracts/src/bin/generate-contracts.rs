@@ -89,6 +89,17 @@ fn main() -> Result<()> {
 
 fn contract_schemas() -> Result<Map<String, Value>> {
     let mut schemas = Map::new();
+    insert::<agentx_runtime_contracts::CreateBatchV1>(&mut schemas, "CreateBatchV1")?;
+    insert::<agentx_runtime_contracts::BatchViewV1>(&mut schemas, "BatchViewV1")?;
+    insert::<agentx_runtime_contracts::BatchItemViewV1>(&mut schemas, "BatchItemViewV1")?;
+    insert::<agentx_runtime_contracts::BatchesPageV1>(&mut schemas, "BatchesPageV1")?;
+    insert::<agentx_runtime_contracts::BatchItemsPageV1>(&mut schemas, "BatchItemsPageV1")?;
+    insert::<agentx_runtime_contracts::BatchRerunV1>(&mut schemas, "BatchRerunV1")?;
+    insert::<agentx_runtime_contracts::BatchExportV1>(&mut schemas, "BatchExportV1")?;
+    insert::<agentx_runtime_contracts::ReadTableV1>(&mut schemas, "ReadTableV1")?;
+    insert::<agentx_runtime_contracts::TableDataV1>(&mut schemas, "TableDataV1")?;
+    insert::<agentx_runtime_contracts::ManageBatchRequestV1>(&mut schemas, "ManageBatchRequestV1")?;
+
     insert::<agentx_runtime_contracts::ApplicationPageDraftV1>(
         &mut schemas,
         "ApplicationPageDraftV1",
@@ -124,6 +135,14 @@ fn contract_schemas() -> Result<Map<String, Value>> {
         "DesignModelReceiptRequestV1",
     )?;
     insert::<agentx_runtime_contracts::DesignModelReceiptV1>(&mut schemas, "DesignModelReceiptV1")?;
+    insert::<agentx_runtime_contracts::DesignBrowserRequestV1>(
+        &mut schemas,
+        "DesignBrowserRequestV1",
+    )?;
+    insert::<agentx_runtime_contracts::DesignBrowserReportV1>(
+        &mut schemas,
+        "DesignBrowserReportV1",
+    )?;
     insert::<agentx_runtime_contracts::StudioBuilderTargetV1>(
         &mut schemas,
         "StudioBuilderTargetV1",
@@ -272,6 +291,7 @@ fn internal_openapi(schemas: Map<String, Value>) -> Value {
             "description": "Agentx V2 control-to-runtime contract. JSON endpoints use application/json; object upload uses multipart metadata plus streaming content."
         },
         "paths": {
+            "/internal/runtime/v1/application-batches": manage_batches(),
             "/internal/runtime/v1/objects:upload": multipart_post("Upload Runtime Object", "RuntimeObjectUploadMetadataV1", "RuntimeObjectUploadReceiptV1"),
             "/internal/runtime/v1/bundles:prepare": post("Prepare Bundle", "PrepareBundleRequestV1", "PublishReceiptV1"),
             "/internal/runtime/v1/deployments:activate": post("Activate Deployment", "ActivateDeploymentRequestV1", "PublishReceiptV1"),
@@ -287,9 +307,11 @@ fn internal_openapi(schemas: Map<String, Value>) -> Value {
             "/internal/runtime/v1/resource-checks:execute": post("Execute Resource Check", "RuntimeResourceCheckRequestV1", "RuntimeResourceCheckResponseV1"),
             "/internal/runtime/v1/resource-operations:execute": post("Execute Resource Operation", "RuntimeResourceOperationRequestV1", "RuntimeResourceOperationResponseV1"),
             "/internal/runtime/v1/design-model:submit": post("Submit design model effect", "DesignModelEffectRequestV1", "DesignModelReceiptV1"),
+            "/internal/runtime/v1/design-browser:observe": post("Observe isolated authoring preview", "DesignBrowserRequestV1", "DesignBrowserReportV1"),
             "/internal/runtime/v1/design-model:inspect": post("Inspect design model receipt", "DesignModelReceiptRequestV1", "DesignModelReceiptV1"),
             "/internal/runtime/v1/design-model:cancel": post("Cancel design model effect", "DesignModelReceiptRequestV1", "DesignModelReceiptV1"),
             "/internal/runtime/v1/sandboxes:resolve": post("Resolve plugin in a network-denied sandbox", "PluginDesignOperationRequestV1", "PluginDesignOperationResponseV1"),
+            "/internal/runtime/v1/sandboxes:preview": post("Render an isolated authoring preview", "DesignBrowserRequestV1", "DesignBrowserReportV1"),
             "/internal/runtime/v1/sandboxes:close-resolve-session": post("Close resolve-only sandbox session", "PluginResolveSessionV1", "PluginResolveSessionV1"),
             "/internal/runtime/v1/plugin-resolve-sessions:close": post("Close plugin definition resolution session", "PluginResolveSessionV1", "PluginResolveSessionV1"),
             "/internal/runtime/v1/plugin-design-operations:execute": post("Execute Plugin Design Operation", "PluginDesignOperationRequestV1", "PluginDesignOperationResponseV1"),
@@ -452,6 +474,26 @@ fn multipart_post(summary: &str, metadata: &str, response_schema: &str) -> Value
             "security": [{"serviceJwt": ["runtime.objects.write"]}]
         }
     })
+}
+
+fn manage_batches() -> Value {
+    let mut operation = post(
+        "Manage scoped application batches",
+        "ManageBatchRequestV1",
+        "BatchViewV1",
+    );
+    let results = [
+        "BatchViewV1",
+        "BatchesPageV1",
+        "BatchItemsPageV1",
+        "BatchExportV1",
+    ]
+    .map(|name| json!({"$ref":format!("#/components/schemas/{name}")}));
+    operation["post"]["responses"]["200"]["content"]["application/json"]["schema"] =
+        json!({"oneOf":results});
+    operation["post"]["responses"]["200"]["content"]["text/csv"] =
+        json!({"schema":{"type":"string","format":"binary"}});
+    operation
 }
 
 fn post(summary: &str, request: &str, response_schema: &str) -> Value {

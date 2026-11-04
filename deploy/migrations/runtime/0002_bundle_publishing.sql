@@ -80,7 +80,7 @@ CREATE TABLE bundle_references (
     tenant_id BINARY(16) NOT NULL,
     bundle_id BINARY(16) NOT NULL,
     reference_kind ENUM(
-        'active_execution', 'checkpoint_fork_source', 'pinned_session', 'pending_wait', 'retention_hold', 'application_page', 'application_mcp'
+        'active_execution', 'checkpoint_fork_source', 'pinned_session', 'pending_wait', 'retention_hold', 'application_page', 'application_mcp', 'application_batch', 'batch_page'
     ) NOT NULL,
     owner_id BINARY(16) NOT NULL,
     retained_until TIMESTAMP(6) NULL,

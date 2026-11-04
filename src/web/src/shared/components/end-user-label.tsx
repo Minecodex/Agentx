@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next'
+import type { components } from '../api/generated'
 import { Select } from '../ui/select'
 
-export type EndUser = { source: string; externalUserId: string }
+export type EndUser = Pick<components['schemas']['ApplicationUserIdentity'], 'source' | 'externalUserId' | 'displayName'>
 
 export function EndUserLabel({ user }: { user?: EndUser | null }) {
   const { t } = useTranslation()
@@ -9,9 +10,10 @@ export function EndUserLabel({ user }: { user?: EndUser | null }) {
   const sourceLabel = user.source === 'platform' ? t('applications.userSources.platform')
     : user.source === 'channel' ? t('applications.userSources.channel')
       : t('applications.userSources.api_parameter')
-  return <span className="inline-flex min-w-0 flex-col text-[11px]" title={user.externalUserId}>
-    <span className="truncate text-foreground">{user.externalUserId}</span>
-    <span className="text-[10px] text-muted-foreground">{sourceLabel}</span>
+  const name = user.source === 'platform' ? user.displayName || t('applications.unknownUser') : user.externalUserId
+  return <span className="inline-flex min-w-0 w-36 max-w-full flex-col align-middle text-[11px]" title={`${name}\n${user.externalUserId}`}>
+    <span className="truncate text-foreground">{name}</span>
+    <span className="truncate text-[10px] text-muted-foreground">{sourceLabel}</span>
   </span>
 }
 

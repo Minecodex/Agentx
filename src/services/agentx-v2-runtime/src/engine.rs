@@ -1670,6 +1670,8 @@ async fn schedule_ready(
     .fetch_one(&mut **tx)
     .await?;
     while let Some(node_execution_id) = ready.machine.next_ready() {
+        crate::application_batches::capacity::acquire(tx, ready.tenant_id, ready.execution_id)
+            .await?;
         let activation = ready
             .machine
             .activation(node_execution_id)

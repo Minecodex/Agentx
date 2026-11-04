@@ -408,6 +408,9 @@ impl HostModel {
     }
 }
 impl ModelPort for HostModel {
+    fn classify_failure(&self, reason: String) -> ModelPortError {
+        model_failure(reason)
+    }
     fn observe(&mut self, context: &EffectContextV1) -> EffectObservationV1 {
         match block(self.receipt(context, None)) {
             Ok(Some(receipt)) => match receipt.status.as_str() {
@@ -448,15 +451,22 @@ impl ModelPort for HostModel {
             "outcome_unknown" => Err(ModelPortError::OutcomeUnknown(
                 "Provider call has an unknown outcome".into(),
             )),
-            _ if receipt.error_code.as_deref() == Some("DESIGN_MODEL_CONTEXT_OVERFLOW") => {
-                Err(ModelPortError::ContextOverflow)
-            }
-            _ => Err(ModelPortError::Effect(
+            _ => Err(model_failure(
                 receipt
                     .error_code
                     .unwrap_or_else(|| "DESIGN_MODEL_EFFECT_FAILED".into()),
             )),
         }
+    }
+}
+
+fn model_failure(code: String) -> ModelPortError {
+    match code.as_str() {
+        "DESIGN_MODEL_CONTEXT_OVERFLOW" => ModelPortError::ContextOverflow,
+        "DESIGN_MODEL_OUTPUT_LIMIT" => ModelPortError::Recoverable("The model reached its output limit. Keep the same limit and split the work into small edits.".into()),
+        "DESIGN_MODEL_RESPONSE_INVALID" => ModelPortError::Recoverable("The completed response had empty content or invalid tool arguments. Return complete JSON for each tool call.".into()),
+        "DESIGN_MODEL_PROVIDER_UNAVAILABLE" => ModelPortError::Recoverable("The model service temporarily rejected this generation. Retry within the existing task budget.".into()),
+        _ => ModelPortError::Effect(code),
     }
 }
 

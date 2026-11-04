@@ -212,3 +212,7 @@ Control 的 Studio Builder Host 使用同一纯 `agentx-agent-core`，Runtime Co
 设计态表直接纳入初始 DDL，其 `schema_file` 在表所有权目录明确登记；历史表处置清单不再承担新增表目录职责。边界检查继续区分历史基线与增量表，并检查声明的初始化位置。Redis 的现有 Admission 限流、SSE 唤醒及 Trace Delivery Host 纳入具名模块约束，不向 Builder 开放 Redis 权限。
 
 Draft revision 0 与后续修订都有不可变文档和资源快照；从版本派生及资源引用未变时保留原部署、价格和凭据 Secret Version。公开执行结果使用 `DraftRevision | Version` 来源，草稿调试不显示虚构版本。画布本地命令先持久化恢复数据再 ACK，重复 ACK 必须内容相同，Undo 后不重复应用同一命令。
+
+## plan10 批次协调边界
+
+[plan10](plan10/README.md) 在既有 Runtime 产物内增加同一应用的持久批次、完整逐项输入和有界派发，复用正式 Invocation、Admission、Outbox 与恢复路径；单项业务状态继续以原调用为准。Control 仅承担页面创作、管理 BFF 和对象权限，不能直读 Runtime 数据库。该增量不新增工作流引擎、常驻服务或跨域数据库访问。命令以 `aggregate_type=batch` 区别于 Execution，逐项受理与原 Invocation 关联在同一事务提交；协议见 [批次设计](plan10/design.md)，验收状态见 [实施记录](plan10/evidence/implementation.md)。

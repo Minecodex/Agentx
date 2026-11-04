@@ -336,6 +336,7 @@ pub(super) async fn acknowledge(
         .and_then(Value::as_array)
         .is_some_and(|errors| !errors.is_empty());
     let result = ToolResultV1 {
+        observations: Vec::new(),
         content: outcome.to_string(),
         structured_result: Some(outcome.clone()),
         artifact_refs: vec![],

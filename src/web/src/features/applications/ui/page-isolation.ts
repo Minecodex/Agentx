@@ -1,5 +1,4 @@
 /** Trusted controller + opaque generated document. No credential or generic network capability enters either frame. */
-export const PAGE_SDK_VERSION = 1
 export const MAX_PAGE_BYTES = 1024 * 1024
 
 const policy = "default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data: blob:; media-src blob:; font-src 'none'; form-action 'none'; worker-src 'none'"
@@ -11,7 +10,7 @@ function literal(value: unknown) { return JSON.stringify(value).replaceAll('<', 
 export function createPageController(html: string, bindingId: string, sdk = '', styles = ''): string {
   if (new TextEncoder().encode(html).byteLength > MAX_PAGE_BYTES) throw new Error('PAGE_TOO_LARGE')
   if (!/^[a-zA-Z0-9_-]{16,80}$/.test(bindingId)) throw new Error('PAGE_BINDING_INVALID')
-  const inner = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${PAGE_POLICY}"><meta name="referrer" content="no-referrer"><style>${styles}</style><script>${sdk}</script></head><body>${html}</body></html>`
+  const inner = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${PAGE_POLICY}"><meta name="referrer" content="no-referrer"><style>${styles}</style><script>${sdk}</script></head><body>\n${html}</body></html>`
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CONTROLLER_POLICY}"><meta name="referrer" content="no-referrer"><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;display:block}</style></head><body><script>
     'use strict';
     const bindingId=${literal(bindingId)};

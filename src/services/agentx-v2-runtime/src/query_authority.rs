@@ -588,7 +588,7 @@ async fn execution_snapshot_page(
     Ok((items, next))
 }
 
-async fn authorize_delegation(
+pub(crate) async fn authorize_delegation(
     state: &RuntimeState,
     headers: &HeaderMap,
     tenant_id: Uuid,
@@ -640,7 +640,7 @@ async fn authorize_list_scope(
     Ok(())
 }
 
-async fn verify_application_grant(
+pub(crate) async fn verify_application_grant(
     state: &RuntimeState,
     claims: &DelegationClaimsV1,
     application_id: Uuid,
@@ -972,7 +972,11 @@ fn parse_worker_id(value: String) -> RuntimeResult<Uuid> {
     Uuid::parse_str(&value).map_err(|error| RuntimeError::Internal(error.into()))
 }
 
-async fn complete_query_receipt(state: &RuntimeState, jti: Uuid, code: &str) -> RuntimeResult<()> {
+pub(crate) async fn complete_query_receipt(
+    state: &RuntimeState,
+    jti: Uuid,
+    code: &str,
+) -> RuntimeResult<()> {
     sqlx::query("UPDATE runtime_query_receipts SET status='completed',result_code=?,completed_at=UTC_TIMESTAMP(6) WHERE jti=? AND status='accepted'")
         .bind(code).bind(jti).execute(&state.pool).await?;
     Ok(())

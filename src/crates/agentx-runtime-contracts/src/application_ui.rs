@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-pub const APPLICATION_PAGE_SDK_VERSION: u32 = 1;
+pub const APPLICATION_PAGE_SDK_VERSION: u32 = 2;
 pub const APPLICATION_PAGE_MAX_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]

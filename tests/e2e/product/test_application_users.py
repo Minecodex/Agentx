@@ -124,10 +124,17 @@ def test_application_users_and_session_inputs(installed_agentx, service_urls, ru
             ), no_user
             platform = gateway.post(
                 f"/gateway/v1/applications/{app['slug']}/sessions",
-                json={"input": {"customerId": user, "region": "Shanghai"}},
+                json={"title": "Platform name verification", "input": {"customerId": user, "region": "Shanghai"}},
                 headers={"Authorization": f"Bearer {token}", "Idempotency-Key": f"platform-{time.time_ns()}"},
             ).json()
             assert platform["endUser"]["source"] == "platform" and platform["externalUserId"] == me["id"], platform
+            with httpx.Client(
+                base_url=service_urls["runtime"], headers={"Authorization": f"Bearer {token}"}, timeout=60
+            ) as platform_gateway:
+                platform_result = terminal(
+                    platform_gateway, message(platform_gateway, platform["id"], "platform user name")
+                )
+            assert platform_result["status"] == "completed", platform_result
             bad = gateway.post(
                 f"/gateway/v1/applications/{app['slug']}/invocations",
                 json={"input": {"message": "x", "region": "x", "customerId": 42}},
@@ -137,6 +144,8 @@ def test_application_users_and_session_inputs(installed_agentx, service_urls, ru
             _publish_application_deployment(
                 control, dict(control.headers), app["id"], version["id"], environment["id"], "otherUser"
             )
+            # The original session remains owned by its original API principal.
+            gateway.headers["Authorization"] = f"Bearer {keys[0]}"
             frozen = gateway.post(
                 f"/gateway/v1/applications/{app['slug']}/invocations",
                 json={
@@ -171,6 +180,22 @@ def test_application_users_and_session_inputs(installed_agentx, service_urls, ru
         )
         assert invocations.status_code == 200 and invocations.json()["items"], invocations.text
         assert all(item["endUser"]["externalUserId"] == user for item in invocations.json()["items"]), invocations.text
+        assert all(item["endUser"]["displayName"] is None for item in invocations.json()["items"]), invocations.text
+        platform_detail = control.get(f"/api/v1/executions/{platform_result['executionId']}").json()
+        assert platform_detail["endUser"]["displayName"] == me["displayName"], platform_detail
+        for path, list_response in [
+            ("/executions", False),
+            (f"/applications/{app['id']}/invocations", False),
+            (f"/applications/{app['id']}/sessions", True),
+        ]:
+            params = {"externalUserId": me["id"], "userSource": "platform"}
+            if path == "/executions":
+                params["applicationIds"] = app["id"]
+            response = control.get(f"/api/v1{path}", params=params)
+            assert response.status_code == 200, response.text
+            items = response.json() if list_response else response.json()["items"]
+            assert items, response.text
+            assert all(item["endUser"]["displayName"] == me["displayName"] for item in items), response.text
         run_playwright(
             Path(installed_agentx["root"]),
             "application-user-mapping",
@@ -183,6 +208,11 @@ def test_application_users_and_session_inputs(installed_agentx, service_urls, ru
                 "AGENTX_USER_MAPPING_USER": user,
                 "AGENTX_USER_MAPPING_VERSION": f"v{version['versionNumber']}",
                 "AGENTX_USER_MAPPING_ENVIRONMENT": environment["name"],
+                "AGENTX_USER_MAPPING_PLATFORM_NAME": me["displayName"],
+                "AGENTX_USER_MAPPING_PLATFORM_ID": me["id"],
+                "AGENTX_USER_MAPPING_PLATFORM_SESSION": platform["id"],
+                "AGENTX_USER_MAPPING_PLATFORM_INVOCATION": platform_result["id"],
+                "AGENTX_USER_MAPPING_PLATFORM_EXECUTION": platform_result["executionId"],
             },
         )
         write_report(

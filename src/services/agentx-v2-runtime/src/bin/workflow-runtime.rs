@@ -18,10 +18,11 @@ async fn main() -> Result<()> {
         .with_env_filter(filter)
         .try_init();
     let roles = runtime_roles()?;
-    let state = agentx_v2_runtime::RuntimeState::maintenance_from_env().await?;
+    let mut state = agentx_v2_runtime::RuntimeState::maintenance_from_env().await?;
     let pool = state.pool.clone();
     let redis_settings = RuntimeRedisSettings::from_env()?;
     let mut bootstrap_redis = connect_runtime_redis(&redis_settings).await?;
+    state.admission_redis = Some(bootstrap_redis.clone());
     runtime_task_queue::ensure_groups(&mut bootstrap_redis).await?;
     drop(bootstrap_redis);
     let owner = agentx_mysql_lease::LeaseOwner::for_process()?.0;
@@ -501,6 +502,7 @@ async fn command_loop(
         }
         let started = std::time::Instant::now();
         let claims = agentx_v2_runtime::execution::claim_commands(&state.pool, owner, 100).await?;
+        agentx_v2_runtime::application_batches::run_once(&state, owner).await?;
         if claims.is_empty() {
             tokio::time::sleep(Duration::from_millis(200)).await;
             progress.processed_since(started).await;

@@ -399,6 +399,7 @@ pub async fn create_runtime_invocation_tx(
         input,
         idempotency_key,
         false,
+        None,
     )
     .await
 }
@@ -422,6 +423,31 @@ pub async fn create_chat_runtime_invocation_tx(
         input,
         idempotency_key,
         true,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn create_batch_runtime_invocation_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
+    tenant_id: Uuid,
+    application_id: Uuid,
+    caller: InvocationCaller,
+    input: &Value,
+    batch_id: Uuid,
+    item_id: Uuid,
+) -> RuntimeResult<InvocationAcceptedV1> {
+    create_runtime_invocation_tx_inner(
+        tx,
+        tenant_id,
+        application_id,
+        caller,
+        None,
+        input,
+        &format!("batch:{item_id}"),
+        false,
+        Some((batch_id, item_id)),
     )
     .await
 }
@@ -436,6 +462,7 @@ async fn create_runtime_invocation_tx_inner(
     input: &Value,
     idempotency_key: &str,
     chat_message: bool,
+    batch_item: Option<(Uuid, Uuid)>,
 ) -> RuntimeResult<InvocationAcceptedV1> {
     let request_hash = format!(
         "{:x}",
@@ -464,35 +491,76 @@ async fn create_runtime_invocation_tx_inner(
         .bind(tenant_id).bind(application_id).fetch_optional(&mut **tx).await?.ok_or(RuntimeError::NotFound)?;
     let bundle_id: Uuid = row.try_get("bundle_id")?;
     let head_epoch: u64 = row.try_get("admission_epoch")?;
-    let caller_epoch: u64 = match caller.caller_type {
-        "api_key" => sqlx::query_scalar("SELECT admission_epoch FROM api_key_admission WHERE key_id=? AND tenant_id=? AND application_id=? AND status='active' AND (expires_at IS NULL OR expires_at>UTC_TIMESTAMP(6))")
-            .bind(caller.caller_id).bind(tenant_id).bind(application_id).fetch_optional(&mut **tx).await?.ok_or(RuntimeError::Unauthorized)?,
-        "user" => sqlx::query_scalar("SELECT GREATEST(u.admission_epoch,g.admission_epoch) FROM runtime_user_admission u JOIN runtime_user_application_grants g ON g.tenant_id=u.tenant_id AND g.user_id=u.user_id WHERE u.tenant_id=? AND u.user_id=? AND u.status='active' AND u.token_version=? AND g.application_id=? AND g.status='active' AND g.can_invoke=TRUE")
-            .bind(tenant_id).bind(caller.caller_id).bind(caller.token_version.ok_or(RuntimeError::Unauthorized)?).bind(application_id).fetch_optional(&mut **tx).await?.ok_or(RuntimeError::Unauthorized)?,
-        _ => head_epoch,
-    };
+    let caller_epoch = crate::application_caller::admission_epoch(
+        tx,
+        tenant_id,
+        application_id,
+        caller.caller_type,
+        caller.caller_id,
+        caller.token_version,
+        head_epoch,
+    )
+    .await?;
     let origin = if caller.caller_type == "user" {
         crate::execution_context::runtime_user_origin(tx, tenant_id, caller.caller_id).await?
     } else {
         caller.origin.clone()
     };
-    let mut selected_bundle_id = match &caller.access {
-        Some(binding) => {
-            crate::application_pages::resolve_binding(tx, tenant_id, application_id, binding)
-                .await?
+    let mut frozen_identity_policy = None;
+    let mut selected_bundle_id = if let Some((batch_id, item_id)) = batch_item {
+        // Continuation is available only to the durable coordinator, never a public version override.
+        if matches!(
+            &caller.access,
+            Some(agentx_runtime_contracts::ApplicationAccessBindingV1::Web { .. })
+        ) {
+            let enabled:Option<bool>=sqlx::query_scalar("SELECT enabled FROM application_web_heads WHERE tenant_id=? AND application_id=? FOR SHARE").bind(tenant_id).bind(application_id).fetch_optional(&mut **tx).await?;
+            if enabled != Some(true) {
+                return Err(RuntimeError::InvalidRequest(
+                    "APPLICATION_PAGE_DISABLED",
+                    "The business page was disabled before this item started".into(),
+                ));
+            }
         }
-        None => bundle_id,
+        let row = sqlx::query("SELECT b.bundle_id,b.identity_policy_json,i.input_hash FROM application_batches b JOIN application_batch_items i ON i.tenant_id=b.tenant_id AND i.batch_id=b.id WHERE b.tenant_id=? AND b.application_id=? AND b.id=? AND i.id=? AND b.caller_type=? AND b.caller_id=? AND b.dispatch_state='active' AND i.dispatch_state='pending' FOR SHARE")
+            .bind(tenant_id).bind(application_id).bind(batch_id).bind(item_id).bind(caller.caller_type).bind(caller.caller_id).fetch_optional(&mut **tx).await?.ok_or(RuntimeError::NotFound)?;
+        if row.try_get::<String, _>("input_hash")?
+            != agentx_runtime_contracts::content_hash(input)
+                .map_err(|e| RuntimeError::Internal(e.into()))?
+                .as_str()
+        {
+            return Err(RuntimeError::InvalidRequest(
+                "BATCH_INPUT_CHANGED",
+                "The accepted batch input is immutable".into(),
+            ));
+        }
+        frozen_identity_policy = Some(row.try_get::<Value, _>("identity_policy_json")?);
+        row.try_get("bundle_id")?
+    } else {
+        match &caller.access {
+            Some(binding) => {
+                crate::application_pages::resolve_binding(tx, tenant_id, application_id, binding)
+                    .await?
+            }
+            None => bundle_id,
+        }
     };
-    let mut identity_policy =
-        crate::user_identity::api_policy(tx, tenant_id, application_id).await?;
-    let mut end_user = caller.end_user.clone().or_else(|| {
-        crate::user_identity::from_call(
-            caller.caller_type,
-            caller.caller_id,
-            input,
-            &identity_policy,
-        )
-    });
+    let mut identity_policy = match frozen_identity_policy {
+        Some(policy) => policy,
+        None => crate::user_identity::api_policy(tx, tenant_id, application_id).await?,
+    };
+    // A missing frozen API identity is meaningful; later policy edits must not infer a new user.
+    let mut end_user = if batch_item.is_some() {
+        caller.end_user.clone()
+    } else {
+        caller.end_user.clone().or_else(|| {
+            crate::user_identity::from_call(
+                caller.caller_type,
+                caller.caller_id,
+                input,
+                &identity_policy,
+            )
+        })
+    };
     let mut session_initial_input = json!({});
     let mut session_external_user_id = None;
     if let Some(session_id) = session_id {
@@ -1192,7 +1260,7 @@ pub async fn claim_commands(
     limit: u32,
 ) -> RuntimeResult<Vec<RuntimeCommandClaim>> {
     let mut tx = pool.begin().await?;
-    let rows = sqlx::query("SELECT id FROM runtime_commands WHERE status='pending' AND available_at<=UTC_TIMESTAMP(6) AND (locked_until IS NULL OR locked_until<=UTC_TIMESTAMP(6)) ORDER BY created_at,id LIMIT ? FOR UPDATE SKIP LOCKED")
+    let rows = sqlx::query("SELECT id FROM runtime_commands WHERE aggregate_type='execution' AND status='pending' AND available_at<=UTC_TIMESTAMP(6) AND (locked_until IS NULL OR locked_until<=UTC_TIMESTAMP(6)) ORDER BY created_at,id LIMIT ? FOR UPDATE SKIP LOCKED")
         .bind(limit.clamp(1,100)).fetch_all(&mut *tx).await?;
     let mut claims = Vec::with_capacity(rows.len());
     for row in &rows {

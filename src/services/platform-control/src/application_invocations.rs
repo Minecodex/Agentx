@@ -116,7 +116,7 @@ pub(super) async fn list(
     actor: Actor,
     Path(application): Path<Uuid>,
     Query(filter): Query<InvocationFilter>,
-) -> ApiResult<Json<InvocationSearchPageV1>> {
+) -> ApiResult<Json<Value>> {
     actor.require("execution:view")?;
     let (tenant_wide, applications, workflows) = execution_query_scope(&state, &actor).await?;
     if !tenant_wide && !applications.contains(&application) {
@@ -159,7 +159,32 @@ pub(super) async fn list(
         .send()
         .await
         .map_err(runtime_unavailable)?;
-    runtime_json(response).await.map(Json)
+    let page: InvocationSearchPageV1 = runtime_json(response).await?;
+    let names = end_user_view::user_names(
+        &state,
+        actor.tenant_id,
+        page.items.iter().filter_map(|item| item.end_user.as_ref()),
+    )
+    .await?;
+    let users = page
+        .items
+        .iter()
+        .map(|item| {
+            item.end_user
+                .clone()
+                .map(|user| end_user_view::user_response(user, &names))
+        })
+        .collect::<Vec<_>>();
+    let mut response = serde_json::to_value(page).map_err(ApiError::internal)?;
+    for (item, user) in response["items"]
+        .as_array_mut()
+        .expect("serialized invocation page")
+        .iter_mut()
+        .zip(users)
+    {
+        item["endUser"] = json!(user);
+    }
+    Ok(Json(response))
 }
 
 pub(crate) async fn test_artifacts(

@@ -65,6 +65,7 @@ impl DesignModelTargetV1 {
         match self {
             Self::WorkflowBuilder(_) => &[
                 "workflow_read",
+                "workflow_browser",
                 "node_catalog",
                 "resource_query",
                 "workflow_edit",
@@ -74,6 +75,7 @@ impl DesignModelTargetV1 {
             ],
             Self::ApplicationUiBuilder(_) => &[
                 "application_contract",
+                "page_browser",
                 "page_read",
                 "page_edit",
                 "page_check",

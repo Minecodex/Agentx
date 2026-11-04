@@ -34,6 +34,7 @@ impl AgentToolRouter<'_> {
         .map_err(|error| ToolPortError::Effect(error.to_string()))?;
         let Some(memory_scope) = memory_scope else {
             return Ok(agentx_agent_core::ToolResultV1 {
+                observations: Vec::new(),
                 content: "Personal memory is unavailable: no user identity was supplied".into(),
                 structured_result: Some(
                     json!({"code":"MEMORY_USER_ID_UNAVAILABLE","available":false}),

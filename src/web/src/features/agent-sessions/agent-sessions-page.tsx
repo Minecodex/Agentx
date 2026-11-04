@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import { apiRequest, jsonBody } from '../../shared/api/client'
 import { ConfirmDialog } from '../../shared/components/confirm-dialog'
-import { EndUserLabel } from '../../shared/components/end-user-label'
+import { EndUserLabel, type EndUser } from '../../shared/components/end-user-label'
 import { EmptyState } from '../../shared/components/empty-state'
 import { PageContainer } from '../../shared/components/page-container'
 import { PageHeader } from '../../shared/components/page-header'
@@ -33,7 +33,7 @@ type SessionSummary = {
 }
 type SessionPage = { items: SessionSummary[]; next?: string | null }
 type SessionEntry = { entryId: string; entryKind: string; operationId?: string | null; payload?: Record<string, unknown> | null; createdAt: string }
-type MemoryTarget = { memoryResourceId: string; scope: { tenantId: string; applicationId: string; environmentId?: string | null; workflowId: string; stableNodeId: string; user: { source: string; externalUserId: string } } }
+type MemoryTarget = { endUser: EndUser; memoryResourceId: string; scope: { tenantId: string; applicationId: string; environmentId?: string | null; workflowId: string; stableNodeId: string; user: { source: string; externalUserId: string } } }
 type SessionDiagnostic = { memoryTargets?: MemoryTarget[]; summary: SessionSummary; entries: SessionEntry[]; usages: Array<Record<string, unknown>>; compaction?: unknown; recovery?: Record<string, unknown> | null }
 type MemoryAuditPage = { items: Array<{ auditId: string; operation: string; scopeHash: string; operationId?: string | null; createdAt: string }>; next?: string | null }
 
@@ -104,7 +104,7 @@ function MemoryAudit({ target, formatDateTime, t }: { target: MemoryTarget; form
   const body = { applicationId: target.scope.applicationId, memoryResourceId: target.memoryResourceId, scope: target.scope }
   const memory = useQuery({ queryKey: ['agent-subject-memory-audit', target], queryFn: () => apiRequest<MemoryAuditPage>('/agent-subject-memory/audit', { method: 'POST', body: jsonBody({ ...body, limit: 50 }) }), enabled: requested, retry: false })
   const clear = useMutation({ mutationFn: () => apiRequest('/agent-subject-memory/clear', { method: 'POST', body: jsonBody({ ...body, idempotencyKey: `web:${Date.now()}` }) }), onSuccess: () => { void memory.refetch() } })
-  return <div className="space-y-3"><div className="flex items-center gap-3"><EndUserLabel user={target.scope.user} /><span className="flex-1 truncate text-xs text-muted-foreground">{target.scope.stableNodeId}</span><Button onClick={() => setRequested(true)} size="sm" variant="secondary">{t('agentSessions.loadAudit')}</Button><Button disabled={clear.isPending} onClick={() => void clear.mutateAsync()} size="sm" variant="danger">{t('agentSessions.clearMemory')}</Button></div>{clear.error && <ErrorState message={clear.error.message} />}{requested && (memory.isLoading ? <Loading /> : memory.error ? <ErrorState message={memory.error.message} /> : <EntriesTable formatDateTime={formatDateTime} items={(memory.data?.items ?? []).map(item => ({ entryId: item.auditId, entryKind: item.operation, operationId: item.operationId, createdAt: item.createdAt }))} t={t} />)}</div>
+  return <div className="space-y-3"><div className="flex items-center gap-3"><EndUserLabel user={target.endUser} /><span className="flex-1 truncate text-xs text-muted-foreground">{target.scope.stableNodeId}</span><Button onClick={() => setRequested(true)} size="sm" variant="secondary">{t('agentSessions.loadAudit')}</Button><Button disabled={clear.isPending} onClick={() => void clear.mutateAsync()} size="sm" variant="danger">{t('agentSessions.clearMemory')}</Button></div>{clear.error && <ErrorState message={clear.error.message} />}{requested && (memory.isLoading ? <Loading /> : memory.error ? <ErrorState message={memory.error.message} /> : <EntriesTable formatDateTime={formatDateTime} items={(memory.data?.items ?? []).map(item => ({ entryId: item.auditId, entryKind: item.operation, operationId: item.operationId, createdAt: item.createdAt }))} t={t} />)}</div>
 }
 
 function InfoSection({ children, className = '', title }: { children: React.ReactNode; className?: string; title: string }) { return <section className={`rounded-lg border border-border p-4 ${className}`}><h3 className="mb-3 text-xs font-semibold">{title}</h3>{children}</section> }
