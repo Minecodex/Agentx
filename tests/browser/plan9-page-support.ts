@@ -24,8 +24,8 @@ export class WorkflowExecutionFailure extends Error{
 const options=()=>({baseURL:process.env.AGENTX_E2E_BASE_URL,locale:'zh-CN',viewport:{width:1440,height:900}})
 export async function loginAt(page:Page,path:string,username:string,password:string){
   await useRuntimePortForward(page);await page.goto(path)
-  await page.getByLabel('用户名').fill(username);await page.getByLabel('密码').fill(password)
-  const response=await clickForResponse(page,page.getByRole('button',{name:'登录',exact:true}),response=>response.url().endsWith('/api/v1/auth/login')&&response.request().method()==='POST');expect(response.ok(),await response.text()).toBe(true)
+  await page.getByLabel(/^(用户名|User ?name)$/i).fill(username);await page.getByLabel(/^(密码|Password)$/i).fill(password)
+  const response=await clickForResponse(page,page.getByRole('button',{name:/^(登录|Sign in|Log ?in)$/i}),response=>response.url().endsWith('/api/v1/auth/login')&&response.request().method()==='POST');expect(response.ok(),await response.text()).toBe(true)
   return (await response.json()).accessToken as string
 }
 export async function businessFrame(page:Page){
@@ -177,7 +177,7 @@ async function settle(page:Page,token:AccessToken,id:string,scenario:Scenario,in
   return current!
 }
 
-async function displayed(frame:Frame,expected:Record<string,unknown>){
+export async function displayed(frame:Frame,expected:Record<string,unknown>){
   for(const value of Object.values(expected)){
     if(value&&typeof value==='object')await displayed(frame,value as Record<string,unknown>)
     if(typeof value==='string'&&value)await expect(frame.locator('body')).toContainText(value,{timeout:30_000})

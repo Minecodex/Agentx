@@ -32,6 +32,8 @@ const SANDBOX_EGRESS_CA_MODE: u16 = 600;
 const SANDBOX_EGRESS_CA_CONTENT_TYPE: &str = "application/octet-stream";
 const SANDBOX_EGRESS_CA_METADATA_FILENAME: &str = "metadata.json";
 
+#[path = "sandbox_browser.rs"]
+mod browser;
 #[path = "sandbox_process.rs"]
 mod process;
 #[path = "sandbox_resolve.rs"]
@@ -80,6 +82,10 @@ pub struct SandboxExecuteResponseV1 {
 
 pub fn router(state: SandboxManagerState) -> Router {
     Router::new()
+        .route(
+            "/internal/runtime/v1/sandboxes:preview",
+            post(browser::observe),
+        )
         .route(
             "/internal/runtime/v1/sandboxes:resolve",
             post(resolve::execute),

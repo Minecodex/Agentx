@@ -37,28 +37,23 @@ use crate::{
 };
 
 mod application_mcp;
+mod batches;
 mod oauth;
 mod pages;
-mod tasks;
+pub(crate) mod tasks;
 
 const JSON_LIMIT: usize = 1024 * 1024;
 const MULTIPART_LIMIT: usize = 50 * 1024 * 1024;
 const IDEMPOTENCY_RETENTION_DAYS: u64 = 14;
 
-#[derive(Clone)]
-struct Caller {
-    tenant_id: Uuid,
-    application_id: Uuid,
-    subject_id: Uuid,
-    caller_type: &'static str,
-    token_version: Option<u64>,
-    origin: agentx_runtime_contracts::ExecutionOriginV1,
-}
+pub(crate) use crate::application_caller::ApplicationCaller as Caller;
+use crate::invocation_cancel::cancel_authorized_invocation;
 
 pub fn router() -> Router<RuntimeState> {
     let rate_limiter = crate::rate_limit::LocalCallerRateLimiter::from_env()
         .expect("Runtime Gateway rate limit configuration must be valid");
     Router::new()
+        .merge(batches::routes())
         .route(
             "/mcp/applications/{slug}",
             axum::routing::any(application_mcp::serve),
@@ -577,58 +572,19 @@ async fn cancel_invocation(
     let caller = authenticate_resource(&state, &headers, "invocation", id).await?;
     load_invocation(&state, &caller, id).await?;
     let key = idempotency_key(&headers)?;
-    let command_key = format!(
-        "task-cancel:{}",
-        request_hash(&json!([
-            caller.application_id,
-            caller.caller_type,
-            caller.subject_id,
-            key
-        ]))?
-        .as_str()
-    );
-    let mut tx = state.pool.begin().await?;
-    let row = sqlx::query("SELECT execution_id,status FROM application_invocations WHERE id=? AND tenant_id=? AND application_id=? FOR UPDATE")
-        .bind(id).bind(caller.tenant_id).bind(caller.application_id).fetch_optional(&mut *tx).await?.ok_or(RuntimeError::NotFound)?;
-    if let Some(existing) = sqlx::query_scalar::<_,String>("SELECT aggregate_id FROM runtime_commands WHERE tenant_id=? AND command_type='cancel_execution' AND idempotency_key=?")
-        .bind(caller.tenant_id).bind(&command_key).fetch_optional(&mut *tx).await?
-    {
-        if existing != row.try_get::<Uuid,_>("execution_id")?.to_string() {
-            return Err(RuntimeError::Conflict(agentx_runtime_contracts::RuntimePublishErrorCodeV1::IdempotencyConflict,"Cancel request ID was reused for another task".into()));
-        }
-        tx.commit().await?;
-        return Ok((StatusCode::ACCEPTED,Json(CommandAcceptedV1{accepted:true,replayed:true})));
-    }
-    if terminal(&row.try_get::<String, _>("status")?) {
-        return Err(RuntimeError::Conflict(
-            agentx_runtime_contracts::RuntimePublishErrorCodeV1::IdempotencyConflict,
-            "Invocation is already terminal".into(),
-        ));
-    }
-    let execution_id: Uuid = row.try_get("execution_id")?;
-    let result = sqlx::query("INSERT IGNORE INTO runtime_commands(id,tenant_id,command_type,aggregate_type,aggregate_id,idempotency_key,payload_json,status) VALUES(?,?,'cancel_execution','execution',?,?,?,'pending')")
-        .bind(Uuid::now_v7()).bind(caller.tenant_id).bind(execution_id.to_string()).bind(&command_key).bind(json!({"invocationId":id,"executionId":execution_id})).execute(&mut *tx).await?;
-    let replayed = result.rows_affected() == 0;
-    if replayed {
-        let existing: String = sqlx::query_scalar("SELECT aggregate_id FROM runtime_commands WHERE tenant_id=? AND command_type='cancel_execution' AND idempotency_key=?")
-            .bind(caller.tenant_id).bind(&command_key).fetch_one(&mut *tx).await?;
-        if existing != execution_id.to_string() {
-            return Err(RuntimeError::Conflict(
-                agentx_runtime_contracts::RuntimePublishErrorCodeV1::IdempotencyConflict,
-                "Cancel idempotency key was reused for another Invocation".into(),
-            ));
-        }
-    } else {
-        sqlx::query("INSERT INTO invocation_events(tenant_id,invocation_id,event_id,sequence_number,event_type,payload_json) SELECT ?,?,?,COALESCE(MAX(sequence_number),0)+1,'cancel.requested',? FROM invocation_events WHERE tenant_id=? AND invocation_id=?")
-            .bind(caller.tenant_id).bind(id).bind(Uuid::now_v7()).bind(json!({"executionId":execution_id})).bind(caller.tenant_id).bind(id).execute(&mut *tx).await?;
-    }
-    tx.commit().await?;
     Ok((
         StatusCode::ACCEPTED,
-        Json(CommandAcceptedV1 {
-            accepted: true,
-            replayed,
-        }),
+        Json(
+            cancel_authorized_invocation(
+                &state,
+                &caller,
+                id,
+                key,
+                caller.caller_type,
+                caller.subject_id,
+            )
+            .await?,
+        ),
     ))
 }
 
@@ -856,7 +812,7 @@ async fn commit_artifact_upload_with_retry(
 ) -> RuntimeResult<()> {
     const MAX_ATTEMPTS: u32 = 3;
     for attempt in 1..=MAX_ATTEMPTS {
-        match commit_artifact_upload(
+        match crate::artifact::commit_upload(
             state,
             tenant_id,
             artifact_id,
@@ -885,71 +841,6 @@ async fn commit_artifact_upload_with_retry(
         }
     }
     unreachable!("Artifact commit retry loop always returns on its final attempt")
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn commit_artifact_upload(
-    state: &RuntimeState,
-    tenant_id: Uuid,
-    artifact_id: Uuid,
-    content_type: &str,
-    size_bytes: u64,
-    hash: &str,
-    final_key: &str,
-    scope: &str,
-    idempotency_key: &str,
-    request_hash: &str,
-) -> RuntimeResult<()> {
-    let mut tx = state.pool.begin().await?;
-    crate::quota::reserve(
-        &mut tx,
-        tenant_id,
-        "artifact_bytes",
-        "artifact",
-        &artifact_id.to_string(),
-        &format!("artifact:{artifact_id}:bytes"),
-        size_bytes,
-        300,
-    )
-    .await?;
-    sqlx::query("INSERT INTO artifacts(id,tenant_id,content_type,size_bytes,sha256,storage_key,idempotency_scope,idempotency_key,request_hash) VALUES(?,?,?,?,?,?,?,?,?)")
-        .bind(artifact_id)
-        .bind(tenant_id)
-        .bind(content_type)
-        .bind(size_bytes)
-        .bind(hash)
-        .bind(final_key)
-        .bind(scope)
-        .bind(idempotency_key)
-        .bind(request_hash)
-        .execute(&mut *tx)
-        .await?;
-    // plan7 P7-B B5: the multimodal resolver reads artifacts through
-    // runtime_objects, so chat-uploaded artifacts must register the ready
-    // object row alongside the artifacts row.
-    sqlx::query("INSERT INTO runtime_objects(object_id,tenant_id,object_key,content_hash,size_bytes,media_type,status,idempotency_key,request_hash,temporary_expires_at,ready_at) VALUES(?,?,?,?,?,?,'ready',?,?,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6))")
-        .bind(artifact_id)
-        .bind(tenant_id)
-        .bind(final_key)
-        .bind(format!("sha256:{hash}"))
-        .bind(size_bytes)
-        .bind(content_type)
-        .bind(idempotency_key)
-        .bind(request_hash)
-        .execute(&mut *tx)
-        .await?;
-    crate::quota::settle(
-        &mut tx,
-        tenant_id,
-        "artifact_bytes",
-        "artifact",
-        &artifact_id.to_string(),
-        size_bytes,
-        &format!("artifact:{artifact_id}:usage:artifact_bytes"),
-    )
-    .await?;
-    tx.commit().await?;
-    Ok(())
 }
 
 fn artifact_request_hash(
@@ -1215,6 +1106,14 @@ async fn authenticate_resource(
         .fetch_optional(&state.pool)
         .await?
         .ok_or(RuntimeError::NotFound)?,
+        "batch" => sqlx::query_scalar(
+            "SELECT application_id FROM application_batches WHERE tenant_id=? AND id=?",
+        )
+        .bind(claims.tenant_id)
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or(RuntimeError::NotFound)?,
         _ => return Err(RuntimeError::Unauthorized),
     };
     authorize_user_application(state, claims, application_id).await
@@ -1447,6 +1346,7 @@ pub fn public_openapi() -> Value {
         &mut schemas,
         "WaitInputReceipt",
     );
+    schemas.extend(batches::schemas());
     let mut submit_input = public_post(
         "submitWaitInput",
         "SubmitWaitInput",
@@ -1456,7 +1356,7 @@ pub fn public_openapi() -> Value {
     for name in ["id", "wait_id"] {
         submit_input["parameters"].as_array_mut().expect("public POST has parameters").push(json!({"name":name,"in":"path","required":true,"schema":{"type":"string","format":"uuid"}}));
     }
-    json!({
+    let mut document = json!({
         "openapi":"3.1.0",
         "info":{"title":"Agentx Runtime Gateway API","version":"1","description":"Production Runtime ingress. All write operations require Idempotency-Key."},
         "paths":{
@@ -1522,7 +1422,12 @@ pub fn public_openapi() -> Value {
             }},
         },
         "components":{"securitySchemes":{"runtimeBearer":{"type":"http","scheme":"bearer","bearerFormat":"RS256 JWT or Agentx API Key"}},"schemas":schemas}
-    })
+    });
+    document["paths"]
+        .as_object_mut()
+        .expect("OpenAPI paths")
+        .extend(batches::paths());
+    document
 }
 
 fn insert_public_schema<T: JsonSchema>(schemas: &mut Map<String, Value>, name: &str) {

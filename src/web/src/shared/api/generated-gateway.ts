@@ -6,6 +6,8 @@ export interface components {
     schemas: {
         /** ApplicationPageViewV1 */
         ApplicationPageView: {
+            /** Format: uuid */
+            batchId?: string | null;
             historical: boolean;
             html: string;
             publication: components["schemas"]["ApplicationPageView_ApplicationPagePublicationV1"];
@@ -102,10 +104,314 @@ export interface components {
             /** Format: uint64 */
             sizeBytes: number;
         };
+        /** BatchExportV1 */
+        BatchExportV1: {
+            /** Format: uuid */
+            batchId: string;
+            error?: string | null;
+            /** Format: uuid */
+            exportId: string;
+            file?: components["schemas"]["BatchExportV1_ArtifactUploadResponseV1"] | null;
+            status: string;
+        };
+        BatchExportV1_ArtifactUploadResponseV1: {
+            /** Format: uuid */
+            artifactId: string;
+            contentType: string;
+            sha256: string;
+            /** Format: uint64 */
+            sizeBytes: number;
+        };
+        /** BatchItemsPageV1 */
+        BatchItemsPageV1: {
+            items: components["schemas"]["BatchItemsPageV1_BatchItemViewV1"][];
+            next?: string | null;
+        };
+        BatchItemsPageV1_ApplicationAccessBindingV1: {
+            /** @constant */
+            kind: "web";
+            /** Format: uuid */
+            publicationId: string;
+            /** Format: uint64 */
+            revision: number;
+        } | {
+            /** @constant */
+            kind: "mcp";
+            /** Format: uuid */
+            publicationId: string;
+            /** Format: uint64 */
+            revision: number;
+        };
+        BatchItemsPageV1_ArtifactUploadResponseV1: {
+            /** Format: uuid */
+            artifactId: string;
+            contentType: string;
+            sha256: string;
+            /** Format: uint64 */
+            sizeBytes: number;
+        };
+        BatchItemsPageV1_BatchItemViewV1: {
+            canRerun: boolean;
+            clientItemId: string;
+            dispatchState: string;
+            error?: unknown;
+            /** Format: uuid */
+            executionId?: string | null;
+            input: unknown;
+            /** Format: uuid */
+            itemId: string;
+            /** Format: uint32 */
+            ordinal: number;
+            /** Format: uuid */
+            sourceInvocationId?: string | null;
+            /** Format: uuid */
+            sourceItemId?: string | null;
+            state: string;
+            task?: components["schemas"]["BatchItemsPageV1_TaskViewV1"] | null;
+        };
+        BatchItemsPageV1_InputWaitV1: {
+            content?: unknown;
+            /** Format: uuid */
+            executionId: string;
+            expiresAt?: string | null;
+            /** Format: uuid */
+            nodeExecutionId: string;
+            nodeId: string;
+            nodePath: string;
+            /** Format: uint32 */
+            occurrence: number;
+            responseSchema?: unknown;
+            resumeUrl?: string | null;
+            source?: string | null;
+            status: string;
+            /** Format: uuid */
+            waitId: string;
+        };
+        BatchItemsPageV1_TaskActionsV1: {
+            canCancel: boolean;
+            downloadableArtifactIds: string[];
+            inputWaitIds: string[];
+        };
+        BatchItemsPageV1_TaskApprovalV1: {
+            /** Format: uuid */
+            approvalId: string;
+            expiresAt?: string | null;
+            status: string;
+            title: string;
+            /** Format: uint64 */
+            version: number;
+        };
+        BatchItemsPageV1_TaskStageV1: {
+            /** Format: uuid */
+            nodeExecutionId: string;
+            status: string;
+            title: string;
+        };
+        /** @enum {string} */
+        BatchItemsPageV1_TaskStateV1: "accepted" | "running" | "waiting_input" | "waiting_approval" | "completed" | "failed" | "cancelled" | "outcome_unknown";
+        BatchItemsPageV1_TaskViewV1: {
+            accessBinding?: components["schemas"]["BatchItemsPageV1_ApplicationAccessBindingV1"] | null;
+            allowedActions: components["schemas"]["BatchItemsPageV1_TaskActionsV1"];
+            /** Format: uuid */
+            applicationId: string;
+            /** Format: uuid */
+            bundleId: string;
+            callerType: string;
+            createdAt: string;
+            /** Format: uuid */
+            deploymentId: string;
+            error?: unknown;
+            /** Format: uint64 */
+            eventCursor: number;
+            files: components["schemas"]["BatchItemsPageV1_ArtifactUploadResponseV1"][];
+            invocationStatus: string;
+            messages: components["schemas"]["BatchItemsPageV1_WorkflowMessageV1"][];
+            outputs?: unknown;
+            pendingApprovals: components["schemas"]["BatchItemsPageV1_TaskApprovalV1"][];
+            pendingInputs: components["schemas"]["BatchItemsPageV1_InputWaitV1"][];
+            /** Format: uint64 */
+            revision: number;
+            /** Format: uuid */
+            sessionId?: string | null;
+            stages: components["schemas"]["BatchItemsPageV1_TaskStageV1"][];
+            state: components["schemas"]["BatchItemsPageV1_TaskStateV1"];
+            /** Format: uuid */
+            taskId: string;
+            taskUrl?: string | null;
+            /** Format: uuid */
+            workflowVersionId: string;
+        };
+        BatchItemsPageV1_WorkflowMessageV1: {
+            content: string;
+            createdAt: string;
+            /** Format: uuid */
+            executionId: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            nodeExecutionId: string;
+        };
+        /** BatchRerunV1 */
+        BatchRerunV1: {
+            itemIds: string[];
+        };
+        /** BatchViewV1 */
+        BatchViewV1: {
+            accessBinding?: components["schemas"]["BatchViewV1_ApplicationAccessBindingV1"] | null;
+            /** Format: uuid */
+            applicationId: string;
+            /** Format: uuid */
+            batchId: string;
+            /** Format: uuid */
+            bundleId: string;
+            /** Format: uuid */
+            callerId: string;
+            callerName?: string | null;
+            callerType: string;
+            canCancel: boolean;
+            canRerun: boolean;
+            canStop: boolean;
+            counts: components["schemas"]["BatchViewV1_BatchCountsV1"];
+            createdAt: string;
+            dispatchState: string;
+            name: string;
+            /** Format: uuid */
+            pagePublicationId?: string | null;
+            /** Format: uint64 */
+            revision: number;
+            source: string;
+            /** Format: uuid */
+            sourceBatchId?: string | null;
+            state: string;
+            /** Format: uuid */
+            workflowVersionId: string;
+            /** Format: uint64 */
+            workflowVersionNumber: number;
+        };
+        BatchViewV1_ApplicationAccessBindingV1: {
+            /** @constant */
+            kind: "web";
+            /** Format: uuid */
+            publicationId: string;
+            /** Format: uint64 */
+            revision: number;
+        } | {
+            /** @constant */
+            kind: "mcp";
+            /** Format: uuid */
+            publicationId: string;
+            /** Format: uint64 */
+            revision: number;
+        };
+        BatchViewV1_BatchCountsV1: {
+            /** Format: uint32 */
+            cancelled: number;
+            /** Format: uint32 */
+            completed: number;
+            /** Format: uint32 */
+            ended: number;
+            /** Format: uint32 */
+            failed: number;
+            /** Format: uint32 */
+            outcomeUnknown: number;
+            /** Format: uint32 */
+            queued: number;
+            /** Format: uint32 */
+            running: number;
+            /** Format: uint32 */
+            total: number;
+            /** Format: uint32 */
+            waitingApproval: number;
+            /** Format: uint32 */
+            waitingInput: number;
+        };
+        /** BatchesPageV1 */
+        BatchesPageV1: {
+            items: components["schemas"]["BatchesPageV1_BatchViewV1"][];
+            next?: string | null;
+        };
+        BatchesPageV1_ApplicationAccessBindingV1: {
+            /** @constant */
+            kind: "web";
+            /** Format: uuid */
+            publicationId: string;
+            /** Format: uint64 */
+            revision: number;
+        } | {
+            /** @constant */
+            kind: "mcp";
+            /** Format: uuid */
+            publicationId: string;
+            /** Format: uint64 */
+            revision: number;
+        };
+        BatchesPageV1_BatchCountsV1: {
+            /** Format: uint32 */
+            cancelled: number;
+            /** Format: uint32 */
+            completed: number;
+            /** Format: uint32 */
+            ended: number;
+            /** Format: uint32 */
+            failed: number;
+            /** Format: uint32 */
+            outcomeUnknown: number;
+            /** Format: uint32 */
+            queued: number;
+            /** Format: uint32 */
+            running: number;
+            /** Format: uint32 */
+            total: number;
+            /** Format: uint32 */
+            waitingApproval: number;
+            /** Format: uint32 */
+            waitingInput: number;
+        };
+        BatchesPageV1_BatchViewV1: {
+            accessBinding?: components["schemas"]["BatchesPageV1_ApplicationAccessBindingV1"] | null;
+            /** Format: uuid */
+            applicationId: string;
+            /** Format: uuid */
+            batchId: string;
+            /** Format: uuid */
+            bundleId: string;
+            /** Format: uuid */
+            callerId: string;
+            callerName?: string | null;
+            callerType: string;
+            canCancel: boolean;
+            canRerun: boolean;
+            canStop: boolean;
+            counts: components["schemas"]["BatchesPageV1_BatchCountsV1"];
+            createdAt: string;
+            dispatchState: string;
+            name: string;
+            /** Format: uuid */
+            pagePublicationId?: string | null;
+            /** Format: uint64 */
+            revision: number;
+            source: string;
+            /** Format: uuid */
+            sourceBatchId?: string | null;
+            state: string;
+            /** Format: uuid */
+            workflowVersionId: string;
+            /** Format: uint64 */
+            workflowVersionNumber: number;
+        };
         /** CommandAcceptedV1 */
         CommandAccepted: {
             accepted: boolean;
             replayed: boolean;
+        };
+        /** CreateBatchV1 */
+        CreateBatchV1: {
+            items: components["schemas"]["CreateBatchV1_BatchInputV1"][];
+            name: string;
+        };
+        CreateBatchV1_BatchInputV1: {
+            clientItemId: string;
+            input: unknown;
         };
         /** CreateSessionRequestV1 */
         CreateSessionRequest: {
@@ -356,6 +662,13 @@ export interface components {
             /** Format: uuid */
             nodeExecutionId: string;
         };
+        /** ReadTableV1 */
+        ReadTableV1: {
+            /** Format: uuid */
+            artifactId?: string | null;
+            delimiter: string;
+            text?: string | null;
+        };
         /** SessionResponseV1 */
         SessionResponse: {
             /** Format: uuid */
@@ -387,6 +700,19 @@ export interface components {
         SessionResponse_ApplicationUserSourceV1: "platform" | "channel" | "api_parameter";
         /** @enum {string} */
         SessionResponse_SessionVersionPolicyV1: "pinned" | "follow_deployment" | "manual_upgrade";
+        /** SubmitBatchPage */
+        SubmitBatchPage: {
+            items: components["schemas"]["SubmitBatchPage_BatchInputV1"][];
+            name: string;
+            /** Format: uuid */
+            publicationId: string;
+            /** Format: uint64 */
+            revision: number;
+        };
+        SubmitBatchPage_BatchInputV1: {
+            clientItemId: string;
+            input: unknown;
+        };
         /** SubmitPage */
         SubmitPage: {
             input: unknown;
@@ -398,6 +724,12 @@ export interface components {
         /** SubmitWaitInputV1 */
         SubmitWaitInput: {
             content: unknown;
+        };
+        /** TableDataV1 */
+        TableDataV1: {
+            headers: string[];
+            lines: number[];
+            rows: string[][];
         };
         /** TaskViewV1 */
         TaskView: {

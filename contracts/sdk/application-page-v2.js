@@ -78,6 +78,13 @@ function installPageSdk(bindingId) {
         const pause = () => new Promise(resolve => setTimeout(resolve, 30));
         const issues = [...errors];
         const knownErrors = errors.length;
+        if (options.historyBatchId) {
+            const item=()=>Array.from(document.querySelectorAll('[data-batch-id]')).find(e=>e.getAttribute('data-batch-id')===options.historyBatchId);
+            if(!item())document.querySelector('[data-action="list-batches"]')?.click();
+            for(let i=0;!item()&&i<50;i++)await pause();
+            const entry=item();if(!entry)issues.push({code:'PAGE_BATCH_HISTORY_MISSING',message:'Batch history must expose data-batch-id and open the original page through openBatch'});else{(entry.querySelector('button,a')??entry).click();await pause()}
+            return {errors:issues,fields:[],actions:[],visibleText:visibleText()};
+        }
         if (options.historyTaskId) {
             const item = () => Array.from(document.querySelectorAll('[data-task-id]')).find(element => element.getAttribute('data-task-id') === options.historyTaskId);
             if (!item()) document.querySelector('[data-action="list-tasks"]')?.click();
@@ -88,9 +95,14 @@ function installPageSdk(bindingId) {
             issues.push(...errors.slice(knownErrors));
             return {errors:issues,fields:[],actions:[],visibleText:visibleText()};
         }
-        const scope = waitId ? Array.from(document.querySelectorAll('[data-wait-id]')).find(element => element.getAttribute('data-wait-id') === waitId) : document.body;
+        let scope = waitId ? Array.from(document.querySelectorAll('[data-wait-id]')).find(element => element.getAttribute('data-wait-id') === waitId) : document.body;
         if (!scope)
             return { errors: [...issues, { code: options.waitCheck === 'verify' ? 'PAGE_WAIT_FORM_REPLACED' : 'PAGE_WAIT_FORM_MISSING', message: 'The active input wait has no form with its waitId' }], fields: [], actions: [], visibleText: visibleText() };
+        if(!waitId&&!options.batchInputs){
+            const selector=options.submitAction?`[data-action="${options.submitAction}"]`:'[data-action="invoke"], [data-action="send-message"]';
+            const primary=Array.from(document.querySelectorAll(selector)).find(visible);
+            scope=primary?.closest('form')??scope;
+        }
         function fields() { return Array.from(scope.querySelectorAll('input:not([type=hidden]),select,textarea')); }
         const valueOf = field => field instanceof HTMLInputElement && (field.type === 'checkbox' || field.type === 'radio') ? field.checked : field.value;
         if (options.waitCheck === 'verify') {
@@ -193,7 +205,18 @@ function installPageSdk(bindingId) {
         }
         let entries;
         if (submit || options.waitCheck === 'prepare') {
-            await fill(input);
+            if(options.batchInputs){
+                document.querySelector('[data-action="batch-mode"]')?.click();await pause();
+                const rows=()=>Array.from(document.querySelectorAll('[data-batch-row]')).filter(visible);
+                for(let i=0;rows().length<options.batchInputs.length&&i<100;i++){const before=rows().length;document.querySelector('[data-action="add-batch-item"]')?.click();await pause();if(rows().length===before)break}
+                for(let i=0;rows().length>options.batchInputs.length&&i<100;i++){const before=rows().length;rows().at(-1)?.querySelector('[data-action="remove-batch-item"]')?.click();await pause();if(rows().length===before)break}
+                if(rows().length!==options.batchInputs.length)issues.push({code:'PAGE_BATCH_ROW_COUNT',message:'Batch add/remove controls must produce exactly the requested rows'});
+                const ids=rows().map(row=>row.getAttribute('data-client-item-id'));
+                if(ids.some(id=>!id)||new Set(ids).size!==ids.length)issues.push({code:'PAGE_BATCH_ROW_ID',message:'Every batch row needs its own stable data-client-item-id'});
+                entries=[];
+                for(let i=0;i<Math.min(rows().length,options.batchInputs.length);i++){scope=rows()[i];await fill(options.batchInputs[i]);entries.push(...describeFields())}
+                scope=document.body;
+            }else await fill(input);
             for (const field of fields())
                 if (field instanceof HTMLInputElement && field.type === 'file' && !field.files?.length) {
                     const files = new DataTransfer();
@@ -204,7 +227,7 @@ function installPageSdk(bindingId) {
             await pause();
             // A successful submission can replace/remove its form. Inspect its
             // labels while the controls still belong to the live document.
-            entries = describeFields();
+            entries ??= describeFields();
             if (options.waitCheck === 'prepare') waitSnapshots.set(waitId, fields().map(field => ({field,path:field.getAttribute('data-field-path'),value:valueOf(field)})));
         }
         if (submit) {
@@ -225,7 +248,7 @@ function installPageSdk(bindingId) {
         for (const element of document.querySelectorAll('base,object,embed,iframe,meta[http-equiv="refresh"],script[src],link[href]'))
             issues.push({ code: 'PAGE_RESOURCE_FORBIDDEN', message: `Remove unsupported external or navigable element: ${element.tagName}` });
         issues.push(...errors.slice(knownErrors));
-        return { errors: issues, fields: entries, actions: Array.from(scope.querySelectorAll('[data-action]')).map(element => element.getAttribute('data-action')), visibleText: visibleText() };
+        return { errors: issues, fields: entries, actions: Array.from(document.querySelectorAll('[data-action]')).map(element => element.getAttribute('data-action')), visibleText: visibleText() };
     }
     // Coalesce only concurrent identical submissions; a later intentional task remains new.
     const activeSubmissions = new Map();
@@ -234,13 +257,25 @@ function installPageSdk(bindingId) {
         const active = activeSubmissions.get(key);
         if (active) return active;
         const pending = request(method, args);
-        if (method === 'invoke' || method === 'sendMessage') businessSubmissions += 1;
+        if (method === 'invoke' || method === 'sendMessage' || method === 'createBatch') businessSubmissions += 1;
         activeSubmissions.set(key, pending);
         void pending.finally(() => { if (activeSubmissions.get(key) === pending) activeSubmissions.delete(key); }).catch(() => undefined);
         return pending;
     }
     const sdk = {
         getContext: () => request('getContext', {}),
+        createBatch: (batch) => submit('createBatch', batch),
+        listMyBatches: (query = {}) => request('listMyBatches', { query }),
+        getBatch: (batchId) => request('getBatch', { batchId }),
+        listBatchItems: (batchId, query = {}) => request('listBatchItems', { batchId, query }),
+        openBatch: (batchId) => request('openBatch', { batchId }),
+        stopBatch: (batchId) => submit('stopBatch', { batchId }),
+        cancelBatch: (batchId) => submit('cancelBatch', { batchId }),
+        rerunFailedItems: (batchId, itemIds) => submit('rerunFailedItems', { batchId, itemIds }),
+        exportBatch: (batchId) => submit('exportBatch', { batchId }),
+        getBatchExport: (batchId, exportId) => request('getBatchExport', { batchId, exportId }),
+        downloadBatchExport: (batchId, exportId) => request('downloadBatchExport', { batchId, exportId }),
+        readTable: (source, delimiter = '\t') => request('readTable', typeof source === 'string' ? { text: source, delimiter } : { artifactId: source.artifactId, delimiter }),
         invoke: (input) => submit('invoke', { input }),
         getTask: (taskId) => request('getTask', { taskId }),
         listMyTasks: (query = {}) => request('listMyTasks', { query }),

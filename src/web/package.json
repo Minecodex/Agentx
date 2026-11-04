@@ -8,6 +8,7 @@
     "generate:api": "node scripts/generate-api-types.mjs",
     "generate:gateway": "node scripts/generate-gateway-types.mjs",
     "build": "tsc -b && vite build",
+    "build:design-preview": "vite build --config vite.design-preview.config.ts",
     "lint": "oxlint",
     "test": "vitest run",
     "preview": "vite preview"

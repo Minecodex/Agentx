@@ -4,13 +4,35 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 pub(crate) fn request(request: &ModelRequestV1, model: &str, streaming: bool) -> Value {
-    let messages = request.messages.iter().map(|message| {
-        let role = match message.role { MessageRole::User => "user", MessageRole::Assistant => "assistant", MessageRole::ToolResult => "tool", MessageRole::ExternalContext => "system" };
+    let mut messages = Vec::new();
+    let mut observations = Vec::new();
+    for message in &request.messages {
+        if message.role != MessageRole::ToolResult && message.role != MessageRole::ToolObservation {
+            messages.append(&mut observations);
+        }
+        let role = match message.role {
+            MessageRole::User | MessageRole::ToolObservation => "user",
+            MessageRole::Assistant => "assistant",
+            MessageRole::ToolResult => "tool",
+            MessageRole::ExternalContext => "system",
+        };
         let mut value = json!({"role":role,"content":message.content});
-        if let Some(id) = &message.tool_call_id { value["tool_call_id"] = json!(id); }
-        if !message.tool_calls.is_empty() { value["tool_calls"] = json!(message.tool_calls.iter().map(|call| json!({"id":call.call_id,"type":"function","function":{"name":call.name,"arguments":call.arguments.to_string()}})).collect::<Vec<_>>()); }
-        value
-    }).collect::<Vec<_>>();
+        if message.role == MessageRole::ToolResult
+            && let Some(id) = &message.tool_call_id
+        {
+            value["tool_call_id"] = json!(id);
+        }
+        if !message.tool_calls.is_empty() {
+            value["tool_calls"] = json!(message.tool_calls.iter().map(|call| json!({"id":call.call_id,"type":"function","function":{"name":call.name,"arguments":call.arguments.to_string()}})).collect::<Vec<_>>());
+        }
+        if message.role == MessageRole::ToolObservation {
+            observations.push(value);
+        } else {
+            messages.push(value);
+        }
+    }
+    // Chat Completions requires every tool reply before the next user image observation.
+    messages.append(&mut observations);
     let mut body = json!({"model":model,"messages":messages,"stream":streaming});
     if streaming {
         body["stream_options"] = json!({"include_usage":true});
@@ -68,6 +90,7 @@ pub(crate) fn response(payload: &Value, message_id: String) -> Result<ModelRespo
         .map(Vec::as_slice)
         .unwrap_or_default();
     let mut tool_calls = Vec::with_capacity(calls.len());
+    let mut ids = std::collections::BTreeSet::new();
     for call in calls {
         let id = call
             .get("id")
@@ -78,6 +101,9 @@ pub(crate) fn response(payload: &Value, message_id: String) -> Result<ModelRespo
             .get("name")
             .and_then(Value::as_str)
             .ok_or("Tool name is missing")?;
+        if id.trim().is_empty() || name.trim().is_empty() || !ids.insert(id) {
+            return Err("Tool call identities must be nonempty and unique".into());
+        }
         let raw = function
             .get("arguments")
             .and_then(Value::as_str)
@@ -112,6 +138,46 @@ pub(crate) fn response(payload: &Value, message_id: String) -> Result<ModelRespo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn images_follow_all_tool_replies_and_never_use_the_tool_role() {
+        use agentx_agent_core::{
+            AgentMessageV1, ImageUrlV1, ModelContentPartV1, ModelContentV1, ModelPurposeV1,
+        };
+        let tool = |id: &str| AgentMessageV1 {
+            message_id: format!("result:{id}"),
+            role: MessageRole::ToolResult,
+            content: "observed".into(),
+            tool_calls: vec![],
+            tool_call_id: Some(id.into()),
+            is_error: false,
+        };
+        let image = AgentMessageV1 {
+            message_id: "observation:a".into(),
+            role: MessageRole::ToolObservation,
+            content: ModelContentV1::Parts(vec![ModelContentPartV1::ImageUrl {
+                image_url: ImageUrlV1 {
+                    url: "data:image/webp;base64,UklGRg==".into(),
+                },
+            }]),
+            tool_calls: vec![],
+            tool_call_id: Some("a".into()),
+            is_error: false,
+        };
+        let input = ModelRequestV1 {
+            purpose: ModelPurposeV1::AgentTurn,
+            model_reference: "model".into(),
+            messages: vec![tool("a"), image, tool("b")],
+            tools: vec![],
+        };
+        let body = request(&input, "model", false);
+        assert_eq!(body["messages"][0]["tool_call_id"], "a");
+        assert_eq!(body["messages"][1]["tool_call_id"], "b");
+        assert_eq!(body["messages"][2]["role"], "user");
+        assert!(body["messages"][2].get("tool_call_id").is_none());
+        assert_eq!(body["messages"][2]["content"][0]["type"], "image_url");
+        assert!(body["messages"][0]["content"].is_string());
+    }
 
     #[test]
     fn frozen_model_parameters_preserve_identity_and_respect_the_output_budget() {

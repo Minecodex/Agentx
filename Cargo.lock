@@ -370,6 +370,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "cron",
+ "csv",
  "ed25519-dalek",
  "futures",
  "futures-util",

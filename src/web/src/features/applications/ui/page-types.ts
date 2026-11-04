@@ -13,7 +13,7 @@ export type PagePublications = components['schemas']['PagePublications']
 export type PageCheckIssue = {code:string;message:string;field?:string;line?:number;column?:number}
 export type PageCheckReport = Omit<components['schemas']['PageCheckReport'],'errors'> & {errors:PageCheckIssue[]}
 export type PageInspection = {sourceHash?:string;errors:PageCheckIssue[];fields:Array<{path:string|null;label:string;type:string;required:boolean}>;actions:string[];visibleText:string}
-export type PageInspectionOptions = {schema?:unknown;waitCheck?:'prepare'|'verify';historyTaskId?:string;submitAction?:'invoke'|'send-message'}
+export type PageInspectionOptions = {schema?:unknown;waitCheck?:'prepare'|'verify';historyTaskId?:string;submitAction?:'invoke'|'send-message'|'create-batch';batchInputs?:unknown[];historyBatchId?:string}
 export type PageFrameHandle = {inspect(input?:unknown,submit?:boolean,waitId?:string,options?:PageInspectionOptions):Promise<PageInspection>;restart():Promise<void>}
 
 export async function hashPageHtml(html: string) {

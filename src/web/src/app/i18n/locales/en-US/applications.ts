@@ -3,6 +3,7 @@ const translations = {
   "noEndUser": "No user ID was provided. Personal long-term memory is unavailable.",
   "userSource": "All user sources",
   "endUser": "End user",
+  "unknownUser": "Deleted or unavailable user",
   "userFilter": "Filter by user ID",
   "userSources": {"platform": "Platform login", "channel": "Channel sender", "api_parameter": "API parameter"},
 

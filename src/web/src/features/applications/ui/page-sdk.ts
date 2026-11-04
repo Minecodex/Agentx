@@ -1,4 +1,4 @@
-import source from '../../../../../../contracts/sdk/application-page-v1.js?raw'
+import source from '../../../../../../contracts/sdk/application-page-v2.js?raw'
 
 /** Delivered verbatim: production minification cannot hoist a serialized SDK's dependencies. */
 export const PAGE_SDK_SOURCE=source

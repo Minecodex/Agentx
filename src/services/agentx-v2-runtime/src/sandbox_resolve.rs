@@ -212,7 +212,7 @@ async fn run(
     })
 }
 
-async fn read_resolve_command_result(
+pub(super) async fn read_resolve_command_result(
     mut response: reqwest::Response,
 ) -> RuntimeResult<(String, String, i64)> {
     let mut body = Vec::new();

@@ -40,12 +40,6 @@ pub(crate) enum ModelStreamError {
     ChangedFinishReason,
     #[error("model stream ended before finish_reason and [DONE]")]
     Incomplete,
-    #[error("model stream produced no content")]
-    Empty,
-    #[error("model stream has missing or duplicate tool call IDs/names")]
-    ToolIdentity,
-    #[error("model stream has incomplete tool arguments")]
-    ToolArguments,
     #[error("model stream delta persistence failed")]
     DeltaPersistence,
 }
@@ -203,17 +197,8 @@ where
     if !done || finish_reason.is_none() {
         return Err(ModelStreamError::Incomplete);
     }
-    if text.is_empty() && reasoning.is_empty() && calls.is_empty() {
-        return Err(ModelStreamError::Empty);
-    }
-    let mut ids = std::collections::BTreeSet::new();
-    for call in calls.values() {
-        if call.id.is_empty() || call.name.is_empty() || !ids.insert(call.id.clone()) {
-            return Err(ModelStreamError::ToolIdentity);
-        }
-        serde_json::from_str::<Value>(&call.arguments)
-            .map_err(|_| ModelStreamError::ToolArguments)?;
-    }
+    // Preserve usage from a completed stream even when the model output is invalid.
+    // The protocol adapter rejects the whole response before any tool may execute.
     let prompt_estimate = ["messages", "tools"]
         .iter()
         .filter_map(|key| request.get(*key))
@@ -290,6 +275,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn truncated_completed_stream_retains_usage_but_cannot_dispatch_a_tool() {
+        let value = parse(concat!(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call\",\"function\":{\"name\":\"page_edit\",\"arguments\":\"{\"}}]},\"finish_reason\":\"length\"}]}\n\n",
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":4000,\"completion_tokens\":16000}}\n\n",
+            "data: [DONE]\n\n"
+        )).await.unwrap();
+        assert_eq!(value["usage"]["completion_tokens"], 16000);
+        assert!(
+            crate::agent_model_protocol::response(&value, "truncated".into())
+                .unwrap_err()
+                .contains("MODEL_OUTPUT_LIMIT_REACHED")
+        );
+    }
+
+    #[tokio::test]
     async fn incomplete_frames_and_invalid_arguments_keep_distinct_diagnostics() {
         let unfinished = "data: [DONE]\n\n";
         assert_eq!(
@@ -300,10 +300,9 @@ mod tests {
             "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call\",\"function\":{\"name\":\"edit\",\"arguments\":\"{\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
             "data: [DONE]\n\n"
         );
-        assert_eq!(
-            parse(invalid_arguments).await.unwrap_err(),
-            ModelStreamError::ToolArguments
-        );
+        let payload = parse(invalid_arguments).await.unwrap();
+        assert!(payload["usage"]["completion_tokens"].as_u64().unwrap() > 0);
+        assert!(crate::agent_model_protocol::response(&payload, "invalid".into()).is_err());
     }
 
     #[tokio::test]

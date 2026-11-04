@@ -163,6 +163,7 @@ pub(crate) async fn enter(pool: &MySqlPool, proposal: Proposal<'_>) -> RuntimeRe
     let repetitions:i64=sqlx::query_scalar("SELECT COUNT(*) FROM agent_tool_effects WHERE tenant_id=? AND agent_run_id=? AND tool_id=? AND arguments_hash=?").bind(tenant).bind(proposal.run_id).bind(proposal.tool_id).bind(hash.as_str()).fetch_one(&mut *tx).await?;
     if repetitions >= 3 {
         return Ok(Gate::Settled(ToolResultV1 {
+            observations: Vec::new(),
             content: "Repeated unchanged tool approval proposals exceeded the run budget".into(),
             structured_result: Some(json!({"code":"TOOL_APPROVAL_REPEATED_PROPOSAL"})),
             artifact_refs: vec![],
@@ -238,6 +239,7 @@ pub(crate) fn rejection(status: &str, reason: Option<&str>) -> ToolResultV1 {
     };
     let result = json!({"code":code,"reason":reason,"executed":false,"newProposalRequired":true});
     ToolResultV1 {
+        observations: Vec::new(),
         content: result.to_string(),
         structured_result: Some(result),
         artifact_refs: vec![],

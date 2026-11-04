@@ -483,6 +483,7 @@
               "user",
               "assistant",
               "tool_result",
+              "tool_observation",
               "external_context"
             ],
             "type": "string"
@@ -1463,6 +1464,7 @@
               "user",
               "assistant",
               "tool_result",
+              "tool_observation",
               "external_context"
             ],
             "type": "string"
@@ -2563,7 +2565,7 @@
   },
   "info": {
     "title": "Agentx Agent Core frozen contract draft",
-    "version": "1.1.0-p3-04"
+    "version": "1.4"
   },
   "openapi": "3.1.0",
   "paths": {}

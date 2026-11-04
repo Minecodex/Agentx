@@ -18,6 +18,7 @@ fn port_error(error: crate::error::RuntimeError) -> ToolPortError {
 }
 fn failure(error: &ToolPortError) -> ToolResultV1 {
     ToolResultV1 {
+        observations: Vec::new(),
         content: error.to_string(),
         structured_result: Some(json!({"error":error.to_string()})),
         artifact_refs: vec![],

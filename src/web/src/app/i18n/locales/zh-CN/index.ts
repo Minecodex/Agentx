@@ -1,3 +1,4 @@
+import applicationBatches from './application-batches'
 import applicationMcp from './application-mcp'
 import applicationUi from './application-ui'
 import testing from './testing'
@@ -28,4 +29,4 @@ import agentSessions from './agentSessions'
 import canvasPlugins from './canvasPlugins'
 import insights from './insights'
 
-export const translation = { applicationMcp, applicationUi, interaction, testing, common, navigation, auth, workflows, studio, applications, executions, approvals, notifications, runtime, trace, agentSessions, credentials, models, mcp, canvasPlugins, skills, knowledge, memory, sandbox, resourceGrants, organization, roles, errors, insights } as const
+export const translation = { applicationBatches, applicationMcp, applicationUi, interaction, testing, common, navigation, auth, workflows, studio, applications, executions, approvals, notifications, runtime, trace, agentSessions, credentials, models, mcp, canvasPlugins, skills, knowledge, memory, sandbox, resourceGrants, organization, roles, errors, insights } as const

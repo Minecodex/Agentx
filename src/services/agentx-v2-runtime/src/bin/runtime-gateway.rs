@@ -115,6 +115,10 @@ async fn main() -> Result<()> {
     let router = Router::new()
         .merge(agentx_v2_runtime::oauth_proxy::routes())
         .route(
+            "/internal/runtime/v1/design-browser:observe",
+            post(agentx_v2_runtime::design_browser::observe),
+        )
+        .route(
             "/internal/runtime/v1/design-model:submit",
             post(agentx_v2_runtime::builder_model::submit),
         )
@@ -178,6 +182,7 @@ async fn main() -> Result<()> {
             "/internal/runtime/v1/query/test-artifacts",
             post(agentx_v2_runtime::query::check_test_artifacts),
         )
+        .merge(agentx_v2_runtime::application_batches::internal::routes())
         .route(
             "/internal/runtime/v1/query/invocations:search",
             post(agentx_v2_runtime::query::search_invocations),

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "headers": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "lines": {
+      "items": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "array"
+    },
+    "rows": {
+      "items": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "headers",
+    "rows",
+    "lines"
+  ],
+  "title": "TableDataV1",
+  "type": "object"
+}

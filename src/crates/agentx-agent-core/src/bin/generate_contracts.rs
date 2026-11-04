@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "openapi": "3.1.0",
             "info": {
                 "title": "Agentx Agent Core frozen contract draft",
-                "version": "1.1.0-p3-04"
+                "version": agentx_agent_core::CORE_CONTRACT_VERSION
             },
             "paths": {},
             "components": {"schemas": schemas}

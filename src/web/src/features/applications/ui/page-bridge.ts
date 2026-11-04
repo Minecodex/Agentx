@@ -6,6 +6,18 @@ const object = <Shape extends z.ZodRawShape>(shape: Shape) => z.object(shape).st
 const query = object({ limit: z.number().int().min(1).max(50).optional(), cursor: z.string().max(1024).optional(), activeOnly: z.boolean().optional() })
 const methods = {
   getContext: object({}),
+  createBatch: object({ name:z.string().min(1).max(200),items:z.array(object({clientItemId:z.string().min(1).max(128),input:z.unknown()})).min(1).max(100) }),
+  listMyBatches: object({query:object({limit:z.number().int().min(1).max(50).optional(),cursor:z.string().max(1024).optional(),state:z.string().max(32).optional(),source:z.enum(['web','api']).optional()})}),
+  getBatch: object({batchId:z.guid()}),
+  listBatchItems: object({batchId:z.guid(),query:object({limit:z.number().int().min(1).max(50).optional(),cursor:z.string().max(1024).optional(),state:z.string().max(32).optional()})}),
+  openBatch: object({batchId:z.guid()}),
+  stopBatch: object({batchId:z.guid()}),
+  cancelBatch: object({batchId:z.guid()}),
+  rerunFailedItems: object({batchId:z.guid(),itemIds:z.array(z.guid()).min(1).max(100)}),
+  exportBatch: object({batchId:z.guid()}),
+  getBatchExport: object({batchId:z.guid(),exportId:z.guid()}),
+  downloadBatchExport: object({batchId:z.guid(),exportId:z.guid()}),
+  readTable: object({text:z.string().max(1024*1024).optional(),artifactId:z.guid().optional(),delimiter:z.enum([',','\t'])}),
   invoke: object({ input: z.unknown() }),
   getTask: object(task),
   listMyTasks: object({ query }),

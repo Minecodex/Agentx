@@ -24,6 +24,7 @@ bytes.workspace = true
 chrono.workspace = true
 chrono-tz.workspace = true
 cron.workspace = true
+csv.workspace = true
 ed25519-dalek.workspace = true
 futures.workspace = true
 hmac.workspace = true

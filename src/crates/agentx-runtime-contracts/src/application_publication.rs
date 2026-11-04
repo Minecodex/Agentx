@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 pub const APPLICATION_PAGE_STYLE_VERSION: u32 = 1;
 pub const APPLICATION_PAGE_SDK_SOURCE: &str =
-    include_str!("../../../../contracts/sdk/application-page-v1.js");
+    include_str!("../../../../contracts/sdk/application-page-v2.js");
 pub const APPLICATION_PAGE_STYLE_SOURCE: &str =
     include_str!("../../../../contracts/sdk/application-page-v1.css");
 
@@ -70,4 +70,5 @@ pub struct ApplicationPageViewV1 {
     pub route_key: String,
     pub historical: bool,
     pub task_id: Option<Uuid>,
+    pub batch_id: Option<Uuid>,
 }

@@ -56,12 +56,28 @@ pub async fn check(
     redis: Option<&redis::aio::ConnectionManager>,
     tenant_id: Uuid,
 ) -> RuntimeResult<()> {
+    check_with(pool, redis, tenant_id).await
+}
+
+pub(crate) async fn check_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
+    redis: Option<&redis::aio::ConnectionManager>,
+    tenant_id: Uuid,
+) -> RuntimeResult<()> {
+    check_with(&mut **tx, redis, tenant_id).await
+}
+
+async fn check_with<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::MySql>,
+    redis: Option<&redis::aio::ConnectionManager>,
+    tenant_id: Uuid,
+) -> RuntimeResult<()> {
     let (running, queued): (i64, i64) = sqlx::query_as(
         "SELECT (SELECT COUNT(*) FROM application_invocations WHERE tenant_id=? AND status IN ('queued','running')) running,(SELECT COUNT(*) FROM node_attempts WHERE tenant_id=? AND status='queued') queued",
     )
     .bind(tenant_id)
     .bind(tenant_id)
-    .fetch_one(pool)
+    .fetch_one(executor)
     .await?;
     if overloaded(running, queued, max_running_per_tenant(), queue_watermark()) {
         record_rejection();

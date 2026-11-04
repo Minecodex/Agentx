@@ -15,10 +15,17 @@ const translations = {
     "unpublished": "Unpublished"
   },
   "builder": {
+    "browserObserved": "Browser observation received",
+    "browserIssues": "Browser checks found issues",
+    "browserStale": "The draft changed; this observation is outdated",
+    "browserActionFailed": "A browser action did not complete",
+    "browserImage": "Captured a {{width}} × {{height}} image for the model to inspect",
+    "browserDom": "Read the page structure; visual appearance has not been checked",
+    "browserSynthetic": "Preview checks do not run real business operations; execution still needs testing.",
     "guidance": "Add guidance",
     "guidancePlaceholder": "Add instructions for this creation…",
-    "outputLimit": "The model reached its output limit before completing. Adjust the model parameters and generate again.",
-    "modelFailed": "The model did not complete this authoring request. Check the failure details.",
+    "outputLimit": "One model response reached its output limit. Incomplete content was not applied. Refer to the final task status.",
+    "modelFailed": "One model response failed. Refer to subsequent progress and the final task status.",
 
     "recoveryUnavailable": "Local recovery could not be saved. Save the current edits before continuing AI creation.",
     "scope": "Edit scope",
@@ -44,7 +51,7 @@ const translations = {
     "model": "Creation model: {{model}}",
     "unconfigured": "An administrator must configure the platform AI model in the model list.",
     "unavailable": "Platform AI model is unavailable. Ask an administrator to check the model, credential and authorization.",
-    "staticOnly": "AI edits and statically validates. Use UI buttons to run, test, create versions and publish.",
+    "staticOnly": "AI can edit, validate and observe previews; use the UI for real runs, tests and publishing.",
     "pendingSave": "Canvas changes awaiting save",
     "saved": "Canvas saved",
     "inspectSelected": "Share current execution with AI",

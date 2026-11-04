@@ -182,6 +182,7 @@
         "user",
         "assistant",
         "tool_result",
+        "tool_observation",
         "external_context"
       ],
       "type": "string"

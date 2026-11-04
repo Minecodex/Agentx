@@ -533,6 +533,7 @@ pub fn validate_sandbox_manager_execute_url(endpoint: &str) -> Result<Url> {
         path,
         "/internal/runtime/v1/sandboxes:execute"
             | "/internal/runtime/v1/sandboxes:resolve"
+            | "/internal/runtime/v1/sandboxes:preview"
             | "/internal/runtime/v1/sandboxes:close-resolve-session"
             | "/internal/runtime/v1/sandboxes:acquire"
             | "/internal/runtime/v1/sandboxes:tool"
@@ -655,7 +656,7 @@ mod tests {
             )
             .is_ok()
         );
-        for operation in ["acquire", "tool", "release"] {
+        for operation in ["acquire", "tool", "release", "resolve", "preview"] {
             assert!(
                 validate_sandbox_manager_execute_url(&format!(
                     "http://sandbox-manager:8080/internal/runtime/v1/sandboxes:{operation}"

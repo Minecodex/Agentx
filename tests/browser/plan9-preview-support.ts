@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { createPageController } from '../../src/web/src/features/applications/ui/page-isolation'
+import { pageSourceIssues } from '../../src/web/src/features/applications/ui/page-diagnostics'
 import { createPagePreview } from '../../src/web/src/features/applications/ui/page-preview'
 import { hashPageHtml, type PageContract, type PageInspection, type PageInspectionOptions, type PageFrameHandle } from '../../src/web/src/features/applications/ui/page-types'
 
@@ -12,8 +13,8 @@ export type PreviewHost = Window & {
 }
 
 /** Actual opaque page SDK and the production synthetic dispatcher, with no business endpoint. */
-export async function mountPreview(page:Page, selected:{contract:PageContract;html:string}) {
-  const sdk = readFileSync(new URL('../../contracts/sdk/application-page-v1.js', import.meta.url), 'utf8')
+export async function mountPreview(page:Page, selected:{contract:PageContract;html:string;stylesheet?:string}) {
+  const sdk = readFileSync(new URL('../../contracts/sdk/application-page-v2.js', import.meta.url), 'utf8')
   const preview = createPagePreview(selected.contract, 'fixture-hash', 'zh-CN', 'light')
   await page.exposeBinding('previewRequest', async(_source,value:{method:Parameters<Preview['dispatch']>[0];args:Record<string,unknown>;id:string})=>{
     // Playwright bindings serialize JSON; MessagePort itself transfers buffers.
@@ -27,7 +28,7 @@ export async function mountPreview(page:Page, selected:{contract:PageContract;ht
   const restartFrame = async()=>{
     await page.evaluate(()=>(window as PreviewHost).privatePort?.close())
     const binding=crypto.randomUUID().replaceAll('-','_')
-    const source=createPageController(selected.html,binding,sdk.replace('__AGENTX_PAGE_BINDING__',JSON.stringify(binding)))
+    const source=createPageController(selected.html,binding,sdk.replace('__AGENTX_PAGE_BINDING__',JSON.stringify(binding)),selected.stylesheet)
     await page.goto('https://preview.agentx.test/')
     await page.evaluate(({source,binding})=>{
       const host=window as PreviewHost,frame=document.querySelector<HTMLIFrameElement>('#controller')!
@@ -55,10 +56,10 @@ export async function mountPreview(page:Page, selected:{contract:PageContract;ht
   }
   const frame:PageFrameHandle={
     restart:restartFrame,
-    inspect:async(input,submit=false,waitId,options)=>({
-      ...await page.evaluate(({input,submit,waitId,options})=>(window as PreviewHost).inspectPage!(input,waitId,submit,options),{input,submit,waitId,options}),
-      sourceHash:await hashPageHtml(selected.html),
-    }),
+    inspect:async(input,submit=false,waitId,options)=>{
+      const report=await page.evaluate(({input,submit,waitId,options})=>(window as PreviewHost).inspectPage!(input,waitId,submit,options),{input,submit,waitId,options})
+      return {...report,errors:pageSourceIssues(report.errors,sdk,selected.stylesheet),sourceHash:await hashPageHtml(selected.html)}
+    },
   }
   const restart=async()=>{preview.reset();await frame.restart()}
   await restart()

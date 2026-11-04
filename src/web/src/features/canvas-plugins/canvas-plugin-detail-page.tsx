@@ -150,7 +150,7 @@ export function CanvasPluginDetailPage() {
         </Card>
       </TabsContent>
       <TabsContent className="mt-4 space-y-2" value="audit">
-        {(audit.data ?? []).map((item) => <Card className="p-3" key={item.id}><div className="flex justify-between gap-3 text-xs"><strong>{item.action}</strong><time className="text-muted-foreground">{formatDateTime(item.createdAt)}</time></div><p className="mt-2 font-mono text-[10px] text-muted-foreground">{item.actorUserId}</p><pre className="mt-2 overflow-auto rounded bg-muted/40 p-2 text-[10px]">{JSON.stringify(item.detail, null, 2)}</pre></Card>)}
+        {(audit.data ?? []).map((item) => <Card className="p-3" key={item.id}><div className="flex justify-between gap-3 text-xs"><strong>{item.action}</strong><time className="text-muted-foreground">{formatDateTime(item.createdAt)}</time></div><p className="mt-2 max-w-60 truncate text-[11px] text-muted-foreground" title={item.actorUserId}>{item.actorName ?? t('applications.unknownUser')}</p><pre className="mt-2 overflow-auto rounded bg-muted/40 p-2 text-[10px]">{JSON.stringify(item.detail, null, 2)}</pre></Card>)}
       </TabsContent>
     </Tabs>
   </PageContainer>

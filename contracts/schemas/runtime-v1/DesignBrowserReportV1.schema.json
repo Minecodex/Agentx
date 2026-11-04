@@ -1,0 +1,72 @@
+{
+  "$defs": {
+    "DesignBrowserImageV1": {
+      "additionalProperties": false,
+      "properties": {
+        "artifactId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "contentType": {
+          "type": "string"
+        },
+        "height": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "width": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifactId",
+        "sha256",
+        "contentType",
+        "width",
+        "height",
+        "sizeBytes"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "documentHash": {
+      "type": "string"
+    },
+    "effectId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "image": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DesignBrowserImageV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "report": true
+  },
+  "required": [
+    "effectId",
+    "documentHash",
+    "report"
+  ],
+  "title": "DesignBrowserReportV1",
+  "type": "object"
+}

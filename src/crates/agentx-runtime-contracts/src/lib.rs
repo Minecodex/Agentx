@@ -5,10 +5,12 @@
 //! at the edge of their owning plane.
 
 mod agent_session;
+mod application_batch;
 mod application_publication;
 mod application_ui;
 mod canonical;
 mod design_agent;
+mod design_browser;
 mod engine;
 mod envelope;
 mod gateway;
@@ -28,6 +30,7 @@ mod user_identity;
 mod workspace;
 
 pub use agent_session::*;
+pub use application_batch::*;
 pub use application_publication::*;
 pub use application_ui::*;
 pub use canonical::{
@@ -35,6 +38,7 @@ pub use canonical::{
     content_hash, deterministic_uuid, sign_canonical, verify_canonical,
 };
 pub use design_agent::*;
+pub use design_browser::*;
 pub use engine::*;
 pub use envelope::*;
 pub use gateway::*;

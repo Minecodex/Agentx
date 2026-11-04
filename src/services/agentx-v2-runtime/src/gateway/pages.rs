@@ -9,6 +9,7 @@ use serde::Deserialize;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct PageQuery {
     task_id: Option<Uuid>,
+    batch_id: Option<Uuid>,
 }
 
 pub(super) async fn get(
@@ -22,7 +23,26 @@ pub(super) async fn get(
         .bind(claims.tenant_id).bind(&slug).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)?;
     let application = row.try_get("application_id")?;
     let caller = authorize_user_application(&state, claims, application).await?;
-    let publication = if let Some(task_id) = query.task_id {
+    if query.task_id.is_some() && query.batch_id.is_some() {
+        return Err(RuntimeError::InvalidRequest(
+            "PAGE_TARGET_CONFLICT",
+            "Specify either taskId or batchId".into(),
+        ));
+    }
+    let publication = if let Some(batch_id) = query.batch_id {
+        let scope = crate::application_batches::BatchScope::owner(
+            crate::application_batches::BatchCaller {
+                tenant_id: caller.tenant_id,
+                application_id: caller.application_id,
+                caller_type: caller.caller_type.into(),
+                caller_id: caller.subject_id,
+                token_version: caller.token_version,
+                origin: caller.origin.clone(),
+            },
+        );
+        let batch = crate::application_batches::get(&state, &scope, batch_id).await?;
+        batch.page_publication_id.ok_or_else(||crate::application_pages::conflict("No matching business page was available when this batch was accepted; use its API records"))?
+    } else if let Some(task_id) = query.task_id {
         let task = tasks::load(&state, &caller, task_id).await?;
         if let Some(ApplicationAccessBindingV1::Web { publication_id, .. }) = task.access_binding {
             publication_id
@@ -42,7 +62,7 @@ pub(super) async fn get(
         .bind(caller.tenant_id).bind(application).bind(publication).fetch_optional(&state.pool).await?.ok_or(RuntimeError::NotFound)?;
     let page: ApplicationPagePublicationV1 =
         serde_json::from_value(value).map_err(|e| RuntimeError::Internal(e.into()))?;
-    let historical = query.task_id.is_some()
+    let historical = (query.task_id.is_some() || query.batch_id.is_some())
         && (!row.try_get::<bool, _>("enabled")?
             || page.publication_id != row.try_get::<Uuid, _>("publication_id")?);
     let html = crate::application_pages::read_asset(&state, &page.html).await?;
@@ -62,6 +82,7 @@ pub(super) async fn get(
         route_key: row.try_get("route_key")?,
         historical,
         task_id: query.task_id,
+        batch_id: query.batch_id,
     };
     Ok((
         HeaderMap::from_iter([(

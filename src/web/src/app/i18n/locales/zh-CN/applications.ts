@@ -3,6 +3,7 @@ const translations = {
   "noEndUser": "未提供用户标识，个人长期记忆不可用。",
   "userSource": "全部用户来源",
   "endUser": "调用用户",
+  "unknownUser": "用户已删除或不可用",
   "userFilter": "按用户 ID 筛选",
   "userSources": {"platform": "平台登录", "channel": "渠道发送者", "api_parameter": "API 参数"},
 

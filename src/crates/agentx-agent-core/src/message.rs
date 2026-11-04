@@ -10,6 +10,7 @@ pub enum MessageRole {
     User,
     Assistant,
     ToolResult,
+    ToolObservation,
     ExternalContext,
 }
 

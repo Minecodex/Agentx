@@ -48,12 +48,16 @@ V1 `platform-api`、`trigger-gateway`、`workflow-coordinator`、`trace-writer`�
 
 一个 Package 提供四个 Runtime 二进制：
 
-- `runtime-gateway`：`/gateway/v1`、Session/Message/Invocation、Webhook、SSE、Cancel/Resume、Runtime Query、已发布业务页/任务、应用 MCP 与 Hydra 公共协议代理/令牌复核。
+- `runtime-gateway`：`/gateway/v1`、Session/Message/Invocation、应用批次、Webhook、SSE、Cancel/Resume、Runtime Query、已发布业务页/任务、应用 MCP 与 Hydra 公共协议代理/令牌复核。
 - `workflow-runtime`：Coordinator、Trigger、Command、Outbox、Recovery、Artifact、Quota 和 Trace Relay Role。
 - `workflow-worker`：按 Capability 消费任务，使用 Attempt Lease/Fencing 执行 Node、Resource 和 Provider 调用。
 - `sandbox-manager`：OpenSandbox 生命周期、短凭据、Reaper、TTL 和 Provider 对账。
 
 四个二进制只使用 Runtime MySQL/Redis/OSS、只读 Vault 和获准 Provider/OpenSandbox，不访问 Control Repository 或数据。
+
+批次领域位于 `agentx-v2-runtime/src/application_batches/`，分离原子受理、只读聚合、项目许可、命令派发、停止/取消/派生、CSV 和保留；`gateway/batches.rs` 只负责公开入口与来源授权，`internal.rs` 接收绑定请求摘要的管理委托。单项和批次共用 `application_caller.rs` 当前授权、`task_view.rs` 权威状态及 `invocation_cancel.rs` 原取消逻辑；没有第二套运行引擎或网关依赖反向进入领域。
+
+Control 的 `application_batches_api.rs` 经现有 Runtime BFF 校验执行查看/取消/运行权限，并保留实际管理人身份。Web 的 `features/applications/batches/` 使用共享组件承载调用记录子页；`ui/page-batch-live.ts` 管理可信提交意图，`page-batch-preview.ts` 与 `page-batch-checks.ts` 只负责隔离预览和创作检查。SDK 版本 2 与 DTO/Schema/OpenAPI/生成 TS 同步，删除旧 SDK 源定义，已发布历史对象仍受正常引用与保留规则保护。
 
 ### agentx-egress-gateway
 
@@ -127,6 +131,8 @@ GET  :9092/metrics
 服务按 Auth/IAM、Workflow、Resource、Application、Evaluation、Governance、Runtime Engine、Query 和 Provider 等领域拆分模块。Workflow Compiler引用校验、Control Webhook以及Agent Runtime的Budget/State/Model/Trace均按该职责拆分。任何前端或后端生产源文件不得超过 2000 行；生成文件和 Migration 必须进入明确允许列表。
 
 工作流与网页创作的通用持久驱动位于 Control `design_agent_*`，领域工具分别位于 `studio_builder_*` 与 `application_ui_*`，共用 `agentx-agent-core`，没有第二套 Agent loop。页面发布、应用 MCP、OAuth 和工具审批按领域模块拆分；`contracts/sdk` 保存固定发布的受限 DOM SDK/样式。Hydra 是 Dependencies 的外部基础设施，不新增自研 OAuth 服务或设计态运行服务。
+
+Workflow 业务 Agent 通过 Runtime `worker_runtime_agent_*` 驱动同一个 Core，模型与附件来自签名 Bundle；设计态使用平台模型与目标专属工具。2026-11-03 的[整体执行方案](plan3/01-target-architecture.md#13-统一自主-agent-执行方案2026-11-03-调整)明确模型自主选择工具与修复步骤。[外层浏览器创作实现](plan3/02-design-browser-agent.md)复用 `agent_model_protocol` 的多模态投影，浏览器执行经 Sandbox Manager/OpenSandbox；Core 仅持久化带来源的观察部分，不引入浏览器、Provider 或存储客户端。没有新增固定业务流水线或另一套 Agent Runtime；验收状态见实施文档。
 
 Runtime 的 Hydra 公共代理与 introspection 适配器是固定内网基础服务调用，与现有 Vault/OpenSandbox 适配器一同登记到 HTTP 边界检查白名单；端点来自部署设置，公共路径有明确允许列表，禁止重定向和环境代理。业务 Provider HTTP 继续统一经过 `ProviderHttpClient`。
 

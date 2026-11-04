@@ -13,7 +13,8 @@ COPY src/plugins/builtin/data/package.json ./src/plugins/builtin/data/package.js
 COPY src/plugins/builtin/http/package.json ./src/plugins/builtin/http/package.json
 COPY src/plugins/templates/canvas-plugin/package.json ./src/plugins/templates/canvas-plugin/package.json
 COPY src/plugins/templates/canvas-plugin/vendor ./src/plugins/templates/canvas-plugin/vendor
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=agentx-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
+    pnpm install --frozen-lockfile --fetch-timeout=300000
 
 COPY src/web ./src/web
 COPY contracts/sdk ./contracts/sdk

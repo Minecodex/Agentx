@@ -382,6 +382,39 @@ impl AgentCore {
                 input, &registry, &mut state, model, state_port, events, clock,
             ) {
                 Ok(response) => response,
+                Err(ModelPortError::Recoverable(reason)) => {
+                    let prefix = format!("model-retry:{}:", input.run_id);
+                    let retries = state
+                        .messages
+                        .iter()
+                        .filter(|message| message.message_id.starts_with(&prefix))
+                        .count();
+                    if retries >= 2 {
+                        return terminal_turn_failure(
+                            state_port,
+                            events,
+                            state,
+                            input.fencing_token,
+                            turn,
+                            TerminalReasonV1::ModelError,
+                        );
+                    }
+                    budget.charge_model(projected_tokens, 0);
+                    let message_id = format!("{prefix}{retries}");
+                    append_once(&mut state.messages, AgentMessageV1 {
+                        message_id: message_id.clone(),
+                        role: MessageRole::ExternalContext,
+                        content: format!("A confirmed model generation failed; no tool from that response was executed. {reason} Continue the same user task with a corrected, concise response. Use small incremental edits instead of a large tool argument.").into(),
+                        tool_calls: Vec::new(), tool_call_id: None, is_error: true,
+                    });
+                    commit(state_port, &mut state, input.fencing_token)?;
+                    events.publish(CoreEventV1::MessageAdded { message_id })?;
+                    events.publish(CoreEventV1::TurnEnded {
+                        turn,
+                        is_error: true,
+                    })?;
+                    continue;
+                }
                 Err(ModelPortError::ContextOverflow) => {
                     // An overflow retry is deliberately bounded to one
                     // compaction.  A second provider overflow is a stable
@@ -525,6 +558,7 @@ impl AgentCore {
                             );
                         }
                         Err(error) => ToolResultV1 {
+                            observations: Vec::new(),
                             content: error.to_string(),
                             structured_result: None,
                             artifact_refs: Vec::new(),
@@ -546,8 +580,29 @@ impl AgentCore {
                             is_error: result.is_error,
                         },
                     );
+                    let observation_id = format!("tool-observation:{}", call.call_id);
+                    let has_observation = !result.observations.is_empty();
+                    if has_observation {
+                        append_once(
+                            &mut state.messages,
+                            AgentMessageV1 {
+                                message_id: observation_id.clone(),
+                                role: MessageRole::ToolObservation,
+                                content: crate::ports::ModelContentV1::Parts(result.observations),
+                                tool_calls: Vec::new(),
+                                tool_call_id: Some(call.call_id.clone()),
+                                is_error: result.is_error,
+                            },
+                        );
+                    }
+                    // The result and its observations commit together, including on resume.
                     commit(state_port, &mut state, input.fencing_token)?;
                     events.publish(CoreEventV1::MessageAdded { message_id })?;
+                    if has_observation {
+                        events.publish(CoreEventV1::MessageAdded {
+                            message_id: observation_id,
+                        })?;
+                    }
                     if result.terminate {
                         return terminal_turn_failure(
                             state_port,
@@ -777,7 +832,7 @@ where
                                 is_error: true,
                             })
                             .map_err(|error| ModelPortError::Effect(error.to_string()))?;
-                        return Err(ModelPortError::Effect(reason));
+                        return Err(model.classify_failure(reason));
                     }
                     crate::EffectObservationV1::Unknown => {
                         return Err(ModelPortError::OutcomeUnknown(
@@ -1209,13 +1264,7 @@ where
 
 /// 估算单条消息的 token 数
 fn estimate_message_tokens(msg: &AgentMessageV1) -> u64 {
-    let content_tokens = (msg.content.as_text().map(str::len).unwrap_or(0) as u64).div_ceil(4);
-    let tool_tokens: u64 = msg
-        .tool_calls
-        .iter()
-        .map(|tc| (tc.arguments.to_string().chars().count() as u64).div_ceil(4))
-        .sum();
-    content_tokens + tool_tokens + 4 // +4 for message overhead
+    ContextProjector::estimated_tokens(std::slice::from_ref(msg))
 }
 
 /// Retains a contiguous suffix of complete user turns. A tool response cannot
@@ -1424,7 +1473,7 @@ fn model_terminal_reason(error: &ModelPortError) -> TerminalReasonV1 {
         ModelPortError::OutcomeUnknown(_) => TerminalReasonV1::OutcomeUnknown,
         ModelPortError::Pending(_) => TerminalReasonV1::Suspended,
         ModelPortError::ContextOverflow => TerminalReasonV1::ContextOverflow,
-        ModelPortError::Effect(_) => TerminalReasonV1::ModelError,
+        ModelPortError::Effect(_) | ModelPortError::Recoverable(_) => TerminalReasonV1::ModelError,
     }
 }
 

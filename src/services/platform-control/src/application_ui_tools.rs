@@ -39,6 +39,44 @@ struct ExactEdit {
     old_text: String,
     new_text: String,
 }
+
+fn apply_exact_edits(source: &str, edits: &[ExactEdit]) -> ApiResult<String> {
+    if edits.is_empty() || edits.len() > 100 {
+        return Err(ApiError::bad_request(
+            "PAGE_EDIT_INVALID",
+            "Supply 1–100 exact text edits",
+        ));
+    }
+    let mut html = source.to_owned();
+    for (index, edit) in edits.iter().enumerate() {
+        let field = format!("/edits/{index}/oldText");
+        if edit.old_text.is_empty() {
+            return Err(
+                ApiError::bad_request("PAGE_EDIT_INVALID", "oldText must not be empty")
+                    .with_field_error(
+                        field,
+                        "PAGE_EDIT_INVALID",
+                        "Read the exact source text to replace",
+                    ),
+            );
+        }
+        let matches = html.matches(&edit.old_text).count();
+        if matches != 1 {
+            let code = if matches == 0 {
+                "PAGE_EDIT_NOT_FOUND"
+            } else {
+                "PAGE_EDIT_AMBIGUOUS"
+            };
+            let message = format!(
+                "Edit {} oldText matched {matches} times; expected exactly one match. No edits from this command were applied. Use page_read to read the exact current source of the affected function before retrying; do not guess its quotes, whitespace or surrounding text.",
+                index + 1
+            );
+            return Err(ApiError::conflict(code, &message).with_field_error(field, code, message));
+        }
+        html = html.replacen(&edit.old_text, &edit.new_text, 1);
+    }
+    Ok(html)
+}
 #[derive(Deserialize, JsonSchema)]
 #[serde(
     tag = "action",
@@ -81,6 +119,10 @@ struct AskInput {
 
 pub(crate) fn registry() -> Vec<ToolDefinitionV1> {
     vec![
+        tool::<crate::design_agent_browser::BrowserInput>(
+            "page_browser",
+            "Observe and operate the exact current page in a fresh isolated browser with the real page SDK and synthetic data. Supply the latest HTML hash and the complete ordered action sequence, since calls do not share browser state. Returns DOM, visible text, console errors, check results and optional WebP screenshot for vision models. Reload preserves synthetic tasks. No real business calls or publication.",
+        ),
         tool::<ContractInput>(
             "application_contract",
             "Read the frozen application input/output/wait/conversation contract, supported SDK and shared styles. This is design information only.",
@@ -91,7 +133,7 @@ pub(crate) fn registry() -> Vec<ToolDefinitionV1> {
         ),
         tool::<EditInput>(
             "page_edit",
-            "Replace the page or apply exact unique text edits atomically against the current local revision/hash. In action=edits, each item contains only oldText and newText; htmlHash belongs to the command, never an edit. The browser must apply and save the command before it settles. No business execution or publication.",
+            "Replace the page or apply exact unique text edits atomically against the current local revision/hash. In action=edits, each item contains only oldText and newText; htmlHash belongs to the command, never an edit. If a match is missing or duplicated, no edits are applied: use the reported edit index/match count and page_read the complete affected function before retrying. The browser must apply and save the command before it settles. No business execution or publication.",
         ),
         tool::<CheckInput>(
             "page_check",
@@ -112,6 +154,7 @@ fn block<T>(future: impl std::future::Future<Output = T>) -> T {
 }
 fn result(value: Value, error: bool) -> ToolResultV1 {
     ToolResultV1 {
+        observations: Vec::new(),
         content: value.to_string(),
         structured_result: Some(value),
         artifact_refs: vec![],
@@ -324,6 +367,11 @@ impl PageTools {
         call: &ToolCallV1,
         context: &EffectContextV1,
     ) -> ApiResult<Option<ToolResultV1>> {
+        if call.name == "page_browser" {
+            return crate::design_agent_browser::observe(&self.context, call, context)
+                .await
+                .map(Some);
+        }
         let DesignModelTargetV1::ApplicationUiBuilder(target) = &self.context.target else {
             return Err(ApiError::forbidden("Page tools require a page target"));
         };
@@ -342,7 +390,7 @@ impl PageTools {
                 )
                 .await?;
                 Ok(Some(result(
-                    json!({"contract":page.contract,"contractHash":page.contract_hash,"taskViewSchema":schemars::schema_for!(TaskViewV1),"sdk":include_str!("../../../../contracts/sdk/application-page-v1.md"),"metadata":metadata}),
+                    json!({"contract":page.contract,"contractHash":page.contract_hash,"taskViewSchema":schemars::schema_for!(TaskViewV1),"batchViewSchema":schemars::schema_for!(agentx_runtime_contracts::BatchViewV1),"batchItemSchema":schemars::schema_for!(agentx_runtime_contracts::BatchItemViewV1),"batchLimits":{"maxItems":100,"maxBytes":1048576,"pageLimit":50},"sdk":include_str!("../../../../contracts/sdk/application-page-v2.md"),"metadata":metadata}),
                     false,
                 )))
             }
@@ -359,6 +407,24 @@ impl PageTools {
             }
             "page_edit" => {
                 let input: EditInput = parse(call)?;
+                let (revision, hash) = match &input {
+                    EditInput::Replace {
+                        base_revision,
+                        html_hash,
+                        ..
+                    }
+                    | EditInput::Edits {
+                        base_revision,
+                        html_hash,
+                        ..
+                    } => (*base_revision, html_hash),
+                };
+                if revision != snapshot.local_revision || hash != &snapshot.html_hash {
+                    return Err(ApiError::conflict(
+                        "PAGE_REVISION_CONFLICT",
+                        "Read the current page before editing",
+                    ));
+                }
                 let (base_revision, hash, html, summary) = match input {
                     EditInput::Replace {
                         base_revision,
@@ -372,32 +438,10 @@ impl PageTools {
                         edits,
                         summary,
                     } => {
-                        if edits.is_empty() || edits.len() > 100 {
-                            return Err(ApiError::bad_request(
-                                "PAGE_EDIT_INVALID",
-                                "Supply 1–100 exact text edits",
-                            ));
-                        }
-                        let mut html = snapshot.html.clone();
-                        for edit in edits {
-                            if edit.old_text.is_empty() || html.matches(&edit.old_text).count() != 1
-                            {
-                                return Err(ApiError::conflict(
-                                    "PAGE_EDIT_AMBIGUOUS",
-                                    "Each oldText must occur exactly once in the current source",
-                                ));
-                            }
-                            html = html.replacen(&edit.old_text, &edit.new_text, 1);
-                        }
+                        let html = apply_exact_edits(&snapshot.html, &edits)?;
                         (base_revision, html_hash, html, summary)
                     }
                 };
-                if base_revision != snapshot.local_revision || hash != snapshot.html_hash {
-                    return Err(ApiError::conflict(
-                        "PAGE_REVISION_CONFLICT",
-                        "Read the current page before editing",
-                    ));
-                }
                 crate::application_ui_api::validate_html_size(&html)?;
                 let command = PageEditCommandV1 {
                     command_id: self.effect_id(context),
@@ -449,5 +493,67 @@ impl PageTools {
             }
             _ => Err(ApiError::forbidden("Tool is outside this design profile")),
         }
+    }
+}
+
+#[cfg(test)]
+mod exact_edit_tests {
+    use super::*;
+
+    fn edit(old: &str, new: &str) -> ExactEdit {
+        ExactEdit {
+            old_text: old.into(),
+            new_text: new.into(),
+        }
+    }
+
+    #[test]
+    fn missing_text_identifies_the_failed_edit_and_does_not_partially_apply() {
+        let source = "let n=0; n+=1;";
+        let error =
+            apply_exact_edits(source, &[edit("n=0", "n=2"), edit("n +=1", "n+=2")]).unwrap_err();
+        let feedback = error.design_feedback();
+        assert_eq!(feedback["code"], "PAGE_EDIT_NOT_FOUND");
+        assert_eq!(feedback["fieldErrors"][0]["field"], "/edits/1/oldText");
+        assert!(
+            feedback["message"]
+                .as_str()
+                .unwrap()
+                .contains("Edit 2 oldText matched 0 times")
+        );
+        assert!(feedback["message"].as_str().unwrap().contains("No edits"));
+        assert_eq!(source, "let n=0; n+=1;");
+    }
+
+    #[test]
+    fn duplicate_text_is_distinguished_from_a_missing_match_and_empty_input() {
+        let error = apply_exact_edits("x x", &[edit("x", "y")])
+            .unwrap_err()
+            .design_feedback();
+        assert_eq!(error["code"], "PAGE_EDIT_AMBIGUOUS");
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("matched 2 times")
+        );
+        assert_eq!(
+            apply_exact_edits("x", &[edit("", "y")])
+                .unwrap_err()
+                .design_feedback()["code"],
+            "PAGE_EDIT_INVALID"
+        );
+    }
+
+    #[test]
+    fn dependent_unique_edits_share_one_atomic_candidate() {
+        assert_eq!(
+            apply_exact_edits(
+                "red square",
+                &[edit("red", "blue"), edit("blue square", "green square")]
+            )
+            .unwrap(),
+            "green square"
+        );
     }
 }

@@ -94,6 +94,8 @@ pub enum ModelPortError {
     OutcomeUnknown(String),
     #[error("model effect failed: {0}")]
     Effect(String),
+    #[error("model effect can be corrected: {0}")]
+    Recoverable(String),
 }
 
 /// One streamed token increment of a model response (plan7 P7-B). The
@@ -106,6 +108,11 @@ pub struct ModelDeltaChunk {
 }
 
 pub trait ModelPort {
+    /// Only a confirmed failure may opt into another, separately ledgered request.
+    fn classify_failure(&self, reason: String) -> ModelPortError {
+        ModelPortError::Effect(reason)
+    }
+
     fn observe(&mut self, _context: &EffectContextV1) -> crate::EffectObservationV1 {
         crate::EffectObservationV1::Unknown
     }

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { fileURLToPath } from 'node:url'
 
 test('deployment advanced user mapping saves and prefills while Memory has one read/write connection', async ({ page }) => {
   const applicationId = process.env.AGENTX_USER_MAPPING_APP
@@ -42,7 +43,9 @@ test('deployment advanced user mapping saves and prefills while Memory has one r
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
   await page.getByRole('tab', { name: '调用记录', exact: true }).click()
   await page.getByPlaceholder('按用户 ID 筛选').fill(process.env.AGENTX_USER_MAPPING_USER ?? '')
-  await expect(page.getByText(process.env.AGENTX_USER_MAPPING_USER ?? '', { exact: true }).first()).toBeVisible()
+  const externalUser = page.getByText(process.env.AGENTX_USER_MAPPING_USER ?? '', { exact: true }).first()
+  await expect(externalUser).toBeVisible()
+  expect((await externalUser.boundingBox())!.width).toBeLessThanOrEqual(144)
   await page.goto('/memory')
   await page.getByRole('button', { name: '接入记忆服务' }).click()
   const memory = page.getByRole('dialog', { name: '接入记忆服务' })
@@ -67,4 +70,99 @@ test('deployment advanced user mapping saves and prefills while Memory has one r
   await edit.getByRole('button', { name: '保存', exact: true }).click()
   expect(await (await updated).json()).toMatchObject({ status: 'disabled' })
   await expect(edit).toBeHidden()
+})
+
+test('platform user names stay compact across execution, invocation and session records', async ({ page }) => {
+  const application = process.env.AGENTX_USER_MAPPING_APP!
+  const name = process.env.AGENTX_USER_MAPPING_PLATFORM_NAME!
+  const userId = process.env.AGENTX_USER_MAPPING_PLATFORM_ID!
+  const execution = process.env.AGENTX_USER_MAPPING_PLATFORM_EXECUTION!
+  const invocation = process.env.AGENTX_USER_MAPPING_PLATFORM_INVOCATION!
+  const session = process.env.AGENTX_USER_MAPPING_PLATFORM_SESSION!
+  expect(name).toBeTruthy()
+  await page.goto('/login')
+  await page.getByLabel('用户名').fill('admin')
+  await page.getByLabel('密码').fill('agentx-e2e-admin-password')
+  await page.getByRole('button', { name: '登录' }).click()
+  await expect(page).toHaveURL(/\/$/)
+
+  await page.goto(`/executions?applicationIds=${application}&userSource=platform`)
+  const row = page.getByRole('row').filter({ hasText: execution })
+  const userCell = row.getByRole('cell').nth(4)
+  await expect(userCell.getByText(name, { exact: true })).toBeVisible()
+  await expect(userCell.getByText(userId, { exact: true })).toHaveCount(0)
+  await expect(userCell.locator('[title]')).toHaveAttribute('title', `${name}\n${userId}`)
+  expect((await userCell.boundingBox())!.width).toBeLessThanOrEqual(180)
+  await expect(row.getByRole('cell').nth(6)).toHaveCSS('white-space', 'nowrap')
+  await expect(row.getByRole('cell').nth(8)).toHaveCSS('white-space', 'nowrap')
+  await page.screenshot({ path: test.info().outputPath('execution-user-names-zh.png'), fullPage: true })
+
+  await row.getByRole('link', { name: '查看 Trace' }).click()
+  await expect(page).toHaveURL(new RegExp(`/executions/${execution}$`))
+  await expect(page.getByTitle(new RegExp(userId))).toContainText(name)
+
+  await page.goto(`/applications/${application}?tab=invocations`)
+  const call = page.getByRole('row').filter({ hasText: invocation })
+  await expect(call.getByRole('cell').nth(1).getByText(name, { exact: true })).toBeVisible()
+  await expect(call.getByText(userId, { exact: true })).toHaveCount(0)
+  await page.screenshot({ path: test.info().outputPath('invocation-user-names-zh.png'), fullPage: true })
+
+  await page.getByRole('tab', { name: '会话', exact: true }).click()
+  const sessionRow = page.getByRole('group', { name: 'Platform name verification', exact: true })
+  await expect(sessionRow.getByText(name, { exact: true })).toBeVisible()
+  await expect(sessionRow.getByText(userId, { exact: true })).toHaveCount(0)
+  await expect(sessionRow.getByRole('link', { name: '打开会话', exact: true })).toHaveAttribute('href', `/playground?applicationId=${application}&mode=conversation&sessionId=${session}`)
+  await page.screenshot({ path: test.info().outputPath('session-user-names-zh.png'), fullPage: true })
+})
+
+test('plugin audit records show the operator name with the ID available on hover', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByLabel('用户名').fill('admin')
+  await page.getByLabel('密码').fill('agentx-e2e-admin-password')
+  const signedIn = page.waitForResponse(response => response.url().endsWith('/api/v1/auth/login'))
+  await page.getByRole('button', { name: '登录' }).click()
+  const token = (await (await signedIn).json()).accessToken as string
+  await expect(page).toHaveURL(/\/$/)
+  await page.goto('/canvas-plugins')
+  await page.getByRole('button', { name: '导入插件', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '导入画布插件' })
+  const packagePath = fileURLToPath(new URL('../../../src/plugins/templates/canvas-plugin/dist/acme-json-mapper.agentx-plugin', import.meta.url))
+  await dialog.locator('input[type=file]').setInputFiles(packagePath)
+  await expect(dialog.getByText('acme/json-mapper@1.0.0')).toBeVisible()
+  await dialog.getByRole('button', { name: '确认导入' }).click()
+  await expect(dialog).toBeHidden()
+  const plugin = page.getByRole('row').filter({ hasText: 'acme/json-mapper' })
+  await plugin.getByRole('link', { name: '详情', exact: true }).click()
+  await page.getByRole('tab', { name: '审计记录', exact: true }).click()
+  const name = process.env.AGENTX_USER_MAPPING_PLATFORM_NAME!
+  const userId = process.env.AGENTX_USER_MAPPING_PLATFORM_ID!
+  const panel = page.getByRole('tabpanel')
+  await expect(panel.getByText(name, { exact: true }).first()).toBeVisible()
+  await expect(panel.getByText(userId, { exact: true })).toHaveCount(0)
+  await expect(panel.getByText(name, { exact: true }).first()).toHaveAttribute('title', userId)
+  const audit = await page.request.get(`/api/v1/canvas-plugins/${page.url().split('/').at(-1)}/audit`, { headers: { Authorization: `Bearer ${token}` } })
+  expect(audit.ok()).toBe(true)
+  expect(await audit.json()).toEqual(expect.arrayContaining([expect.objectContaining({ actorUserId: userId, actorName: name })]))
+  await page.screenshot({ path: test.info().outputPath('plugin-audit-user-names-zh.png'), fullPage: true })
+})
+
+test('platform user names remain compact in English dark mode', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByLabel('用户名').fill('admin')
+  await page.getByLabel('密码').fill('agentx-e2e-admin-password')
+  await page.getByRole('button', { name: '登录' }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await page.evaluate(() => {
+    localStorage.setItem('agentx.locale', 'en-US')
+    localStorage.setItem('agentx.theme', 'dark')
+  })
+  await page.goto(`/executions?applicationIds=${process.env.AGENTX_USER_MAPPING_APP}&userSource=platform`)
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(page.getByRole('columnheader', { name: 'End user', exact: true })).toBeVisible()
+  const row = page.getByRole('row').filter({ hasText: process.env.AGENTX_USER_MAPPING_PLATFORM_EXECUTION })
+  const user = row.getByRole('cell').nth(4)
+  await expect(user.getByText(process.env.AGENTX_USER_MAPPING_PLATFORM_NAME!, { exact: true })).toBeVisible()
+  await expect(user.getByText('Platform login', { exact: true })).toBeVisible()
+  expect((await user.boundingBox())!.width).toBeLessThanOrEqual(180)
+  await page.screenshot({ path: test.info().outputPath('execution-user-names-en-dark.png'), fullPage: true })
 })

@@ -107,3 +107,18 @@ def test_secret_file_requires_private_permissions_and_no_ambiguous_source(tmp_pa
     assert model_secret({"AGENTX_E2E_LLM_API_KEY_FILE": str(path)}).value == "synthetic-test-value"
     with pytest.raises(ValueError, match="exactly one"):
         model_secret({"AGENTX_E2E_LLM_API_KEY_FILE": str(path), "AGENTX_E2E_LLM_API_KEY": "other"})
+
+
+def test_request_cap_survives_restart_and_cannot_be_raised(tmp_path):
+    path = tmp_path / "capped.json"
+    config = {"limit": Decimal(30), "input_price": Decimal("0.06"), "output_price": Decimal("0.2"), "max_requests": 2}
+    ledger = ModelBudget(path, **config)
+    first = ledger.reserve(payload())
+    ledger.settle(first, {"prompt_tokens": 1, "completion_tokens": 1})
+    ledger.reserve(payload())
+    restarted = ModelBudget(path, **config)
+    with pytest.raises(BudgetError, match="EXHAUSTED"):
+        restarted.reserve(payload())
+    with pytest.raises(BudgetError, match="identity differs"):
+        ModelBudget(path, **{**config, "max_requests": 3})
+    assert restarted.snapshot()["requests"] == 2

@@ -2,6 +2,7 @@ pub mod admission;
 mod agent_model_protocol;
 pub mod agent_session_queue;
 pub mod agent_tool_approvals;
+pub mod application_batches;
 pub mod application_pages;
 mod approval_candidates;
 pub mod artifact;
@@ -15,6 +16,7 @@ mod debug_overlay;
 pub mod delivery;
 pub mod delivery_query;
 pub mod delivery_send;
+pub mod design_browser;
 pub mod egress;
 pub mod engine;
 mod engine_names;
@@ -130,3 +132,7 @@ mod user_identity;
 pub(crate) mod application_mcp;
 
 pub mod oauth_proxy;
+
+pub(crate) mod application_caller;
+pub(crate) mod invocation_cancel;
+pub(crate) mod task_view;

@@ -2,7 +2,7 @@ import {expect,test} from '@playwright/test'
 import {readFileSync} from 'node:fs'
 import {createPageController} from '../../../src/web/src/features/applications/ui/page-isolation'
 
-const sdk=readFileSync(new URL('../../../contracts/sdk/application-page-v1.js',import.meta.url),'utf8')
+const sdk=readFileSync(new URL('../../../contracts/sdk/application-page-v2.js',import.meta.url),'utf8')
 const nginx=readFileSync(new URL('../../../deploy/docker/nginx-v2.conf',import.meta.url),'utf8')
 // Exercise the declared response policies in a real browser. The deployed SPA
 // response headers are also asserted by the final catalog/browser regression.

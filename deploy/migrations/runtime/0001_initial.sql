@@ -269,6 +269,58 @@ CREATE TABLE application_invocations (
     KEY idx_invocations_session (tenant_id, session_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- plan10: accepted input is durable before any item is dispatched.
+CREATE TABLE application_batches (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    tenant_id BINARY(16) NOT NULL,
+    application_id BINARY(16) NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    caller_type VARCHAR(32) NOT NULL,
+    caller_id BINARY(16) NOT NULL,
+    caller_json JSON NOT NULL,
+    identity_policy_json JSON NOT NULL,
+    source VARCHAR(32) NOT NULL,
+    bundle_id BINARY(16) NOT NULL,
+    workflow_version_id BINARY(16) NOT NULL,
+    input_contract_hash VARCHAR(71) NOT NULL,
+    workflow_version_number BIGINT UNSIGNED NOT NULL,
+    access_binding_json JSON NULL,
+    history_page_id BINARY(16) NULL,
+    source_batch_id BINARY(16) NULL,
+    idempotency_key VARCHAR(192) COLLATE utf8mb4_0900_bin NOT NULL,
+    request_hash VARCHAR(71) NOT NULL,
+    dispatch_state ENUM('active','stopped','finished') NOT NULL DEFAULT 'active',
+    retention_deleted_at TIMESTAMP(6) NULL,
+    revision BIGINT UNSIGNED NOT NULL DEFAULT 1,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    UNIQUE KEY uq_application_batch_intent (tenant_id,application_id,caller_type,caller_id,idempotency_key),
+    KEY idx_application_batches_caller (tenant_id,application_id,caller_type,caller_id,id),
+    KEY idx_application_batches_bundle (tenant_id,bundle_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE application_batch_items (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    tenant_id BINARY(16) NOT NULL,
+    batch_id BINARY(16) NOT NULL,
+    client_item_id VARCHAR(128) COLLATE utf8mb4_0900_bin NOT NULL,
+    ordinal INT UNSIGNED NOT NULL,
+    input_json JSON NOT NULL,
+    input_hash VARCHAR(71) NOT NULL,
+    user_identity_json JSON NULL,
+    dispatch_state ENUM('pending','accepted','rejected','cancelled') NOT NULL DEFAULT 'pending',
+    active_slot BOOLEAN NOT NULL DEFAULT FALSE,
+    invocation_id BINARY(16) NULL,
+    error_json JSON NULL,
+    source_item_id BINARY(16) NULL,
+    source_invocation_id BINARY(16) NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    UNIQUE KEY uq_batch_item_client (tenant_id,batch_id,client_item_id),
+    UNIQUE KEY uq_batch_item_ordinal (tenant_id,batch_id,ordinal),
+    UNIQUE KEY uq_batch_item_invocation (tenant_id,invocation_id),
+    KEY idx_batch_item_dispatch (tenant_id,batch_id,dispatch_state,ordinal)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE application_message_parts (
     id BINARY(16) NOT NULL,
     tenant_id BINARY(16) NOT NULL,

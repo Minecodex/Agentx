@@ -14,6 +14,7 @@ const firstExecution = {
   workflowId: '00000000-0000-0000-0000-000000000020',
   workflowName: '客服工作流',
   workflowVersionNumber: 3,
+  endUser: { source: 'platform', externalUserId: '01a13556-0d5c-7972-b70b-a045766b2171', displayName: '调用用户张三' },
   triggerType: 'schedule',
   triggerName: 'Nightly build',
   initiatorUserId: null,
@@ -67,6 +68,8 @@ describe('execution server filters', () => {
   it('debounces text filters, stores filters in the URL request, and resets cursor pagination', async () => {
     renderPage()
     expect(await screen.findByText('客服工作流')).toBeInTheDocument()
+    expect(screen.getByText('调用用户张三')).toBeInTheDocument()
+    expect(screen.queryByText(firstExecution.endUser.externalUserId)).not.toBeInTheDocument()
     expect(requests.at(-1)?.searchParams.get('limit')).toBe('8')
 
     fireEvent.click(screen.getByRole('button', { name: '下一页' }))

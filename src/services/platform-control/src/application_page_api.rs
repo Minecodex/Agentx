@@ -410,5 +410,6 @@ async fn preview(
         route_key: application.to_string(),
         historical: true,
         task_id: None,
+        batch_id: None,
     }))
 }

@@ -1,0 +1,37 @@
+{
+  "$defs": {
+    "BatchInputV1": {
+      "additionalProperties": false,
+      "properties": {
+        "clientItemId": {
+          "type": "string"
+        },
+        "input": true
+      },
+      "required": [
+        "clientItemId",
+        "input"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "items": {
+        "$ref": "#/$defs/BatchInputV1"
+      },
+      "type": "array"
+    },
+    "name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "items"
+  ],
+  "title": "CreateBatchV1",
+  "type": "object"
+}

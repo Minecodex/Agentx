@@ -42,6 +42,7 @@ const commonAllowedRoots = new Set([
 ])
 
 const dynamicRoots: Record<string, Set<string>> = {
+  applicationBatches: new Set(['name','version','created','web','api','all','stopHint','cancelHint','rerunHint','active','accepted','running','queued','waiting','waiting_input','waiting_approval','completed','failed','partial_failure','cancelled','outcome_unknown','stopped','finished']),
   applicationMcp: new Set(['check_publication', 'check_authorization', 'check_resource', 'check_oauth']),
   applicationUi: new Set(['before', 'after', 'publishStatus']),
   testing: new Set(['profiles', 'runs', 'name', 'readiness', 'caseCount', 'needsAttention', 'filters', 'status']),

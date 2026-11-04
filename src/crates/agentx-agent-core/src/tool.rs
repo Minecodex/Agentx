@@ -38,6 +38,9 @@ pub struct ToolDefinitionV1 {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ToolResultV1 {
     pub content: String,
+    /// Tool-produced observations remain distinct from the user's instructions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub observations: Vec<crate::ports::ModelContentPartV1>,
     #[serde(default)]
     pub structured_result: Option<Value>,
     #[serde(default)]

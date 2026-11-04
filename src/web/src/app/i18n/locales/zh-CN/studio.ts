@@ -15,10 +15,17 @@ const translations = {
     "unpublished": "未发布"
   },
   "builder": {
+    "browserObserved": "浏览器观察已返回",
+    "browserIssues": "浏览器检查发现问题",
+    "browserStale": "草稿已变更，此浏览器观察已过期",
+    "browserActionFailed": "有浏览器操作未完成",
+    "browserImage": "已捕获 {{width}} × {{height}} 截图供模型检查",
+    "browserDom": "已读取页面结构，尚未检查视觉效果",
+    "browserSynthetic": "预览检查不执行正式业务，运行结果仍需测试。",
     "guidance": "追加指导",
     "guidancePlaceholder": "补充本次创作的要求…",
-    "outputLimit": "模型达到输出上限，未完成创作。请调整模型参数后重新生成。",
-    "modelFailed": "模型未完成当前创作，请检查调用失败原因。",
+    "outputLimit": "一次模型响应达到输出上限，未应用不完整内容。请以任务最终状态为准。",
+    "modelFailed": "一次模型响应失败，请以后续进展和任务最终状态为准。",
 
     "recoveryUnavailable": "本地恢复记录未能保存。请手动保存当前编辑后再继续创作。",
     "scope": "编辑范围",
@@ -44,7 +51,7 @@ const translations = {
     "model": "创作模型：{{model}}",
     "unconfigured": "管理员尚未设置平台 AI 模型，请在模型列表配置。",
     "unavailable": "平台 AI 模型不可用，请管理员检查模型、凭据和授权设置。",
-    "staticOnly": "AI 只编辑和静态校验；运行、测试、创建版本和发布请使用界面按钮。",
+    "staticOnly": "AI 可编辑、静态校验并观察预览；正式运行、测试和发布请使用界面按钮。",
     "pendingSave": "画布修改待保存",
     "saved": "画布已保存",
     "inspectSelected": "将当前执行结果交给 AI 分析",

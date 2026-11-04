@@ -1,0 +1,69 @@
+{
+  "$defs": {
+    "ArtifactUploadResponseV1": {
+      "additionalProperties": false,
+      "properties": {
+        "artifactId": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "contentType": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifactId",
+        "contentType",
+        "sizeBytes",
+        "sha256"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "batchId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "exportId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "file": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ArtifactUploadResponseV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "exportId",
+    "batchId",
+    "status"
+  ],
+  "title": "BatchExportV1",
+  "type": "object"
+}

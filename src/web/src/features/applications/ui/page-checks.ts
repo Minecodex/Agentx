@@ -1,3 +1,4 @@
+import { inspectBatchPreview } from './page-batch-checks'
 import { sampleValue, type createPagePreview } from './page-preview'
 import type { PageInspection, PageFrameHandle, PageCheckIssue } from './page-types'
 
@@ -85,5 +86,8 @@ export async function inspectPagePreview(frame: PageFrameHandle, preview: Return
       }
     }
   }
+  const batch=await inspectBatchPreview(frame,preview)
+  errors.push(...batch.errors)
+  if(batch.errors.length)visibleText=batch.visibleText
   return { ...inspected, errors, visibleText }
 }

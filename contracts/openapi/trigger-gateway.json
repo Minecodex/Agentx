@@ -5,6 +5,13 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "batchId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "historical": {
             "type": "boolean"
           },
@@ -350,6 +357,1069 @@
         "title": "ArtifactUploadResponseV1",
         "type": "object"
       },
+      "BatchExportV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "batchId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exportId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "file": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BatchExportV1_ArtifactUploadResponseV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "exportId",
+          "batchId",
+          "status"
+        ],
+        "title": "BatchExportV1",
+        "type": "object"
+      },
+      "BatchExportV1_ArtifactUploadResponseV1": {
+        "additionalProperties": false,
+        "properties": {
+          "artifactId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifactId",
+          "contentType",
+          "sizeBytes",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "BatchItemsPageV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BatchItemsPageV1_BatchItemViewV1"
+            },
+            "type": "array"
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "BatchItemsPageV1",
+        "type": "object"
+      },
+      "BatchItemsPageV1_ApplicationAccessBindingV1": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "web",
+                "type": "string"
+              },
+              "publicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "publicationId",
+              "revision"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "mcp",
+                "type": "string"
+              },
+              "publicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "publicationId",
+              "revision"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "BatchItemsPageV1_ArtifactUploadResponseV1": {
+        "additionalProperties": false,
+        "properties": {
+          "artifactId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifactId",
+          "contentType",
+          "sizeBytes",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "BatchItemsPageV1_BatchItemViewV1": {
+        "additionalProperties": false,
+        "properties": {
+          "canRerun": {
+            "type": "boolean"
+          },
+          "clientItemId": {
+            "type": "string"
+          },
+          "dispatchState": {
+            "type": "string"
+          },
+          "error": true,
+          "executionId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "input": true,
+          "itemId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "ordinal": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sourceInvocationId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceItemId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BatchItemsPageV1_TaskViewV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "itemId",
+          "clientItemId",
+          "ordinal",
+          "input",
+          "dispatchState",
+          "state",
+          "canRerun"
+        ],
+        "type": "object"
+      },
+      "BatchItemsPageV1_InputWaitV1": {
+        "additionalProperties": false,
+        "properties": {
+          "content": true,
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nodeExecutionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "nodePath": {
+            "type": "string"
+          },
+          "occurrence": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "responseSchema": true,
+          "resumeUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "waitId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "waitId",
+          "executionId",
+          "nodeExecutionId",
+          "nodeId",
+          "nodePath",
+          "occurrence",
+          "status"
+        ],
+        "type": "object"
+      },
+      "BatchItemsPageV1_TaskActionsV1": {
+        "additionalProperties": false,
+        "properties": {
+          "canCancel": {
+            "type": "boolean"
+          },
+          "downloadableArtifactIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "inputWaitIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "canCancel",
+          "inputWaitIds",
+          "downloadableArtifactIds"
+        ],
+        "type": "object"
+      },
+      "BatchItemsPageV1_TaskApprovalV1": {
+        "additionalProperties": false,
+        "properties": {
+          "approvalId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "approvalId",
+          "title",
+          "status",
+          "version"
+        ],
+        "type": "object"
+      },
+      "BatchItemsPageV1_TaskStageV1": {
+        "additionalProperties": false,
+        "properties": {
+          "nodeExecutionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodeExecutionId",
+          "title",
+          "status"
+        ],
+        "type": "object"
+      },
+      "BatchItemsPageV1_TaskStateV1": {
+        "enum": [
+          "accepted",
+          "running",
+          "waiting_input",
+          "waiting_approval",
+          "completed",
+          "failed",
+          "cancelled",
+          "outcome_unknown"
+        ],
+        "type": "string"
+      },
+      "BatchItemsPageV1_TaskViewV1": {
+        "additionalProperties": false,
+        "properties": {
+          "accessBinding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BatchItemsPageV1_ApplicationAccessBindingV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "allowedActions": {
+            "$ref": "#/components/schemas/BatchItemsPageV1_TaskActionsV1"
+          },
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "bundleId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "callerType": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "deploymentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "error": true,
+          "eventCursor": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/BatchItemsPageV1_ArtifactUploadResponseV1"
+            },
+            "type": "array"
+          },
+          "invocationStatus": {
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/BatchItemsPageV1_WorkflowMessageV1"
+            },
+            "type": "array"
+          },
+          "outputs": true,
+          "pendingApprovals": {
+            "items": {
+              "$ref": "#/components/schemas/BatchItemsPageV1_TaskApprovalV1"
+            },
+            "type": "array"
+          },
+          "pendingInputs": {
+            "items": {
+              "$ref": "#/components/schemas/BatchItemsPageV1_InputWaitV1"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sessionId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/BatchItemsPageV1_TaskStageV1"
+            },
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/BatchItemsPageV1_TaskStateV1"
+          },
+          "taskId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "taskUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId",
+          "applicationId",
+          "deploymentId",
+          "workflowVersionId",
+          "bundleId",
+          "callerType",
+          "state",
+          "invocationStatus",
+          "stages",
+          "pendingInputs",
+          "pendingApprovals",
+          "messages",
+          "files",
+          "allowedActions",
+          "revision",
+          "eventCursor",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "BatchItemsPageV1_WorkflowMessageV1": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "executionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nodeExecutionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "executionId",
+          "nodeExecutionId",
+          "content",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "BatchRerunV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "itemIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "itemIds"
+        ],
+        "title": "BatchRerunV1",
+        "type": "object"
+      },
+      "BatchViewV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "accessBinding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BatchViewV1_ApplicationAccessBindingV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "batchId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "bundleId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "callerId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "callerName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "callerType": {
+            "type": "string"
+          },
+          "canCancel": {
+            "type": "boolean"
+          },
+          "canRerun": {
+            "type": "boolean"
+          },
+          "canStop": {
+            "type": "boolean"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/BatchViewV1_BatchCountsV1"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "dispatchState": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pagePublicationId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          },
+          "sourceBatchId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "workflowVersionNumber": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "batchId",
+          "applicationId",
+          "name",
+          "source",
+          "callerType",
+          "callerId",
+          "bundleId",
+          "workflowVersionId",
+          "workflowVersionNumber",
+          "dispatchState",
+          "state",
+          "revision",
+          "counts",
+          "createdAt",
+          "canStop",
+          "canCancel",
+          "canRerun"
+        ],
+        "title": "BatchViewV1",
+        "type": "object"
+      },
+      "BatchViewV1_ApplicationAccessBindingV1": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "web",
+                "type": "string"
+              },
+              "publicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "publicationId",
+              "revision"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "mcp",
+                "type": "string"
+              },
+              "publicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "publicationId",
+              "revision"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "BatchViewV1_BatchCountsV1": {
+        "additionalProperties": false,
+        "properties": {
+          "cancelled": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "completed": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ended": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failed": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "outcomeUnknown": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "queued": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "running": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "waitingApproval": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "waitingInput": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "queued",
+          "running",
+          "waitingInput",
+          "waitingApproval",
+          "completed",
+          "failed",
+          "cancelled",
+          "outcomeUnknown",
+          "ended"
+        ],
+        "type": "object"
+      },
+      "BatchesPageV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BatchesPageV1_BatchViewV1"
+            },
+            "type": "array"
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "BatchesPageV1",
+        "type": "object"
+      },
+      "BatchesPageV1_ApplicationAccessBindingV1": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "web",
+                "type": "string"
+              },
+              "publicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "publicationId",
+              "revision"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "mcp",
+                "type": "string"
+              },
+              "publicationId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "revision": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "publicationId",
+              "revision"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "BatchesPageV1_BatchCountsV1": {
+        "additionalProperties": false,
+        "properties": {
+          "cancelled": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "completed": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ended": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failed": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "outcomeUnknown": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "queued": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "running": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "waitingApproval": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "waitingInput": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "queued",
+          "running",
+          "waitingInput",
+          "waitingApproval",
+          "completed",
+          "failed",
+          "cancelled",
+          "outcomeUnknown",
+          "ended"
+        ],
+        "type": "object"
+      },
+      "BatchesPageV1_BatchViewV1": {
+        "additionalProperties": false,
+        "properties": {
+          "accessBinding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BatchesPageV1_ApplicationAccessBindingV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "applicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "batchId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "bundleId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "callerId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "callerName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "callerType": {
+            "type": "string"
+          },
+          "canCancel": {
+            "type": "boolean"
+          },
+          "canRerun": {
+            "type": "boolean"
+          },
+          "canStop": {
+            "type": "boolean"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/BatchesPageV1_BatchCountsV1"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "dispatchState": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pagePublicationId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          },
+          "sourceBatchId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "workflowVersionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "workflowVersionNumber": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "batchId",
+          "applicationId",
+          "name",
+          "source",
+          "callerType",
+          "callerId",
+          "bundleId",
+          "workflowVersionId",
+          "workflowVersionNumber",
+          "dispatchState",
+          "state",
+          "revision",
+          "counts",
+          "createdAt",
+          "canStop",
+          "canCancel",
+          "canRerun"
+        ],
+        "type": "object"
+      },
       "CommandAccepted": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -366,6 +1436,41 @@
           "replayed"
         ],
         "title": "CommandAcceptedV1",
+        "type": "object"
+      },
+      "CreateBatchV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CreateBatchV1_BatchInputV1"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "items"
+        ],
+        "title": "CreateBatchV1",
+        "type": "object"
+      },
+      "CreateBatchV1_BatchInputV1": {
+        "additionalProperties": false,
+        "properties": {
+          "clientItemId": {
+            "type": "string"
+          },
+          "input": true
+        },
+        "required": [
+          "clientItemId",
+          "input"
+        ],
         "type": "object"
       },
       "CreateSessionRequest": {
@@ -1255,6 +2360,33 @@
         ],
         "type": "object"
       },
+      "ReadTableV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "artifactId": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "delimiter": {
+            "type": "string"
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "delimiter"
+        ],
+        "title": "ReadTableV1",
+        "type": "object"
+      },
       "SessionResponse": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -1371,6 +2503,52 @@
         ],
         "type": "string"
       },
+      "SubmitBatchPage": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SubmitBatchPage_BatchInputV1"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "publicationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "publicationId",
+          "revision",
+          "name",
+          "items"
+        ],
+        "title": "SubmitBatchPage",
+        "type": "object"
+      },
+      "SubmitBatchPage_BatchInputV1": {
+        "additionalProperties": false,
+        "properties": {
+          "clientItemId": {
+            "type": "string"
+          },
+          "input": true
+        },
+        "required": [
+          "clientItemId",
+          "input"
+        ],
+        "type": "object"
+      },
       "SubmitPage": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -1404,6 +2582,42 @@
           "content"
         ],
         "title": "SubmitWaitInputV1",
+        "type": "object"
+      },
+      "TableDataV1": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "headers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "lines": {
+            "items": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "headers",
+          "rows",
+          "lines"
+        ],
+        "title": "TableDataV1",
         "type": "object"
       },
       "TaskView": {
@@ -1844,6 +3058,362 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/gateway/v1/applications/{slug}/batch-imports/parse": {
+      "post": {
+        "operationId": "readTable",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 192,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadTableV1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableDataV1"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
+    "/gateway/v1/applications/{slug}/batches": {
+      "get": {
+        "operationId": "listMyBatches",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "maximum": 50,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "enum": [
+                "web",
+                "api"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "requestKey",
+            "schema": {
+              "maxLength": 192,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchesPageV1"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createBatch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 192,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBatchV1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchViewV1"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
     "/gateway/v1/applications/{slug}/invocations": {
       "post": {
         "operationId": "createInvocation",
@@ -2210,6 +3780,801 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ArtifactUploadResponse"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
+    "/gateway/v1/batches/{id}": {
+      "get": {
+        "operationId": "getBatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchViewV1"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
+    "/gateway/v1/batches/{id}/cancel": {
+      "post": {
+        "operationId": "batch_cancel",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 192,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchViewV1"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
+    "/gateway/v1/batches/{id}/exports": {
+      "post": {
+        "operationId": "batch_exports",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 192,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchExportV1"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
+    "/gateway/v1/batches/{id}/exports/{export_id}": {
+      "get": {
+        "operationId": "getBatchExport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchExportV1"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
+    "/gateway/v1/batches/{id}/exports/{export_id}/file": {
+      "get": {
+        "operationId": "downloadBatchExport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Authorized CSV export"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
+    "/gateway/v1/batches/{id}/items": {
+      "get": {
+        "operationId": "listBatchItems",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "maximum": 50,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "enum": [
+                "web",
+                "api"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "requestKey",
+            "schema": {
+              "maxLength": 192,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchItemsPageV1"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
+    "/gateway/v1/batches/{id}/rerun": {
+      "post": {
+        "operationId": "rerunFailedItems",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 192,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchRerunV1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchViewV1"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
+    "/gateway/v1/batches/{id}/stop": {
+      "post": {
+        "operationId": "batch_stop",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 192,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchViewV1"
                 }
               }
             },
@@ -2717,6 +5082,118 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApplicationPageView"
+                }
+              }
+            },
+            "description": "Successful Runtime response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              }
+            },
+            "description": "Runtime error"
+          }
+        },
+        "security": [
+          {
+            "runtimeBearer": []
+          }
+        ]
+      }
+    },
+    "/gateway/v1/pages/{slug}/batches": {
+      "post": {
+        "operationId": "createPageBatch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 192,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitBatchPage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchViewV1"
                 }
               }
             },

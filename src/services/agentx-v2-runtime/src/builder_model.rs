@@ -18,7 +18,7 @@ use crate::{
     error::{RuntimeError, RuntimeResult},
 };
 
-fn authorize(
+pub(crate) fn authorize(
     state: &RuntimeState,
     headers: &HeaderMap,
     scope: &str,
@@ -118,12 +118,14 @@ pub async fn submit(
     let task_state = state.clone();
     let task_request = request.clone();
     tokio::spawn(async move {
-        if let Err(error) = execute(&task_state, effect, &task_request).await {
+        let mut claimed = false;
+        if let Err(error) = execute(&task_state, effect, &task_request, &mut claimed).await {
             tracing::warn!(effect_id=%effect, error=%error, "design model effect failed");
             let code = match &error {
                 RuntimeError::InvalidRequest(code, _)
                 | RuntimeError::Deterministic { code, .. } => *code,
                 RuntimeError::SecretUnavailable => "DESIGN_MODEL_SECRET_UNAVAILABLE",
+                _ if !claimed => "DESIGN_MODEL_PREPARATION_FAILED",
                 _ => "DESIGN_MODEL_OUTCOME_UNKNOWN",
             };
             let status = if code == "DESIGN_MODEL_OUTCOME_UNKNOWN"
@@ -138,8 +140,9 @@ pub async fn submit(
                 | RuntimeError::Deterministic { message, .. } => Some(message.as_str()),
                 _ => None,
             };
-            let _ = sqlx::query("UPDATE runtime_calls SET status=?,error_code=?,error_message=?,ended_at=UTC_TIMESTAMP(6) WHERE id=? AND source_kind IN ('studio_builder','application_ui_builder') AND status IN ('reserved','sent')")
-                .bind(status).bind(code).bind(diagnostic).bind(effect).execute(&task_state.pool).await;
+            // Only the CAS winner dispatches. A losing preparation cannot overwrite its receipt.
+            let _ = sqlx::query("UPDATE runtime_calls SET status=?,error_code=?,error_message=?,ended_at=UTC_TIMESTAMP(6) WHERE id=? AND source_kind IN ('studio_builder','application_ui_builder') AND status=?")
+                .bind(status).bind(code).bind(diagnostic).bind(effect).bind(if claimed {"sent"} else {"reserved"}).execute(&task_state.pool).await;
         }
     });
     receipt(
@@ -250,12 +253,8 @@ async fn execute(
     state: &RuntimeState,
     effect: Uuid,
     request: &DesignModelEffectRequestV1,
+    claimed: &mut bool,
 ) -> RuntimeResult<()> {
-    let changed = sqlx::query("UPDATE runtime_calls SET status='sent',started_at=UTC_TIMESTAMP(6) WHERE tenant_id=? AND id=? AND source_kind IN ('studio_builder','application_ui_builder') AND status='reserved'")
-        .bind(request.target.identity().tenant_id).bind(effect).execute(&state.pool).await?;
-    if changed.rows_affected() == 0 {
-        return Ok(());
-    }
     let RuntimeResourceConfigurationV1::Model {
         provider,
         endpoint,
@@ -272,7 +271,15 @@ async fn execute(
     }
     let client =
         ProviderHttpClient::from_env(EgressRole::RuntimeGateway).map_err(RuntimeError::Internal)?;
-    let mut body = crate::agent_model_protocol::request(&request.request, model, true);
+    let mut model_request = request.request.clone();
+    crate::design_browser::resolve_images(
+        state,
+        &request.target,
+        &request.binding,
+        &mut model_request,
+    )
+    .await?;
+    let mut body = crate::agent_model_protocol::request(&model_request, model, true);
     if let Some(parameters) = request.parameters.as_object() {
         for name in [
             "temperature",
@@ -307,6 +314,14 @@ async fn execute(
         .map_err(|_| RuntimeError::SecretUnavailable)?;
         builder = builder.header("authorization", header);
     }
+    // Resolve authorized observations and credentials before marking provider dispatch.
+    // A local validation failure cannot have incurred a model call.
+    let changed = sqlx::query("UPDATE runtime_calls SET status='sent',started_at=UTC_TIMESTAMP(6) WHERE tenant_id=? AND id=? AND source_kind IN ('studio_builder','application_ui_builder') AND status='reserved'")
+        .bind(request.target.identity().tenant_id).bind(effect).execute(&state.pool).await?;
+    if changed.rows_affected() == 0 {
+        return Ok(());
+    }
+    *claimed = true;
     let provider = async {
         let response = builder
             .json(&body)
@@ -338,6 +353,8 @@ async fn execute(
                         )
                     }) {
                 "DESIGN_MODEL_CONTEXT_OVERFLOW"
+            } else if matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504) {
+                "DESIGN_MODEL_PROVIDER_UNAVAILABLE"
             } else {
                 "DESIGN_MODEL_PROVIDER_REJECTED"
             };

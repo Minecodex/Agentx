@@ -17,7 +17,7 @@ export default {
   signOut:"退出登录",
   loading:"正在加载应用…",
   reload:"重新加载",
-  historyMode:"正在查看历史任务页面，可补充信息、查看结果或取消任务。",
+  historyMode:"正在查看历史业务页面，可处理原任务、查看批次结果或取消未结束项。",
   openPage:"打开应用",
   slug:"访问后缀",
   publish:'发布',publishing:'正在检查并发布…',publishAddress:'设置访问地址',addressHint:'设置员工访问页面的地址后缀。之后发布会直接沿用这个地址。',

@@ -1,0 +1,104 @@
+{
+  "$defs": {
+    "BatchQueryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "requestKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "applicationId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "batchId": {
+      "format": "uuid",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "exportId": {
+      "format": "uuid",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "itemIds": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "operation": {
+      "type": "string"
+    },
+    "query": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BatchQueryV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "requestKey": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tenantId": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tenantId",
+    "applicationId",
+    "operation"
+  ],
+  "title": "ManageBatchRequestV1",
+  "type": "object"
+}
